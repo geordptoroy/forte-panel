@@ -8,6 +8,13 @@
       "when": 1790202435256,
       "tag": "0000_melted_skin",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1790203802971,
+      "tag": "0001_chunky_doctor_spectrum",
+      "breakpoints": true
     }
   ]
 }

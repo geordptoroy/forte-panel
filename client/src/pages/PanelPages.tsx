@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import {
   ArrowDownRight,
@@ -37,6 +37,7 @@ import {
   Zap,
 } from "lucide-react";
 import PanelLayout, { EmptyState, PageLink, SectionTitle, StatusBadge, ViewToggle } from "@/components/PanelLayout";
+import { trpc } from "@/lib/trpc";
 import {
   appointments,
   contacts,
@@ -67,6 +68,14 @@ function EventIcon({ type }: { type: string }) {
   return <MessageCircle size={15} />;
 }
 
+type ContactLike = Omit<Contact, "stage"> & { stage: string };
+
+function formatChatTime(value: string) {
+  if (value === "agora" || value === "ontem") return value;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
 export function DashboardPage() {
   return <PanelLayout eyebrow="Operação / Overview" title="Dashboard" description="Acompanhe o atendimento do Gabriel em um único lugar.">
     <DemoBanner />
@@ -87,46 +96,85 @@ export function DashboardPage() {
   </PanelLayout>;
 }
 
-function ConversationList({ items, selectedId, onSelect }: { items: Contact[]; selectedId: string; onSelect: (id: string) => void }) {
-  return <div className="inbox-list"><div className="inbox-list-header"><span className="eyebrow">Conversas</span><div className="inbox-count">{items.length} conversas indexadas</div></div>{items.map((contact) => <button key={contact.id} onClick={() => onSelect(contact.id)} className={`conversation-item ${selectedId === contact.id ? "is-selected" : ""}`}><div className="avatar">{contact.initials}</div><div className="conversation-copy"><div className="conversation-title"><strong>{contact.name}</strong>{contact.unread > 0 && <span className="unread-pill">{contact.unread}</span>}</div><div className="conversation-preview">{contact.lastMessage}</div><div className="conversation-bottom"><span>{contact.lastMessageAt}</span><span className={`ai-indicator ${contact.aiEnabled ? "" : "paused"}`}>{contact.aiEnabled ? "IA ativa" : "IA pausada"}</span></div></div></button>)}</div>;
+function ConversationList({ items, selectedId, onSelect }: { items: ContactLike[]; selectedId: string; onSelect: (id: string) => void }) {
+  return <div className="inbox-list"><div className="inbox-list-header"><span className="eyebrow">Conversas</span><div className="inbox-count">{items.length} conversas indexadas</div></div>{items.map((contact) => <button key={contact.id} onClick={() => onSelect(contact.id)} className={`conversation-item ${selectedId === contact.id ? "is-selected" : ""}`}><div className="avatar">{contact.initials}</div><div className="conversation-copy"><div className="conversation-title"><strong>{contact.name}</strong>{contact.unread > 0 && <span className="unread-pill">{contact.unread}</span>}</div><div className="conversation-preview">{contact.lastMessage}</div><div className="conversation-bottom"><span>{formatChatTime(contact.lastMessageAt)}</span><span className={`ai-indicator ${contact.aiEnabled ? "" : "paused"}`}>{contact.aiEnabled ? "IA ativa" : "IA pausada"}</span></div></div></button>)}</div>;
 }
 
 function MessageBubble({ message }: { message: Message }) {
   const author = message.sender === "lead" ? "Lead" : message.sender === "ai" ? "IA automática" : message.sender === "human" ? "Gabriel" : "Sistema";
-  return <div className={`message-row from-${message.sender}`}><div className="message-bubble"><div className="message-author">{author}</div><div className="message-text">{message.text}</div><div className="message-time">{message.time} {message.sender !== "system" && <Check size={10} style={{ display: "inline", verticalAlign: "middle" }} />}</div></div></div>;
+  const time = message.time.includes("T") ? new Date(message.time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : message.time;
+  return <div className={`message-row from-${message.sender}`}><div className="message-bubble"><div className="message-author">{author}</div><div className="message-text">{message.text}</div><div className="message-time">{time} {message.sender !== "system" && <Check size={10} style={{ display: "inline", verticalAlign: "middle" }} />}</div></div></div>;
 }
 
-function ConversationProfile({ contact, onToggleAi }: { contact: Contact; onToggleAi: () => void }) {
+function ConversationProfile({ contact, onToggleAi }: { contact: ContactLike; onToggleAi: () => void }) {
   return <div className="inbox-profile"><div className="profile-header"><h3>Ficha resumida</h3></div><div className="profile-body"><div className="profile-main"><div className="avatar">{contact.initials}</div><h3>{contact.name}</h3><p>{contact.phone}</p></div><div className="profile-fields"><div className="profile-field"><span>Serviço</span><strong>{contact.service}</strong></div><div className="profile-field"><span>Local</span><strong>{contact.neighborhood}, {contact.city}</strong></div><div className="profile-field"><span>Urgência</span><strong className={contact.urgency === "Crítica" || contact.urgency === "Alta" ? "red" : "amber"}>{contact.urgency}</strong></div><div className="profile-field"><span>Estágio</span><strong>{contact.stage}</strong></div><div className="profile-field"><span>Orçamento</span><strong>{formatCurrency(contact.quote)}</strong></div><div className="profile-field"><span>Próxima ação</span><strong>{contact.daysNoReply > 0 ? "Fazer follow-up" : "Aguardar retorno"}</strong></div></div><div className="profile-actions"><button className="btn-secondary" onClick={onToggleAi}>{contact.aiEnabled ? <><Pause size={13} /> Pausar IA</> : <><Play size={13} /> Reativar IA</>}</button><PageLink href={`/contacts/${contact.id}`} className="btn-secondary"><UserRound size={13} /> Abrir ficha completa</PageLink><button className="btn-ghost"><Tag size={13} /> Adicionar nota</button></div></div></div>;
 }
 
 export function InboxPage() {
-  const [selectedId, setSelectedId] = useState("c1");
+  const [selectedId, setSelectedId] = useState("1");
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("Todos");
   const [localContacts, setLocalContacts] = useState(contacts);
   const [draft, setDraft] = useState("");
   const [sentMessages, setSentMessages] = useState<Record<string, Message[]>>({});
-  const selected = localContacts.find((contact) => contact.id === selectedId) ?? localContacts[0];
-  const filtered = useMemo(() => localContacts.filter((contact) => `${contact.name} ${contact.phone}`.toLowerCase().includes(search.toLowerCase()) && (stageFilter === "Todos" || contact.stage === stageFilter)), [localContacts, search, stageFilter]);
-  const messages = [...(messagesByContact[selected.id] ?? []), ...(sentMessages[selected.id] ?? [])];
-  const toggleAi = () => setLocalContacts((items) => items.map((item) => item.id === selected.id ? { ...item, aiEnabled: !item.aiEnabled } : item));
-  const send = () => { if (!draft.trim()) return; setSentMessages((current) => ({ ...current, [selected.id]: [...(current[selected.id] ?? []), { id: `manual-${Date.now()}`, sender: "human", text: draft.trim(), time: "agora" }] })); setDraft(""); setLocalContacts((items) => items.map((item) => item.id === selected.id ? { ...item, aiEnabled: false, lastMessage: draft.trim(), lastMessageAt: "agora", unread: 0 } : item)); };
+  const contactsQuery = trpc.inbox.contacts.useQuery();
+  const remoteContacts = contactsQuery.data ?? [];
+  const usingRemote = remoteContacts.length > 0;
+  const items = usingRemote ? remoteContacts : localContacts;
+
+  useEffect(() => {
+    if (items.length > 0 && !items.some((contact) => contact.id === selectedId)) setSelectedId(items[0].id);
+  }, [items, selectedId]);
+
+  const selected = items.find((contact) => contact.id === selectedId) ?? items[0];
+  const selectedNumericId = Number(selected?.id ?? 0);
+  const threadInput = useMemo(() => ({ contactId: selectedNumericId }), [selectedNumericId]);
+  const threadQuery = trpc.inbox.thread.useQuery(threadInput, { enabled: usingRemote && selectedNumericId > 0 });
+  const refresh = async () => { await Promise.all([contactsQuery.refetch(), threadQuery.refetch()]); };
+  const toggleAiMutation = trpc.inbox.toggleAi.useMutation({ onSuccess: refresh });
+  const sendMutation = trpc.inbox.sendMessage.useMutation({ onSuccess: refresh });
+  const filtered = useMemo(() => items.filter((contact) => `${contact.name} ${contact.phone}`.toLowerCase().includes(search.toLowerCase()) && (stageFilter === "Todos" || contact.stage === stageFilter)), [items, search, stageFilter]);
+
+  if (!selected) return <PanelLayout eyebrow="Operação / Atendimento" title="Inbox" description="Converse com seus clientes sem sair do painel."><DemoBanner /><EmptyState icon={MessageCircle} title="Nenhuma conversa encontrada" description="Configure uma integração ou carregue dados demo para começar." /></PanelLayout>;
+
+  const fallbackMessages = [...(messagesByContact[selected.id] ?? []), ...(sentMessages[selected.id] ?? [])];
+  const messages = usingRemote ? (threadQuery.data?.messages ?? []) : fallbackMessages;
+  const toggleAi = () => {
+    if (usingRemote) toggleAiMutation.mutate({ contactId: selectedNumericId, enabled: !selected.aiEnabled });
+    else setLocalContacts((items) => items.map((item) => item.id === selected.id ? { ...item, aiEnabled: !item.aiEnabled } : item));
+  };
+  const send = () => {
+    if (!draft.trim()) return;
+    if (usingRemote) sendMutation.mutate({ contactId: selectedNumericId, content: draft.trim() });
+    else {
+      setSentMessages((current) => ({ ...current, [selected.id]: [...(current[selected.id] ?? []), { id: `manual-${Date.now()}`, sender: "human", text: draft.trim(), time: "agora" }] }));
+      setLocalContacts((items) => items.map((item) => item.id === selected.id ? { ...item, aiEnabled: false, lastMessage: draft.trim(), lastMessageAt: "agora", unread: 0 } : item));
+    }
+    setDraft("");
+  };
   return <PanelLayout eyebrow="Operação / Atendimento" title="Inbox" description="Converse com seus clientes sem sair do painel." actions={<button className="btn-primary"><Plus size={13} /> Nova conversa</button>}>
     <DemoBanner />
     <div className="filter-bar"><div className="search-field"><Search size={14} /><input className="input-control" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome ou telefone" /></div><select className="select-control" style={{ width: 160 }} value={stageFilter} onChange={(event) => setStageFilter(event.target.value)}><option>Todos</option>{stageOrder.map((stage) => <option key={stage}>{stage}</option>)}</select><button className="btn-secondary"><Filter size={13} /> Filtros</button></div>
-    <div className="inbox-layout"><ConversationList items={filtered} selectedId={selected.id} onSelect={setSelectedId} /><section className="inbox-chat"><div className="chat-header"><div className="chat-contact"><div className="avatar">{selected.initials}</div><div><strong>{selected.name}</strong><small>{selected.phone} · {selected.service}</small></div></div><div className="chat-actions"><StatusBadge tone={selected.aiEnabled ? "green" : "amber"}>{selected.aiEnabled ? "IA ativa" : "IA pausada"}</StatusBadge><button className="icon-button"><MoreHorizontal size={17} /></button></div></div><div className="chat-body">{messages.map((message) => <MessageBubble key={message.id} message={message} />)}</div><div className="chat-composer"><button className="icon-button" aria-label="Anexar arquivo"><Paperclip size={16} /></button><button className="icon-button" aria-label="Adicionar imagem"><ImagePlus size={16} /></button><input className="input-control" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") send(); }} placeholder="Escrever resposta manual..." /><button className="btn-primary" onClick={send} aria-label="Enviar mensagem"><Send size={14} /></button></div></section><ConversationProfile contact={selected} onToggleAi={toggleAi} /></div>
+    <div className="inbox-layout"><ConversationList items={filtered} selectedId={selected.id} onSelect={setSelectedId} /><section className="inbox-chat"><div className="chat-header"><div className="chat-contact"><div className="avatar">{selected.initials}</div><div><strong>{selected.name}</strong><small>{selected.phone} · {selected.service}</small></div></div><div className="chat-actions"><StatusBadge tone={selected.aiEnabled ? "green" : "amber"}>{selected.aiEnabled ? "IA ativa" : "IA pausada"}</StatusBadge><button className="icon-button"><MoreHorizontal size={17} /></button></div></div><div className="chat-body">{messages.map((message) => <MessageBubble key={message.id} message={message} />)}</div><div className="chat-composer"><button className="icon-button" aria-label="Anexar arquivo"><Paperclip size={16} /></button><button className="icon-button" aria-label="Adicionar imagem"><ImagePlus size={16} /></button><input className="input-control" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") send(); }} placeholder="Escrever resposta manual..." /><button className="btn-primary" onClick={send} disabled={sendMutation.isPending} aria-label="Enviar mensagem"><Send size={14} /></button></div></section><ConversationProfile contact={selected} onToggleAi={toggleAi} /></div>
   </PanelLayout>;
 }
 
 export function KanbanPage() {
   const [localContacts, setLocalContacts] = useState(contacts);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const moveContact = (id: string, stage: Stage) => setLocalContacts((items) => items.map((item) => item.id === id ? { ...item, stage } : item));
+  const contactsQuery = trpc.inbox.contacts.useQuery();
+  const remoteContacts = contactsQuery.data ?? [];
+  const usingRemote = remoteContacts.length > 0;
+  const items = usingRemote ? remoteContacts : localContacts;
+  const moveMutation = trpc.inbox.moveStage.useMutation({ onSuccess: () => contactsQuery.refetch() });
+  const moveContact = (id: string, stage: string) => {
+    if (usingRemote) moveMutation.mutate({ contactId: Number(id), stage });
+    else setLocalContacts((current) => current.map((item) => item.id === id ? { ...item, stage: stage as Stage } : item));
+  };
   return <PanelLayout eyebrow="Operação / Comercial" title="Kanban" description="Acompanhe cada lead até a conclusão do serviço." actions={<button className="btn-primary"><Plus size={13} /> Novo lead</button>}>
     <DemoBanner />
-    <div className="filter-bar"><div className="search-field"><Search size={14} /><input className="input-control" placeholder="Buscar no funil" /></div><button className="btn-secondary"><Filter size={13} /> Filtrar por urgência</button><span className="muted" style={{ fontSize: 10, marginLeft: "auto" }}>{localContacts.length} leads demo</span></div>
-    <div className="kanban-shell"><div className="kanban-board">{stageOrder.map((stage) => { const columnItems = localContacts.filter((contact) => contact.stage === stage); return <div className={`kanban-column ${draggingId ? "" : ""}`} key={stage} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggingId) moveContact(draggingId, stage); setDraggingId(null); }}><div className="kanban-column-header"><strong>{stage}</strong><span>{columnItems.length.toString().padStart(2, "0")}</span></div>{columnItems.map((contact) => <article className="kanban-card" key={contact.id} draggable onDragStart={() => setDraggingId(contact.id)} onDragEnd={() => setDraggingId(null)}><div className="kanban-card-head"><div className="avatar">{contact.initials}</div><div><strong>{contact.name}</strong><small>{contact.service}</small></div></div><div className="kanban-card-body"><div className="kanban-meta"><span>Urgência</span><strong className={`urgency urgency-${contact.urgency.toLowerCase().replace("é", "e")}`}>{contact.urgency}</strong></div><div className="kanban-meta"><span>Local</span><strong>{contact.neighborhood}</strong></div><div className="kanban-meta"><span>Orçamento</span><strong>{formatCurrency(contact.quote)}</strong></div><div className="kanban-meta"><span>IA</span><strong className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</strong></div><div className="kanban-meta"><span>Dias sem resposta</span><strong>{contact.daysNoReply}</strong></div></div><div style={{ marginTop: 11 }}><select className="select-control" value={contact.stage} onChange={(event) => moveContact(contact.id, event.target.value as Stage)} aria-label={`Estágio de ${contact.name}`}><option value={contact.stage}>{contact.stage}</option>{stageOrder.filter((item) => item !== contact.stage).map((item) => <option key={item}>{item}</option>)}</select></div></article>)}</div>; })}</div></div>
+    <div className="filter-bar"><div className="search-field"><Search size={14} /><input className="input-control" placeholder="Buscar no funil" /></div><button className="btn-secondary"><Filter size={13} /> Filtrar por urgência</button><span className="muted" style={{ fontSize: 10, marginLeft: "auto" }}>{items.length} leads {usingRemote ? "persistidos" : "demo"}</span></div>
+    <div className="kanban-shell"><div className="kanban-board">{stageOrder.map((stage) => { const columnItems = items.filter((contact) => contact.stage === stage); return <div className="kanban-column" key={stage} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggingId) moveContact(draggingId, stage); setDraggingId(null); }}><div className="kanban-column-header"><strong>{stage}</strong><span>{columnItems.length.toString().padStart(2, "0")}</span></div>{columnItems.map((contact) => <article className="kanban-card" key={contact.id} draggable onDragStart={() => setDraggingId(contact.id)} onDragEnd={() => setDraggingId(null)}><div className="kanban-card-head"><div className="avatar">{contact.initials}</div><div><strong>{contact.name}</strong><small>{contact.service}</small></div></div><div className="kanban-card-body"><div className="kanban-meta"><span>Urgência</span><strong className={`urgency urgency-${contact.urgency.toLowerCase().replace("é", "e")}`}>{contact.urgency}</strong></div><div className="kanban-meta"><span>Local</span><strong>{contact.neighborhood}</strong></div><div className="kanban-meta"><span>Orçamento</span><strong>{formatCurrency(contact.quote)}</strong></div><div className="kanban-meta"><span>IA</span><strong className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</strong></div><div className="kanban-meta"><span>Dias sem resposta</span><strong>{contact.daysNoReply}</strong></div></div><div style={{ marginTop: 11 }}><select className="select-control" value={contact.stage} onChange={(event) => moveContact(contact.id, event.target.value)} aria-label={`Estágio de ${contact.name}`}><option value={contact.stage}>{contact.stage}</option>{stageOrder.filter((item) => item !== contact.stage).map((item) => <option key={item}>{item}</option>)}</select></div></article>)}</div>; })}</div></div>
   </PanelLayout>;
 }
 
@@ -142,19 +190,25 @@ export function AgendaPage() {
 export function ContactsPage() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
-  const filtered = contacts.filter((contact) => `${contact.name} ${contact.phone} ${contact.service}`.toLowerCase().includes(search.toLowerCase()));
+  const contactsQuery = trpc.inbox.contacts.useQuery();
+  const items = contactsQuery.data ?? contacts;
+  const filtered = items.filter((contact) => `${contact.name} ${contact.phone} ${contact.service}`.toLowerCase().includes(search.toLowerCase()));
   return <PanelLayout eyebrow="Clientes / CRM local" title="Contatos" description="Clientes e leads sincronizados com o atendimento." actions={<button className="btn-primary"><Plus size={13} /> Novo contato</button>}>
-    <DemoBanner /><div className="filter-bar"><div className="search-field"><Search size={14} /><input className="input-control" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contato, telefone ou serviço" /></div><button className="btn-secondary"><Filter size={13} /> Filtros</button></div><div className="surface data-table-wrap"><table className="data-table"><thead><tr><th>Contato</th><th>Serviço</th><th>Estágio</th><th>Urgência</th><th>IA</th><th>Atualização</th><th></th></tr></thead><tbody>{filtered.map((contact) => <tr key={contact.id} onClick={() => navigate(`/contacts/${contact.id}`)} style={{ cursor: "pointer" }}><td><div className="table-person"><div className="avatar">{contact.initials}</div><div>{contact.name}<span className="table-secondary">{contact.phone}</span></div></div></td><td>{contact.service}<span className="table-secondary">{contact.neighborhood}, {contact.city}</span></td><td><StatusBadge tone={contact.stage === "Agendado" ? "green" : contact.stage === "Sem retorno" ? "amber" : "blue"}>{contact.stage}</StatusBadge></td><td><span className={`urgency urgency-${contact.urgency.toLowerCase().replace("é", "e")}`}>{contact.urgency}</span></td><td className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</td><td>{contact.lastMessageAt}</td><td><button className="icon-button"><ArrowUpRight size={14} /></button></td></tr>)}</tbody></table></div>
+    <DemoBanner /><div className="filter-bar"><div className="search-field"><Search size={14} /><input className="input-control" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contato, telefone ou serviço" /></div><button className="btn-secondary"><Filter size={13} /> Filtros</button></div><div className="surface data-table-wrap"><table className="data-table"><thead><tr><th>Contato</th><th>Serviço</th><th>Estágio</th><th>Urgência</th><th>IA</th><th>Atualização</th><th></th></tr></thead><tbody>{filtered.map((contact) => <tr key={contact.id} onClick={() => navigate(`/contacts/${contact.id}`)} style={{ cursor: "pointer" }}><td><div className="table-person"><div className="avatar">{contact.initials}</div><div>{contact.name}<span className="table-secondary">{contact.phone}</span></div></div></td><td>{contact.service}<span className="table-secondary">{contact.neighborhood}, {contact.city}</span></td><td><StatusBadge tone={contact.stage === "Agendado" ? "green" : contact.stage === "Sem retorno" ? "amber" : "blue"}>{contact.stage}</StatusBadge></td><td><span className={`urgency urgency-${contact.urgency.toLowerCase().replace("é", "e")}`}>{contact.urgency}</span></td><td className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</td><td>{formatChatTime(contact.lastMessageAt)}</td><td><button className="icon-button"><ArrowUpRight size={14} /></button></td></tr>)}</tbody></table></div>
   </PanelLayout>;
 }
 
 export function ContactDetailPage() {
   const [, params] = useRoute("/contacts/:id");
-  const contact = getContact(params?.id ?? "c1");
+  const detailId = Number(params?.id ?? 0);
+  const detailInput = useMemo(() => ({ contactId: detailId }), [detailId]);
+  const threadQuery = trpc.inbox.thread.useQuery(detailInput, { enabled: detailId > 0 });
+  const contact = threadQuery.data?.contact ?? getContact(params?.id ?? "c1");
   const [tab, setTab] = useState("overview");
-  const messages = messagesByContact[contact.id] ?? [];
+  const messages = threadQuery.data?.messages ?? messagesByContact[contact.id] ?? [];
+  const audit = threadQuery.data?.audit ?? [];
   return <PanelLayout eyebrow="Clientes / Ficha" title="Ficha do cliente" description="Histórico operacional, conversa e dados sincronizados." actions={<PageLink href="/contacts" className="btn-secondary"><ArrowDownRight size={13} /> Voltar para contatos</PageLink>}>
-    <DemoBanner /><div className="detail-layout"><aside className="surface detail-nav">{[["overview", "Visão geral"], ["conversation", "Conversa"], ["appointments", "Agendamentos"], ["notes", "Notas internas"], ["history", "Histórico de eventos"]].map(([key, label]) => <button key={key} className={tab === key ? "is-active" : ""} onClick={() => setTab(key)}>{label}</button>)}</aside><section className="surface detail-card"><div className="detail-hero"><div className="detail-person"><div className="avatar">{contact.initials}</div><div><h2>{contact.name}</h2><p>{contact.phone} · {contact.city}, {contact.neighborhood}</p></div></div><div className="detail-actions"><button className="btn-secondary"><Phone size={13} /> Ligar</button><button className="btn-primary"><MessageCircle size={13} /> Abrir conversa</button></div></div><div className="detail-stats"><div className="detail-stat"><span>Serviço solicitado</span><strong>{contact.service}</strong></div><div className="detail-stat"><span>Estágio atual</span><strong>{contact.stage}</strong></div><div className="detail-stat"><span>Orçamento</span><strong>{formatCurrency(contact.quote)}</strong></div><div className="detail-stat"><span>IA</span><strong className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</strong></div></div>{tab === "overview" && <><SectionTitle eyebrow="Resumo" title="Dados do atendimento" /><div className="timeline"><div className="timeline-row"><div className="timeline-time">Hoje, 10:42</div><div className="timeline-marker" /><div className="timeline-copy"><strong>Última mensagem recebida</strong><p>{contact.lastMessage}</p></div></div><div className="timeline-row"><div className="timeline-time">Hoje, 10:23</div><div className="timeline-marker" /><div className="timeline-copy"><strong>IA solicitou fotos do serviço</strong><p>Mensagem automática processada pelo workflow de atendimento.</p></div></div><div className="timeline-row"><div className="timeline-time">Hoje, 10:21</div><div className="timeline-marker" /><div className="timeline-copy"><strong>Contato criado no painel</strong><p>Origem: WhatsApp · modo demo.</p></div></div></div></>}{tab === "conversation" && <div className="chat-body" style={{ padding: "4px 0" }}>{messages.map((message) => <MessageBubble key={message.id} message={message} />)}</div>}{tab === "appointments" && <div className="list-stack">{appointments.filter((appointment) => appointment.contactId === contact.id).map((appointment) => <div className="appointment-row" key={appointment.id}><div className="time-block">{appointment.time}</div><div className="row-copy"><strong>{appointment.service}</strong><small>{appointment.date} · {appointment.duration}</small><small>{appointment.notes}</small></div><StatusBadge tone="green">{appointment.status}</StatusBadge></div>)}</div>}{tab === "notes" && <div><textarea className="textarea-control" placeholder="Escreva uma nota interna para este contato..." /><button className="btn-primary" style={{ marginTop: 10 }}>Salvar nota</button></div>}{tab === "history" && <div className="timeline"><div className="timeline-row"><div className="timeline-time">23/09 · 10:44</div><div className="timeline-marker" /><div className="timeline-copy"><strong>Ficha visualizada</strong><p>Evento de auditoria gerado pelo painel.</p></div></div><div className="timeline-row"><div className="timeline-time">23/09 · 10:23</div><div className="timeline-marker" /><div className="timeline-copy"><strong>Mensagem automática registrada</strong><p>Origem: n8n demo.</p></div></div></div>}</section></div>
+    <DemoBanner /><div className="detail-layout"><aside className="surface detail-nav">{[["overview", "Visão geral"], ["conversation", "Conversa"], ["appointments", "Agendamentos"], ["notes", "Notas internas"], ["history", "Histórico de eventos"]].map(([key, label]) => <button key={key} className={tab === key ? "is-active" : ""} onClick={() => setTab(key)}>{label}</button>)}</aside><section className="surface detail-card"><div className="detail-hero"><div className="detail-person"><div className="avatar">{contact.initials}</div><div><h2>{contact.name}</h2><p>{contact.phone} · {contact.city}, {contact.neighborhood}</p></div></div><div className="detail-actions"><button className="btn-secondary"><Phone size={13} /> Ligar</button><PageLink href={`/inbox`} className="btn-primary"><MessageCircle size={13} /> Abrir conversa</PageLink></div></div><div className="detail-stats"><div className="detail-stat"><span>Serviço solicitado</span><strong>{contact.service}</strong></div><div className="detail-stat"><span>Estágio atual</span><strong>{contact.stage}</strong></div><div className="detail-stat"><span>Orçamento</span><strong>{formatCurrency(contact.quote)}</strong></div><div className="detail-stat"><span>IA</span><strong className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</strong></div></div>{tab === "overview" && <><SectionTitle eyebrow="Resumo" title="Dados do atendimento" /><div className="timeline"><div className="timeline-row"><div className="timeline-time">{formatChatTime(contact.lastMessageAt)}</div><div className="timeline-marker" /><div className="timeline-copy"><strong>Última mensagem registrada</strong><p>{contact.lastMessage}</p></div></div><div className="timeline-row"><div className="timeline-time">Hoje</div><div className="timeline-marker" /><div className="timeline-copy"><strong>Contato sincronizado</strong><p>Dados carregados da base persistente do Forte Panel.</p></div></div></div></>}{tab === "conversation" && <div className="chat-body" style={{ padding: "4px 0" }}>{messages.map((message) => <MessageBubble key={message.id} message={message} />)}</div>}{tab === "appointments" && <div className="list-stack"><EmptyState icon={CalendarCheck2} title="Nenhum agendamento persistido" description="A agenda será conectada à mesma ficha na próxima etapa." /></div>}{tab === "notes" && <div><textarea className="textarea-control" placeholder="Escreva uma nota interna para este contato..." /><button className="btn-primary" style={{ marginTop: 10 }}>Salvar nota</button></div>}{tab === "history" && <div className="timeline">{audit.length > 0 ? audit.map((item) => <div className="timeline-row" key={item.id}><div className="timeline-time">{formatChatTime(item.createdAt.toISOString())}</div><div className="timeline-marker" /><div className="timeline-copy"><strong>{item.action}</strong><p>{item.summary}</p></div></div>) : <EmptyState icon={Clock3} title="Ainda sem eventos de auditoria" description="As próximas ações do operador aparecerão aqui." />}</div>}</section></div>
   </PanelLayout>;
 }
 
