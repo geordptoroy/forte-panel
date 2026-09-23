@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  Activity,
   BarChart3,
+  Bell,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -58,14 +58,15 @@ type PanelLayoutProps = {
   actions?: ReactNode;
 };
 
+const LOGO_URL = "https://img.icons8.com/comic/100/skull.png";
+
 function Brand({ collapsed }: { collapsed: boolean }) {
   return (
     <div className={`brand-block ${collapsed ? "is-collapsed" : ""}`}>
-      <div className="brand-mark">FM</div>
+      <div className="brand-mark"><img src={LOGO_URL} alt="Forte Media" /></div>
       {!collapsed && (
         <div className="brand-copy">
-          <span>FORTE</span>
-          <small>PANEL / DEMO</small>
+          <span>FORTE<span className="brand-muted">MEDIA</span></span>
         </div>
       )}
     </div>
@@ -84,7 +85,7 @@ function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onTo
       </div>
       <div className="sidebar-status">
         <span className="live-dot" />
-        {!collapsed && <span>Modo demo ativo</span>}
+        {!collapsed && <span>Operação online</span>}
       </div>
       <nav className="panel-nav" aria-label="Navegação principal">
         {navGroups.map((group) => (
@@ -132,11 +133,11 @@ export default function PanelLayout({ children, eyebrow = "Operação", title = 
       </div>
       <main className="panel-main">
         <header className="panel-header">
-          <div className="mobile-header-row">
-            <button className="icon-button mobile-menu-button" onClick={() => setMobileOpen(true)} aria-label="Abrir menu"><Menu size={19} /></button>
-            <Brand collapsed={false} />
-            <div className="mobile-header-spacer" />
-            <Activity size={15} className="mobile-activity" />
+          <div className="panel-topbar">
+            <button className="icon-button mobile-menu-button" onClick={() => setMobileOpen(true)} aria-label="Abrir menu"><Menu size={17} /></button>
+            <div className="topbar-spacer" />
+            <div className="topbar-status"><span className="live-dot" /> Sistema online</div>
+            <button className="icon-button topbar-bell" aria-label="Notificações"><Bell size={14} /></button>
           </div>
           <div className="page-heading">
             <div>
