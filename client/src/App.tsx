@@ -1,42 +1,48 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, Redirect } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
+import {
+  AgendaPage,
+  BillingPage,
+  ContactDetailPage,
+  ContactsPage,
+  DashboardPage,
+  InboxPage,
+  IntegrationsPage,
+  KanbanPage,
+  NotFoundPage,
+  SettingsPage,
+} from "./pages/PanelPages";
 
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
+      <Route path="/"><Redirect to="/dashboard" /></Route>
+      <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/inbox" component={InboxPage} />
+      <Route path="/kanban" component={KanbanPage} />
+      <Route path="/agenda" component={AgendaPage} />
+      <Route path="/contacts" component={ContactsPage} />
+      <Route path="/contacts/:id" component={ContactDetailPage} />
+      <Route path="/billing" component={BillingPage} />
+      <Route path="/integrations" component={IntegrationsPage} />
+      <Route path="/settings" component={SettingsPage} />
+      <Route component={NotFoundPage} />
     </Switch>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
-function App() {
+export default function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
+      <ThemeProvider defaultTheme="dark">
         <TooltipProvider>
-          <Toaster />
+          <Toaster position="top-right" theme="dark" richColors />
           <Router />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
 }
-
-export default App;
