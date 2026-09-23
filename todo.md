@@ -11,7 +11,7 @@
 - Enviar mensagem manual persistindo mensagem, controle humano e preview do contato.
 - Kanban conectado ao mesmo conjunto de contatos; mudança de estágio persistente e auditada.
 - Contatos e ficha do cliente carregando registros e mensagens persistentes.
-- Contratos internos para PAPI, n8n, Clientverse, Easy!Appointments, Qdrant e LocalAI.
+- Contratos internos para PAPI, n8n, Qdrant e LocalAI; CRM e agenda passam a ser módulos nativos.
 - Documento de topologia e variáveis para futura implantação na VPS.
 - Testes, TypeScript e build validados.
 

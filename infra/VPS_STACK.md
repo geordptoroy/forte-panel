@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-O Forte Panel será executado futuramente na mesma rede Docker da stack Pastorini. O painel não deve assumir que PAPI, n8n, Clientverse, Easy!Appointments, Qdrant ou LocalAI estão dentro do mesmo processo; cada integração deve ser acessada por URL interna, token em variável de ambiente e um adaptador isolado.
+O Forte Panel será executado futuramente na mesma rede Docker da stack Pastorini. O painel não deve assumir que PAPI, n8n, Qdrant ou LocalAI estão dentro do mesmo processo; cada integração deve ser acessada por URL interna, token em variável de ambiente e um adaptador isolado. CRM, funil e agenda são módulos nativos do próprio painel.
 
 Durante o desenvolvimento visual e a primeira vertical slice, o projeto continua usando o backend gerenciado do WebDev e o banco do scaffold. Esta decisão mantém o preview estável. A migração para a VPS deve acontecer antes de habilitar integrações reais e deve trocar o driver de persistência para PostgreSQL, sem alterar as telas.
 
@@ -17,10 +17,9 @@ Durante o desenvolvimento visual e a primeira vertical slice, o projeto continua
 | `postgres_n8n` | Persistência do n8n | Não acessar diretamente pelo painel | Isolar o schema do n8n |
 | `qdrant` | Memória vetorial e busca semântica | `QDRANT_URL` | Não publicar a porta em produção sem proxy/autenticação |
 | `localai` | API local compatível com OpenAI | `LOCALAI_BASE_URL` | Modelos e prompts somente no servidor |
-| `easyappointments` | Disponibilidade e agendamentos | `EASYAPPOINTMENTS_BASE_URL` | Usar credenciais de integração, não banco direto |
-| `clientverse-nginx` | CRM e clientes | `CLIENTVERSE_BASE_URL` | Token e timeout por adaptador |
-| `forte-panel` | UI, API tRPC e regras de negócio | domínio público HTTPS | Sem segredos no bundle do cliente |
-| `forte-panel-worker` | Jobs de sincronização e retries | Redis + API interna | Consumir eventos de forma idempotente |
+| `forte-panel` | CRM, agenda, funil e regras de negócio | `PANEL_PUBLIC_URL` | Fonte de verdade do produto |
+| `forte-panel-worker` | Jobs de sincronização e automações | Redis + API interna | Consumir eventos de forma idempotente |
+| `forte-panel-api` | API pública versionada e webhooks para n8n | domínio público HTTPS | Sem segredos no bundle do cliente |
 
 ## Variáveis necessárias
 
@@ -38,17 +37,14 @@ N8N_BASE_URL=http://n8n:5678
 N8N_API_KEY=CHANGE_ME
 QDRANT_URL=http://qdrant:6333
 LOCALAI_BASE_URL=http://localai:8080
-EASYAPPOINTMENTS_BASE_URL=http://easyappointments
-CLIENTVERSE_BASE_URL=http://clientverse-nginx
-CLIENTVERSE_API_TOKEN=CHANGE_ME
 WEBHOOK_SIGNING_SECRET=CHANGE_ME
 ```
 
 ## Ordem de migração
 
-Primeiro, criar `postgres_panel` e `redis_panel` como serviços independentes dos bancos do PAPI e do n8n. Em seguida, converter o schema Drizzle atual para PostgreSQL e executar uma migração de dados dos contatos, conversas, mensagens e auditoria. Depois, subir API e worker separados, validar healthchecks e só então habilitar os adaptadores externos.
+Primeiro, criar `postgres_panel` e `redis_panel` como serviços independentes dos bancos do PAPI e do n8n. Em seguida, converter o schema atual para PostgreSQL e ampliar o domínio para empresas, equipes, agenda e automações. Depois, subir API e worker separados, validar healthchecks e só então habilitar o adaptador do PAPI e os webhooks do n8n.
 
-O banco do PAPI não deve ser usado como banco de negócio do painel. O n8n também não deve ser consultado diretamente para montar a UI; o painel deve manter seu próprio estado e receber eventos sincronizados com idempotência.
+O banco do PAPI não deve ser usado como banco de negócio do painel. O n8n também não deve ser consultado diretamente para montar a UI; o painel deve manter seu próprio estado e receber eventos sincronizados com idempotência. A agenda será nativa do Forte Panel, sem Easy!Appointments, e o CRM será nativo, sem Clientverse.
 
 ## Requisitos de produção
 

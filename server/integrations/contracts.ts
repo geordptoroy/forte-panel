@@ -1,4 +1,4 @@
-export type IntegrationName = "papi" | "n8n" | "clientverse" | "easyappointments" | "qdrant" | "localai";
+export type IntegrationName = "papi" | "n8n" | "qdrant" | "localai";
 
 export type IntegrationHealth = {
   name: IntegrationName;
@@ -32,11 +32,11 @@ export type WorkflowCommand = {
 };
 
 export type AppointmentSlot = {
-  externalId: string;
+  id: number;
   startsAt: Date;
   endsAt: Date;
-  service?: string;
-  provider?: string;
+  serviceId: number;
+  professionalId: number;
   available: boolean;
 };
 
@@ -51,17 +51,14 @@ export interface N8nAdapter {
   dispatch(command: WorkflowCommand): Promise<{ accepted: boolean; executionId?: string }>;
 }
 
-export interface ClientverseAdapter {
-  health(): Promise<IntegrationHealth>;
-  upsertContact(contact: { externalPhone: string; name: string; city?: string; neighborhood?: string }): Promise<{ externalId?: string }>;
-}
-
-export interface EasyAppointmentsAdapter {
-  health(): Promise<IntegrationHealth>;
-  listSlots(from: Date, to: Date): Promise<AppointmentSlot[]>;
-}
-
 export interface VectorMemoryAdapter {
   health(): Promise<IntegrationHealth>;
-  search(input: { contactId: number; query: string; limit: number }): Promise<Array<{ id: string; score: number; text: string }>>;
+  search(input: { workspaceId: number; contactId: number; query: string; limit: number }): Promise<Array<{ id: string; score: number; text: string }>>;
 }
+
+export interface LocalAiAdapter {
+  health(): Promise<IntegrationHealth>;
+  classify(input: { workspaceId: number; text: string }): Promise<{ urgency: string; intent: string; confidence: number }>;
+}
+
+export type NativeCrmModule = "contacts" | "pipeline" | "calendar" | "tasks" | "billing";

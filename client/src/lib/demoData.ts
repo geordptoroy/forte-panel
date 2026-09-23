@@ -197,7 +197,7 @@ export const messagesByContact: Record<string, Message[]> = {
 };
 
 export const appointments: Appointment[] = [
-  { id: "a1", contactId: "c4", service: "Manutenção preventiva", date: "26/09/2026", time: "14:00", duration: "1h30", status: "Confirmado", origin: "Easy!Appointments", notes: "Revisar quadro e tomadas da sala." },
+  { id: "a1", contactId: "c4", service: "Manutenção preventiva", date: "26/09/2026", time: "14:00", duration: "1h30", status: "Confirmado", origin: "Agenda Forte Panel", notes: "Revisar quadro e tomadas da sala." },
   { id: "a2", contactId: "c2", service: "Quadro elétrico", date: "26/09/2026", time: "17:30", duration: "2h", status: "Pendente", origin: "Solicitação manual", notes: "Cliente relatou queda recorrente de energia." },
   { id: "a3", contactId: "c1", service: "Instalação de chuveiro", date: "28/09/2026", time: "09:00", duration: "1h", status: "Solicitado", origin: "WhatsApp", notes: "Aguardando confirmação das fotos." },
 ];
@@ -216,11 +216,11 @@ export const events = [
   { type: "billing", title: "Pagamento recebido de Paulo Mendes", meta: "R$ 280,00 registrado", time: "ontem" },
 ];
 
-export const integrations = [
+export const integrations: Array<{ name: string; key: string; description: string; status: "connected" | "pending" | "disconnected"; detail: string }> = [
   { name: "PAPI / Evolution", key: "papi", description: "Mensagens de WhatsApp e mídia", status: "disconnected", detail: "Configure PAPI_BASE_URL e o segredo do webhook." },
   { name: "n8n Agent", key: "n8n", description: "Automação e resposta da IA", status: "connected", detail: "Workflow de atendimento disponível para eventos demo." },
-  { name: "Clientverse CRM", key: "crm", description: "Contatos, clientes e notas", status: "pending", detail: "Aguardando CLIENTVERSE_API_TOKEN." },
-  { name: "Easy!Appointments", key: "agenda", description: "Disponibilidade e agendamentos", status: "disconnected", detail: "Configure a URL e as credenciais da agenda." },
+  { name: "CRM Forte Panel", key: "crm", description: "Contatos, clientes, notas e funil próprios", status: "connected", detail: "Fonte de verdade nativa do produto." },
+  { name: "Agenda Forte Panel", key: "agenda", description: "Disponibilidade e agendamentos próprios", status: "connected", detail: "Módulo nativo em construção." },
 ] as const;
 
 export const getContact = (id: string) => contacts.find((contact) => contact.id === id) ?? contacts[0];
