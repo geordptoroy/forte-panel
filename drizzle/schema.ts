@@ -12,8 +12,40 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const workspaces = mysqlTable("workspaces", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 160 }).notNull(),
+  slug: varchar("slug", { length: 100 }).notNull().unique(),
+  segment: varchar("segment", { length: 80 }).default("servicos").notNull(),
+  plan: mysqlEnum("plan", ["starter", "pro", "business"]).default("starter").notNull(),
+  timezone: varchar("timezone", { length: 64 }).default("America/Sao_Paulo").notNull(),
+  active: int("active").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const workspaceMembers = mysqlTable("workspaceMembers", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId").notNull(),
+  userId: int("userId").notNull(),
+  role: mysqlEnum("role", ["owner", "admin", "manager", "agent"]).default("agent").notNull(),
+  active: int("active").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const workspaceSettings = mysqlTable("workspaceSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId").notNull(),
+  key: varchar("key", { length: 100 }).notNull(),
+  value: text("value"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const contacts = mysqlTable("contacts", {
   id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId"),
   externalPhone: varchar("externalPhone", { length: 32 }).notNull().unique(),
   name: varchar("name", { length: 160 }).notNull(),
   city: varchar("city", { length: 100 }),
@@ -64,6 +96,12 @@ export const auditLogs = mysqlTable("auditLogs", {
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+export type Workspace = typeof workspaces.$inferSelect;
+export type InsertWorkspace = typeof workspaces.$inferInsert;
+export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
+export type InsertWorkspaceMember = typeof workspaceMembers.$inferInsert;
+export type WorkspaceSetting = typeof workspaceSettings.$inferSelect;
+export type InsertWorkspaceSetting = typeof workspaceSettings.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = typeof contacts.$inferInsert;
 export type Conversation = typeof conversations.$inferSelect;

@@ -6,6 +6,8 @@ import {
   conversations,
   messages,
   users,
+  workspaceMembers,
+  workspaces,
   type InsertUser,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -62,6 +64,39 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
+export const DEMO_WORKSPACE_SLUG = "forte-demo";
+
+export async function ensureDemoWorkspace() {
+  const db = await getDb();
+  if (!db || process.env.DEMO_MODE === "false") return undefined;
+  await db.insert(workspaces).values({
+    name: "Forte Serviços Demo",
+    slug: DEMO_WORKSPACE_SLUG,
+    segment: "servicos",
+    plan: "pro",
+    timezone: "America/Sao_Paulo",
+  }).onDuplicateKeyUpdate({ set: { name: "Forte Serviços Demo", updatedAt: new Date() } });
+  const result = await db.select().from(workspaces).where(eq(workspaces.slug, DEMO_WORKSPACE_SLUG)).limit(1);
+  return result[0];
+}
+
+export async function ensureWorkspaceMember(workspaceId: number, userId: number, role: "owner" | "admin" | "manager" | "agent" = "owner") {
+  const db = await getDb();
+  if (!db) return undefined;
+  const existing = await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId))).limit(1);
+  if (existing.length > 0) return existing[0];
+  await db.insert(workspaceMembers).values({ workspaceId, userId, role });
+  const created = await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId))).limit(1);
+  return created[0];
+}
+
+export async function getWorkspaceBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(workspaces).where(eq(workspaces.slug, slug)).limit(1);
+  return result[0];
+}
+
 const seedContacts = [
   { phone: "5511998421104", name: "Juliana Alves", city: "São Paulo", neighborhood: "Vila Mariana", service: "Instalação de chuveiro", urgency: "Alta" as const, stage: "Triagem", aiEnabled: 0, quoteCents: 38000, preview: "Consigo enviar as fotos ainda hoje." },
   { phone: "5511987104522", name: "Marcos Ferreira", city: "São Paulo", neighborhood: "Moema", service: "Quadro elétrico", urgency: "Crítica" as const, stage: "Visita solicitada", aiEnabled: 1, quoteCents: 95000, preview: "A energia caiu novamente no apartamento." },
@@ -100,12 +135,16 @@ const seedMessages = [
 export async function ensureDemoInbox() {
   const db = await getDb();
   if (!db || process.env.DEMO_MODE === "false") return;
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return;
+  await db.update(contacts).set({ workspaceId: workspace.id }).where(sql`${contacts.workspaceId} IS NULL`);
   const existing = await db.select({ id: contacts.id }).from(contacts).limit(1);
   if (existing.length > 0) return;
 
   for (let index = 0; index < seedContacts.length; index += 1) {
     const seed = seedContacts[index];
     await db.insert(contacts).values({
+      workspaceId: workspace.id,
       externalPhone: seed.phone,
       name: seed.name,
       city: seed.city,
@@ -148,7 +187,9 @@ export async function listInboxContacts() {
   const db = await getDb();
   if (!db) return [];
   await ensureDemoInbox();
-  return db.select().from(contacts).orderBy(desc(contacts.lastMessageAt), desc(contacts.id));
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return [];
+  return db.select().from(contacts).where(eq(contacts.workspaceId, workspace.id)).orderBy(desc(contacts.lastMessageAt), desc(contacts.id));
 }
 
 export async function getConversationByContact(contactId: number) {
@@ -203,7 +244,9 @@ export async function getContactById(contactId: number) {
   const db = await getDb();
   if (!db) return undefined;
   await ensureDemoInbox();
-  const result = await db.select().from(contacts).where(eq(contacts.id, contactId)).limit(1);
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return undefined;
+  const result = await db.select().from(contacts).where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspace.id))).limit(1);
   return result[0];
 }
 

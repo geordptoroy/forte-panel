@@ -5,6 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import {
   ensureDemoInbox,
+  ensureDemoWorkspace,
   getAuditLogForContact,
   getContactById,
   getConversationByContact,
@@ -46,6 +47,21 @@ export const appRouter = router({
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
+    }),
+  }),
+
+  workspace: router({
+    current: publicProcedure.query(async () => {
+      const workspace = await ensureDemoWorkspace();
+      if (!workspace) return null;
+      return {
+        id: workspace.id,
+        name: workspace.name,
+        slug: workspace.slug,
+        segment: workspace.segment,
+        plan: workspace.plan,
+        timezone: workspace.timezone,
+      };
     }),
   }),
 

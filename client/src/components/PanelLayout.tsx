@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
+import { trpc } from "@/lib/trpc";
 import {
   BarChart3,
   Bell,
@@ -122,6 +123,7 @@ export default function PanelLayout({ children, eyebrow = "Operação", title = 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [location] = useLocation();
+  const { data: workspace } = trpc.workspace.current.useQuery();
   useEffect(() => setMobileOpen(false), [location]);
 
   return (
@@ -136,7 +138,7 @@ export default function PanelLayout({ children, eyebrow = "Operação", title = 
           <div className="panel-topbar">
             <button className="icon-button mobile-menu-button" onClick={() => setMobileOpen(true)} aria-label="Abrir menu"><Menu size={17} /></button>
             <div className="topbar-spacer" />
-            <div className="topbar-status"><span className="live-dot" /> Sistema online</div>
+            <div className="topbar-status"><span className="live-dot" /> {workspace?.name ?? "Forte Panel"}</div>
             <button className="icon-button topbar-bell" aria-label="Notificações"><Bell size={14} /></button>
           </div>
           <div className="page-heading">
