@@ -11,16 +11,20 @@
 - Enviar mensagem manual persistindo mensagem, controle humano e preview do contato.
 - Kanban conectado ao mesmo conjunto de contatos; mudança de estágio persistente e auditada.
 - Contatos e ficha do cliente carregando registros e mensagens persistentes.
+- Contratos internos para PAPI, n8n, Clientverse, Easy!Appointments, Qdrant e LocalAI.
+- Documento de topologia e variáveis para futura implantação na VPS.
 - Testes, TypeScript e build validados.
 
-## Em andamento
+## Próxima fase
 
-- Conectar Agenda ao banco e à ficha do cliente.
-- Persistir notas internas e registros de faturamento.
-- Substituir seed por sincronização segura com PAPI/n8n/CRM/Agenda.
+- Migrar a persistência do scaffold MySQL/TiDB para PostgreSQL próprio do painel antes de habilitar integrações reais.
+- Adicionar Redis próprio do painel e worker separado para retries, sincronização e webhooks.
+- Persistir Agenda e faturamento no schema portátil.
+- Implementar adaptadores reais atrás dos contratos, começando pelo PAPI e n8n.
+- Criar healthchecks, autenticação por usuário/empresa e proxy HTTPS na VPS.
 
 ## Bugs ou riscos conhecidos
 
-- O projeto ainda usa o banco MySQL/TiDB do scaffold WebDev; a arquitetura definitiva do prompt pede PostgreSQL, Redis e workers Docker.
+- O preview atual ainda usa o banco MySQL/TiDB do scaffold WebDev; isso é temporário e não representa a topologia final da VPS.
 - As integrações externas permanecem bloqueadas em modo demo por segurança.
-- O preview usa autenticação pública temporária para acelerar a validação visual; o próximo passo de produção é aplicar autorização por usuário/empresa.
+- O compose anexado contém credenciais e licença em texto puro; elas precisam ser substituídas por secrets antes de qualquer deploy.
