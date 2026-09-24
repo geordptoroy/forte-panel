@@ -24,6 +24,31 @@ npm install ./n8n-nodes-forte-panel-0.1.0.tgz
 
 Em Docker, a instalação deve ocorrer em uma imagem customizada do n8n ou no diretório de community nodes persistido por volume. Depois da instalação, reinicie o n8n para que o node apareça.
 
+### Imagem Docker recomendada
+
+A imagem `infra/n8n/Dockerfile` já instala o pacote compilado. A partir da raiz deste repositório:
+
+```bash
+docker build -f infra/n8n/Dockerfile -t forte-n8n:local .
+```
+
+No serviço `n8n` do seu `docker-compose.yml`, troque a imagem por `forte-n8n:local` e adicione:
+
+```yaml
+environment:
+  N8N_CUSTOM_EXTENSIONS: /opt/n8n-custom-nodes/node_modules/n8n-nodes-forte-panel
+  N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE: "true"
+```
+
+Depois recrie somente o n8n:
+
+```bash
+docker compose up -d --no-deps --force-recreate n8n
+docker compose logs -f n8n
+```
+
+Se o n8n estiver em outro diretório, faça o build apontando o contexto para a cópia local do repositório Forte Panel. O pacote não deve ser instalado no container `forte-panel`; ele é um plugin do container n8n.
+
 ## Configuração no workflow
 
 1. Remova as duas tools antigas do conector `Tools` do AI Agent.
