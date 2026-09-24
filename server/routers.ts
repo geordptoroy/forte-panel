@@ -203,7 +203,9 @@ export const appRouter = router({
         timezone: workspace.timezone,
       };
     }),
-    members: protectedProcedure.query(async () => {
+    // The member roster is administrative data: an executor must not be able to
+    // enumerate colleagues, e-mails or account status through a direct URL.
+    members: requireManager.query(async () => {
       const members = await listWorkspaceMembersDetailed();
       return members.map((member) => ({
         id: member.id,

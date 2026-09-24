@@ -18,6 +18,7 @@ import { ProfessionalsPage, ServicesPage } from "./pages/CatalogPage";
 import { ProfessionalPortalPage } from "./pages/ProfessionalPortal";
 import { SettingsTabsPage } from "./pages/SettingsTabs";
 import TeamPage from "./pages/TeamPage";
+import AccessGuard from "./components/AccessGuard";
 import OnboardingPage from "./pages/OnboardingPage";
 import BillingPage from "./pages/BillingPage";
 import LoginPage from "./pages/LoginPage";
@@ -29,15 +30,15 @@ function Router() {
       <Route path="/dashboard" component={DashboardPage} />
       <Route path="/inbox" component={InboxPage} />
       <Route path="/kanban" component={KanbanPage} />
-      <Route path="/agenda" component={AgendaPage} />
+      <Route path="/agenda">{() => <AccessGuard requirement="fullAgenda" title="Agenda completa"><AgendaPage /></AccessGuard>}</Route>
       <Route path="/contacts" component={ContactsPage} />
       <Route path="/contacts/:id" component={ContactDetailPage} />
-      <Route path="/billing" component={BillingPage} />
-      <Route path="/integrations" component={IntegrationsPage} />
-      <Route path="/onboarding" component={OnboardingPage} />
-      <Route path="/team" component={TeamPage} />
-      <Route path="/services" component={ServicesPage} />
-      <Route path="/professionals" component={ProfessionalsPage} />
+      <Route path="/billing">{() => <AccessGuard requirement="fullAgenda" title="Faturamento"><BillingPage /></AccessGuard>}</Route>
+      <Route path="/integrations">{() => <AccessGuard requirement="manager" title="Integrações"><IntegrationsPage /></AccessGuard>}</Route>
+      <Route path="/onboarding">{() => <AccessGuard requirement="manager" title="Onboarding"><OnboardingPage /></AccessGuard>}</Route>
+      <Route path="/team">{() => <AccessGuard requirement="administrator" title="Equipe"><TeamPage /></AccessGuard>}</Route>
+      <Route path="/services">{() => <AccessGuard requirement="manager" title="Serviços"><ServicesPage /></AccessGuard>}</Route>
+      <Route path="/professionals">{() => <AccessGuard requirement="manager" title="Profissionais"><ProfessionalsPage /></AccessGuard>}</Route>
       <Route path="/my-work" component={ProfessionalPortalPage} />
       <Route path="/settings" component={SettingsTabsPage} />
       <Route component={NotFoundPage} />

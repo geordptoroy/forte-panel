@@ -74,6 +74,30 @@ export function ProfessionalPortalPage() {
   });
 
   const data = agendaQuery.data;
+  const timezone = data?.timezone ?? "America/Sao_Paulo";
+  const week = data?.week ?? [];
+  const month = data?.month ?? [];
+
+  // Every hook must run before the early returns below, otherwise React
+  // re-renders with a different hook order (React error #310).
+  const grouped = useMemo(() => {
+    const map = new Map<string, PortalAppointment[]>();
+    for (const appointment of week) {
+      const key = dayKey(appointment.startsAt, timezone);
+      map.set(key, [...(map.get(key) ?? []), appointment as PortalAppointment]);
+    }
+    return Array.from(map.entries());
+  }, [week, timezone]);
+
+  const monthGrouped = useMemo(() => {
+    const map = new Map<string, PortalAppointment[]>();
+    for (const appointment of month) {
+      const key = dayKey(appointment.startsAt, timezone);
+      map.set(key, [...(map.get(key) ?? []), appointment as PortalAppointment]);
+    }
+    return Array.from(map.entries());
+  }, [month, timezone]);
+
   if (agendaQuery.isLoading) {
     return <PanelLayout eyebrow="Minha operação" title="Meu trabalho" description="Carregando sua agenda atribuída.">
       <EmptyState icon={ClipboardList} title="Carregando agenda" description="Buscando os atendimentos vinculados ao seu acesso." />
@@ -86,30 +110,11 @@ export function ProfessionalPortalPage() {
     </PanelLayout>;
   }
 
-  const timezone = data.timezone;
   const next = data.nextAppointment;
   const update = (id: number, status: "confirmed" | "in_progress" | "completed" | "no_show") => {
     setPendingId(id);
     transition.mutate({ id, status });
   };
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, PortalAppointment[]>();
-    for (const appointment of data.week) {
-      const key = dayKey(appointment.startsAt, timezone);
-      map.set(key, [...(map.get(key) ?? []), appointment as PortalAppointment]);
-    }
-    return Array.from(map.entries());
-  }, [data.week, timezone]);
-
-  const monthGrouped = useMemo(() => {
-    const map = new Map<string, PortalAppointment[]>();
-    for (const appointment of data.month) {
-      const key = dayKey(appointment.startsAt, timezone);
-      map.set(key, [...(map.get(key) ?? []), appointment as PortalAppointment]);
-    }
-    return Array.from(map.entries());
-  }, [data.month, timezone]);
 
   return <PanelLayout
     eyebrow="Minha operação"

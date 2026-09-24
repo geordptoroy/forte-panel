@@ -73,13 +73,24 @@ A migration foi validada contra um PostgreSQL 16 real: as 19 tabelas foram criad
 |---|---|
 | `pnpm check` (tsc) | sem erros |
 | `pnpm test` sem banco | 16 testes de contrato passam, 5 de isolamento pulados |
-| `pnpm test` com PostgreSQL | 21 testes passam, incluindo os 5 de isolamento |
+| `pnpm test` com PostgreSQL | 22 testes passam, incluindo os 6 de isolamento |
 | Migrations em PostgreSQL 16 real | 19 tabelas e enum de 6 estados |
-| `scripts/validate-flow.mjs` contra servidor de produção | 21 de 21 validações |
+| `scripts/validate-flow.mjs` contra servidor de produção | 23 de 23 validações |
+| Verificação visual no navegador | dashboard, serviços, profissionais, equipe e portal do executor |
 
-O teste `server/professional-isolation.test.ts` cobre: leitura restrita ao próprio `professionalId`, recusa de transição alheia, transição própria permitida, agenda completa para gestor, recusa de criação para terceiro e bloqueio de membro desativado.
+O teste `server/professional-isolation.test.ts` cobre: leitura restrita ao próprio `professionalId`, recusa de transição alheia, transição própria permitida, agenda completa para gestor, recusa de criação para terceiro, bloqueio de membro desativado e ausência de exposição do roster, da auditoria e da lista de profissionais.
 
-O script `scripts/validate-flow.mjs` exercita o mesmo comportamento por HTTP real: login do proprietário, criação de serviço e profissionais, vínculos, jornada, criação de duas contas de executor, login do executor, `FORBIDDEN` em auditoria e criação de serviço, agendamento pelo gestor, início pelo executor e checagem da API v1.
+O script `scripts/validate-flow.mjs` exercita o mesmo comportamento por HTTP real: login do proprietário, criação de serviço e profissionais, vínculos, jornada, criação de duas contas de executor, login do executor, `FORBIDDEN` em auditoria, roster, profissionais e criação de serviço, agendamento pelo gestor, início pelo executor e checagem da API v1.
+
+## Correções encontradas durante a verificação visual
+
+Duas falhas só apareceram ao exercitar o painel no navegador, com uma conta real de executor:
+
+1. **Crash do portal (`React error #310`)**. Em `ProfessionalPortal.tsx`, dois `useMemo` estavam declarados depois dos retornos antecipados de carregamento e de ausência de vínculo. Na primeira renderização a ordem dos hooks era uma; depois do carregamento, outra — e o React abortava a página. Os cálculos foram movidos para antes dos retornos. É um defeito que o `tsc` não detecta, por isso o portal agora é verificado também no navegador.
+
+2. **Roster da equipe exposto ao executor**. Digitar `/team` diretamente na URL mostrava a lista completa de membros — nomes, e-mails e situação de conta — mesmo sem permissão de administração. A navegação lateral escondia o item, mas a rota não tinha guarda. A correção foi aplicada em duas camadas: `workspace.members` e `workspace.professionalsDetailed` agora exigem papel de gestão no servidor (um `FORBIDDEN` real, não apenas ocultação visual), e o componente `AccessGuard` bloqueia no cliente as rotas `/agenda`, `/billing`, `/integrations`, `/onboarding`, `/team`, `/services` e `/professionals`, mostrando a tela "Área restrita".
+
+Ambas as correções ganharam cobertura: o teste de isolamento verifica os `FORBIDDEN` de `workspace.members`, `workspace.audit` e `workspace.professionalsDetailed`, e o script de validação passou a exercitar os mesmos caminhos por HTTP.
 
 ## Correção de infraestrutura incluída
 

@@ -144,4 +144,12 @@ describe.skipIf(!hasDatabase)("professional agenda isolation", () => {
     await db.update(workspaceMembers).set({ active: 1 })
       .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, professionalBUserId)));
   });
+
+  it("never exposes the member roster or the audit trail to an executor", async () => {
+    const caller = callerFor(professionalAUserId, "professional");
+    await expect(caller.workspace.members()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.workspace.audit({ limit: 10 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.workspace.professionalsDetailed()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.workspace.services()).resolves.toBeInstanceOf(Array);
+  });
 });

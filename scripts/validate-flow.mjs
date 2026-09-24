@@ -103,6 +103,14 @@ const run = async () => {
   const blockedCode = blockedRead.payload?.error?.json?.data?.code ?? blockedRead.payload?.error?.data?.code;
   check("executor não lê auditoria (FORBIDDEN)", blockedRead.status === 403 || blockedCode === "FORBIDDEN", JSON.stringify(blockedRead.payload).slice(0, 200));
 
+  const blockedRoster = await trpcQuery("workspace.members", cookieA, undefined);
+  const rosterCode = blockedRoster.payload?.error?.json?.data?.code ?? blockedRoster.payload?.error?.data?.code;
+  check("executor não lista a equipe (FORBIDDEN)", blockedRoster.status === 403 || rosterCode === "FORBIDDEN", JSON.stringify(blockedRoster.payload).slice(0, 200));
+
+  const blockedProfessionals = await trpcQuery("workspace.professionalsDetailed", cookieA, undefined);
+  const professionalsCode = blockedProfessionals.payload?.error?.json?.data?.code ?? blockedProfessionals.payload?.error?.data?.code;
+  check("executor não lista todos os profissionais (FORBIDDEN)", blockedProfessionals.status === 403 || professionalsCode === "FORBIDDEN", JSON.stringify(blockedProfessionals.payload).slice(0, 200));
+
   const blockedCreate = await trpc("workspace.createService", { name: "Serviço indevido", durationMinutes: 30, priceCents: 0 }, cookieA);
   const blockedCreateCode = blockedCreate.payload?.error?.json?.data?.code ?? blockedCreate.payload?.error?.data?.code;
   check("executor não cria serviço (FORBIDDEN)", blockedCreate.status === 403 || blockedCreateCode === "FORBIDDEN");
