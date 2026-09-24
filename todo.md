@@ -13,14 +13,19 @@
 - Contatos e ficha do cliente carregando registros e mensagens persistentes.
 - Contratos internos para PAPI, n8n, Qdrant e LocalAI; CRM e agenda passam a ser módulos nativos.
 - Documento de topologia e variáveis para futura implantação na VPS.
+- Agenda nativa persistente com serviços, profissionais, disponibilidade, conflitos e ficha do contato.
+- Contrato `API_CONTRACT.md`, healthcheck `/api/v1/health`, autenticação por bearer token e idempotência persistente.
+- Endpoints iniciais de contatos, disponibilidade, agendamentos e webhook inbound de WhatsApp.
+- Registro persistente de eventos webhook para evitar processamento duplicado.
 - Testes, TypeScript e build validados.
 
 ## Próxima fase
 
 - Migrar a persistência do scaffold MySQL/TiDB para PostgreSQL próprio do painel antes de habilitar integrações reais.
 - Adicionar Redis próprio do painel e worker separado para retries, sincronização e webhooks.
-- Persistir Agenda e faturamento no schema portátil.
+- Implementar `messages`, mudança de estágio e cancelamento/reagendamento na API v1.
 - Implementar adaptadores reais atrás dos contratos, começando pelo PAPI e n8n.
+- Publicar eventos de domínio assinados para n8n com retries e backoff no worker.
 - Criar healthchecks, autenticação por usuário/empresa e proxy HTTPS na VPS.
 
 ## Bugs ou riscos conhecidos

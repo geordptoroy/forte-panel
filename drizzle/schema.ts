@@ -43,6 +43,27 @@ export const workspaceSettings = mysqlTable("workspaceSettings", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const apiIdempotency = mysqlTable("apiIdempotency", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId"),
+  key: varchar("key", { length: 180 }).notNull().unique(),
+  fingerprint: varchar("fingerprint", { length: 128 }).notNull(),
+  statusCode: int("statusCode").default(200).notNull(),
+  responseBody: text("responseBody"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const webhookEvents = mysqlTable("webhookEvents", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId"),
+  eventId: varchar("eventId", { length: 180 }).notNull().unique(),
+  provider: varchar("provider", { length: 60 }).default("whatsapp").notNull(),
+  payload: text("payload").notNull(),
+  status: mysqlEnum("status", ["received", "processed", "failed"]).default("received").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  processedAt: timestamp("processedAt"),
+});
+
 export const contacts = mysqlTable("contacts", {
   id: int("id").autoincrement().primaryKey(),
   workspaceId: int("workspaceId"),
@@ -150,6 +171,10 @@ export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
 export type InsertWorkspaceMember = typeof workspaceMembers.$inferInsert;
 export type WorkspaceSetting = typeof workspaceSettings.$inferSelect;
 export type InsertWorkspaceSetting = typeof workspaceSettings.$inferInsert;
+export type ApiIdempotency = typeof apiIdempotency.$inferSelect;
+export type InsertApiIdempotency = typeof apiIdempotency.$inferInsert;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type InsertWebhookEvent = typeof webhookEvents.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = typeof contacts.$inferInsert;
 export type Conversation = typeof conversations.$inferSelect;

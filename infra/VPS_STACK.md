@@ -37,6 +37,7 @@ N8N_BASE_URL=http://n8n:5678
 N8N_API_KEY=CHANGE_ME
 QDRANT_URL=http://qdrant:6333
 LOCALAI_BASE_URL=http://localai:8080
+FORTE_API_KEY=CHANGE_ME
 WEBHOOK_SIGNING_SECRET=CHANGE_ME
 ```
 
@@ -48,4 +49,4 @@ O banco do PAPI não deve ser usado como banco de negócio do painel. O n8n tamb
 
 ## Requisitos de produção
 
-Todos os serviços devem ficar na rede privada do compose. Apenas o proxy reverso deve publicar portas externas. O painel precisa de healthcheck HTTP, logs estruturados, timeouts por integração, retry com backoff, chave de idempotência por mensagem/evento e trilha de auditoria para ações humanas. O worker não deve ser iniciado dentro do mesmo processo HTTP quando a carga real for habilitada.
+Todos os serviços devem ficar na rede privada do compose. Apenas o proxy reverso deve publicar portas externas. O painel precisa de healthcheck HTTP (`/api/v1/health`), logs estruturados, timeouts por integração, retry com backoff, chave de idempotência por mensagem/evento e trilha de auditoria para ações humanas. O worker não deve ser iniciado dentro do mesmo processo HTTP quando a carga real for habilitada. O contrato inicial está documentado em `API_CONTRACT.md`.

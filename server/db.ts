@@ -2,6 +2,7 @@ import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   appointmentsTable,
+  apiIdempotency,
   auditLogs,
   availability,
   contacts,
@@ -10,6 +11,7 @@ import {
   professionals,
   services,
   users,
+  webhookEvents,
   workspaceMembers,
   workspaces,
   type InsertUser,
@@ -369,4 +371,131 @@ export async function countContacts() {
   if (!db) return 0;
   const result = await db.select({ count: sql<number>`count(*)` }).from(contacts);
   return Number(result[0]?.count ?? 0);
+}
+
+
+export async function getApiIdempotency(key: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(apiIdempotency).where(eq(apiIdempotency.key, key)).limit(1);
+  return result[0];
+}
+
+export async function saveApiIdempotency(input: { key: string; fingerprint: string; statusCode: number; responseBody: unknown; workspaceId?: number }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(apiIdempotency).values({
+    key: input.key,
+    fingerprint: input.fingerprint,
+    statusCode: input.statusCode,
+    responseBody: JSON.stringify(input.responseBody),
+    workspaceId: input.workspaceId,
+  });
+}
+
+export async function registerWebhookEvent(input: { eventId: string; provider: string; payload: unknown; workspaceId?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const existing = await db.select().from(webhookEvents).where(eq(webhookEvents.eventId, input.eventId)).limit(1);
+  if (existing[0]) return { duplicate: true, event: existing[0] };
+  await db.insert(webhookEvents).values({
+    eventId: input.eventId,
+    provider: input.provider,
+    payload: JSON.stringify(input.payload),
+    workspaceId: input.workspaceId,
+    status: "received",
+  });
+  const created = await db.select().from(webhookEvents).where(eq(webhookEvents.eventId, input.eventId)).limit(1);
+  return { duplicate: false, event: created[0] };
+}
+
+export async function markWebhookEvent(eventId: string, status: "processed" | "failed") {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(webhookEvents).set({ status, processedAt: new Date() }).where(eq(webhookEvents.eventId, eventId));
+}
+
+export async function ingestInboundWhatsApp(input: { eventId: string; phone: string; name?: string; content: string; messageType?: "text" | "image" | "audio" | "video" | "document"; receivedAt?: Date }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await ensureDemoInbox();
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const receivedAt = input.receivedAt ?? new Date();
+  let contact = (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+  if (!contact) {
+    await db.insert(contacts).values({
+      workspaceId: workspace.id,
+      externalPhone: input.phone,
+      name: input.name?.trim() || input.phone,
+      urgency: "Média",
+      stage: "Novo contato",
+      aiEnabled: 1,
+      quoteCents: 0,
+      unreadCount: 1,
+      lastMessagePreview: input.content.slice(0, 500),
+      lastMessageAt: receivedAt,
+    });
+    contact = (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+  } else {
+    await db.update(contacts).set({
+      name: input.name?.trim() || contact.name,
+      unreadCount: sql`${contacts.unreadCount} + 1`,
+      lastMessagePreview: input.content.slice(0, 500),
+      lastMessageAt: receivedAt,
+      updatedAt: receivedAt,
+    }).where(eq(contacts.id, contact.id));
+  }
+  if (!contact) throw new Error("Contact could not be created");
+  let conversation = (await db.select().from(conversations).where(eq(conversations.contactId, contact.id)).limit(1))[0];
+  if (!conversation) {
+    await db.insert(conversations).values({ contactId: contact.id, unreadCount: 1, lastMessageAt: receivedAt });
+    conversation = (await db.select().from(conversations).where(eq(conversations.contactId, contact.id)).limit(1))[0];
+  }
+  if (!conversation) throw new Error("Conversation could not be created");
+  const result = await db.insert(messages).values({
+    conversationId: conversation.id,
+    externalId: input.eventId,
+    direction: "inbound",
+    senderType: "lead",
+    messageType: input.messageType ?? "text",
+    content: input.content,
+    status: "received",
+    createdAt: receivedAt,
+  });
+  await db.update(conversations).set({ unreadCount: sql`${conversations.unreadCount} + 1`, lastMessageAt: receivedAt, updatedAt: receivedAt }).where(eq(conversations.id, conversation.id));
+  return { contactId: contact.id, conversationId: conversation.id, messageId: Number(result[0].insertId) };
+}
+
+
+export async function upsertApiContact(input: { phone: string; name?: string; city?: string; neighborhood?: string; serviceRequested?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const existing = (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+  if (existing) {
+    await db.update(contacts).set({
+      name: input.name?.trim() || existing.name,
+      city: input.city ?? existing.city,
+      neighborhood: input.neighborhood ?? existing.neighborhood,
+      serviceRequested: input.serviceRequested ?? existing.serviceRequested,
+      updatedAt: new Date(),
+    }).where(eq(contacts.id, existing.id));
+    return (await db.select().from(contacts).where(eq(contacts.id, existing.id)).limit(1))[0];
+  }
+  await db.insert(contacts).values({
+    workspaceId: workspace.id,
+    externalPhone: input.phone,
+    name: input.name?.trim() || input.phone,
+    city: input.city,
+    neighborhood: input.neighborhood,
+    serviceRequested: input.serviceRequested,
+    urgency: "Média",
+    stage: "Novo contato",
+    aiEnabled: 1,
+    quoteCents: 0,
+    unreadCount: 0,
+  });
+  return (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
 }
