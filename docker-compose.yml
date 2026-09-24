@@ -168,7 +168,7 @@ services:
   # CRM FORTE PANEL - SERVIDOR WEB
   # ============================================================================
   forte-panel:
-    image: ghcr.io/geordptoroy/forte-panel:sha-8b1082d
+    image: ghcr.io/geordptoroy/forte-panel:latest
     container_name: forte_panel
     restart: unless-stopped
     ports:
@@ -212,7 +212,7 @@ services:
   # CRM FORTE PANEL - WORKER DE ENVIO WHATSAPP
   # ============================================================================
   forte-panel-worker:
-    image: ghcr.io/geordptoroy/forte-panel:sha-8b1082d
+    image: ghcr.io/geordptoroy/forte-panel:latest
     container_name: forte_panel_worker
     restart: unless-stopped
     command: ["./docker-entrypoint.sh", "worker"]
