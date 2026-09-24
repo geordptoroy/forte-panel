@@ -1,5 +1,6 @@
 import { and, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import {
   appointmentsTable,
   apiIdempotency,
@@ -23,11 +24,14 @@ import type { WhatsappProvider } from "./integrations/contracts";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _pool: Pool | null = null;
 
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
+  const connectionString = process.env.DATABASE_URL;
+  if (!_db && connectionString && /^postgres(ql)?:\/\//i.test(connectionString)) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      _pool = new Pool({ connectionString, max: 10 });
+      _db = drizzle(_pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -64,7 +68,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
   values.lastSignedIn ??= new Date();
   if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
-  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+  await db.insert(users).values(values).onConflictDoUpdate({ target: users.openId, set: updateSet });
 }
 
 export async function getUserByOpenId(openId: string) {
@@ -85,7 +89,7 @@ export async function ensureDemoWorkspace() {
     segment: "servicos",
     plan: "pro",
     timezone: "America/Sao_Paulo",
-  }).onDuplicateKeyUpdate({ set: { name: "Forte Serviços Demo", updatedAt: new Date() } });
+  }).onConflictDoUpdate({ target: workspaces.slug, set: { name: "Forte Serviços Demo", updatedAt: new Date() } });
   const result = await db.select().from(workspaces).where(eq(workspaces.slug, DEMO_WORKSPACE_SLUG)).limit(1);
   return result[0];
 }
@@ -339,8 +343,7 @@ export async function createAgendaAppointment(input: { contactId?: number; servi
     gt(appointmentsTable.endsAt, input.startsAt),
   )).limit(1);
   if (conflict.length > 0) throw new Error("Horário indisponível para este profissional");
-  const result = await db.insert(appointmentsTable).values({ workspaceId: workspace.id, ...input, status: "requested", source: "panel" });
-  const created = await db.select().from(appointmentsTable).where(eq(appointmentsTable.id, Number(result[0].insertId))).limit(1);
+  const created = await db.insert(appointmentsTable).values({ workspaceId: workspace.id, ...input, status: "requested", source: "panel" }).returning();
   return created[0];
 }
 
@@ -504,7 +507,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
     conversation = (await db.select().from(conversations).where(eq(conversations.contactId, contact.id)).limit(1))[0];
   }
   if (!conversation) throw new Error("Conversation could not be created");
-  const result = await db.insert(messages).values({
+  const created = await db.insert(messages).values({
     conversationId: conversation.id,
     externalId: input.eventId,
     direction: "inbound",
@@ -513,9 +516,9 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
     content: input.content,
     status: "received",
     createdAt: receivedAt,
-  });
+  }).returning();
   await db.update(conversations).set({ unreadCount: sql`${conversations.unreadCount} + 1`, lastMessageAt: receivedAt, updatedAt: receivedAt }).where(eq(conversations.id, conversation.id));
-  return { contactId: contact.id, conversationId: conversation.id, messageId: Number(result[0].insertId) };
+  return { contactId: contact.id, conversationId: conversation.id, messageId: created[0]?.id };
 }
 
 
@@ -561,11 +564,10 @@ export async function queueOutboundMessage(contactId: number, content: string, p
   const conversation = await getConversationByContact(contactId);
   if (!conversation) throw new Error("Conversation not found");
   const createdAt = new Date();
-  const result = await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, status: "queued", provider: selectedProvider, createdAt });
+  const created = await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, status: "queued", provider: selectedProvider, createdAt }).returning();
   await db.update(contacts).set({ aiEnabled: 0, unreadCount: 0, lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
   await db.update(conversations).set({ humanControlled: 1, unreadCount: 0, lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
   await db.insert(auditLogs).values({ contactId, action: "api_message_queued", summary: "Mensagem enfileirada para o worker de WhatsApp" });
-  const created = await db.select().from(messages).where(eq(messages.id, Number(result[0].insertId))).limit(1);
   return created[0];
 }
 

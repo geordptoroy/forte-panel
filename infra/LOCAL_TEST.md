@@ -23,7 +23,7 @@ extra_hosts:
   - "host.docker.internal:host-gateway"
 ```
 
-O repositório agora contém `docker-compose.local.yml`, que adiciona `mysql_panel`, `redis_panel` e `forte-panel`. O painel não usa o banco do PAPI nem o banco do n8n. Ele aplica as migrations ao iniciar e entra na mesma rede Docker do PAPI/n8n.
+O repositório agora contém `docker-compose.local.yml`, que adiciona `postgres_panel`, `redis_panel` e `forte-panel`. O `postgres_panel` é um terceiro PostgreSQL, separado de `postgres_papi` e `postgres_n8n`; o painel não acessa nenhum dos bancos existentes. Ele aplica as migrations PostgreSQL ao iniciar e entra na mesma rede Docker do PAPI/n8n.
 
 ## Comandos
 

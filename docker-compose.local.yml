@@ -1,18 +1,16 @@
 services:
-  mysql_panel:
-    image: mysql:8.0
-    container_name: forte_mysql_panel
+  postgres_panel:
+    image: postgres:16-alpine
+    container_name: forte_postgres_panel
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: forte_panel
-      MYSQL_USER: forte_panel
-      MYSQL_PASSWORD: forte_panel_local
-      MYSQL_ROOT_PASSWORD: root_panel_local
+      POSTGRES_DB: forte_panel
+      POSTGRES_USER: forte_panel
+      POSTGRES_PASSWORD: forte_panel_local
     volumes:
-      - forte_mysql_panel_data:/var/lib/mysql
+      - forte_postgres_panel_data:/var/lib/postgresql/data
     healthcheck:
-      test:
-        ["CMD-SHELL", "mysqladmin ping -h localhost -u root -proot_panel_local"]
+      test: ["CMD-SHELL", "pg_isready -U forte_panel -d forte_panel"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -45,7 +43,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: mysql://forte_panel:forte_panel_local@mysql_panel:3306/forte_panel
+      DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
       REDIS_URL: redis://redis_panel:6379/0
       RUN_MIGRATIONS: "true"
       PAPI_BASE_URL: http://pastorini_api:3000
@@ -53,7 +51,7 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      mysql_panel:
+      postgres_panel:
         condition: service_healthy
       redis_panel:
         condition: service_healthy
@@ -69,5 +67,5 @@ networks:
     name: ${PASTORINI_NETWORK:-forte-local_pastorini-network}
 
 volumes:
-  forte_mysql_panel_data:
+  forte_postgres_panel_data:
   forte_redis_panel_data:
