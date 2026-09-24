@@ -1,9 +1,16 @@
 {
   "name": "n8n-nodes-forte-panel",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Community node that exposes the Forte Panel CRM, WhatsApp and scheduling API as one n8n AI Tool.",
   "license": "MIT",
-  "keywords": ["n8n-community-node-package", "n8n", "forte-panel", "crm", "whatsapp", "ai-tool"],
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "forte-panel",
+    "crm",
+    "whatsapp",
+    "ai-tool"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/geordptoroy/forte-panel.git",
@@ -12,7 +19,11 @@
   "author": {
     "name": "Forte Panel"
   },
-  "files": ["dist", "README.md", "icons"],
+  "files": [
+    "dist",
+    "README.md",
+    "icons"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && mkdir -p dist/nodes/FortePanel && cp nodes/FortePanel/forte-panel.svg dist/nodes/FortePanel/forte-panel.svg",
     "lint": "eslint nodes credentials --ext .ts",
@@ -21,10 +32,12 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "strict": false,
-    "credentials": ["dist/credentials/FortePanelApi.credentials.js"],
+    "credentials": [
+      "dist/credentials/FortePanelApi.credentials.js"
+    ],
     "nodes": [
       "dist/nodes/FortePanel/FortePanel.node.js",
-      "dist/nodes/FortePanel/FortePanelTool.node.js"
+      "dist/nodes/FortePanel/FortePanelAiTool.node.js"
     ]
   },
   "peerDependencies": {
@@ -34,5 +47,8 @@
     "@types/node": "^22.10.0",
     "n8n-workflow": "^1.100.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@langchain/core": "^0.3.80"
   }
 }
