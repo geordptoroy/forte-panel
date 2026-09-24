@@ -12,4 +12,4 @@ if [ "${1:-web}" = "worker" ]; then
 fi
 
 echo "[forte-panel] starting server on port ${PORT:-3000}"
-exec node dist/index.js
+exec node dist/_core/index.js
