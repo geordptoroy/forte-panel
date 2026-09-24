@@ -117,7 +117,7 @@ const properties: INodeProperties[] = [
 export class FortePanel implements INodeType {
   description: INodeTypeDescription = {
     displayName: 'Forte Panel',
-    name: 'fortePanel',
+    name: 'fortePanelTool',
     icon: 'file:forte-panel.svg',
     group: ['transform'],
     version: 1,
