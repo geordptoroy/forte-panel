@@ -96,6 +96,15 @@ export const contacts = mysqlTable("contacts", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const contactNotes = mysqlTable("contactNotes", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId").notNull(),
+  contactId: int("contactId").notNull(),
+  content: text("content").notNull(),
+  authorType: mysqlEnum("authorType", ["human", "ai", "system"]).default("ai").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export const conversations = mysqlTable("conversations", {
   id: int("id").autoincrement().primaryKey(),
   contactId: int("contactId").notNull(),
@@ -193,6 +202,8 @@ export type WhatsappChannel = typeof whatsappChannels.$inferSelect;
 export type InsertWhatsappChannel = typeof whatsappChannels.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = typeof contacts.$inferInsert;
+export type ContactNote = typeof contactNotes.$inferSelect;
+export type InsertContactNote = typeof contactNotes.$inferInsert;
 export type Conversation = typeof conversations.$inferSelect;
 export type InsertConversation = typeof conversations.$inferInsert;
 export type Message = typeof messages.$inferSelect;

@@ -5,6 +5,7 @@ import {
   apiIdempotency,
   auditLogs,
   availability,
+  contactNotes,
   contacts,
   conversations,
   messages,
@@ -598,4 +599,52 @@ export async function rescheduleAgendaAppointment(appointmentId: number, startsA
   await db.update(appointmentsTable).set({ startsAt, endsAt, status: "requested", updatedAt: new Date() }).where(eq(appointmentsTable.id, appointmentId));
   const updated = await db.select().from(appointmentsTable).where(eq(appointmentsTable.id, appointmentId)).limit(1);
   return updated[0];
+}
+
+
+export async function leadMemoryOperation(input: {
+  action: "buscar_lead" | "criar_lead" | "atualizar_lead" | "registrar_nota";
+  phone: string;
+  name?: string;
+  city?: string;
+  neighborhood?: string;
+  serviceRequested?: string;
+  fields?: { name?: string; city?: string; neighborhood?: string; serviceRequested?: string; urgency?: "Baixa" | "Média" | "Alta" | "Crítica"; stage?: string; quoteCents?: number; aiEnabled?: boolean };
+  note?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await ensureDemoInbox();
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const phone = input.phone.replace(/[^0-9]/g, "");
+  let contact = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
+
+  if (input.action === "buscar_lead") {
+    if (!contact) return { exists: false, lead: null, notes: [] };
+    const notes = await db.select().from(contactNotes).where(eq(contactNotes.contactId, contact.id)).orderBy(desc(contactNotes.createdAt), desc(contactNotes.id)).limit(20);
+    const audit = await db.select().from(auditLogs).where(eq(auditLogs.contactId, contact.id)).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(20);
+    return { exists: true, lead: contact, notes, audit };
+  }
+
+  if (input.action === "atualizar_lead" && !contact) return { exists: false, updated: false, lead: null };
+
+  if (input.action === "criar_lead" || input.action === "atualizar_lead") {
+    const fields = input.fields ?? {};
+    contact = await upsertApiContact({ phone, name: fields.name ?? input.name, city: fields.city ?? input.city, neighborhood: fields.neighborhood ?? input.neighborhood, serviceRequested: fields.serviceRequested ?? input.serviceRequested });
+    if (!contact) throw new Error("Contact could not be created");
+    if (fields.urgency || fields.stage || fields.quoteCents !== undefined || fields.aiEnabled !== undefined) {
+      await db.update(contacts).set({ urgency: fields.urgency, stage: fields.stage, quoteCents: fields.quoteCents, aiEnabled: fields.aiEnabled === undefined ? undefined : fields.aiEnabled ? 1 : 0, updatedAt: new Date() }).where(eq(contacts.id, contact.id));
+      contact = (await db.select().from(contacts).where(eq(contacts.id, contact.id)).limit(1))[0];
+    }
+    return { exists: true, updated: input.action === "atualizar_lead", lead: contact };
+  }
+
+  if (!contact) return { exists: false, noteCreated: false, lead: null };
+  const note = input.note?.trim();
+  if (!note) throw new Error("Note is required");
+  await db.insert(contactNotes).values({ workspaceId: workspace.id, contactId: contact.id, content: note, authorType: "ai" });
+  await db.insert(auditLogs).values({ contactId: contact.id, action: "lead_note_created", summary: note.slice(0, 500) });
+  const created = await db.select().from(contactNotes).where(and(eq(contactNotes.contactId, contact.id), eq(contactNotes.content, note))).orderBy(desc(contactNotes.id)).limit(1);
+  return { exists: true, noteCreated: true, lead: contact, note: created[0] };
 }

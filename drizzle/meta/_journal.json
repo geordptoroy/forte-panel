@@ -43,6 +43,13 @@
       "when": 1790209689148,
       "tag": "0005_dazzling_grandmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1790210679662,
+      "tag": "0006_black_lady_bullseye",
+      "breakpoints": true
     }
   ]
 }

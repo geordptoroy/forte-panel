@@ -9,6 +9,7 @@ import {
   getContactById,
   getDefaultWhatsappProvider,
   ingestInboundWhatsApp,
+  leadMemoryOperation,
   listWhatsappChannels,
   markWebhookEvent,
   moveContactStage,
@@ -50,6 +51,25 @@ const messageSchema = z.object({
 });
 const stageSchema = z.object({ stage: z.string().min(1).max(80) });
 const rescheduleSchema = z.object({ startsAt: z.coerce.date(), endsAt: z.coerce.date() });
+const leadMemorySchema = z.object({
+  action: z.enum(["buscar_lead", "criar_lead", "atualizar_lead", "registrar_nota"]),
+  phone: z.string().min(8).max(32),
+  name: z.string().max(160).optional(),
+  city: z.string().max(100).optional(),
+  neighborhood: z.string().max(100).optional(),
+  serviceRequested: z.string().max(180).optional(),
+  fields: z.object({
+    name: z.string().max(160).optional(),
+    city: z.string().max(100).optional(),
+    neighborhood: z.string().max(100).optional(),
+    serviceRequested: z.string().max(180).optional(),
+    urgency: z.enum(["Baixa", "Média", "Alta", "Crítica"]).optional(),
+    stage: z.string().max(80).optional(),
+    quoteCents: z.number().int().nonnegative().optional(),
+    aiEnabled: z.boolean().optional(),
+  }).optional(),
+  note: z.string().max(5000).optional(),
+});
 
 type ApiResult = { statusCode: number; body: Record<string, unknown> };
 
@@ -106,6 +126,23 @@ api.get("/channels", async (req, res) => {
     return res.json({ data: channels.map((channel) => ({ id: channel.id, provider: channel.provider, name: channel.name, phoneNumber: channel.phoneNumber, configured: Boolean(channel.phoneNumberId || channel.credentialsRef), active: Boolean(channel.active) })) });
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao consultar canais", "internal_error");
+  }
+});
+
+api.post("/lead-memory", async (req, res) => {
+  if (!requireApiKey(req, res)) return;
+  const parsed = leadMemorySchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, "Payload da memória do lead inválido", "invalid_payload");
+  const responseMessage = parsed.data.action === "buscar_lead" ? "Estado do lead recuperado." : parsed.data.action === "atualizar_lead" ? "Estado do lead atualizado." : parsed.data.action === "criar_lead" ? "Lead criado ou já existente." : "Evento registrado.";
+  try {
+    const run = async () => {
+      const result = await leadMemoryOperation(parsed.data);
+      return { statusCode: 200, body: { success: true, acao: parsed.data.action, telefone: parsed.data.phone.replace(/[^0-9]/g, ""), resultado: result, mensagem: responseMessage } };
+    };
+    if (parsed.data.action === "buscar_lead") return res.json((await run()).body);
+    return idempotent(req, res, run);
+  } catch (error) {
+    return fail(res, 500, error instanceof Error ? error.message : "Falha na memória do lead", "internal_error");
   }
 });
 

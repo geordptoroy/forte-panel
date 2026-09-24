@@ -38,4 +38,21 @@ describe("versioned API", () => {
     });
     expect([401, 503]).toContain(response.status);
   });
+
+  it("validates the n8n lead memory contract", async () => {
+    const previousKey = process.env.FORTE_API_KEY;
+    process.env.FORTE_API_KEY = "test-api-key";
+    try {
+      const response = await fetch(`${baseUrl}/api/v1/lead-memory`, {
+        method: "POST",
+        headers: { Authorization: "Bearer test-api-key", "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "buscar_lead", phone: "1" }),
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: "invalid_payload" });
+    } finally {
+      if (previousKey === undefined) delete process.env.FORTE_API_KEY;
+      else process.env.FORTE_API_KEY = previousKey;
+    }
+  });
 });

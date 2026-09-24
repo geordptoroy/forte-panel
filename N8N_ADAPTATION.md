@@ -71,6 +71,8 @@ A IA poderá transformar esses dados em um prompt operacional, mas o sistema dev
 6. Adicionar ao fluxo um HTTP Request para enviar o evento normalizado ao endpoint inbound do Forte Panel.
 7. Substituir primeiro apenas a ferramenta de CRM antiga por chamadas ao Panel; o envio ainda pode permanecer nos nós PAPI nesta fase.
 
+O primeiro endpoint para essa troca já está disponível: `POST /api/v1/lead-memory`. Ele preserva as quatro ações que a ferramenta antiga descreve — `buscar_lead`, `criar_lead`, `atualizar_lead` e `registrar_nota` — mas grava no CRM próprio, com auditoria e idempotência.
+
 ### Fase 2 — Panel como fonte de verdade
 
 1. O workflow chama `POST /api/v1/contacts/upsert` ao identificar ou atualizar um lead.
