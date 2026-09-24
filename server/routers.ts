@@ -10,6 +10,8 @@ import {
   ensureDemoInbox,
   ensureDemoWorkspace,
   createAgendaAppointment,
+  cancelAgendaAppointment,
+  updateAgendaStatus,
   createQuote,
   getAgendaSnapshot,
   getDefaultWhatsappProvider,
@@ -18,6 +20,8 @@ import {
   getAuditLogForContact,
   getDashboardSnapshot,
   getOnboardingProfile,
+  listContactNotes,
+  addContactNote,
   getContactById,
   getConversationByContact,
   listInboxContacts,
@@ -112,12 +116,20 @@ export const appRouter = router({
         provider: channel.provider,
         name: channel.name,
         phoneNumber: channel.phoneNumber,
-        configured: Boolean(channel.phoneNumberId || channel.credentialsRef),
+        configured: channel.provider === "papi"
+          ? Boolean(process.env.PAPI_BASE_URL && process.env.PAPI_API_KEY)
+          : Boolean(process.env.META_WHATSAPP_ACCESS_TOKEN && process.env.META_WHATSAPP_PHONE_NUMBER_ID),
         active: channel.active === 1,
       }));
     }),
     defaultChannel: protectedProcedure.query(() => getDefaultWhatsappProvider()),
-    setDefaultChannel: protectedProcedure.input(z.object({ provider: z.enum(["papi", "meta_cloud_api"]) })).mutation(({ input }) => setDefaultWhatsappProvider(input.provider)),
+    setDefaultChannel: protectedProcedure.input(z.object({ provider: z.enum(["papi", "meta_cloud_api"]) })).mutation(({ input }) => {
+      const configured = input.provider === "papi"
+        ? Boolean(process.env.PAPI_BASE_URL && process.env.PAPI_API_KEY)
+        : Boolean(process.env.META_WHATSAPP_ACCESS_TOKEN && process.env.META_WHATSAPP_PHONE_NUMBER_ID);
+      if (!configured) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure as credenciais deste canal antes de selecioná-lo." });
+      return setDefaultWhatsappProvider(input.provider);
+    }),
   }),
 
   dashboard: router({
@@ -199,6 +211,8 @@ export const appRouter = router({
       const appointment = await createAgendaAppointment(input);
       return appointment ? { id: appointment.id, status: appointment.status } : null;
     }),
+    updateStatus: protectedProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(["confirmed", "completed", "no_show"]) })).mutation(({ input }) => updateAgendaStatus(input.id, input.status)),
+    cancel: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => cancelAgendaAppointment(input.id)),
   }),
 
   inbox: router({
@@ -224,6 +238,7 @@ export const appRouter = router({
         listMessagesForContact(input.contactId),
         getAuditLogForContact(input.contactId),
       ]);
+      const notes = await listContactNotes(input.contactId);
       return {
         contact: mapContact(contact),
         conversation,
@@ -235,7 +250,11 @@ export const appRouter = router({
           status: message.status,
         })),
         audit,
+        notes,
       };
+    }),
+    addNote: protectedProcedure.input(contactIdInput.extend({ content: z.string().trim().min(2).max(2000) })).mutation(async ({ input, ctx }) => {
+      return addContactNote(input.contactId, input.content, ctx.user.id);
     }),
     toggleAi: protectedProcedure.input(contactIdInput.extend({ enabled: z.boolean() })).mutation(async ({ input }) => {
       await setContactAi(input.contactId, input.enabled);

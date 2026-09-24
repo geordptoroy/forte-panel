@@ -501,6 +501,26 @@ export async function getContactById(contactId: number) {
   return result[0];
 }
 
+export async function listContactNotes(contactId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return [];
+  return db.select().from(contactNotes)
+    .where(and(eq(contactNotes.contactId, contactId), eq(contactNotes.workspaceId, workspace.id)))
+    .orderBy(desc(contactNotes.createdAt), desc(contactNotes.id)).limit(50);
+}
+
+export async function addContactNote(contactId: number, content: string, actorUserId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const contact = await getContactById(contactId);
+  if (!contact || !contact.workspaceId) throw new Error("Contact not found");
+  const created = await db.insert(contactNotes).values({ workspaceId: contact.workspaceId, contactId, content: content.trim(), authorType: "human" }).returning();
+  await db.insert(auditLogs).values({ actorUserId, contactId, action: "note_created", summary: "Nota interna adicionada à ficha" });
+  return created[0];
+}
+
 export async function getAuditLogForContact(contactId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -776,6 +796,18 @@ export async function cancelAgendaAppointment(appointmentId: number) {
   if (!appointment) return undefined;
   await db.update(appointmentsTable).set({ status: "cancelled", updatedAt: new Date() }).where(eq(appointmentsTable.id, appointmentId));
   return { ...appointment, status: "cancelled" as const };
+}
+
+export async function updateAgendaStatus(appointmentId: number, status: "confirmed" | "completed" | "no_show") {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const appointment = (await db.select().from(appointmentsTable).where(and(eq(appointmentsTable.id, appointmentId), eq(appointmentsTable.workspaceId, workspace.id))).limit(1))[0];
+  if (!appointment) return undefined;
+  const updated = await db.update(appointmentsTable).set({ status, updatedAt: new Date() }).where(eq(appointmentsTable.id, appointmentId)).returning();
+  if (appointment.contactId) await db.insert(auditLogs).values({ contactId: appointment.contactId, action: `appointment_${status}`, summary: `Agendamento ${appointmentId} atualizado para ${status}` });
+  return updated[0];
 }
 
 export async function rescheduleAgendaAppointment(appointmentId: number, startsAt: Date, endsAt: Date) {
