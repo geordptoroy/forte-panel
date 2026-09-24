@@ -14,6 +14,7 @@ import {
   KanbanPage,
   NotFoundPage,
   SettingsPage,
+  TeamPage,
 } from "./pages/PanelPages";
 
 function Router() {
@@ -28,6 +29,7 @@ function Router() {
       <Route path="/contacts/:id" component={ContactDetailPage} />
       <Route path="/billing" component={BillingPage} />
       <Route path="/integrations" component={IntegrationsPage} />
+      <Route path="/team" component={TeamPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFoundPage} />
     </Switch>

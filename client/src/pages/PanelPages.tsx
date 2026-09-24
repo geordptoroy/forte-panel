@@ -236,3 +236,22 @@ export function SettingsPage() {
 export function NotFoundPage() {
   return <PanelLayout eyebrow="Sistema" title="Página não encontrada" description="A rota informada ainda não existe neste MVP."><EmptyState icon={Search} title="Nada por aqui" description="Use a navegação lateral para voltar à operação." /><div style={{ marginTop: 15, textAlign: "center" }}><PageLink href="/dashboard" className="btn-primary">Voltar ao dashboard</PageLink></div></PanelLayout>;
 }
+
+
+export function TeamPage() {
+  const [showInvite, setShowInvite] = useState(false);
+  const workspaceQuery = trpc.workspace.current.useQuery();
+  const membersQuery = trpc.workspace.members.useQuery();
+  const members = membersQuery.data?.length ? membersQuery.data : [{ id: 0, name: "Gabriel Barbosa", email: "gabriel@fortepanel.demo", role: "owner" as const, active: true }];
+  const roleLabels: Record<string, string> = { owner: "Proprietário", admin: "Administrador", manager: "Gerente", agent: "Atendente" };
+  return <PanelLayout eyebrow="Sistema / Acessos" title="Equipe" description="Controle quem atende, gerencia e administra este workspace." actions={<button className="btn-primary" onClick={() => setShowInvite((value) => !value)}><Plus size={13} /> Convidar membro</button>}>
+    <div className="team-summary-grid">
+      <div className="surface stat-card"><span className="stat-label">Workspace</span><strong className="team-summary-value">{workspaceQuery.data?.name ?? "Forte Serviços Demo"}</strong><span className="stat-foot">Plano {workspaceQuery.data?.plan ?? "pro"}</span></div>
+      <div className="surface stat-card"><span className="stat-label">Membros ativos</span><strong className="stat-value">{members.filter((member) => member.active).length.toString().padStart(2, "0")}</strong><span className="stat-foot">Acessos autorizados</span></div>
+      <div className="surface stat-card"><span className="stat-label">Papéis</span><strong className="stat-value">04</strong><span className="stat-foot">Proprietário, admin, gerente e atendente</span></div>
+    </div>
+    {showInvite && <section className="surface team-invite-panel"><SectionTitle eyebrow="Novo acesso" title="Convidar para a equipe" /><div className="form-grid"><div className="form-field"><label>Nome</label><input className="input-control" placeholder="Nome do colaborador" /></div><div className="form-field"><label>E-mail</label><input className="input-control" placeholder="colaborador@empresa.com" type="email" /></div><div className="form-field"><label>Papel</label><select className="select-control"><option value="agent">Atendente</option><option value="manager">Gerente</option><option value="admin">Administrador</option></select></div></div><div className="demo-banner" style={{ marginTop: 15, marginBottom: 0 }}><Info size={14} /> O convite será enviado pelo fluxo de autenticação quando o canal de e-mail estiver habilitado.</div></section>}
+    <section className="surface team-table-card"><SectionTitle eyebrow="Acessos do workspace" title="Membros da equipe" action={<StatusBadge tone="green">Workspace ativo</StatusBadge>} /><div className="team-table">{members.map((member) => <div className="team-row" key={member.id}><div className="avatar">{member.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div><div className="row-copy"><strong>{member.name}</strong><small>{member.email}</small></div><span className="team-role">{roleLabels[member.role] ?? member.role}</span><StatusBadge tone={member.active ? "green" : "neutral"}>{member.active ? "Ativo" : "Pendente"}</StatusBadge><button className="icon-button" aria-label={`Editar ${member.name}`}><Settings2 size={14} /></button></div>)}</div></section>
+    <section className="surface permission-card"><SectionTitle eyebrow="Matriz de acesso" title="Permissões por papel" /><div className="permission-grid"><div><strong>Proprietário</strong><small>Todos os módulos, faturamento e equipe.</small></div><div><strong>Administrador</strong><small>Operação, integrações e configurações.</small></div><div><strong>Gerente</strong><small>Inbox, funil, agenda e relatórios.</small></div><div><strong>Atendente</strong><small>Inbox, contatos e tarefas atribuídas.</small></div></div></section>
+  </PanelLayout>;
+}

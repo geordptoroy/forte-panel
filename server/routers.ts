@@ -10,6 +10,7 @@ import {
   getContactById,
   getConversationByContact,
   listInboxContacts,
+  listWorkspaceMembers,
   listMessagesForContact,
   moveContactStage,
   sendManualMessage,
@@ -62,6 +63,16 @@ export const appRouter = router({
         plan: workspace.plan,
         timezone: workspace.timezone,
       };
+    }),
+    members: publicProcedure.query(async () => {
+      const members = await listWorkspaceMembers();
+      return members.map((member) => ({
+        id: member.id,
+        name: member.name ?? "Membro sem nome",
+        email: member.email ?? "Sem e-mail",
+        role: member.role,
+        active: member.active === 1,
+      }));
     }),
   }),
 

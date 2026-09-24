@@ -97,6 +97,21 @@ export async function getWorkspaceBySlug(slug: string) {
   return result[0];
 }
 
+export async function listWorkspaceMembers(slug = DEMO_WORKSPACE_SLUG) {
+  const db = await getDb();
+  if (!db) return [];
+  const workspace = await getWorkspaceBySlug(slug);
+  if (!workspace) return [];
+  return db.select({
+    id: workspaceMembers.id,
+    userId: workspaceMembers.userId,
+    role: workspaceMembers.role,
+    active: workspaceMembers.active,
+    name: users.name,
+    email: users.email,
+  }).from(workspaceMembers).leftJoin(users, eq(users.id, workspaceMembers.userId)).where(eq(workspaceMembers.workspaceId, workspace.id));
+}
+
 const seedContacts = [
   { phone: "5511998421104", name: "Juliana Alves", city: "São Paulo", neighborhood: "Vila Mariana", service: "Instalação de chuveiro", urgency: "Alta" as const, stage: "Triagem", aiEnabled: 0, quoteCents: 38000, preview: "Consigo enviar as fotos ainda hoje." },
   { phone: "5511987104522", name: "Marcos Ferreira", city: "São Paulo", neighborhood: "Moema", service: "Quadro elétrico", urgency: "Crítica" as const, stage: "Visita solicitada", aiEnabled: 1, quoteCents: 95000, preview: "A energia caiu novamente no apartamento." },

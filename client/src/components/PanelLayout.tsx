@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   PlugZap,
   Settings,
+  UserCog,
   X,
 } from "lucide-react";
 
@@ -46,6 +47,7 @@ const navGroups = [
     label: "Sistema",
     items: [
       { href: "/integrations", label: "Integrações", description: "Conexões externas", icon: PlugZap },
+      { href: "/team", label: "Equipe", description: "Acessos e permissões", icon: UserCog },
       { href: "/settings", label: "Configurações", description: "Preferências do painel", icon: Settings },
     ],
   },
