@@ -8,7 +8,7 @@ O produto será multiempresa. Cada empresa terá seus usuários, equipe, canais,
 
 ## Decisão de arquitetura
 
-Easy!Appointments e Clientverse serão removidos da arquitetura do produto. O Forte Panel terá agenda e CRM próprios, com banco de negócio próprio. PAPI continua sendo o canal de WhatsApp inicialmente; n8n será um consumidor e orquestrador opcional por meio da API e dos webhooks do Forte Panel, não a fonte de verdade da interface.
+Easy!Appointments e Clientverse serão removidos da arquitetura do produto. O Forte Panel terá agenda e CRM próprios, com banco de negócio próprio. PAPI será o canal do primeiro teste local; Meta Cloud API oficial será o segundo adapter. O n8n continuará como consumidor e orquestrador opcional por meio da API e dos webhooks do Forte Panel, não como fonte de verdade da interface.
 
 A fonte de verdade será o Forte Panel para contatos, conversas, mensagens, funil, agenda, serviços, profissionais, tarefas, notas, tags, métricas e auditoria. Cada workspace poderá conectar PAPI, WhatsApp Cloud API oficial ou ambos, escolhendo o canal por operação. O n8n poderá receber eventos e executar automações externas, mas todas as ações retornadas deverão passar por endpoints idempotentes do painel.
 

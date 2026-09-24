@@ -19,6 +19,8 @@
 - Endpoints de mensagens enfileiradas, mudança de estágio, cancelamento e reagendamento.
 - Registro persistente de eventos webhook para evitar processamento duplicado.
 - Arquitetura multi-provedor com adapters PAPI e Meta Cloud API; seleção de canal padrão por workspace.
+- Leitura e documentação do workflow n8n de 34 nós em `N8N_ADAPTATION.md`.
+- Procedimento de teste local da stack em `infra/LOCAL_TEST.md`, removendo Easy/Clientverse.
 - Testes, TypeScript e build validados.
 
 ## Próxima fase
@@ -27,6 +29,7 @@
 - Adicionar Redis próprio do painel e worker separado para retries, sincronização e webhooks.
 - Implementar adaptadores reais atrás dos contratos, começando pelo PAPI e n8n.
 - Ligar o worker aos adapters PAPI/Meta e confirmar status de entrega no CRM.
+- Adaptar o workflow n8n para chamar a API do Panel e substituir a ferramenta Clientverse.
 - Publicar eventos de domínio assinados para n8n com retries e backoff no worker.
 - Criar healthchecks, autenticação por usuário/empresa e proxy HTTPS na VPS.
 
