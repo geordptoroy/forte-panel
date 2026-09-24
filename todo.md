@@ -21,24 +21,25 @@
 - Arquitetura multi-provedor com adapters PAPI e Meta Cloud API; seleção de canal padrão por workspace.
 - Leitura e documentação do workflow n8n de 34 nós em `N8N_ADAPTATION.md`.
 - Procedimento de teste local da stack em `infra/LOCAL_TEST.md`, removendo Easy/Clientverse.
-- Dockerfile, entrypoint, `.env.local.example` e `docker-compose.local.yml` para painel + MySQL + Redis próprios.
+- Dockerfile, entrypoint, `.env.local.example` e `docker-compose.local.yml` para painel + PostgreSQL + Redis próprios.
 - Endpoint `POST /api/v1/lead-memory` e tabela de notas próprias para substituir a ferramenta Clientverse/Lead Memory.
+- Adapter PAPI real, adapter Meta Cloud API, worker separado para mensagens e migrations PostgreSQL versionadas.
+- Node comunitário n8n com uma única AI Tool do Forte Panel, build próprio e contrato de credencial.
+- Outbox PostgreSQL de eventos de domínio com assinatura HMAC, retries, backoff e recuperação após reinício.
 - Testes, TypeScript e build validados.
 
 ## Próxima fase
 
-- Migrar a persistência do scaffold MySQL/TiDB para PostgreSQL próprio do painel antes de habilitar integrações reais.
-- Adicionar Redis próprio do painel e worker separado para retries, sincronização e webhooks.
-- Implementar adaptadores reais atrás dos contratos, começando pelo PAPI e n8n.
-- Ligar o worker aos adapters PAPI/Meta e confirmar status de entrega no CRM.
 - Adaptar o workflow n8n para chamar a API do Panel e substituir a ferramenta Clientverse.
 - Executar o primeiro teste local com a stack reduzida e importar o workflow real no n8n.
 - Validar `docker compose up --build` na máquina local; o sandbox não possui Docker instalado.
-- Publicar eventos de domínio assinados para n8n com retries e backoff no worker.
 - Criar healthchecks, autenticação por usuário/empresa e proxy HTTPS na VPS.
+- Adicionar tela operacional para reprocessar eventos com status `failed` e visualizar tentativas do outbox.
+- Publicar eventos de confirmação de agendamento e tarefas quando esses módulos emitirem as transições correspondentes.
 
 ## Bugs ou riscos conhecidos
 
-- O preview atual ainda usa o banco MySQL/TiDB do scaffold WebDev; isso é temporário e não representa a topologia final da VPS.
+- O preview e o compose agora usam PostgreSQL; ainda não foi possível executar a stack completa porque o sandbox não possui Docker nem um PostgreSQL local.
 - As integrações externas permanecem bloqueadas em modo demo por segurança.
 - O compose anexado contém credenciais e licença em texto puro; elas precisam ser substituídas por secrets antes de qualquer deploy.
+- O Redis já está provisionado no compose, mas o worker atual usa o outbox PostgreSQL e polling; Redis poderá assumir debounce/cache em uma etapa posterior.

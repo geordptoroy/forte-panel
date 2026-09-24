@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
+import crypto from "node:crypto";
+import { and, asc, desc, eq, gt, lt, lte, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import {
@@ -9,6 +10,7 @@ import {
   contactNotes,
   contacts,
   conversations,
+  domainEvents,
   messages,
   professionals,
   quotes,
@@ -22,6 +24,7 @@ import {
   type InsertUser,
 } from "../drizzle/schema";
 import type { WhatsappProvider } from "./integrations/contracts";
+import { createN8nAdapter } from "./integrations/n8n";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
 
@@ -87,6 +90,40 @@ export async function getUserByOpenId(openId: string) {
 }
 
 export const DEMO_WORKSPACE_SLUG = "forte-demo";
+
+export type DomainEventName =
+  | "message.received"
+  | "message.sent"
+  | "contact.created"
+  | "stage.changed"
+  | "appointment.created"
+  | "appointment.confirmed"
+  | "appointment.cancelled"
+  | "task.due";
+
+export async function enqueueDomainEvent(input: {
+  workspaceId: number;
+  event: DomainEventName;
+  aggregateType: string;
+  aggregateId?: number;
+  payload: Record<string, unknown>;
+  eventKey?: string;
+}) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const eventKey = input.eventKey ?? `${input.event}:${input.aggregateType}:${input.aggregateId ?? crypto.randomUUID()}`;
+  const created = await db.insert(domainEvents).values({
+    workspaceId: input.workspaceId,
+    eventKey,
+    eventType: input.event,
+    aggregateType: input.aggregateType,
+    aggregateId: input.aggregateId,
+    payload: JSON.stringify(input.payload),
+  }).onConflictDoNothing({ target: domainEvents.eventKey }).returning();
+  if (created[0]) return created[0];
+  const existing = await db.select().from(domainEvents).where(eq(domainEvents.eventKey, eventKey)).limit(1);
+  return existing[0];
+}
 
 export async function ensureDemoWorkspace() {
   const db = await getDb();
@@ -430,6 +467,16 @@ export async function createAgendaAppointment(input: { contactId?: number; servi
   )).limit(1);
   if (conflict.length > 0) throw new Error("Horário indisponível para este profissional");
   const created = await db.insert(appointmentsTable).values({ workspaceId: workspace.id, ...input, status: "requested", source: "panel" }).returning();
+  if (created[0]) {
+    await enqueueDomainEvent({
+      workspaceId: workspace.id,
+      event: "appointment.created",
+      aggregateType: "appointment",
+      aggregateId: created[0].id,
+      eventKey: `appointment.created:${created[0].id}`,
+      payload: { appointmentId: created[0].id, contactId: created[0].contactId, serviceId: created[0].serviceId, professionalId: created[0].professionalId, startsAt: created[0].startsAt, endsAt: created[0].endsAt, status: created[0].status },
+    });
+  }
   return created[0];
 }
 
@@ -487,8 +534,20 @@ export async function sendManualMessage(contactId: number, content: string, acto
 export async function moveContactStage(contactId: number, stage: string, actorUserId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.update(contacts).set({ stage, updatedAt: new Date() }).where(eq(contacts.id, contactId));
+  const updatedAt = new Date();
+  await db.update(contacts).set({ stage, updatedAt }).where(eq(contacts.id, contactId));
   await db.insert(auditLogs).values({ actorUserId, contactId, action: "stage_changed", summary: `Lead movido para ${stage}` });
+  const contact = await getContactById(contactId);
+  if (contact?.workspaceId) {
+    await enqueueDomainEvent({
+      workspaceId: contact.workspaceId,
+      event: "stage.changed",
+      aggregateType: "contact",
+      aggregateId: contactId,
+      eventKey: `stage.changed:${contactId}:${updatedAt.toISOString()}`,
+      payload: { contactId, stage, actorUserId, changedAt: updatedAt },
+    });
+  }
 }
 
 export async function getContactById(contactId: number) {
@@ -682,6 +741,16 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
     status: "received",
     createdAt: receivedAt,
   }).returning();
+  if (created[0]) {
+    await enqueueDomainEvent({
+      workspaceId: workspace.id,
+      event: "message.received",
+      aggregateType: "message",
+      aggregateId: created[0].id,
+      eventKey: `message.received:${input.eventId}`,
+      payload: { messageId: created[0].id, contactId: contact.id, conversationId: conversation.id, phone: contact.externalPhone, content: input.content, messageType: input.messageType ?? "text", receivedAt },
+    });
+  }
   await db.update(conversations).set({ unreadCount: sql`${conversations.unreadCount} + 1`, lastMessageAt: receivedAt, updatedAt: receivedAt }).where(eq(conversations.id, conversation.id));
   return { contactId: contact.id, conversationId: conversation.id, messageId: created[0]?.id };
 }
@@ -716,7 +785,18 @@ export async function upsertApiContact(input: { phone: string; name?: string; ci
     quoteCents: 0,
     unreadCount: 0,
   });
-  return (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+  const created = (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+  if (created) {
+    await enqueueDomainEvent({
+      workspaceId: workspace.id,
+      event: "contact.created",
+      aggregateType: "contact",
+      aggregateId: created.id,
+      eventKey: `contact.created:${created.id}`,
+      payload: { contactId: created.id, phone: created.externalPhone, name: created.name, stage: created.stage },
+    });
+  }
+  return created;
 }
 
 
@@ -750,6 +830,7 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
     message: messages,
     phone: contacts.externalPhone,
     contactId: contacts.id,
+    workspaceId: contacts.workspaceId,
   }).from(messages)
     .innerJoin(conversations, eq(conversations.id, messages.conversationId))
     .innerJoin(contacts, eq(contacts.id, conversations.contactId))
@@ -777,6 +858,20 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
       await db.update(messages).set({ status: "sent", externalId: result.externalId, sentAt: new Date(), lastError: null }).where(eq(messages.id, item.message.id));
       await db.insert(auditLogs).values({ contactId: item.contactId, action: "message_sent", summary: `Mensagem enviada pelo provedor ${item.message.provider}` });
       sent += 1;
+      if (item.workspaceId) {
+        try {
+          await enqueueDomainEvent({
+            workspaceId: item.workspaceId,
+            event: "message.sent",
+            aggregateType: "message",
+            aggregateId: item.message.id,
+            eventKey: `message.sent:${item.message.id}`,
+            payload: { messageId: item.message.id, contactId: item.contactId, provider: item.message.provider, externalId: result.externalId, sentAt: new Date() },
+          });
+        } catch (eventError) {
+          console.error("[forte-worker] falha ao enfileirar message.sent", eventError);
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha desconhecida no envio";
       const nextStatus = item.message.attemptCount + 1 >= maxAttempts ? "failed" : "queued";
@@ -794,7 +889,16 @@ export async function cancelAgendaAppointment(appointmentId: number) {
   if (!workspace) throw new Error("Workspace unavailable");
   const appointment = (await db.select().from(appointmentsTable).where(and(eq(appointmentsTable.id, appointmentId), eq(appointmentsTable.workspaceId, workspace.id))).limit(1))[0];
   if (!appointment) return undefined;
-  await db.update(appointmentsTable).set({ status: "cancelled", updatedAt: new Date() }).where(eq(appointmentsTable.id, appointmentId));
+  const updatedAt = new Date();
+  await db.update(appointmentsTable).set({ status: "cancelled", updatedAt }).where(eq(appointmentsTable.id, appointmentId));
+  await enqueueDomainEvent({
+    workspaceId: workspace.id,
+    event: "appointment.cancelled",
+    aggregateType: "appointment",
+    aggregateId: appointmentId,
+    eventKey: `appointment.cancelled:${appointmentId}:${updatedAt.toISOString()}`,
+    payload: { appointmentId, contactId: appointment.contactId, startsAt: appointment.startsAt, endsAt: appointment.endsAt, cancelledAt: updatedAt },
+  });
   return { ...appointment, status: "cancelled" as const };
 }
 
@@ -877,4 +981,64 @@ export async function leadMemoryOperation(input: {
   await db.insert(auditLogs).values({ contactId: contact.id, action: "lead_note_created", summary: note.slice(0, 500) });
   const created = await db.select().from(contactNotes).where(and(eq(contactNotes.contactId, contact.id), eq(contactNotes.content, note))).orderBy(desc(contactNotes.id)).limit(1);
   return { exists: true, noteCreated: true, lead: contact, note: created[0] };
+}
+
+export async function recoverProcessingDomainEvents() {
+  const db = await getDb();
+  if (!db) return 0;
+  const recovered = await db.update(domainEvents)
+    .set({ status: "pending", updatedAt: new Date() })
+    .where(eq(domainEvents.status, "processing"))
+    .returning({ id: domainEvents.id });
+  return recovered.length;
+}
+
+export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
+  const db = await getDb();
+  if (!db || !process.env.N8N_EVENTS_WEBHOOK_URL) return { processed: 0, delivered: 0, failed: 0, skipped: true };
+  const now = new Date();
+  const pending = await db.select().from(domainEvents)
+    .where(and(eq(domainEvents.status, "pending"), lte(domainEvents.availableAt, now)))
+    .orderBy(asc(domainEvents.availableAt), asc(domainEvents.id))
+    .limit(limit);
+
+  let delivered = 0;
+  let failed = 0;
+  const adapter = createN8nAdapter();
+  for (const item of pending) {
+    const claimed = await db.update(domainEvents).set({
+      status: "processing",
+      attemptCount: sql`${domainEvents.attemptCount} + 1`,
+      updatedAt: new Date(),
+    }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.status, "pending"), lte(domainEvents.availableAt, now))).returning({ id: domainEvents.id });
+    if (claimed.length === 0) continue;
+
+    try {
+      const result = await adapter.dispatchEvent({
+        eventId: item.eventKey,
+        event: item.eventType,
+        workspaceId: item.workspaceId,
+        aggregateType: item.aggregateType,
+        aggregateId: item.aggregateId ?? undefined,
+        payload: JSON.parse(item.payload) as Record<string, unknown>,
+        occurredAt: item.createdAt,
+      });
+      if (!result.accepted) throw new Error("n8n não aceitou o evento");
+      await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: null, updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
+      delivered += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha desconhecida na entrega do evento";
+      const attempt = item.attemptCount + 1;
+      const terminal = attempt >= maxAttempts;
+      const backoffMs = Math.min(60_000, 1_000 * (2 ** Math.max(0, attempt - 1)));
+      await db.update(domainEvents).set({
+        status: terminal ? "failed" : "pending",
+        availableAt: new Date(Date.now() + backoffMs),
+        lastError: message,
+        updatedAt: new Date(),
+      }).where(eq(domainEvents.id, item.id));
+      failed += 1;
+    }
+  }
+  return { processed: delivered + failed, delivered, failed, skipped: false };
 }

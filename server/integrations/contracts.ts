@@ -33,6 +33,16 @@ export type WorkflowCommand = {
   payload: Record<string, unknown>;
 };
 
+export type DomainEventCommand = {
+  eventId: string;
+  event: string;
+  workspaceId: number;
+  aggregateType: string;
+  aggregateId?: number;
+  payload: Record<string, unknown>;
+  occurredAt: Date;
+};
+
 export type AppointmentSlot = {
   id: number;
   startsAt: Date;
@@ -60,6 +70,7 @@ export interface MetaCloudApiAdapter extends WhatsappAdapter {
 export interface N8nAdapter {
   health(): Promise<IntegrationHealth>;
   dispatch(command: WorkflowCommand): Promise<{ accepted: boolean; executionId?: string }>;
+  dispatchEvent(command: DomainEventCommand): Promise<{ accepted: boolean; executionId?: string }>;
 }
 
 export interface VectorMemoryAdapter {

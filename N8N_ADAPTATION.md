@@ -84,9 +84,11 @@ Para evitar duas tools concorrentes no agente, o repositório agora inclui o pac
 5. Mensagens geradas pelo agente usam `POST /api/v1/messages` com `provider: papi` ou `provider: meta_cloud_api`.
 6. Cada chamada mutável usa `Idempotency-Key` e nunca grava diretamente no banco do Panel.
 
-### Fase 3 — worker e prompt publicado
+### Fase 3 — worker, prompt publicado e eventos de domínio
 
-O worker separado já consome mensagens `queued`, escolhe o adapter do provedor, recupera mensagens em `processing` após reinício e marca `sent` ou `failed` após as tentativas configuradas. O onboarding também salva o perfil estruturado e publica versões do prompt operacional; o n8n pode buscar somente a versão publicada por `GET /api/v1/onboarding/prompt`.
+O worker separado consome mensagens `queued`, escolhe o adapter do provedor, recupera mensagens em `processing` após reinício e marca `sent` ou `failed` após as tentativas configuradas. Ele também consome o outbox PostgreSQL de eventos de domínio e entrega `message.received`, `message.sent`, `contact.created`, `stage.changed`, `appointment.created` e `appointment.cancelled` ao webhook configurado em `N8N_EVENTS_WEBHOOK_URL`, com assinatura HMAC, timeout, backoff e recuperação após reinício. O onboarding salva o perfil estruturado e publica versões do prompt operacional; o n8n pode buscar somente a versão publicada por `GET /api/v1/onboarding/prompt`.
+
+No workflow de eventos do n8n, valide `X-Forte-Signature` usando o mesmo `N8N_WEBHOOK_SECRET`, trate `X-Forte-Event-Id` como chave idempotente e responda com HTTP 2xx somente depois de aceitar o evento.
 
 Depois do teste local com PAPI, será ativado o adapter Meta Cloud API com token permanente, Phone Number ID e webhook HTTPS público. A Meta documenta que a Cloud API envia mensagens e recebe webhooks de mensagens e status, mas o endpoint precisa ser configurado na plataforma Meta e não funciona como substituto local do PAPI sem credenciais e configuração de negócio.
 

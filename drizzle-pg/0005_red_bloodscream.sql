@@ -1,0 +1,2 @@
+CREATE INDEX "domain_events_pending_idx" ON "domainEvents" USING btree ("status","availableAt","id");--> statement-breakpoint
+CREATE INDEX "domain_events_workspace_idx" ON "domainEvents" USING btree ("workspaceId","createdAt");

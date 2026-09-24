@@ -190,6 +190,9 @@ services:
       PAPI_API_KEY: "teste123"
       PAPI_SEND_MESSAGE_PATH: /messages
       N8N_BASE_URL: http://n8n:5678
+      N8N_EVENTS_WEBHOOK_URL: ""
+      N8N_WEBHOOK_SECRET: ""
+      N8N_WEBHOOK_TIMEOUT_MS: "10000"
       META_GRAPH_API_VERSION: v23.0
       META_WHATSAPP_ACCESS_TOKEN: ""
       META_WHATSAPP_PHONE_NUMBER_ID: ""
@@ -229,12 +232,18 @@ services:
       PAPI_BASE_URL: http://pastorini_api:3000
       PAPI_API_KEY: "teste123"
       PAPI_SEND_MESSAGE_PATH: /messages
+      N8N_BASE_URL: http://n8n:5678
+      N8N_EVENTS_WEBHOOK_URL: ""
+      N8N_WEBHOOK_SECRET: ""
+      N8N_WEBHOOK_TIMEOUT_MS: "10000"
       META_GRAPH_API_VERSION: v23.0
       META_WHATSAPP_ACCESS_TOKEN: ""
       META_WHATSAPP_PHONE_NUMBER_ID: ""
       WORKER_INTERVAL_MS: "1500"
       WORKER_BATCH_SIZE: "10"
       WORKER_MAX_ATTEMPTS: "3"
+      EVENT_WORKER_BATCH_SIZE: "10"
+      EVENT_WORKER_MAX_ATTEMPTS: "5"
     depends_on:
       postgres_panel:
         condition: service_healthy

@@ -39,6 +39,9 @@ META_WHATSAPP_ACCESS_TOKEN=CHANGE_ME
 META_WHATSAPP_PHONE_NUMBER_ID=CHANGE_ME
 N8N_BASE_URL=http://n8n:5678
 N8N_API_KEY=CHANGE_ME
+N8N_EVENTS_WEBHOOK_URL=http://n8n:5678/webhook/forte-panel-events
+N8N_WEBHOOK_SECRET=CHANGE_ME
+N8N_WEBHOOK_TIMEOUT_MS=10000
 QDRANT_URL=http://qdrant:6333
 LOCALAI_BASE_URL=http://localai:8080
 FORTE_API_KEY=CHANGE_ME
@@ -53,4 +56,4 @@ O banco do PAPI não deve ser usado como banco de negócio do painel. O n8n tamb
 
 ## Requisitos de produção
 
-Todos os serviços devem ficar na rede privada do compose. Apenas o proxy reverso deve publicar portas externas. O painel precisa de healthcheck HTTP (`/api/v1/health`), logs estruturados, timeouts por integração, retry com backoff, chave de idempotência por mensagem/evento e trilha de auditoria para ações humanas. O worker não deve ser iniciado dentro do mesmo processo HTTP quando a carga real for habilitada. O contrato inicial está documentado em `API_CONTRACT.md`.
+Todos os serviços devem ficar na rede privada do compose. Apenas o proxy reverso deve publicar portas externas. O painel precisa de healthcheck HTTP (`/api/v1/health`), logs estruturados, timeouts por integração, retry com backoff, outbox PostgreSQL para eventos assinados, chave de idempotência por mensagem/evento e trilha de auditoria para ações humanas. O worker não deve ser iniciado dentro do mesmo processo HTTP quando a carga real for habilitada. O contrato inicial está documentado em `API_CONTRACT.md`.

@@ -184,6 +184,9 @@ services:
       PAPI_BASE_URL: http://pastorini_api:3000
       PAPI_API_KEY: "teste123"
       N8N_BASE_URL: http://n8n:5678
+      N8N_EVENTS_WEBHOOK_URL: ""
+      N8N_WEBHOOK_SECRET: ""
+      N8N_WEBHOOK_TIMEOUT_MS: "10000"
       RUN_MIGRATIONS: "true"
     depends_on:
       postgres_panel:
@@ -193,6 +196,42 @@ services:
       pastorini_api:
         condition: service_started
       n8n:
+        condition: service_started
+    networks:
+      - pastorini-network
+
+  forte-panel-worker:
+    image: ghcr.io/geordptoroy/forte-panel:latest
+    container_name: forte_panel_worker
+    restart: unless-stopped
+    command: ["./docker-entrypoint.sh", "worker"]
+    environment:
+      NODE_ENV: production
+      DEMO_MODE: "true"
+      FORTE_API_KEY: "teste-panel-local"
+      WEBHOOK_SIGNING_SECRET: "teste-webhook-local"
+      DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
+      REDIS_URL: redis://redis_panel:6379/0
+      PAPI_BASE_URL: http://pastorini_api:3000
+      PAPI_API_KEY: "teste123"
+      PAPI_SEND_MESSAGE_PATH: /messages
+      N8N_BASE_URL: http://n8n:5678
+      N8N_EVENTS_WEBHOOK_URL: ""
+      N8N_WEBHOOK_SECRET: ""
+      N8N_WEBHOOK_TIMEOUT_MS: "10000"
+      EVENT_WORKER_BATCH_SIZE: "10"
+      EVENT_WORKER_MAX_ATTEMPTS: "5"
+      WORKER_INTERVAL_MS: "1500"
+      WORKER_BATCH_SIZE: "10"
+      WORKER_MAX_ATTEMPTS: "3"
+    depends_on:
+      postgres_panel:
+        condition: service_healthy
+      redis_panel:
+        condition: service_healthy
+      pastorini_api:
+        condition: service_started
+      forte-panel:
         condition: service_started
     networks:
       - pastorini-network

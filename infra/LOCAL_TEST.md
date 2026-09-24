@@ -74,6 +74,8 @@ FORTE_API_KEY=teste-panel-local
 PAPI_BASE_URL=http://localhost:3001
 PAPI_API_KEY=teste123
 N8N_BASE_URL=http://localhost:5678
+N8N_EVENTS_WEBHOOK_URL=http://n8n:5678/webhook/forte-panel-events
+N8N_WEBHOOK_SECRET=troque-este-segredo-do-webhook
 ```
 
 Quando o n8n fizer HTTP Request para o Panel a partir do container, use `http://host.docker.internal:3000/api/v1`, não `localhost:3000`.
@@ -86,7 +88,9 @@ Quando o n8n fizer HTTP Request para o Panel a partir do container, use `http://
 4. Inserir uma chamada HTTP após `Limpeza` para `POST /api/v1/webhooks/inbound/whatsapp` com `eventId`, telefone, nome, conteúdo, tipo e data.
 5. Confirmar no Inbox que o contato e a mensagem persistiram.
 6. Substituir a ferramenta Clientverse por `contacts/upsert`, `contacts/:id/stage` e `messages` do Panel.
-7. Só depois validar a troca de canal para Meta Cloud API em um workspace separado e com credenciais próprias.
+7. Configurar o webhook de eventos do n8n, repetir uma entrada e confirmar que o evento chega com `X-Forte-Event-Id` e `X-Forte-Signature`.
+8. Responder o webhook com HTTP 2xx e verificar no log do worker que a entrega foi concluída; respostas 4xx/5xx devem permanecer no outbox para retry com backoff.
+9. Só depois validar a troca de canal para Meta Cloud API em um workspace separado e com credenciais próprias.
 
 ## Limites importantes
 

@@ -58,9 +58,11 @@ O n8n pode consultar `GET /onboarding/prompt` no início de uma execução para 
 }
 ```
 
-## Eventos publicados futuramente
+## Eventos publicados pelo worker
 
-O worker deverá publicar `message.received`, `message.sent`, `contact.created`, `stage.changed`, `appointment.created`, `appointment.confirmed`, `appointment.cancelled` e `task.due` como webhooks assinados para o n8n. Cada entrega terá retry com backoff, timeout e registro de tentativa.
+Quando `N8N_EVENTS_WEBHOOK_URL` está configurada, o worker publica `message.received`, `message.sent`, `contact.created`, `stage.changed`, `appointment.created` e `appointment.cancelled` como eventos JSON para o n8n. O outbox PostgreSQL mantém a entrega pendente, em processamento, entregue ou falha definitiva; cada tentativa possui contador, erro e `availableAt` para backoff exponencial.
+
+Cada requisição inclui `X-Forte-Event-Id`, `Idempotency-Key` com o mesmo identificador do evento e, quando `N8N_WEBHOOK_SECRET` está configurado, `X-Forte-Signature: sha256=<HMAC-SHA256 do corpo bruto>`. O timeout é controlado por `N8N_WEBHOOK_TIMEOUT_MS`; após `EVENT_WORKER_MAX_ATTEMPTS`, o evento permanece como `failed` para reprocessamento operacional.
 
 ## Erros
 

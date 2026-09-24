@@ -1,10 +1,11 @@
-import { integer, pgEnum, pgTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { index, integer, pgEnum, pgTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 export const workspacePlanEnum = pgEnum("workspace_plan", ["starter", "pro", "business"]);
 export const workspaceMemberRoleEnum = pgEnum("workspace_member_role", ["owner", "admin", "manager", "agent"]);
 export const whatsappProviderEnum = pgEnum("whatsapp_provider", ["papi", "meta_cloud_api"]);
 export const webhookStatusEnum = pgEnum("webhook_status", ["received", "processed", "failed"]);
+export const domainEventStatusEnum = pgEnum("domain_event_status", ["pending", "processing", "delivered", "failed"]);
 export const urgencyEnum = pgEnum("urgency", ["Baixa", "Média", "Alta", "Crítica"]);
 export const noteAuthorTypeEnum = pgEnum("note_author_type", ["human", "ai", "system"]);
 export const conversationStatusEnum = pgEnum("conversation_status", ["open", "resolved"]);
@@ -93,6 +94,26 @@ export const webhookEvents = pgTable("webhookEvents", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   processedAt: timestamp("processedAt"),
 });
+
+export const domainEvents = pgTable("domainEvents", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspaceId").notNull(),
+  eventKey: varchar("eventKey", { length: 180 }).notNull().unique(),
+  eventType: varchar("eventType", { length: 80 }).notNull(),
+  aggregateType: varchar("aggregateType", { length: 80 }).notNull(),
+  aggregateId: integer("aggregateId"),
+  payload: text("payload").notNull(),
+  status: domainEventStatusEnum("status").default("pending").notNull(),
+  attemptCount: integer("attemptCount").default(0).notNull(),
+  availableAt: timestamp("availableAt").defaultNow().notNull(),
+  lastError: text("lastError"),
+  deliveredAt: timestamp("deliveredAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => [
+  index("domain_events_pending_idx").on(table.status, table.availableAt, table.id),
+  index("domain_events_workspace_idx").on(table.workspaceId, table.createdAt),
+]);
 
 export const contacts = pgTable("contacts", {
   id: serial("id").primaryKey(),
@@ -233,6 +254,8 @@ export type ApiIdempotency = typeof apiIdempotency.$inferSelect;
 export type InsertApiIdempotency = typeof apiIdempotency.$inferInsert;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type InsertWebhookEvent = typeof webhookEvents.$inferInsert;
+export type DomainEvent = typeof domainEvents.$inferSelect;
+export type InsertDomainEvent = typeof domainEvents.$inferInsert;
 export type WhatsappChannel = typeof whatsappChannels.$inferSelect;
 export type InsertWhatsappChannel = typeof whatsappChannels.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
