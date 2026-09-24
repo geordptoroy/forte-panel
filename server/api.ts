@@ -20,6 +20,7 @@ import {
   saveApiIdempotency,
   upsertApiContact,
 } from "./db";
+import { professionalCanExecuteService } from "./agenda";
 
 const api = express.Router();
 const contactSchema = z.object({
@@ -188,7 +189,58 @@ api.get("/availability", async (req, res) => {
   if (!requireApiKey(req, res)) return;
   try {
     const snapshot = await getAgendaSnapshot();
-    return res.json({ timezone: snapshot.timezone, services: snapshot.services, professionals: snapshot.professionals, appointments: snapshot.appointments });
+    const requestedServiceId = req.query.serviceId ? Number(req.query.serviceId) : undefined;
+    const requestedProfessionalId = req.query.professionalId ? Number(req.query.professionalId) : undefined;
+    const serviceId = Number.isInteger(requestedServiceId) && (requestedServiceId ?? 0) > 0 ? requestedServiceId : undefined;
+    const professionalId = Number.isInteger(requestedProfessionalId) && (requestedProfessionalId ?? 0) > 0 ? requestedProfessionalId : undefined;
+
+    /** Keeps only professionals able to execute the requested service. */
+    const professionalsForService = serviceId
+      ? (snapshot.serviceLinks.length > 0
+        ? snapshot.serviceLinks.filter((link) => link.serviceId === serviceId && link.active === 1).map((link) => link.professionalId)
+        : snapshot.professionals.map((professional) => professional.id))
+      : snapshot.professionals.map((professional) => professional.id);
+
+    const professionals = snapshot.professionals
+      .filter((professional) => professionalsForService.includes(professional.id))
+      .filter((professional) => !professionalId || professional.id === professionalId)
+      .map((professional) => ({
+        id: professional.id,
+        name: professional.name,
+        specialty: professional.specialty,
+        color: professional.color,
+        serviceIds: snapshot.serviceLinks.filter((link) => link.professionalId === professional.id && link.active === 1).map((link) => link.serviceId),
+      }));
+
+    const services = snapshot.services
+      .filter((service) => !serviceId || service.id === serviceId)
+      .map((service) => ({
+        id: service.id,
+        name: service.name,
+        description: service.description,
+        durationMinutes: service.durationMinutes,
+        priceCents: service.priceCents,
+        professionalIds: snapshot.serviceLinks.filter((link) => link.serviceId === service.id && link.active === 1).map((link) => link.professionalId),
+      }));
+
+    const now = Date.now();
+    const appointments = snapshot.appointments
+      .filter((appointment) => appointment.status !== "cancelled")
+      .filter((appointment) => new Date(appointment.endsAt).getTime() >= now)
+      .filter((appointment) => !professionalId || appointment.professionalId === professionalId)
+      .map((appointment) => ({
+        id: appointment.id,
+        serviceId: appointment.serviceId,
+        professionalId: appointment.professionalId,
+        startsAt: appointment.startsAt,
+        endsAt: appointment.endsAt,
+        status: appointment.status,
+        serviceName: appointment.serviceName,
+        professionalName: appointment.professionalName,
+        contactName: appointment.contactName,
+      }));
+
+    return res.json({ timezone: snapshot.timezone, services, professionals, appointments });
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao consultar disponibilidade", "internal_error");
   }
@@ -198,8 +250,11 @@ api.post("/appointments", async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const parsed = appointmentSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "Payload de agendamento inválido", "invalid_payload");
+  if (parsed.data.endsAt <= parsed.data.startsAt) return fail(res, 400, "O horário final precisa ser maior que o inicial", "invalid_period");
   try {
     return idempotent(req, res, async () => {
+      const allowed = await professionalCanExecuteService(parsed.data.professionalId, parsed.data.serviceId);
+      if (!allowed) return { statusCode: 409, body: { error: "service_not_linked", message: "Este profissional não executa o serviço informado" } };
       const appointment = await createAgendaAppointment(parsed.data);
       return { statusCode: 201, body: { data: { id: appointment?.id, status: appointment?.status, startsAt: appointment?.startsAt, endsAt: appointment?.endsAt } } };
     });

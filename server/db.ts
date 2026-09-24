@@ -111,14 +111,33 @@ export async function getUserByEmail(email: string) {
   return result[0];
 }
 
+export async function getUserById(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  return result[0];
+}
+
+export async function setLocalPassword(userId: number, password: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.update(users).set({ passwordHash: hashLocalPassword(password), updatedAt: new Date() }).where(eq(users.id, userId));
+}
+
+export async function touchLastSignedIn(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, userId));
+}
+
 export async function createLocalWorkspaceMember(input: {
   name: string;
   email: string;
   password: string;
-  role: "admin" | "manager" | "agent";
+  role: "owner" | "admin" | "manager" | "agent";
   operationalRole: "human_attendant" | "ai_attendant" | "professional";
   professionalId?: number;
-}) {
+}, actorUserId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const workspace = await ensureDemoWorkspace();
@@ -126,6 +145,13 @@ export async function createLocalWorkspaceMember(input: {
   const email = input.email.trim().toLowerCase();
   const existing = await getUserByEmail(email);
   if (existing) throw new Error("Já existe uma conta com este e-mail");
+  if (input.operationalRole === "professional" && !input.professionalId) {
+    throw new Error("Profissional executor precisa estar vinculado a um profissional cadastrado");
+  }
+  if (input.professionalId) {
+    const professional = (await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.id, input.professionalId), eq(professionals.workspaceId, workspace.id))).limit(1))[0];
+    if (!professional) throw new Error("Profissional não pertence a este workspace");
+  }
   const [user] = await db.insert(users).values({
     openId: `local_${crypto.randomUUID()}`,
     name: input.name.trim(),
@@ -136,7 +162,17 @@ export async function createLocalWorkspaceMember(input: {
     operationalRole: input.operationalRole,
   }).returning();
   if (!user) throw new Error("Não foi possível criar a conta");
-  await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: input.role, professionalId: input.professionalId });
+  await db.insert(workspaceMembers).values({
+    workspaceId: workspace.id,
+    userId: user.id,
+    role: input.role,
+    professionalId: input.operationalRole === "professional" ? input.professionalId ?? null : null,
+  });
+  await db.insert(auditLogs).values({
+    actorUserId,
+    action: "member_created",
+    summary: `Conta ${email} criada com papel ${input.role} e perfil ${input.operationalRole}`,
+  });
   return user;
 }
 
@@ -492,6 +528,14 @@ export async function ensureDemoAgenda() {
       await db.insert(availability).values({ workspaceId: workspace.id, professionalId: workspaceProfessionals[0].id, weekday, startMinute: 9 * 60, endMinute: 18 * 60 });
     }
   }
+  const existingLinks = await db.select({ id: professionalServices.id }).from(professionalServices).where(eq(professionalServices.workspaceId, workspace.id)).limit(1);
+  if (existingLinks.length === 0) {
+    for (const professional of workspaceProfessionals) {
+      for (const service of workspaceServices) {
+        await db.insert(professionalServices).values({ workspaceId: workspace.id, professionalId: professional.id, serviceId: service.id, active: 1 });
+      }
+    }
+  }
   const existingAppointments = await db.select({ id: appointmentsTable.id }).from(appointmentsTable).where(eq(appointmentsTable.workspaceId, workspace.id)).limit(1);
   if (existingAppointments.length === 0 && workspaceServices[1] && workspaceProfessionals[0]) {
     const paulo = await db.select({ id: contacts.id }).from(contacts).where(eq(contacts.externalPhone, "5511965407721")).limit(1);
@@ -503,14 +547,37 @@ export async function ensureDemoAgenda() {
   }
 }
 
-export async function getAgendaSnapshot(professionalId?: number) {
+export type AgendaSnapshot = {
+  timezone: string;
+  services: { id: number; workspaceId: number; name: string; description: string | null; durationMinutes: number; priceCents: number; active: number; createdAt: Date; updatedAt: Date }[];
+  professionals: { id: number; workspaceId: number; name: string; specialty: string | null; color: string; active: number; createdAt: Date; updatedAt: Date }[];
+  appointments: {
+    id: number;
+    contactId: number | null;
+    serviceId: number;
+    professionalId: number;
+    startsAt: Date;
+    endsAt: Date;
+    status: "requested" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
+    notes: string | null;
+    serviceName: string | null;
+    professionalName: string | null;
+    contactName: string | null;
+  }[];
+  availability: { id: number; workspaceId: number; professionalId: number; weekday: number; startMinute: number; endMinute: number; active: number }[];
+  serviceLinks: { id: number; workspaceId: number; professionalId: number; serviceId: number; active: number; createdAt: Date }[];
+};
+
+export async function getAgendaSnapshot(professionalId?: number): Promise<AgendaSnapshot> {
   const db = await getDb();
-  if (!db) return { timezone: "America/Sao_Paulo", services: [], professionals: [], appointments: [] };
+  const emptySnapshot: AgendaSnapshot = { timezone: "America/Sao_Paulo", services: [], professionals: [], appointments: [], availability: [], serviceLinks: [] };
+  if (!db) return emptySnapshot;
   await ensureDemoAgenda();
   const workspace = await ensureDemoWorkspace();
-  if (!workspace) return { timezone: "America/Sao_Paulo", services: [], professionals: [], appointments: [] };
+  if (!workspace) return emptySnapshot;
   const professionalFilter = professionalId ? eq(professionals.id, professionalId) : undefined;
   const appointmentFilter = professionalId ? and(eq(appointmentsTable.workspaceId, workspace.id), eq(appointmentsTable.professionalId, professionalId)) : eq(appointmentsTable.workspaceId, workspace.id);
+  const links = await db.select().from(professionalServices).where(and(eq(professionalServices.workspaceId, workspace.id), eq(professionalServices.active, 1)));
   const [workspaceServices, workspaceProfessionals, workspaceAppointments] = await Promise.all([
     db.select().from(services).where(and(eq(services.workspaceId, workspace.id), eq(services.active, 1))),
     db.select().from(professionals).where(and(eq(professionals.workspaceId, workspace.id), eq(professionals.active, 1), professionalFilter)),
@@ -533,7 +600,20 @@ export async function getAgendaSnapshot(professionalId?: number) {
       .where(appointmentFilter)
       .orderBy(appointmentsTable.startsAt, appointmentsTable.id),
   ]);
-  return { timezone: workspace.timezone, services: workspaceServices, professionals: workspaceProfessionals, appointments: workspaceAppointments };
+  const visibleServices = professionalId
+    ? workspaceServices.filter((service) => links.length === 0 || links.some((link) => link.serviceId === service.id && link.professionalId === professionalId))
+    : workspaceServices;
+  const professionalAvailability = professionalId
+    ? await db.select().from(availability).where(and(eq(availability.workspaceId, workspace.id), eq(availability.professionalId, professionalId), eq(availability.active, 1))).orderBy(availability.weekday)
+    : [];
+  return {
+    timezone: workspace.timezone,
+    services: visibleServices,
+    professionals: workspaceProfessionals,
+    appointments: workspaceAppointments,
+    availability: professionalAvailability,
+    serviceLinks: links,
+  };
 }
 
 export async function createAgendaAppointment(input: { contactId?: number; serviceId: number; professionalId: number; startsAt: Date; endsAt: Date; notes?: string }) {

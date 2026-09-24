@@ -50,6 +50,20 @@
       "when": 1790283019746,
       "tag": "0006_lumpy_night_thrasher",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790283990775,
+      "tag": "0007_professional_services",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790284518175,
+      "tag": "0008_operational_catalog",
+      "breakpoints": true
     }
   ]
 }

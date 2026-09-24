@@ -26,6 +26,13 @@
 - Adapter PAPI real, adapter Meta Cloud API, worker separado para mensagens e migrations PostgreSQL versionadas.
 - Node comunitário n8n com uma única AI Tool do Forte Panel, build próprio e contrato de credencial.
 - Outbox PostgreSQL de eventos de domínio com assinatura HMAC, retries, backoff e recuperação após reinício.
+- Autorização baseada no papel do workspace, com perfil operacional e vínculo ao profissional executor.
+- Catálogo operacional persistido: serviços, profissionais, vínculos profissional-serviço e jornada semanal.
+- Portal do profissional em `/my-work` com visões de dia, semana, mês e clientes, sempre restritas à própria agenda.
+- Ciclo de atendimento com status `in_progress`, iniciado e concluído pelo próprio profissional.
+- Telas administrativas de Serviços, Profissionais, Equipe e Configurações com ações persistidas.
+- Migrations `0007_professional_services` e `0008_operational_catalog` aplicadas e validadas em PostgreSQL 16 real.
+- Testes de isolamento entre profissionais e script `scripts/validate-flow.mjs` com 21 validações por HTTP.
 - Testes, TypeScript e build validados.
 
 ## Próxima fase
@@ -36,10 +43,16 @@
 - Criar healthchecks, autenticação por usuário/empresa e proxy HTTPS na VPS.
 - Adicionar tela operacional para reprocessar eventos com status `failed` e visualizar tentativas do outbox.
 - Publicar eventos de confirmação de agendamento e tarefas quando esses módulos emitirem as transições correspondentes.
+- Validar a jornada semanal no agendamento: recusar horários fora da `availability` do profissional.
+- Impedir sobreposição de atendimentos para o mesmo profissional no mesmo intervalo.
+- Disparar de fato as notificações cujas preferências já estão persistidas em `workspaceSettings`.
+- Migrar a autenticação da API para chave por workspace com hash, no lugar da chave de ambiente.
 
 ## Bugs ou riscos conhecidos
 
-- O preview e o compose agora usam PostgreSQL; ainda não foi possível executar a stack completa porque o sandbox não possui Docker nem um PostgreSQL local.
+- O preview e o compose usam PostgreSQL. A validação desta etapa foi feita com um PostgreSQL 16 instalado no próprio sandbox, aplicando as migrations e executando os testes de isolamento; o `docker compose up --build` completo segue pendente porque o sandbox não possui Docker.
+- O agendamento valida vínculo profissional-serviço e período, mas ainda não compara o horário com a jornada semanal nem detecta sobreposição de atendimentos.
+- As preferências de notificação são persistidas, porém nenhum canal de envio (e-mail, WhatsApp ou push) está ligado a elas.
 - As integrações externas permanecem bloqueadas em modo demo por segurança.
 - O compose anexado contém credenciais e licença em texto puro; elas precisam ser substituídas por secrets antes de qualquer deploy.
 - O Redis já está provisionado no compose, mas o worker atual usa o outbox PostgreSQL e polling; Redis poderá assumir debounce/cache em uma etapa posterior.

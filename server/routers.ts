@@ -17,7 +17,9 @@ import {
   createQuote,
   getAgendaSnapshot,
   getUserByEmail,
-  getWorkspaceMemberForUser,
+  getUserById,
+  setLocalPassword,
+  touchLastSignedIn,
   getDefaultWhatsappProvider,
   listWhatsappChannels,
   setDefaultWhatsappProvider,
@@ -29,7 +31,6 @@ import {
   getContactById,
   getConversationByContact,
   listInboxContacts,
-  listWorkspaceMembers,
   listProfessionals,
   listMessagesForContact,
   listQuotes,
@@ -42,6 +43,29 @@ import {
   verifyLocalPassword,
   updateQuotePayment,
 } from "./db";
+import {
+  countWorkspaceMembers,
+  createService,
+  getNotificationPreferences,
+  listProfessionalsDetailed,
+  listServices,
+  listWorkspaceAudit,
+  listWorkspaceMembersDetailed,
+  logWorkspaceAction,
+  replaceAvailability,
+  resolveWorkspaceAccess,
+  saveNotificationPreferences,
+  setMemberProfile,
+  setProfessionalServices,
+  setServiceProfessionals,
+  updateOwnProfile,
+  updateProfessional,
+  updateService,
+  type OperationalRole,
+  type WorkspaceAccess,
+  type WorkspaceMemberRole,
+} from "./workspace";
+import { getProfessionalPortalSnapshot, transitionAppointment, professionalCanExecuteService } from "./agenda";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
 
@@ -66,18 +90,72 @@ const mapContact = (contact: ContactRow) => ({
   initials: contact.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
 });
 
+const serializeAppointment = <T extends { startsAt: Date; endsAt: Date }>(appointment: T) => ({
+  ...appointment,
+  startsAt: appointment.startsAt.toISOString(),
+  endsAt: appointment.endsAt.toISOString(),
+});
+const serializeAgendaAppointment = serializeAppointment;
+
+/**
+ * Builds a tRPC middleware that resolves the workspace access context once per
+ * request, so authorization always reads the workspace membership instead of
+ * the global user role.
+ */
+const withAccess = (
+  requirement: (access: WorkspaceAccess) => boolean,
+  message: string,
+) => protectedProcedure.use(async ({ ctx, next }) => {
+  const access = await resolveWorkspaceAccess(ctx.user);
+  if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
+  if (!requirement(access)) throw new TRPCError({ code: "FORBIDDEN", message });
+  return next({ ctx: { access } });
+});
+
+const requireManager = withAccess((access) => access.canManageCatalog, "Somente proprietário, administrador ou gerente podem executar esta ação");
+const requireAdministrator = withAccess((access) => access.canManageTeam, "Somente proprietário ou administrador podem executar esta ação");
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     access: protectedProcedure.query(async ({ ctx }) => {
-      const member = await getWorkspaceMemberForUser(ctx.user.id);
+      const access = await resolveWorkspaceAccess(ctx.user);
       return {
-        userId: ctx.user.id,
-        role: member?.role ?? (ctx.user.role === "admin" ? "owner" : "agent"),
-        operationalRole: ctx.user.operationalRole ?? "human_attendant",
-        professionalId: member?.professionalId ?? null,
+        userId: access.userId,
+        role: access.role,
+        operationalRole: access.operationalRole,
+        professionalId: access.professionalId,
+        professionalName: access.professionalName,
+        memberActive: access.memberActive,
+        canManageTeam: access.canManageTeam,
+        canManageCatalog: access.canManageCatalog,
+        canSeeFullAgenda: access.canSeeFullAgenda,
+        restrictedToOwnAgenda: access.restrictedToOwnAgenda,
       };
+    }),
+    updateProfile: protectedProcedure.input(z.object({
+      name: z.string().trim().min(2).max(160),
+      email: z.string().email(),
+      phone: z.string().trim().max(32).optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const updated = await updateOwnProfile(ctx.user.id, input);
+      if (!updated) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível atualizar o perfil" });
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "profile_updated", summary: "Perfil do operador atualizado" });
+      return { id: updated.id, name: updated.name, email: updated.email, phone: updated.phone };
+    }),
+    changePassword: protectedProcedure.input(z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(8).max(128),
+    })).mutation(async ({ input, ctx }) => {
+      const account = await getUserById(ctx.user.id);
+      if (!account) throw new TRPCError({ code: "NOT_FOUND", message: "Conta não encontrada" });
+      if (account.passwordHash && !verifyLocalPassword(input.currentPassword, account.passwordHash)) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Senha atual incorreta" });
+      }
+      await setLocalPassword(ctx.user.id, input.newPassword);
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "password_changed", summary: "Senha do operador atualizada" });
+      return { success: true } as const;
     }),
     localLogin: publicProcedure
       .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
@@ -95,9 +173,15 @@ export const appRouter = router({
           throw new TRPCError({ code: "UNAUTHORIZED", message: "E-mail ou senha inválidos" });
         }
         if (!account) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Conta local não pôde ser carregada" });
+        const access = await resolveWorkspaceAccess(account);
+        if (!access.memberActive) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado. Fale com o administrador." });
+        }
         const token = await sdk.signSession({ openId: account.openId, appId: "local", name: account.name ?? email });
         ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: 1000 * 60 * 60 * 24 * 365 });
-        return { success: true } as const;
+        await touchLastSignedIn(account.id);
+        await logWorkspaceAction({ actorUserId: account.id, action: "login_success", summary: `Login local de ${email}` });
+        return { success: true, role: access.role, operationalRole: access.operationalRole } as const;
       }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -120,41 +204,180 @@ export const appRouter = router({
       };
     }),
     members: protectedProcedure.query(async () => {
-      const members = await listWorkspaceMembers();
+      const members = await listWorkspaceMembersDetailed();
       return members.map((member) => ({
         id: member.id,
+        userId: member.userId,
         name: member.name ?? "Membro sem nome",
         email: member.email ?? "Sem e-mail",
-        role: member.role,
+        role: member.role as WorkspaceMemberRole,
+        operationalRole: (member.operationalRole as OperationalRole | null) ?? "human_attendant",
+        professionalId: member.professionalId,
+        professionalName: member.professionalName,
         active: member.active === 1,
+        lastSignedIn: member.lastSignedIn?.toISOString() ?? null,
       }));
     }),
+    updateMember: requireAdministrator.input(z.object({
+      memberId: z.number().int().positive(),
+      role: z.enum(["owner", "admin", "manager", "agent"]).optional(),
+      operationalRole: z.enum(["human_attendant", "ai_attendant", "professional"]).optional(),
+      professionalId: z.number().int().positive().nullable().optional(),
+      active: z.boolean().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const member = await setMemberProfile(input.memberId, input);
+      if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "Membro não encontrado" });
+      await logWorkspaceAction({
+        actorUserId: ctx.user.id,
+        action: "member_updated",
+        summary: `Membro ${input.memberId} atualizado (papel ${member.role}, ativo ${member.active === 1})`,
+      });
+      return { id: member.id, role: member.role, active: member.active === 1, professionalId: member.professionalId };
+    }),
+    audit: requireManager.input(z.object({ limit: z.number().int().min(1).max(200).default(60) }).optional()).query(async ({ input }) => {
+      const rows = await listWorkspaceAudit(input?.limit ?? 60);
+      return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+    }),
+    notifyPreferences: protectedProcedure.query(async () => {
+      const workspace = await ensureDemoWorkspace();
+      if (!workspace) return null;
+      return getNotificationPreferences(workspace.id);
+    }),
+    saveNotifyPreferences: protectedProcedure.input(z.object({
+      newLead: z.boolean(),
+      appointmentCreated: z.boolean(),
+      appointmentConfirmed: z.boolean(),
+      dailySummary: z.boolean(),
+    })).mutation(async ({ input, ctx }) => {
+      const workspace = await ensureDemoWorkspace();
+      if (!workspace) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Workspace indisponível" });
+      const saved = await saveNotificationPreferences(workspace.id, input);
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "notifications_updated", summary: "Preferências de notificação atualizadas" });
+      return saved;
+    }),
+    summary: protectedProcedure.query(async () => ({
+      membersActive: await countWorkspaceMembers(),
+    })),
     professionals: protectedProcedure.query(async () => (await listProfessionals()).map((professional) => ({
       id: professional.id,
       name: professional.name,
       specialty: professional.specialty,
       color: professional.color,
     }))),
-    createProfessional: protectedProcedure.input(z.object({
+    professionalsDetailed: requireManager.query(async () => {
+      const rows = await listProfessionalsDetailed({ includeInactive: true });
+      return rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        specialty: row.specialty,
+        color: row.color,
+        active: row.active === 1,
+        serviceIds: row.serviceIds,
+        availability: row.availability,
+        linkedMembers: row.linkedMembers,
+      }));
+    }),
+    createProfessional: requireManager.input(z.object({
       name: z.string().trim().min(2).max(160),
       specialty: z.string().max(120).optional(),
       color: z.string().max(20).optional(),
     })).mutation(async ({ input, ctx }) => {
-      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Somente administradores podem cadastrar profissionais" });
       const professional = await createProfessional(input);
-      return { id: professional.id, name: professional.name, specialty: professional.specialty, color: professional.color };
+      if (!professional) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível cadastrar o profissional" });
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "professional_created", summary: `Profissional ${professional.name} cadastrado` });
+      return { id: professional.id, name: professional.name, specialty: professional.specialty, color: professional.color, active: true };
     }),
-    createMember: protectedProcedure.input(z.object({
+    updateProfessional: requireManager.input(z.object({
+      professionalId: z.number().int().positive(),
+      name: z.string().trim().min(2).max(160).optional(),
+      specialty: z.string().max(120).nullable().optional(),
+      color: z.string().max(20).optional(),
+      active: z.boolean().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { professionalId, ...changes } = input;
+      const professional = await updateProfessional(professionalId, changes);
+      if (!professional) throw new TRPCError({ code: "NOT_FOUND", message: "Profissional não encontrado neste workspace" });
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "professional_updated", summary: `Profissional ${professional.name} atualizado` });
+      return { id: professional.id, name: professional.name, specialty: professional.specialty, color: professional.color, active: professional.active === 1 };
+    }),
+    setProfessionalServices: requireManager.input(z.object({
+      professionalId: z.number().int().positive(),
+      serviceIds: z.array(z.number().int().positive()).max(200),
+    })).mutation(async ({ input, ctx }) => {
+      const serviceIds = await setProfessionalServices(input.professionalId, input.serviceIds);
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "professional_services_updated", summary: `Serviços do profissional ${input.professionalId} atualizados (${serviceIds.length})` });
+      return { professionalId: input.professionalId, serviceIds };
+    }),
+    setProfessionalAvailability: requireManager.input(z.object({
+      professionalId: z.number().int().positive(),
+      entries: z.array(z.object({
+        weekday: z.number().int().min(0).max(6),
+        startMinute: z.number().int().min(0).max(1440),
+        endMinute: z.number().int().min(1).max(1440),
+      })).max(50),
+    })).mutation(async ({ input, ctx }) => {
+      const invalid = input.entries.find((entry) => entry.endMinute <= entry.startMinute);
+      if (invalid) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser maior que o inicial" });
+      const entries = await replaceAvailability(input.professionalId, input.entries);
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "professional_availability_updated", summary: `Agenda semanal do profissional ${input.professionalId} atualizada (${entries.length} faixas)` });
+      return { professionalId: input.professionalId, entries };
+    }),
+    services: protectedProcedure.query(async () => (await listServices({ includeInactive: true })).map((service) => ({
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      durationMinutes: service.durationMinutes,
+      priceCents: service.priceCents,
+      active: service.active === 1,
+      professionalIds: service.professionalIds,
+    }))),
+    createService: requireManager.input(z.object({
+      name: z.string().trim().min(2).max(160),
+      description: z.string().max(4000).optional(),
+      durationMinutes: z.number().int().min(5).max(1440).default(60),
+      priceCents: z.number().int().min(0).max(100_000_000).default(0),
+    })).mutation(async ({ input, ctx }) => {
+      const service = await createService(input);
+      if (!service) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível criar o serviço" });
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "service_created", summary: `Serviço ${service.name} criado` });
+      return { id: service.id, name: service.name, active: service.active === 1 };
+    }),
+    updateService: requireManager.input(z.object({
+      serviceId: z.number().int().positive(),
+      name: z.string().trim().min(2).max(160).optional(),
+      description: z.string().max(4000).nullable().optional(),
+      durationMinutes: z.number().int().min(5).max(1440).optional(),
+      priceCents: z.number().int().min(0).max(100_000_000).optional(),
+      active: z.boolean().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { serviceId, ...changes } = input;
+      const service = await updateService(serviceId, changes);
+      if (!service) throw new TRPCError({ code: "NOT_FOUND", message: "Serviço não encontrado neste workspace" });
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "service_updated", summary: `Serviço ${service.name} atualizado` });
+      return { id: service.id, name: service.name, active: service.active === 1 };
+    }),
+    setServiceProfessionals: requireManager.input(z.object({
+      serviceId: z.number().int().positive(),
+      professionalIds: z.array(z.number().int().positive()).max(200),
+    })).mutation(async ({ input, ctx }) => {
+      const professionalIds = await setServiceProfessionals(input.serviceId, input.professionalIds);
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "service_professionals_updated", summary: `Profissionais do serviço ${input.serviceId} atualizados (${professionalIds.length})` });
+      return { serviceId: input.serviceId, professionalIds };
+    }),
+    createMember: requireAdministrator.input(z.object({
       name: z.string().trim().min(2).max(160),
       email: z.string().email(),
       password: z.string().min(8).max(128),
-      role: z.enum(["admin", "manager", "agent"]),
+      role: z.enum(["owner", "admin", "manager", "agent"]),
       operationalRole: z.enum(["human_attendant", "ai_attendant", "professional"]),
       professionalId: z.number().int().positive().optional(),
     })).mutation(async ({ input, ctx }) => {
-      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Somente administradores podem criar contas" });
-      const user = await createLocalWorkspaceMember(input);
-      return { id: user.id, name: user.name, email: user.email, role: input.role, operationalRole: input.operationalRole, professionalId: input.professionalId ?? null };
+      try {
+        const user = await createLocalWorkspaceMember(input, ctx.user.id);
+        return { id: user.id, name: user.name, email: user.email, role: input.role, operationalRole: input.operationalRole, professionalId: input.professionalId ?? null };
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível criar a conta" });
+      }
     }),
     channels: protectedProcedure.query(async () => {
       const channels = await listWhatsappChannels();
@@ -185,7 +408,7 @@ export const appRouter = router({
       return {
         ...snapshot,
         recentEvents: snapshot.recentEvents.map((event) => ({ ...event, createdAt: event.createdAt.toISOString() })),
-        upcomingAppointments: snapshot.upcomingAppointments.map((appointment) => ({ ...appointment, startsAt: appointment.startsAt.toISOString(), endsAt: appointment.endsAt.toISOString() })),
+        upcomingAppointments: snapshot.upcomingAppointments.map((appointment) => serializeAgendaAppointment(appointment)),
       };
     }),
   }),
@@ -235,18 +458,17 @@ export const appRouter = router({
 
   agenda: router({
     snapshot: protectedProcedure.query(async ({ ctx }) => {
-      const member = await getWorkspaceMemberForUser(ctx.user.id);
-      const professionalId = ctx.user.role === "admin" || member?.role === "owner" || member?.role === "admin" || member?.role === "manager" ? undefined : member?.professionalId ?? undefined;
+      const access = await resolveWorkspaceAccess(ctx.user);
+      if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
+      const professionalId = access.canSeeFullAgenda ? undefined : access.professionalId ?? undefined;
       const snapshot = await getAgendaSnapshot(professionalId);
       return {
         timezone: snapshot.timezone,
         services: snapshot.services,
         professionals: snapshot.professionals,
-        appointments: snapshot.appointments.map((appointment) => ({
-          ...appointment,
-          startsAt: appointment.startsAt.toISOString(),
-          endsAt: appointment.endsAt.toISOString(),
-        })),
+        appointments: snapshot.appointments.map(serializeAgendaAppointment),
+        availability: "availability" in snapshot ? snapshot.availability : [],
+        restrictedToOwnAgenda: access.restrictedToOwnAgenda,
       };
     }),
     create: protectedProcedure.input(z.object({
@@ -256,12 +478,115 @@ export const appRouter = router({
       startsAt: z.coerce.date(),
       endsAt: z.coerce.date(),
       notes: z.string().max(500).optional(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
+      const access = await resolveWorkspaceAccess(ctx.user);
+      if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
+      if (!access.canSeeFullAgenda && input.professionalId !== access.professionalId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode agendar atendimentos vinculados a você" });
+      }
+      if (input.endsAt <= input.startsAt) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser maior que o inicial" });
+      const allowed = await professionalCanExecuteService(input.professionalId, input.serviceId);
+      if (!allowed) throw new TRPCError({ code: "BAD_REQUEST", message: "Este profissional não executa o serviço selecionado" });
       const appointment = await createAgendaAppointment(input);
-      return appointment ? { id: appointment.id, status: appointment.status } : null;
+      if (!appointment) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível criar o agendamento" });
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "appointment_created", summary: `Agendamento ${appointment.id} criado para ${input.startsAt.toISOString()}` });
+      return { id: appointment.id, status: appointment.status };
     }),
-    updateStatus: protectedProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(["confirmed", "completed", "no_show"]) })).mutation(({ input }) => updateAgendaStatus(input.id, input.status)),
-    cancel: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => cancelAgendaAppointment(input.id)),
+    updateStatus: protectedProcedure.input(z.object({
+      id: z.number().int().positive(),
+      status: z.enum(["confirmed", "in_progress", "completed", "no_show"]),
+    })).mutation(async ({ input, ctx }) => {
+      const access = await resolveWorkspaceAccess(ctx.user);
+      if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
+      const restriction = access.canSeeFullAgenda ? undefined : access.professionalId ?? -1;
+      const updated = await transitionAppointment({ appointmentId: input.id, status: input.status, actorUserId: ctx.user.id, restrictToProfessionalId: restriction });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado para o seu acesso" });
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: `appointment_${input.status}`, summary: `Agendamento ${input.id} atualizado para ${input.status}` });
+      return { id: updated.id, status: updated.status };
+    }),
+    cancel: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
+      const access = await resolveWorkspaceAccess(ctx.user);
+      if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
+      if (access.canSeeFullAgenda) {
+        const updated = await cancelAgendaAppointment(input.id);
+        if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado" });
+        await logWorkspaceAction({ actorUserId: ctx.user.id, action: "appointment_cancelled", summary: `Agendamento ${input.id} cancelado` });
+        return { id: updated.id, status: updated.status };
+      }
+      const updated = await transitionAppointment({ appointmentId: input.id, status: "cancelled", actorUserId: ctx.user.id, restrictToProfessionalId: access.professionalId ?? -1 });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado para o seu acesso" });
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "appointment_cancelled", summary: `Agendamento ${input.id} cancelado pelo profissional` });
+      return { id: updated.id, status: updated.status };
+    }),
+    updateMyStatus: protectedProcedure.input(z.object({
+      id: z.number().int().positive(),
+      status: z.enum(["confirmed", "in_progress", "completed", "no_show"]),
+    })).mutation(async ({ input, ctx }) => {
+      const access = await resolveWorkspaceAccess(ctx.user);
+      if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
+      if (!access.professionalId) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não está vinculado a um profissional" });
+      const updated = await transitionAppointment({ appointmentId: input.id, status: input.status, actorUserId: ctx.user.id, restrictToProfessionalId: access.professionalId });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Este atendimento não pertence à sua agenda" });
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: `appointment_${input.status}`, summary: `Profissional atualizou o atendimento ${input.id} para ${input.status}` });
+      return { id: updated.id, status: updated.status };
+    }),
+  }),
+
+  professional: router({
+    myAgenda: protectedProcedure.query(async ({ ctx }) => {
+      const access = await resolveWorkspaceAccess(ctx.user);
+      if (!access.professionalId) {
+        return {
+          linked: false as const,
+          timezone: (await ensureDemoWorkspace())?.timezone ?? "America/Sao_Paulo",
+          professionalId: null,
+          professionalName: null,
+          professionalSpecialty: null,
+          professionalColor: null,
+          todayCount: 0, weekCount: 0, monthCount: 0, pendingCount: 0, completedCount: 0,
+          nextAppointment: null, today: [], upcoming: [], week: [], month: [], clients: [],
+        };
+      }
+      const snapshot = await getProfessionalPortalSnapshot(access.professionalId);
+      return {
+        linked: true as const,
+        ...snapshot,
+        today: snapshot.today.map(serializeAgendaAppointment),
+        upcoming: snapshot.upcoming.map(serializeAgendaAppointment),
+        week: snapshot.week.map(serializeAgendaAppointment),
+        month: snapshot.month.map(serializeAgendaAppointment),
+        nextAppointment: snapshot.nextAppointment ? serializeAgendaAppointment(snapshot.nextAppointment) : null,
+        clients: snapshot.clients.map((client) => ({ ...client, lastAppointmentAt: client.lastAppointmentAt.toISOString() })),
+      };
+    }),
+    myAvailability: protectedProcedure.query(async ({ ctx }) => {
+      const access = await resolveWorkspaceAccess(ctx.user);
+      if (!access.professionalId) return { linked: false as const, entries: [] };
+      const professionalsList = await listProfessionalsDetailed({ includeInactive: true });
+      const professional = professionalsList.find((item) => item.id === access.professionalId);
+      const ownAvailability = (await getAgendaSnapshot(access.professionalId)).availability ?? [];
+      return {
+        linked: true as const,
+        professionalId: access.professionalId,
+        entries: ownAvailability.map((entry: { weekday: number; startMinute: number; endMinute: number }) => ({ weekday: entry.weekday, startMinute: entry.startMinute, endMinute: entry.endMinute })),
+        serviceIds: professional?.serviceIds ?? [],
+      };
+    }),
+    updateMyAvailability: protectedProcedure.input(z.object({
+      entries: z.array(z.object({
+        weekday: z.number().int().min(0).max(6),
+        startMinute: z.number().int().min(0).max(1440),
+        endMinute: z.number().int().min(1).max(1440),
+      })).max(50),
+    })).mutation(async ({ input, ctx }) => {
+      const access = await resolveWorkspaceAccess(ctx.user);
+      if (!access.professionalId) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não está vinculado a um profissional" });
+      const invalid = input.entries.find((entry) => entry.endMinute <= entry.startMinute);
+      if (invalid) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser maior que o inicial" });
+      const entries = await replaceAvailability(access.professionalId, input.entries);
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "own_availability_updated", summary: `Profissional atualizou a própria disponibilidade (${entries.length} faixas)` });
+      return { entries };
+    }),
   }),
 
   inbox: router({

@@ -13,10 +13,11 @@ import {
   IntegrationsPage,
   KanbanPage,
   NotFoundPage,
-  SettingsPage,
-  TeamPage,
-  ProfessionalPortalPage,
 } from "./pages/PanelPages";
+import { ProfessionalsPage, ServicesPage } from "./pages/CatalogPage";
+import { ProfessionalPortalPage } from "./pages/ProfessionalPortal";
+import { SettingsTabsPage } from "./pages/SettingsTabs";
+import TeamPage from "./pages/TeamPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import BillingPage from "./pages/BillingPage";
 import LoginPage from "./pages/LoginPage";
@@ -35,8 +36,10 @@ function Router() {
       <Route path="/integrations" component={IntegrationsPage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/team" component={TeamPage} />
+      <Route path="/services" component={ServicesPage} />
+      <Route path="/professionals" component={ProfessionalsPage} />
       <Route path="/my-work" component={ProfessionalPortalPage} />
-      <Route path="/settings" component={SettingsPage} />
+      <Route path="/settings" component={SettingsTabsPage} />
       <Route component={NotFoundPage} />
     </Switch>
   );

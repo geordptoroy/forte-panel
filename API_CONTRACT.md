@@ -28,12 +28,23 @@ Toda operação mutável aceita `Idempotency-Key`. A mesma chave não pode execu
 | `POST` | `/api/v1/contacts/upsert` | Criar ou atualizar lead por telefone |
 | `GET` | `/api/v1/contacts/:id` | Consultar contexto operacional do contato |
 | `POST` | `/api/v1/lead-memory` | Buscar, criar, atualizar lead ou registrar nota para o n8n |
+| `GET` | `/api/v1/availability` | Consultar serviços, profissionais ativos e horários futuros reais |
 | `POST` | `/api/v1/appointments` | Criar reserva com checagem de conflito |
 | `POST` | `/api/v1/messages` | Enfileirar mensagem para o worker de WhatsApp |
 | `PATCH` | `/api/v1/contacts/:id/stage` | Mover contato no funil com auditoria |
 | `POST` | `/api/v1/appointments/:id/cancel` | Cancelar reserva |
 | `POST` | `/api/v1/appointments/:id/reschedule` | Reagendar reserva com checagem de conflito |
 | `POST` | `/api/v1/webhooks/inbound/whatsapp` | Receber evento normalizado do PAPI/n8n |
+
+## Agenda, serviços e profissionais
+
+`GET /api/v1/availability` devolve a agenda operacional real do workspace. O retorno inclui `timezone`, `services`, `professionals` e `appointments`, sempre considerando apenas serviços e profissionais ativos.
+
+Os parâmetros opcionais `serviceId` e `professionalId` restringem a consulta. Quando um `serviceId` é informado, a lista de profissionais traz somente quem executa aquele serviço, segundo a tabela `professionalServices`. Sem essa tabela, todos os profissionais ativos permanecem disponíveis como compatibilidade.
+
+Cada profissional traz `serviceIds`, e cada serviço traz `professionalIds`, o que permite ao agente escolher um par válido de serviço e executor antes de reservar.
+
+`appointments` mostra apenas horários ainda não encerrados e não cancelados, com `startsAt`, `endsAt`, `status`, `serviceName`, `professionalName` e `contactName`. O agente deve usar o `professionalId` retornado por essa consulta ao chamar `POST /api/v1/appointments`; o servidor recusa a reserva quando o profissional não executa o serviço informado (`409 service_not_linked`) e quando o período é inválido (`400 invalid_period`).
 
 ## Webhook de entrada
 

@@ -10,9 +10,10 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const login = trpc.auth.localLogin.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await utils.auth.me.invalidate();
-      navigate("/dashboard");
+      await utils.auth.access.invalidate();
+      navigate(result.operationalRole === "professional" && result.role === "agent" ? "/my-work" : "/dashboard");
     },
     onError: (error) => toast.error(error.message),
   });
@@ -28,13 +29,13 @@ export default function LoginPage() {
         <div className="auth-mark"><LockKeyhole size={18} /></div>
         <span className="eyebrow">Forte Panel / Acesso</span>
         <h1>Entrar no painel</h1>
-        <p>Acesse a instalação protegida pelo administrador único.</p>
+        <p>Use o acesso criado pelo proprietário da instalação.</p>
         <form onSubmit={submit} className="auth-form">
-          <label className="form-field"><span>E-mail do administrador</span><input className="input-control" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+          <label className="form-field"><span>E-mail</span><input className="input-control" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
           <label className="form-field"><span>Senha</span><input className="input-control" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
           <button className="btn-primary auth-submit" type="submit" disabled={login.isPending}><LogIn size={14} /> {login.isPending ? "Entrando..." : "Entrar"}</button>
         </form>
-        <small className="auth-footnote">A conta é configurada pelas variáveis LOCAL_ADMIN_EMAIL e LOCAL_ADMIN_PASSWORD do Compose.</small>
+        <small className="auth-footnote">Cada pessoa acessa com o próprio e-mail e senha. A visão do painel muda conforme o papel e o perfil operacional.</small>
       </section>
     </main>
   );

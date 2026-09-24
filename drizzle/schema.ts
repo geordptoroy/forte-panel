@@ -14,7 +14,7 @@ export const messageDirectionEnum = pgEnum("message_direction", ["inbound", "out
 export const messageSenderTypeEnum = pgEnum("message_sender_type", ["lead", "ai", "human", "system"]);
 export const messageTypeEnum = pgEnum("message_type", ["text", "image", "audio", "video", "document"]);
 export const messageStatusEnum = pgEnum("message_status", ["received", "queued", "processing", "sent", "failed"]);
-export const appointmentStatusEnum = pgEnum("appointment_status", ["requested", "confirmed", "cancelled", "completed", "no_show"]);
+export const appointmentStatusEnum = pgEnum("appointment_status", ["requested", "confirmed", "in_progress", "completed", "cancelled", "no_show"]);
 export const quoteStatusEnum = pgEnum("quote_status", ["orcamento", "aguardando_aprovacao", "aprovado", "sinal_pendente", "parcialmente_pago", "pago", "cancelado"]);
 
 export const users = pgTable("users", {
@@ -22,6 +22,7 @@ export const users = pgTable("users", {
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
+  phone: varchar("phone", { length: 32 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: userRoleEnum("role").default("user").notNull(),
   passwordHash: text("passwordHash"),
@@ -54,7 +55,10 @@ export const workspaceMembers = pgTable("workspaceMembers", {
   active: integer("active").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("workspace_members_unique_idx").on(table.workspaceId, table.userId),
+  index("workspace_members_professional_idx").on(table.workspaceId, table.professionalId),
+]);
 
 export const workspaceSettings = pgTable("workspaceSettings", {
   id: serial("id").primaryKey(),
@@ -184,7 +188,9 @@ export const services = pgTable("services", {
   active: integer("active").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("services_workspace_idx").on(table.workspaceId, table.active),
+]);
 
 export const professionals = pgTable("professionals", {
   id: serial("id").primaryKey(),
@@ -195,7 +201,9 @@ export const professionals = pgTable("professionals", {
   active: integer("active").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("professionals_workspace_idx").on(table.workspaceId, table.active),
+]);
 
 export const professionalServices = pgTable("professionalServices", {
   id: serial("id").primaryKey(),
@@ -216,7 +224,9 @@ export const availability = pgTable("availability", {
   startMinute: integer("startMinute").notNull(),
   endMinute: integer("endMinute").notNull(),
   active: integer("active").default(1).notNull(),
-});
+}, (table) => [
+  index("availability_professional_idx").on(table.workspaceId, table.professionalId, table.weekday),
+]);
 
 export const appointmentsTable = pgTable("appointments", {
   id: serial("id").primaryKey(),
@@ -231,7 +241,10 @@ export const appointmentsTable = pgTable("appointments", {
   source: varchar("source", { length: 40 }).default("panel").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("appointments_workspace_idx").on(table.workspaceId, table.startsAt),
+  index("appointments_professional_idx").on(table.professionalId, table.startsAt),
+]);
 
 export const quotes = pgTable("quotes", {
   id: serial("id").primaryKey(),
