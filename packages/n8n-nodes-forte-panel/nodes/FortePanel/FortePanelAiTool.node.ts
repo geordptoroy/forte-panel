@@ -1,5 +1,5 @@
 import { DynamicTool } from '@langchain/core/tools';
-import type { IDataObject, IHttpRequestOptions, INodeType, INodeTypeDescription, ISupplyDataFunctions, SupplyData } from 'n8n-workflow';
+import type { IDataObject, IHttpRequestOptions, IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription, ISupplyDataFunctions, SupplyData } from 'n8n-workflow';
 import { NodeConnectionTypes } from 'n8n-workflow';
 
 function asString(value: unknown): string {
@@ -87,5 +87,22 @@ export class FortePanelAiTool implements INodeType {
         func: async (input: string) => callPanel(this, input),
       }),
     };
+  }
+
+  /**
+   * n8n 2.x validates executable nodes before running a workflow, even when
+   * the node is connected through the ai_tool sub-node connection. Keep a
+   * direct execution path for manual runs and compatibility with that
+   * validator; the AI Agent normally uses supplyData above.
+   */
+  async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+    const input = this.getInputData();
+    const output: INodeExecutionData[] = [];
+    for (let index = 0; index < input.length; index += 1) {
+      const value = input[index]?.json ?? {};
+      const response = await callPanel(this as unknown as ISupplyDataFunctions, JSON.stringify(value));
+      output.push({ json: { response }, pairedItem: { item: index } });
+    }
+    return [output];
   }
 }
