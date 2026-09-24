@@ -37,11 +37,11 @@ services:
     pull_policy: always
     container_name: forte_panel
     restart: unless-stopped
-    env_file:
-      - .env.local
     environment:
       NODE_ENV: production
       PORT: 3000
+      FORTE_API_KEY: ${FORTE_API_KEY:-teste-panel-local}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:-teste-webhook-local}
       DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
       REDIS_URL: redis://redis_panel:6379/0
       RUN_MIGRATIONS: "true"
@@ -62,8 +62,7 @@ networks:
   panel-network:
     name: forte-panel-network
   pastorini-network:
-    external: true
-    name: ${PASTORINI_NETWORK:-forte-local_pastorini-network}
+    name: ${COMPOSE_PROJECT_NAME:-forte-local}_pastorini-network
 
 volumes:
   forte_postgres_panel_data:

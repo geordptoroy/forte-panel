@@ -39,19 +39,23 @@ Como o pacote GHCR do repositório é privado, faça login uma única vez na má
 echo "$GITHUB_TOKEN" | docker login ghcr.io -u geordptoroy --password-stdin
 ```
 
-Na pasta do compose principal, suba a stack original já ajustada:
+Coloque o repositório ao lado do seu `docker-compose.yaml` principal:
 
 ```bash
-docker compose up -d postgres_papi postgres_n8n redis_papi n8n pastorini_api qdrant localai
+git clone https://github.com/geordptoroy/forte-panel.git forte-panel
 ```
 
-Depois, na pasta do Forte Panel, suba o painel e seus serviços próprios:
+Depois, na pasta que contém o `docker-compose.yaml` principal, suba **toda a stack com um único comando**:
 
 ```bash
-docker compose -p forte-local -f docker-compose.local.yml up -d
+docker compose -p forte-local \
+  --env-file forte-panel/.env.local \
+  -f docker-compose.yaml \
+  -f forte-panel/docker-compose.local.yml \
+  up -d
 ```
 
-Se a stack principal foi iniciada com outro nome de projeto, defina `PASTORINI_NETWORK` em `.env.local` com o nome exibido por `docker network ls`.
+O segundo arquivo funciona como override: adiciona `postgres_panel`, `redis_panel` e `forte-panel` ao mesmo projeto Compose. Não é necessário executar um segundo `docker compose`.
 
 Alternativamente, para desenvolver o frontend fora do container:
 
