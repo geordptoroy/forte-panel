@@ -122,7 +122,7 @@ export class FortePanel implements INodeType {
     group: ['transform'],
     version: 1,
     subtitle: '={{$parameter["operation"]}}',
-    description: 'Uma única AI Tool para o CRM do Forte Panel. Busca e atualiza leads, registra notas, consulta e altera a agenda, enfileira mensagens WhatsApp e consulta o prompt publicado. O Forte Panel é a fonte de verdade; Clientverse e Easy!Appointments não devem ser usados.',
+    description: 'AI Tool oficial do Forte Panel para CRM, agenda, prompt publicado e fila de WhatsApp. Use esta ferramenta como fonte de verdade para consultar e atualizar leads, registrar notas, consultar disponibilidade, criar, cancelar ou reagendar agendamentos e enfileirar mensagens.',
     defaults: { name: 'Forte Panel' },
     inputs: [NodeConnectionTypes.Main],
     outputs: [NodeConnectionTypes.Main],
