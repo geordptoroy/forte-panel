@@ -75,6 +75,14 @@ Quando `N8N_EVENTS_WEBHOOK_URL` está configurada, o worker publica `message.rec
 
 Cada requisição inclui `X-Forte-Event-Id`, `Idempotency-Key` com o mesmo identificador do evento e, quando `N8N_WEBHOOK_SECRET` está configurado, `X-Forte-Signature: sha256=<HMAC-SHA256 do corpo bruto>`. O timeout é controlado por `N8N_WEBHOOK_TIMEOUT_MS`; após `EVENT_WORKER_MAX_ATTEMPTS`, o evento permanece como `failed` para reprocessamento operacional.
 
+## Notificações internas
+
+As preferências em `workspaceSettings.notification_preferences` alimentam uma caixa pessoal exibida pela campainha do painel. `contact.created`, `appointment.created` e `appointment.confirmed` criam notificações dentro da mesma transação que registra o evento de domínio. Cada item tem deduplicação por `(workspaceId, userId, eventKey)` e guarda título, texto, rota interna, data de criação e data de leitura. A leitura e a contagem de não lidas são isoladas por usuário e workspace.
+
+Novos leads notificam gestores e atendentes humanos ativos. Agendamentos criados ou confirmados notificam gestores e o profissional vinculado àquela reserva; outros atendentes e executores não veem o evento. Somente gestores consultam e alteram as preferências globais. A campainha atualiza automaticamente a cada 30 segundos, abre o destino interno do alerta e oferece marcação individual ou em lote como lido.
+
+Quando `dailySummary` está ativo, o worker gera no máximo um resumo por workspace e dia local, a partir das 18h no fuso cadastrado. O resumo conta agendamentos não cancelados iniciados naquele dia e novos leads criados naquele dia, e é entregue apenas a gestores ativos. A chave diária é única por workspace, usuário e data, tornando seguras execuções repetidas do worker.
+
 ## Erros
 
 A API usa respostas JSON com `error`, `message` e, quando aplicável, `requestId`. Os códigos esperados são `400` para payload inválido, `401` para credencial ausente ou incorreta, `409` para conflito de agenda/idempotência incompatível, `422` para regra de negócio e `500` para falha inesperada.

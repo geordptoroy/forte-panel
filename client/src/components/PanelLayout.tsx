@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   BarChart3,
   Bell,
   BrainCircuit,
   CalendarDays,
+  CheckCheck,
   ClipboardList,
   ChevronLeft,
   ChevronRight,
@@ -122,6 +124,7 @@ type AccessProfile = {
   operationalRole?: string;
   canSeeFullAgenda?: boolean;
   restrictedToOwnAgenda?: boolean;
+  memberActive?: boolean;
   professionalName?: string | null;
 } | null | undefined;
 
@@ -200,11 +203,49 @@ function Sidebar({ collapsed, onToggle, onNavigate, access, unreadCount }: {
 export default function PanelLayout({ children, eyebrow = "Operação", title = "Dashboard", description, actions }: PanelLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [location] = useLocation();
   const { data: workspace } = trpc.workspace.current.useQuery();
   const { data: access } = trpc.auth.access.useQuery();
   const { data: inboxContacts } = trpc.inbox.contacts.useQuery(undefined, { enabled: Boolean(access?.canSeeFullAgenda) });
+  const notificationsQuery = trpc.workspace.inAppNotifications.useQuery(undefined, {
+    enabled: access?.memberActive === true,
+    refetchInterval: 30_000,
+  });
+  const notificationUtils = trpc.useUtils();
+  const markNotificationRead = trpc.workspace.markNotificationRead.useMutation({
+    onMutate: async ({ id }) => {
+      await notificationUtils.workspace.inAppNotifications.cancel();
+      const previous = notificationUtils.workspace.inAppNotifications.getData();
+      if (previous) {
+        const wasUnread = previous.items.some((item) => item.id === id && !item.readAt);
+        notificationUtils.workspace.inAppNotifications.setData(undefined, {
+          ...previous,
+          unreadCount: Math.max(0, previous.unreadCount - (wasUnread ? 1 : 0)),
+          items: previous.items.map((item) => item.id === id && !item.readAt ? { ...item, readAt: new Date().toISOString() } : item),
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _input, context) => { if (context?.previous) notificationUtils.workspace.inAppNotifications.setData(undefined, context.previous); },
+    onSettled: async () => { await notificationUtils.workspace.inAppNotifications.invalidate(); },
+  });
+  const markAllNotificationsRead = trpc.workspace.markAllNotificationsRead.useMutation({
+    onMutate: async () => {
+      await notificationUtils.workspace.inAppNotifications.cancel();
+      const previous = notificationUtils.workspace.inAppNotifications.getData();
+      if (previous) notificationUtils.workspace.inAppNotifications.setData(undefined, {
+        ...previous,
+        unreadCount: 0,
+        items: previous.items.map((item) => item.readAt ? item : { ...item, readAt: new Date().toISOString() }),
+      });
+      return { previous };
+    },
+    onError: (_error, _input, context) => { if (context?.previous) notificationUtils.workspace.inAppNotifications.setData(undefined, context.previous); },
+    onSettled: async () => { await notificationUtils.workspace.inAppNotifications.invalidate(); },
+  });
   const unreadCount = (inboxContacts ?? []).reduce((total, contact) => total + contact.unread, 0);
+  const notificationItems = notificationsQuery.data?.items ?? [];
   useEffect(() => setMobileOpen(false), [location]);
   return (
     <div className="panel-app">
@@ -219,7 +260,35 @@ export default function PanelLayout({ children, eyebrow = "Operação", title = 
             <button className="icon-button mobile-menu-button" onClick={() => setMobileOpen(true)} aria-label="Abrir menu"><Menu size={17} /></button>
             <div className="topbar-spacer" />
             <div className="topbar-status"><span className="live-dot" /> {workspace?.name ?? "Forte Panel"}</div>
-            <button className="icon-button topbar-bell" aria-label="Notificações"><Bell size={14} /></button>
+            <Popover open={notificationsOpen} onOpenChange={setNotificationsOpen}>
+              <PopoverTrigger asChild>
+                <button className="icon-button topbar-bell" aria-label={`Notificações${(notificationsQuery.data?.unreadCount ?? 0) > 0 ? `, ${notificationsQuery.data?.unreadCount} não lidas` : ""}`}>
+                  <Bell size={14} />
+                  {(notificationsQuery.data?.unreadCount ?? 0) > 0 && <span className="notification-count">{Math.min(notificationsQuery.data!.unreadCount, 99)}</span>}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="notification-popover">
+                <div className="notification-panel-header">
+                  <div><strong>Notificações</strong><small>{notificationsQuery.data?.unreadCount ?? 0} não lidas</small></div>
+                  <button className="notification-read-all" disabled={!notificationsQuery.data?.unreadCount || markAllNotificationsRead.isPending} onClick={() => markAllNotificationsRead.mutate()}><CheckCheck size={13} /> Marcar todas lidas</button>
+                </div>
+                {notificationsQuery.isLoading
+                  ? <div className="notification-empty">Carregando notificações…</div>
+                  : notificationItems.length === 0
+                    ? <div className="notification-empty">Você está em dia. Novas notificações aparecerão aqui.</div>
+                    : <div className="notification-list">{notificationItems.map((item) => (
+                      <Link href={item.href} key={item.id} onClick={() => {
+                        setNotificationsOpen(false);
+                        if (!item.readAt) markNotificationRead.mutate({ id: item.id });
+                      }}>
+                        <span className={`notification-item ${item.readAt ? "is-read" : "is-unread"}`}>
+                          <span className="notification-item-copy"><strong>{item.title}</strong><small>{item.body}</small><time>{new Date(item.createdAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: workspace?.timezone ?? "America/Sao_Paulo" })}</time></span>
+                          {!item.readAt && <i aria-label="Não lida" />}
+                        </span>
+                      </Link>
+                    ))}</div>}
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="page-heading">
             <div>

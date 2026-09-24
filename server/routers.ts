@@ -35,6 +35,9 @@ import {
   listProfessionals,
   listMessagesForContact,
   listQuotes,
+  listInAppNotifications,
+  markAllInAppNotificationsRead,
+  markInAppNotificationRead,
   moveContactStage,
   sendManualMessage,
   saveOnboardingProfile,
@@ -124,6 +127,7 @@ const withAccess = (
 
 const requireManager = withAccess((access) => access.canManageCatalog, "Somente proprietário, administrador ou gerente podem executar esta ação");
 const requireAdministrator = withAccess((access) => access.canManageTeam, "Somente proprietário ou administrador podem executar esta ação");
+const requireActiveMember = withAccess(() => true, "Seu acesso está desativado neste workspace");
 
 export const appRouter = router({
   system: systemRouter,
@@ -250,12 +254,31 @@ export const appRouter = router({
       const rows = await listWorkspaceAudit(input?.limit ?? 60);
       return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
     }),
-    notifyPreferences: protectedProcedure.query(async () => {
+    inAppNotifications: requireActiveMember.query(async ({ ctx }) => {
+      const workspace = await ensureDemoWorkspace();
+      if (!workspace) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Workspace indisponível" });
+      const result = await listInAppNotifications(workspace.id, ctx.user.id, 30);
+      return {
+        unreadCount: result.unreadCount,
+        items: result.items.map((item) => ({ ...item, createdAt: item.createdAt.toISOString(), readAt: item.readAt?.toISOString() ?? null })),
+      };
+    }),
+    markNotificationRead: requireActiveMember.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
+      const workspace = await ensureDemoWorkspace();
+      if (!workspace) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Workspace indisponível" });
+      return { updated: await markInAppNotificationRead(workspace.id, ctx.user.id, input.id) };
+    }),
+    markAllNotificationsRead: requireActiveMember.mutation(async ({ ctx }) => {
+      const workspace = await ensureDemoWorkspace();
+      if (!workspace) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Workspace indisponível" });
+      return { markedRead: await markAllInAppNotificationsRead(workspace.id, ctx.user.id) };
+    }),
+    notifyPreferences: requireManager.query(async () => {
       const workspace = await ensureDemoWorkspace();
       if (!workspace) return null;
       return getNotificationPreferences(workspace.id);
     }),
-    saveNotifyPreferences: protectedProcedure.input(z.object({
+    saveNotifyPreferences: requireManager.input(z.object({
       newLead: z.boolean(),
       appointmentCreated: z.boolean(),
       appointmentConfirmed: z.boolean(),

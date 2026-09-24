@@ -1,4 +1,4 @@
-import { processDomainEventsOnce, processQueuedMessagesOnce, recoverProcessingDomainEvents, recoverProcessingMessages } from "./db";
+import { processDailySummaryNotificationsOnce, processDomainEventsOnce, processQueuedMessagesOnce, recoverProcessingDomainEvents, recoverProcessingMessages } from "./db";
 
 const intervalMs = Number(process.env.WORKER_INTERVAL_MS ?? 1500);
 const batchSize = Number(process.env.WORKER_BATCH_SIZE ?? 10);
@@ -6,6 +6,7 @@ const maxAttempts = Number(process.env.WORKER_MAX_ATTEMPTS ?? 3);
 const eventBatchSize = Number(process.env.EVENT_WORKER_BATCH_SIZE ?? batchSize);
 const eventMaxAttempts = Number(process.env.EVENT_WORKER_MAX_ATTEMPTS ?? 5);
 let stopping = false;
+let nextDailySummarySweepAt = 0;
 
 async function tick() {
   try {
@@ -16,6 +17,11 @@ async function tick() {
     const events = await processDomainEventsOnce(eventBatchSize, eventMaxAttempts);
     if (events.processed > 0) {
       console.log(`[forte-worker] eventos=${events.processed} entregues=${events.delivered} falhas=${events.failed}`);
+    }
+    if (Date.now() >= nextDailySummarySweepAt) {
+      nextDailySummarySweepAt = Date.now() + 60_000;
+      const summaries = await processDailySummaryNotificationsOnce();
+      if (summaries.processed > 0) console.log(`[forte-worker] resumosDiarios=${summaries.processed}`);
     }
   } catch (error) {
     console.error("[forte-worker] erro no ciclo", error);

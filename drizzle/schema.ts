@@ -270,6 +270,23 @@ export const auditLogs = pgTable("auditLogs", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspaceId").notNull(),
+  userId: integer("userId").notNull(),
+  eventKey: varchar("eventKey", { length: 255 }).notNull(),
+  type: varchar("type", { length: 60 }).notNull(),
+  title: varchar("title", { length: 180 }).notNull(),
+  body: text("body").notNull(),
+  href: varchar("href", { length: 255 }).notNull(),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("notifications_user_event_unique_idx").on(table.workspaceId, table.userId, table.eventKey),
+  index("notifications_user_created_idx").on(table.workspaceId, table.userId, table.createdAt, table.id),
+  index("notifications_user_unread_idx").on(table.workspaceId, table.userId, table.readAt),
+]);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;

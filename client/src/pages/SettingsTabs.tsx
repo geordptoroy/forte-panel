@@ -34,8 +34,8 @@ export function SettingsTabsPage() {
     const list = [
       { key: "profile", label: "Perfil e conta" },
       { key: "security", label: "Segurança" },
-      { key: "notifications", label: "Notificações" },
     ];
+    if (access?.canSeeFullAgenda) list.push({ key: "notifications", label: "Notificações" });
     if (isProfessional) list.splice(1, 0, { key: "availability", label: "Minha disponibilidade" });
     if (access?.canSeeFullAgenda) list.push({ key: "audit", label: "Auditoria" });
     return list;
@@ -133,13 +133,13 @@ function NotificationsTab() {
   });
   if (!draft) return <EmptyState icon={Bell} title="Carregando preferências" description="Buscando as preferências persistidas deste workspace." />;
   const items: { key: keyof typeof draft; label: string; description: string }[] = [
-    { key: "newLead", label: "Novo lead", description: "Avisar quando um novo contato chegar pelo WhatsApp." },
-    { key: "appointmentCreated", label: "Agendamento criado", description: "Avisar quando a IA reservar um horário." },
-    { key: "appointmentConfirmed", label: "Agendamento confirmado", description: "Avisar quando o cliente confirmar o atendimento." },
-    { key: "dailySummary", label: "Resumo diário", description: "Receber um resumo do dia às 18h." },
+    { key: "newLead", label: "Novo lead", description: "Avisar a equipe quando um novo contato chegar pelo Inbox." },
+    { key: "appointmentCreated", label: "Agendamento criado", description: "Avisar gestores e o profissional responsável ao reservar um horário." },
+    { key: "appointmentConfirmed", label: "Agendamento confirmado", description: "Avisar gestores e o profissional quando o status mudar para confirmado." },
+    { key: "dailySummary", label: "Resumo diário", description: "Mostrar aos gestores um resumo do dia às 18h no fuso do workspace." },
   ];
   return <div>
-    <SectionTitle eyebrow="Alertas" title="Preferências de notificação" />
+    <SectionTitle eyebrow="Alertas no painel" title="Preferências de notificação" />
     <div className="team-table">{items.map((item) => <div className="team-row" key={item.key}>
       <div className="row-copy"><strong>{item.label}</strong><small>{item.description}</small></div>
       <label style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 10, color: "#a9a9a9" }}>

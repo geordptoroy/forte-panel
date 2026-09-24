@@ -49,6 +49,33 @@ function civilDayNumber(value: Pick<ZonedClock, "year" | "month" | "day">) {
   return Math.floor(Date.UTC(value.year, value.month - 1, value.day) / 86_400_000);
 }
 
+function utcInstantForLocalClock(clock: Pick<ZonedClock, "year" | "month" | "day">, minuteOfDay: number, timezone: string) {
+  const targetWallClock = Date.UTC(clock.year, clock.month - 1, clock.day) + minuteOfDay * 60_000;
+  let guess = targetWallClock;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const actual = getZonedClock(new Date(guess), timezone);
+    const actualWallClock = Date.UTC(actual.year, actual.month - 1, actual.day) + actual.minuteOfDay * 60_000;
+    const correction = targetWallClock - actualWallClock;
+    guess += correction;
+    if (Math.abs(correction) < 1) break;
+  }
+  return new Date(guess);
+}
+
+export function getLocalDayBounds(instant: Date, timezone: string) {
+  if (!Number.isFinite(instant.getTime())) throw new RangeError("Instante inválido");
+  const current = getZonedClock(instant, timezone);
+  const tomorrow = new Date(civilDayNumber(current) * 86_400_000 + 86_400_000);
+  const nextDate = { year: tomorrow.getUTCFullYear(), month: tomorrow.getUTCMonth() + 1, day: tomorrow.getUTCDate() };
+  const dayKey = `${current.year}-${String(current.month).padStart(2, "0")}-${String(current.day).padStart(2, "0")}`;
+  return {
+    dayKey,
+    minuteOfDay: current.minuteOfDay,
+    start: utcInstantForLocalClock(current, 0, timezone),
+    end: utcInstantForLocalClock(nextDate, 0, timezone),
+  };
+}
+
 /**
  * Rejects appointments that are not fully covered by one weekly availability
  * window. All wall-clock calculations use the workspace timezone, never the

@@ -201,6 +201,7 @@ export async function transitionAppointment(input: {
   if (input.restrictToProfessionalId) filters.push(eq(appointmentsTable.professionalId, input.restrictToProfessionalId));
   const appointment = (await db.select().from(appointmentsTable).where(and(...filters)).limit(1))[0];
   if (!appointment) return undefined;
+  if (appointment.status === input.status) return appointment;
   const updatedAt = new Date();
   const updated = await db.update(appointmentsTable).set({ status: input.status, updatedAt }).where(eq(appointmentsTable.id, appointment.id)).returning();
   if (input.status === "confirmed" || input.status === "cancelled") {

@@ -38,24 +38,24 @@
 - Criação/reagendamento e mudança da jornada serializados por lock da linha do profissional, protegendo contra reservas concorrentes.
 - API v1 de disponibilidade expõe as faixas semanais por profissional.
 - Testes unitários de fuso/jornada, integração PostgreSQL e validação E2E HTTP concluídos.
-- TypeScript, build e 30 testes com PostgreSQL aprovados.
+- Caixa interna de notificações persistente por usuário, com contagem, leitura individual/em lote e atualização periódica do sino.
+- Eventos de lead, agendamento criado e confirmado respeitam preferências e papéis; notificações são deduplicadas por workspace, usuário e evento.
+- Resumo diário idempotente às 18h do fuso local, executado pelo worker e destinado a gestores ativos.
+- TypeScript, build e 40 testes com PostgreSQL aprovados; testes de segurança cobrem visibilidade pessoal e restrição das preferências globais.
 
 ## Próxima fase
 
 - Adaptar o workflow n8n para chamar a API do Panel e substituir a ferramenta Clientverse.
-- Executar o primeiro teste local com a stack reduzida e importar o workflow real no n8n.
-- Validar `docker compose up --build` na máquina local; o sandbox não possui Docker instalado.
-- Criar healthchecks, autenticação por usuário/empresa e proxy HTTPS na VPS.
+- Importar o workflow real no n8n e exercitar a stack Docker Compose reduzida numa máquina com Docker; o sandbox atual não possui Docker.
 - Adicionar tela operacional para reprocessar eventos com status `failed` e visualizar tentativas do outbox.
-- Publicar eventos de confirmação de agendamento e tarefas quando esses módulos emitirem as transições correspondentes.
-- Disparar de fato as notificações cujas preferências já estão persistidas em `workspaceSettings`.
+- Completar hardening de deploy: proxy HTTPS e substituição das credenciais em texto puro no compose anexado.
 - Migrar a autenticação da API para chave por workspace com hash, no lugar da chave de ambiente.
 
 ## Bugs ou riscos conhecidos
 
-- O preview e o compose usam PostgreSQL. A validação desta etapa foi feita com um PostgreSQL 16 instalado no próprio sandbox, aplicando as migrations e executando os testes de isolamento; o `docker compose up --build` completo segue pendente porque o sandbox não possui Docker.
+- A migration `0009_in_app_notifications` foi aplicada no PostgreSQL 16 local de teste. O `docker compose up --build` completo segue pendente porque o sandbox não possui Docker.
 - A jornada atual representa janelas dentro de um dia; agendamentos que cruzam a meia-noite são recusados porque o schema ainda não representa turnos noturnos.
-- As preferências de notificação são persistidas, porém nenhum canal de envio (e-mail, WhatsApp ou push) está ligado a elas.
+- A caixa interna está implementada; notificações externas por e-mail, WhatsApp ou push ainda não fazem parte do canal escolhido.
 - As integrações externas permanecem bloqueadas em modo demo por segurança.
 - O compose anexado contém credenciais e licença em texto puro; elas precisam ser substituídas por secrets antes de qualquer deploy.
 - O Redis já está provisionado no compose, mas o worker atual usa o outbox PostgreSQL e polling; Redis poderá assumir debounce/cache em uma etapa posterior.

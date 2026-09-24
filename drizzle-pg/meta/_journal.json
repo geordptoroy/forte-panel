@@ -64,6 +64,13 @@
       "when": 1790284518175,
       "tag": "0008_operational_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790290872325,
+      "tag": "0009_in_app_notifications",
+      "breakpoints": true
     }
   ]
 }

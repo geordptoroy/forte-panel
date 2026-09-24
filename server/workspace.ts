@@ -11,6 +11,7 @@ import {
   type User,
 } from "../drizzle/schema";
 import { ensureDemoWorkspace, getDb } from "./db";
+import { defaultNotificationPreferences, parseNotificationPreferences, type NotificationPreferences } from "./notification-contract";
 
 export type WorkspaceMemberRole = "owner" | "admin" | "manager" | "agent";
 export type OperationalRole = "human_attendant" | "ai_attendant" | "professional";
@@ -321,27 +322,8 @@ export async function getNotificationPreferences(workspaceId: number) {
   const db = await getDb();
   if (!db) return defaultNotificationPreferences;
   const row = (await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "notification_preferences"))).orderBy(desc(workspaceSettings.id)).limit(1))[0];
-  if (!row?.value) return defaultNotificationPreferences;
-  try {
-    return { ...defaultNotificationPreferences, ...(JSON.parse(row.value) as Partial<NotificationPreferences>) };
-  } catch {
-    return defaultNotificationPreferences;
-  }
+  return parseNotificationPreferences(row?.value);
 }
-
-export type NotificationPreferences = {
-  newLead: boolean;
-  appointmentCreated: boolean;
-  appointmentConfirmed: boolean;
-  dailySummary: boolean;
-};
-
-export const defaultNotificationPreferences: NotificationPreferences = {
-  newLead: true,
-  appointmentCreated: true,
-  appointmentConfirmed: true,
-  dailySummary: false,
-};
 
 export async function saveNotificationPreferences(workspaceId: number, preferences: NotificationPreferences) {
   const db = await getDb();

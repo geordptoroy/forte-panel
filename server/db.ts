@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, asc, desc, eq, gt, lt, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import {
@@ -12,6 +12,7 @@ import {
   conversations,
   domainEvents,
   messages,
+  notifications,
   professionals,
   professionalServices,
   quotes,
@@ -28,7 +29,8 @@ import type { WhatsappProvider } from "./integrations/contracts";
 import { createN8nAdapter } from "./integrations/n8n";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
-import { assertWithinWorkingHours, ScheduleError } from "./schedule";
+import { assertWithinWorkingHours, getLocalDayBounds, ScheduleError } from "./schedule";
+import { dailySummaryEventKey, dailySummaryFor, notificationForEvent, notificationPreferenceForEvent, parseNotificationPreferences, type NotificationEvent } from "./notification-contract";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -231,17 +233,191 @@ export async function enqueueDomainEvent(input: {
   const db = await getDb();
   if (!db) return undefined;
   const eventKey = input.eventKey ?? `${input.event}:${input.aggregateType}:${input.aggregateId ?? crypto.randomUUID()}`;
-  const created = await db.insert(domainEvents).values({
-    workspaceId: input.workspaceId,
-    eventKey,
-    eventType: input.event,
-    aggregateType: input.aggregateType,
-    aggregateId: input.aggregateId,
-    payload: JSON.stringify(input.payload),
-  }).onConflictDoNothing({ target: domainEvents.eventKey }).returning();
-  if (created[0]) return created[0];
-  const existing = await db.select().from(domainEvents).where(eq(domainEvents.eventKey, eventKey)).limit(1);
-  return existing[0];
+  return db.transaction(async (tx) => {
+    const created = await tx.insert(domainEvents).values({
+      workspaceId: input.workspaceId,
+      eventKey,
+      eventType: input.event,
+      aggregateType: input.aggregateType,
+      aggregateId: input.aggregateId,
+      payload: JSON.stringify(input.payload),
+    }).onConflictDoNothing({ target: domainEvents.eventKey }).returning();
+    if (!created[0]) {
+      const existing = await tx.select().from(domainEvents).where(eq(domainEvents.eventKey, eventKey)).limit(1);
+      return existing[0];
+    }
+
+    const preferenceKey = notificationPreferenceForEvent(input.event);
+    if (!preferenceKey) return created[0];
+
+    const settings = await tx.select({ value: workspaceSettings.value }).from(workspaceSettings).where(and(
+      eq(workspaceSettings.workspaceId, input.workspaceId),
+      eq(workspaceSettings.key, "notification_preferences"),
+    )).orderBy(desc(workspaceSettings.id)).limit(1);
+    const preferences = parseNotificationPreferences(settings[0]?.value);
+    if (!preferences[preferenceKey]) return created[0];
+
+    const members = await tx.select({
+      userId: workspaceMembers.userId,
+      role: workspaceMembers.role,
+      professionalId: workspaceMembers.professionalId,
+      operationalRole: users.operationalRole,
+    }).from(workspaceMembers)
+      .innerJoin(users, eq(users.id, workspaceMembers.userId))
+      .where(and(eq(workspaceMembers.workspaceId, input.workspaceId), eq(workspaceMembers.active, 1)));
+    const allMemberIds = await tx.select({ userId: workspaceMembers.userId }).from(workspaceMembers)
+      .where(eq(workspaceMembers.workspaceId, input.workspaceId));
+    const managerRole = (role: string) => role === "owner" || role === "admin" || role === "manager";
+    const professionalId = Number(input.payload.professionalId ?? 0);
+    const recipients = members.filter((member) => {
+      if (input.event === "contact.created") return managerRole(member.role) || (member.role === "agent" && member.operationalRole !== "professional");
+      return managerRole(member.role) || (member.operationalRole === "professional" && member.professionalId === professionalId);
+    }).map((member) => member.userId);
+
+    // The bootstrap administrator may be authorized without an explicit member row.
+    if (!members.some((member) => managerRole(member.role))) {
+      const bootstrapAdmins = await tx.select({ id: users.id }).from(users).where(eq(users.role, "admin"));
+      const allMemberUserIds = new Set(allMemberIds.map((member) => member.userId));
+      for (const user of bootstrapAdmins) if (!allMemberUserIds.has(user.id)) recipients.push(user.id);
+    }
+    const uniqueRecipients = Array.from(new Set(recipients));
+    if (uniqueRecipients.length === 0) return created[0];
+
+    let appointment: { contactName: string | null; serviceName: string | null; professionalName: string | null; startsAt: Date | null } | undefined;
+    let timezone = "America/Sao_Paulo";
+    if (input.event !== "contact.created") {
+      const appointmentId = Number(input.payload.appointmentId ?? input.aggregateId ?? 0);
+      appointment = appointmentId ? (await tx.select({
+        contactName: contacts.name,
+        serviceName: services.name,
+        professionalName: professionals.name,
+        startsAt: appointmentsTable.startsAt,
+      }).from(appointmentsTable)
+        .leftJoin(contacts, eq(contacts.id, appointmentsTable.contactId))
+        .leftJoin(services, eq(services.id, appointmentsTable.serviceId))
+        .leftJoin(professionals, eq(professionals.id, appointmentsTable.professionalId))
+        .where(and(eq(appointmentsTable.id, appointmentId), eq(appointmentsTable.workspaceId, input.workspaceId))).limit(1))[0] : undefined;
+      const workspace = (await tx.select({ timezone: workspaces.timezone }).from(workspaces).where(eq(workspaces.id, input.workspaceId)).limit(1))[0];
+      timezone = workspace?.timezone ?? timezone;
+    }
+    const copy = notificationForEvent({ event: input.event as NotificationEvent, payload: input.payload, appointment, timezone });
+
+    await tx.insert(notifications).values(uniqueRecipients.map((userId) => ({
+      workspaceId: input.workspaceId,
+      userId,
+      eventKey,
+      type: copy.type,
+      title: copy.title,
+      body: copy.body,
+      href: copy.href,
+      createdAt: created[0]!.createdAt,
+    }))).onConflictDoNothing({ target: [notifications.workspaceId, notifications.userId, notifications.eventKey] });
+    return created[0];
+  });
+}
+
+export async function listInAppNotifications(workspaceId: number, userId: number, limit = 30) {
+  const db = await getDb();
+  if (!db) return { items: [], unreadCount: 0 };
+  const items = await db.select().from(notifications).where(and(
+    eq(notifications.workspaceId, workspaceId),
+    eq(notifications.userId, userId),
+  )).orderBy(desc(notifications.createdAt), desc(notifications.id)).limit(limit);
+  const unreadRows = await db.select({ count: sql<number>`count(*)::int` }).from(notifications).where(and(
+    eq(notifications.workspaceId, workspaceId),
+    eq(notifications.userId, userId),
+    isNull(notifications.readAt),
+  ));
+  return { items, unreadCount: Number(unreadRows[0]?.count ?? 0) };
+}
+
+export async function markInAppNotificationRead(workspaceId: number, userId: number, notificationId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const updated = await db.update(notifications).set({ readAt: new Date() }).where(and(
+    eq(notifications.workspaceId, workspaceId),
+    eq(notifications.userId, userId),
+    eq(notifications.id, notificationId),
+    isNull(notifications.readAt),
+  )).returning({ id: notifications.id });
+  return updated.length > 0;
+}
+
+export async function markAllInAppNotificationsRead(workspaceId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+  const updated = await db.update(notifications).set({ readAt: new Date() }).where(and(
+    eq(notifications.workspaceId, workspaceId),
+    eq(notifications.userId, userId),
+    isNull(notifications.readAt),
+  )).returning({ id: notifications.id });
+  return updated.length;
+}
+
+export async function processDailySummaryNotificationsOnce(now = new Date(), onlyWorkspaceId?: number) {
+  const db = await getDb();
+  if (!db) return { processed: 0, skipped: true };
+  const activeWorkspaces = await db.select().from(workspaces).where(onlyWorkspaceId
+    ? and(eq(workspaces.active, 1), eq(workspaces.id, onlyWorkspaceId))
+    : eq(workspaces.active, 1));
+  let processed = 0;
+  for (const workspace of activeWorkspaces) {
+    let bounds: ReturnType<typeof getLocalDayBounds>;
+    try {
+      bounds = getLocalDayBounds(now, workspace.timezone);
+    } catch {
+      continue;
+    }
+    if (bounds.minuteOfDay < 18 * 60) continue;
+    const settings = await db.select({ value: workspaceSettings.value }).from(workspaceSettings).where(and(
+      eq(workspaceSettings.workspaceId, workspace.id),
+      eq(workspaceSettings.key, "notification_preferences"),
+    )).orderBy(desc(workspaceSettings.id)).limit(1);
+    if (!parseNotificationPreferences(settings[0]?.value).dailySummary) continue;
+
+    const members = await db.select({ userId: workspaceMembers.userId }).from(workspaceMembers)
+      .where(and(
+        eq(workspaceMembers.workspaceId, workspace.id),
+        eq(workspaceMembers.active, 1),
+        inArray(workspaceMembers.role, ["owner", "admin", "manager"]),
+      ));
+    const allMemberIds = await db.select({ userId: workspaceMembers.userId }).from(workspaceMembers)
+      .where(eq(workspaceMembers.workspaceId, workspace.id));
+    const recipients = members.map((member) => member.userId);
+    const allMemberUserIds = new Set(allMemberIds.map((member) => member.userId));
+    if (recipients.length === 0) {
+      const bootstrapAdmins = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin"));
+      for (const user of bootstrapAdmins) if (!allMemberUserIds.has(user.id)) recipients.push(user.id);
+    }
+    const uniqueRecipients = Array.from(new Set(recipients));
+    if (uniqueRecipients.length === 0) continue;
+
+    const [appointmentRows, leadRows] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(appointmentsTable).where(and(
+        eq(appointmentsTable.workspaceId, workspace.id),
+        gte(appointmentsTable.startsAt, bounds.start),
+        lt(appointmentsTable.startsAt, bounds.end),
+        ne(appointmentsTable.status, "cancelled"),
+      )),
+      db.select({ count: sql<number>`count(*)::int` }).from(contacts).where(and(
+        eq(contacts.workspaceId, workspace.id),
+        gte(contacts.createdAt, bounds.start),
+        lt(contacts.createdAt, bounds.end),
+      )),
+    ]);
+    const copy = dailySummaryFor(bounds.dayKey, Number(appointmentRows[0]?.count ?? 0), Number(leadRows[0]?.count ?? 0));
+    const created = await db.insert(notifications).values(uniqueRecipients.map((userId) => ({
+      workspaceId: workspace.id,
+      userId,
+      eventKey: dailySummaryEventKey(workspace.id, bounds.dayKey),
+      type: copy.type,
+      title: copy.title,
+      body: copy.body,
+      href: copy.href,
+    }))).onConflictDoNothing({ target: [notifications.workspaceId, notifications.userId, notifications.eventKey] }).returning({ id: notifications.id });
+    processed += created.length;
+  }
+  return { processed, skipped: false };
 }
 
 export async function ensureDemoWorkspace() {
@@ -901,6 +1077,16 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
       lastMessageAt: receivedAt,
     });
     contact = (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+    if (contact) {
+      await enqueueDomainEvent({
+        workspaceId: workspace.id,
+        event: "contact.created",
+        aggregateType: "contact",
+        aggregateId: contact.id,
+        eventKey: `contact.created:${contact.id}`,
+        payload: { contactId: contact.id, phone: contact.externalPhone, name: contact.name, stage: contact.stage },
+      });
+    }
   } else {
     await db.update(contacts).set({
       name: input.name?.trim() || contact.name,

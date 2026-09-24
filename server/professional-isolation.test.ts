@@ -156,6 +156,9 @@ describe.skipIf(!hasDatabase)("professional agenda isolation", () => {
     await expect(caller.workspace.members()).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(caller.workspace.audit({ limit: 10 })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(caller.workspace.professionalsDetailed()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.workspace.notifyPreferences()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.workspace.saveNotifyPreferences({ newLead: false, appointmentCreated: false, appointmentConfirmed: false, dailySummary: false }))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(caller.workspace.services()).resolves.toBeInstanceOf(Array);
   });
 
