@@ -2,13 +2,17 @@ import crypto from "node:crypto";
 import express, { type Express, type Request, type Response } from "express";
 import { z } from "zod";
 import {
+  cancelAgendaAppointment,
   createAgendaAppointment,
   getAgendaSnapshot,
   getApiIdempotency,
   getContactById,
   ingestInboundWhatsApp,
   markWebhookEvent,
+  moveContactStage,
+  queueOutboundMessage,
   registerWebhookEvent,
+  rescheduleAgendaAppointment,
   saveApiIdempotency,
   upsertApiContact,
 } from "./db";
@@ -37,6 +41,12 @@ const webhookSchema = z.object({
   messageType: z.enum(["text", "image", "audio", "video", "document"]).optional(),
   receivedAt: z.coerce.date().optional(),
 });
+const messageSchema = z.object({
+  contactId: z.number().int().positive(),
+  content: z.string().min(1).max(10000),
+});
+const stageSchema = z.object({ stage: z.string().min(1).max(80) });
+const rescheduleSchema = z.object({ startsAt: z.coerce.date(), endsAt: z.coerce.date() });
 
 type ApiResult = { statusCode: number; body: Record<string, unknown> };
 
@@ -134,6 +144,73 @@ api.post("/appointments", async (req, res) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao criar agendamento";
+    return fail(res, message.includes("indisponível") ? 409 : 500, message, message.includes("indisponível") ? "schedule_conflict" : "internal_error");
+  }
+});
+
+api.post("/messages", async (req, res) => {
+  if (!requireApiKey(req, res)) return;
+  const parsed = messageSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, "Payload de mensagem inválido", "invalid_payload");
+  try {
+    return idempotent(req, res, async () => {
+      const contact = await getContactById(parsed.data.contactId);
+      if (!contact) return { statusCode: 404, body: { error: "not_found", message: "Contato não encontrado" } };
+      const message = await queueOutboundMessage(parsed.data.contactId, parsed.data.content);
+      return { statusCode: 202, body: { data: { id: message?.id, contactId: parsed.data.contactId, status: "queued" } } };
+    });
+  } catch (error) {
+    return fail(res, 500, error instanceof Error ? error.message : "Falha ao enfileirar mensagem", "internal_error");
+  }
+});
+
+api.patch("/contacts/:id/stage", async (req, res) => {
+  if (!requireApiKey(req, res)) return;
+  const id = Number(req.params.id);
+  const parsed = stageSchema.safeParse(req.body);
+  if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de contato inválido", "invalid_id");
+  if (!parsed.success) return fail(res, 400, "Payload de estágio inválido", "invalid_payload");
+  try {
+    return idempotent(req, res, async () => {
+      const contact = await getContactById(id);
+      if (!contact) return { statusCode: 404, body: { error: "not_found", message: "Contato não encontrado" } };
+      await moveContactStage(id, parsed.data.stage);
+      return { statusCode: 200, body: { data: { id, stage: parsed.data.stage } } };
+    });
+  } catch (error) {
+    return fail(res, 500, error instanceof Error ? error.message : "Falha ao mover estágio", "internal_error");
+  }
+});
+
+api.post("/appointments/:id/cancel", async (req, res) => {
+  if (!requireApiKey(req, res)) return;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de agendamento inválido", "invalid_id");
+  try {
+    return idempotent(req, res, async () => {
+      const appointment = await cancelAgendaAppointment(id);
+      if (!appointment) return { statusCode: 404, body: { error: "not_found", message: "Agendamento não encontrado" } };
+      return { statusCode: 200, body: { data: { id, status: "cancelled" } } };
+    });
+  } catch (error) {
+    return fail(res, 500, error instanceof Error ? error.message : "Falha ao cancelar agendamento", "internal_error");
+  }
+});
+
+api.post("/appointments/:id/reschedule", async (req, res) => {
+  if (!requireApiKey(req, res)) return;
+  const id = Number(req.params.id);
+  const parsed = rescheduleSchema.safeParse(req.body);
+  if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de agendamento inválido", "invalid_id");
+  if (!parsed.success) return fail(res, 400, "Payload de reagendamento inválido", "invalid_payload");
+  try {
+    return idempotent(req, res, async () => {
+      const appointment = await rescheduleAgendaAppointment(id, parsed.data.startsAt, parsed.data.endsAt);
+      if (!appointment) return { statusCode: 404, body: { error: "not_found", message: "Agendamento não encontrado" } };
+      return { statusCode: 200, body: { data: { id, status: appointment.status, startsAt: appointment.startsAt, endsAt: appointment.endsAt } } };
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao reagendar";
     return fail(res, message.includes("indisponível") ? 409 : 500, message, message.includes("indisponível") ? "schedule_conflict" : "internal_error");
   }
 });

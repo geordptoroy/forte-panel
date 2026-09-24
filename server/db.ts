@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   appointmentsTable,
@@ -498,4 +498,51 @@ export async function upsertApiContact(input: { phone: string; name?: string; ci
     unreadCount: 0,
   });
   return (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+}
+
+
+export async function queueOutboundMessage(contactId: number, content: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const conversation = await getConversationByContact(contactId);
+  if (!conversation) throw new Error("Conversation not found");
+  const createdAt = new Date();
+  const result = await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, status: "queued", createdAt });
+  await db.update(contacts).set({ aiEnabled: 0, unreadCount: 0, lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
+  await db.update(conversations).set({ humanControlled: 1, unreadCount: 0, lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
+  await db.insert(auditLogs).values({ contactId, action: "api_message_queued", summary: "Mensagem enfileirada para o worker de WhatsApp" });
+  const created = await db.select().from(messages).where(eq(messages.id, Number(result[0].insertId))).limit(1);
+  return created[0];
+}
+
+export async function cancelAgendaAppointment(appointmentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const appointment = (await db.select().from(appointmentsTable).where(and(eq(appointmentsTable.id, appointmentId), eq(appointmentsTable.workspaceId, workspace.id))).limit(1))[0];
+  if (!appointment) return undefined;
+  await db.update(appointmentsTable).set({ status: "cancelled", updatedAt: new Date() }).where(eq(appointmentsTable.id, appointmentId));
+  return { ...appointment, status: "cancelled" as const };
+}
+
+export async function rescheduleAgendaAppointment(appointmentId: number, startsAt: Date, endsAt: Date) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const appointment = (await db.select().from(appointmentsTable).where(and(eq(appointmentsTable.id, appointmentId), eq(appointmentsTable.workspaceId, workspace.id))).limit(1))[0];
+  if (!appointment) return undefined;
+  const conflict = await db.select({ id: appointmentsTable.id }).from(appointmentsTable).where(and(
+    eq(appointmentsTable.workspaceId, workspace.id),
+    eq(appointmentsTable.professionalId, appointment.professionalId),
+    ne(appointmentsTable.id, appointmentId),
+    ne(appointmentsTable.status, "cancelled"),
+    lt(appointmentsTable.startsAt, endsAt),
+    gt(appointmentsTable.endsAt, startsAt),
+  )).limit(1);
+  if (conflict.length > 0) throw new Error("Horário indisponível para este profissional");
+  await db.update(appointmentsTable).set({ startsAt, endsAt, status: "requested", updatedAt: new Date() }).where(eq(appointmentsTable.id, appointmentId));
+  const updated = await db.select().from(appointmentsTable).where(eq(appointmentsTable.id, appointmentId)).limit(1);
+  return updated[0];
 }

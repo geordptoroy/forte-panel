@@ -20,11 +20,17 @@ Toda operação mutável aceita `Idempotency-Key`. A mesma chave não pode execu
 | `POST` | `/api/v1/contacts/upsert` | Criar ou atualizar lead por telefone |
 | `GET` | `/api/v1/contacts/:id` | Consultar contexto operacional do contato |
 | `POST` | `/api/v1/appointments` | Criar reserva com checagem de conflito |
+| `POST` | `/api/v1/messages` | Enfileirar mensagem para o worker de WhatsApp |
+| `PATCH` | `/api/v1/contacts/:id/stage` | Mover contato no funil com auditoria |
+| `POST` | `/api/v1/appointments/:id/cancel` | Cancelar reserva |
+| `POST` | `/api/v1/appointments/:id/reschedule` | Reagendar reserva com checagem de conflito |
 | `POST` | `/api/v1/webhooks/inbound/whatsapp` | Receber evento normalizado do PAPI/n8n |
 
 ## Webhook de entrada
 
 O evento deve conter `eventId`, `phone`, `name`, `content`, `messageType` e `receivedAt`. O `eventId` funciona como chave de idempotência do canal. O endpoint poderá exigir `X-Webhook-Signature` com HMAC quando `WEBHOOK_SIGNING_SECRET` estiver configurado.
+
+Mensagens enviadas por `POST /messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio no provedor. A primeira implementação mantém a fila no banco; Redis e retries serão adicionados na etapa da VPS.
 
 ```json
 {
