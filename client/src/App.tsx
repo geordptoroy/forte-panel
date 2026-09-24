@@ -1,6 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Route, Switch, Redirect } from "wouter";
+import { Route, Switch, Redirect, useLocation } from "wouter";
+import { trpc } from "./lib/trpc";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
@@ -17,6 +18,7 @@ import {
 } from "./pages/PanelPages";
 import OnboardingPage from "./pages/OnboardingPage";
 import BillingPage from "./pages/BillingPage";
+import LoginPage from "./pages/LoginPage";
 
 function Router() {
   return (
@@ -38,13 +40,22 @@ function Router() {
   );
 }
 
+function AuthenticatedRouter() {
+  const { data: user, isLoading } = trpc.auth.me.useQuery(undefined, { retry: false });
+  const [location] = useLocation();
+  if (location === "/login") return <LoginPage />;
+  if (isLoading) return <main className="auth-screen"><div className="auth-loading">Verificando acesso...</div></main>;
+  if (!user) return <Redirect to="/login" />;
+  return <Router />;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark">
         <TooltipProvider>
           <Toaster position="top-right" theme="dark" richColors />
-          <Router />
+          <AuthenticatedRouter />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

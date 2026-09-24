@@ -177,6 +177,9 @@ services:
       NODE_ENV: production
       PORT: 3000
       DEMO_MODE: "false"
+      LOCAL_AUTH_ENABLED: "true"
+      LOCAL_ADMIN_EMAIL: admin@fortepanel.local
+      LOCAL_ADMIN_PASSWORD: trocar-esta-senha
       FORTE_API_KEY: "teste-panel-local"
       WEBHOOK_SIGNING_SECRET: "teste-webhook-local"
       DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
@@ -213,6 +216,9 @@ services:
       NODE_ENV: production
       PORT: 3000
       DEMO_MODE: "false"
+      LOCAL_AUTH_ENABLED: "true"
+      LOCAL_ADMIN_EMAIL: admin@fortepanel.local
+      LOCAL_ADMIN_PASSWORD: trocar-esta-senha
       FORTE_API_KEY: "teste-panel-local"
       WEBHOOK_SIGNING_SECRET: "teste-webhook-local"
       DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel

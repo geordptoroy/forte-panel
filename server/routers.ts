@@ -1,6 +1,9 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { ENV } from "./_core/env";
+import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
@@ -25,6 +28,7 @@ import {
   sendManualMessage,
   saveOnboardingProfile,
   setContactAi,
+  upsertUser,
   updateQuotePayment,
 } from "./db";
 
@@ -55,6 +59,21 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
+    localLogin: publicProcedure
+      .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ENV.localAuthEnabled || !ENV.localAdminPassword) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Login local não configurado" });
+        }
+        if (input.email.trim().toLowerCase() !== ENV.localAdminEmail.trim().toLowerCase() || input.password !== ENV.localAdminPassword) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "E-mail ou senha inválidos" });
+        }
+        const openId = "local_admin";
+        await upsertUser({ openId, name: "Administrador", email: ENV.localAdminEmail, loginMethod: "local", role: "admin", lastSignedIn: new Date() });
+        const token = await sdk.signSession({ openId, appId: "local", name: "Administrador" });
+        ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: 1000 * 60 * 60 * 24 * 365 });
+        return { success: true } as const;
+      }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

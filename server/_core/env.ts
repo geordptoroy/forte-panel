@@ -7,4 +7,7 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  localAuthEnabled: process.env.LOCAL_AUTH_ENABLED === "true",
+  localAdminEmail: process.env.LOCAL_ADMIN_EMAIL ?? "admin@fortepanel.local",
+  localAdminPassword: process.env.LOCAL_ADMIN_PASSWORD ?? "",
 };
