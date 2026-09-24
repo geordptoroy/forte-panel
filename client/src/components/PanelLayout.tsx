@@ -27,7 +27,7 @@ const navGroups = [
     label: "Operação",
     items: [
       { href: "/dashboard", label: "Dashboard", description: "Visão geral", icon: LayoutDashboard },
-      { href: "/inbox", label: "Inbox", description: "Conversas e atendimento", icon: Inbox, badge: "3" },
+      { href: "/inbox", label: "Inbox", description: "Conversas e atendimento", icon: Inbox },
       { href: "/kanban", label: "Kanban", description: "Estágios comerciais", icon: KanbanSquare },
       { href: "/agenda", label: "Agenda", description: "Visitas e horários", icon: CalendarDays },
     ],
@@ -78,7 +78,7 @@ function Brand({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onToggle: () => void; onNavigate?: () => void }) {
+function Sidebar({ collapsed, onToggle, onNavigate, user, unreadCount }: { collapsed: boolean; onToggle: () => void; onNavigate?: () => void; user?: { name?: string | null; role?: string | null } | null; unreadCount: number }) {
   const [location] = useLocation();
   return (
     <aside className={`panel-sidebar ${collapsed ? "is-collapsed" : ""}`}>
@@ -104,7 +104,7 @@ function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onTo
                   <span className={`nav-item ${active ? "is-active" : ""}`} title={collapsed ? item.label : undefined}>
                     <Icon size={16} strokeWidth={active ? 2.4 : 1.8} />
                     {!collapsed && <span className="nav-item-copy"><strong>{item.label}</strong><small>{item.description}</small></span>}
-                    {!collapsed && item.badge && <em>{item.badge}</em>}
+                    {!collapsed && item.href === "/inbox" && unreadCount > 0 && <em>{unreadCount}</em>}
                   </span>
                 </Link>
               );
@@ -115,9 +115,9 @@ function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onTo
       <div className="sidebar-footer">
         <div className="profile-row">
           <div className="profile-avatar">GB</div>
-          {!collapsed && <div className="profile-copy"><strong>Gabriel Barbosa</strong><small>Administrador</small></div>}
+        {!collapsed && <div className="profile-copy"><strong>{user?.name ?? "Administrador"}</strong><small>{user?.role === "admin" ? "Administrador" : user?.role ?? "Operador"}</small></div>}
         </div>
-        {!collapsed && <div className="sidebar-version">FORTE PANEL <span>v0.1 demo</span></div>}
+        {!collapsed && <div className="sidebar-version">FORTE PANEL <span>Operacional</span></div>}
       </div>
     </aside>
   );
@@ -128,13 +128,16 @@ export default function PanelLayout({ children, eyebrow = "Operação", title = 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [location] = useLocation();
   const { data: workspace } = trpc.workspace.current.useQuery();
+  const { data: user } = trpc.auth.me.useQuery();
+  const { data: inboxContacts } = trpc.inbox.contacts.useQuery();
+  const unreadCount = (inboxContacts ?? []).reduce((total, contact) => total + contact.unread, 0);
   useEffect(() => setMobileOpen(false), [location]);
 
   return (
     <div className="panel-app">
       {mobileOpen && <button className="mobile-backdrop" aria-label="Fechar menu" onClick={() => setMobileOpen(false)} />}
       <div className={`desktop-sidebar ${mobileOpen ? "mobile-open" : ""}`}>
-        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} onNavigate={() => setMobileOpen(false)} />
+        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} onNavigate={() => setMobileOpen(false)} user={user} unreadCount={unreadCount} />
         <button className="mobile-close" onClick={() => setMobileOpen(false)} aria-label="Fechar menu"><X size={18} /></button>
       </div>
       <main className="panel-main">
