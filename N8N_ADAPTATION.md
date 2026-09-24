@@ -73,6 +73,8 @@ A IA poderá transformar esses dados em um prompt operacional, mas o sistema dev
 
 O primeiro endpoint para essa troca já está disponível: `POST /api/v1/lead-memory`. Ele preserva as quatro ações que a ferramenta antiga descreve — `buscar_lead`, `criar_lead`, `atualizar_lead` e `registrar_nota` — mas grava no CRM próprio, com auditoria e idempotência.
 
+Para evitar duas tools concorrentes no agente, o repositório agora inclui o pacote `packages/n8n-nodes-forte-panel`. Ele publica uma única AI Tool chamada **Forte Panel**, marcada com `usableAsTool: true`, que reúne CRM, agenda, prompt publicado e fila de mensagens. A tool deve ser conectada uma única vez ao AI Agent; o agente escolhe a ação via `$fromAI()`.
+
 ### Fase 2 — Panel como fonte de verdade
 
 1. O workflow chama `POST /api/v1/contacts/upsert` ao identificar ou atualizar um lead.
