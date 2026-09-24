@@ -9,11 +9,14 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   ensureDemoInbox,
   ensureDemoWorkspace,
+  createLocalWorkspaceMember,
   createAgendaAppointment,
   cancelAgendaAppointment,
   updateAgendaStatus,
   createQuote,
   getAgendaSnapshot,
+  getUserByEmail,
+  getWorkspaceMemberForUser,
   getDefaultWhatsappProvider,
   listWhatsappChannels,
   setDefaultWhatsappProvider,
@@ -34,6 +37,7 @@ import {
   setContactAi,
   upsertApiContact,
   upsertUser,
+  verifyLocalPassword,
   updateQuotePayment,
 } from "./db";
 
@@ -64,18 +68,32 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
+    access: protectedProcedure.query(async ({ ctx }) => {
+      const member = await getWorkspaceMemberForUser(ctx.user.id);
+      return {
+        userId: ctx.user.id,
+        role: member?.role ?? (ctx.user.role === "admin" ? "owner" : "agent"),
+        operationalRole: ctx.user.operationalRole ?? "human_attendant",
+        professionalId: member?.professionalId ?? null,
+      };
+    }),
     localLogin: publicProcedure
       .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
       .mutation(async ({ input, ctx }) => {
         if (!ENV.localAuthEnabled || !ENV.localAdminPassword) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Login local não configurado" });
         }
-        if (input.email.trim().toLowerCase() !== ENV.localAdminEmail.trim().toLowerCase() || input.password !== ENV.localAdminPassword) {
+        const email = input.email.trim().toLowerCase();
+        let account = await getUserByEmail(email);
+        const isEnvAdmin = email === ENV.localAdminEmail.trim().toLowerCase() && input.password === ENV.localAdminPassword;
+        if (isEnvAdmin) {
+          await upsertUser({ openId: "local_admin", name: "Administrador", email: ENV.localAdminEmail, loginMethod: "local", role: "admin", lastSignedIn: new Date() });
+          account = await getUserByEmail(email);
+        } else if (!account || !verifyLocalPassword(input.password, account.passwordHash)) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "E-mail ou senha inválidos" });
         }
-        const openId = "local_admin";
-        await upsertUser({ openId, name: "Administrador", email: ENV.localAdminEmail, loginMethod: "local", role: "admin", lastSignedIn: new Date() });
-        const token = await sdk.signSession({ openId, appId: "local", name: "Administrador" });
+        if (!account) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Conta local não pôde ser carregada" });
+        const token = await sdk.signSession({ openId: account.openId, appId: "local", name: account.name ?? email });
         ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: 1000 * 60 * 60 * 24 * 365 });
         return { success: true } as const;
       }),
@@ -108,6 +126,18 @@ export const appRouter = router({
         role: member.role,
         active: member.active === 1,
       }));
+    }),
+    createMember: protectedProcedure.input(z.object({
+      name: z.string().trim().min(2).max(160),
+      email: z.string().email(),
+      password: z.string().min(8).max(128),
+      role: z.enum(["admin", "manager", "agent"]),
+      operationalRole: z.enum(["human_attendant", "ai_attendant", "professional"]),
+      professionalId: z.number().int().positive().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Somente administradores podem criar contas" });
+      const user = await createLocalWorkspaceMember(input);
+      return { id: user.id, name: user.name, email: user.email, role: input.role, operationalRole: input.operationalRole, professionalId: input.professionalId ?? null };
     }),
     channels: protectedProcedure.query(async () => {
       const channels = await listWhatsappChannels();
@@ -187,8 +217,10 @@ export const appRouter = router({
   }),
 
   agenda: router({
-    snapshot: protectedProcedure.query(async () => {
-      const snapshot = await getAgendaSnapshot();
+    snapshot: protectedProcedure.query(async ({ ctx }) => {
+      const member = await getWorkspaceMemberForUser(ctx.user.id);
+      const professionalId = ctx.user.role === "admin" || member?.role === "owner" || member?.role === "admin" || member?.role === "manager" ? undefined : member?.professionalId ?? undefined;
+      const snapshot = await getAgendaSnapshot(professionalId);
       return {
         timezone: snapshot.timezone,
         services: snapshot.services,

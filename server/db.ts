@@ -89,6 +89,65 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
+function hashLocalPassword(password: string) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derived = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${derived}`;
+}
+
+export function verifyLocalPassword(password: string, stored: string | null) {
+  if (!stored) return false;
+  const [salt, expected] = stored.split(":");
+  if (!salt || !expected) return false;
+  const actual = crypto.scryptSync(password, salt, 64).toString("hex");
+  return actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+}
+
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.email, email.trim().toLowerCase())).limit(1);
+  return result[0];
+}
+
+export async function createLocalWorkspaceMember(input: {
+  name: string;
+  email: string;
+  password: string;
+  role: "admin" | "manager" | "agent";
+  operationalRole: "human_attendant" | "ai_attendant" | "professional";
+  professionalId?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const email = input.email.trim().toLowerCase();
+  const existing = await getUserByEmail(email);
+  if (existing) throw new Error("Já existe uma conta com este e-mail");
+  const [user] = await db.insert(users).values({
+    openId: `local_${crypto.randomUUID()}`,
+    name: input.name.trim(),
+    email,
+    loginMethod: "local",
+    role: input.role === "admin" ? "admin" : "user",
+    passwordHash: hashLocalPassword(input.password),
+    operationalRole: input.operationalRole,
+  }).returning();
+  if (!user) throw new Error("Não foi possível criar a conta");
+  await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: input.role, professionalId: input.professionalId });
+  return user;
+}
+
+export async function getWorkspaceMemberForUser(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return undefined;
+  const result = await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId), eq(workspaceMembers.active, 1))).limit(1);
+  return result[0];
+}
+
 export const DEMO_WORKSPACE_SLUG = "forte-demo";
 
 export type DomainEventName =
@@ -421,15 +480,17 @@ export async function ensureDemoAgenda() {
   }
 }
 
-export async function getAgendaSnapshot() {
+export async function getAgendaSnapshot(professionalId?: number) {
   const db = await getDb();
   if (!db) return { timezone: "America/Sao_Paulo", services: [], professionals: [], appointments: [] };
   await ensureDemoAgenda();
   const workspace = await ensureDemoWorkspace();
   if (!workspace) return { timezone: "America/Sao_Paulo", services: [], professionals: [], appointments: [] };
+  const professionalFilter = professionalId ? eq(professionals.id, professionalId) : undefined;
+  const appointmentFilter = professionalId ? and(eq(appointmentsTable.workspaceId, workspace.id), eq(appointmentsTable.professionalId, professionalId)) : eq(appointmentsTable.workspaceId, workspace.id);
   const [workspaceServices, workspaceProfessionals, workspaceAppointments] = await Promise.all([
     db.select().from(services).where(and(eq(services.workspaceId, workspace.id), eq(services.active, 1))),
-    db.select().from(professionals).where(and(eq(professionals.workspaceId, workspace.id), eq(professionals.active, 1))),
+    db.select().from(professionals).where(and(eq(professionals.workspaceId, workspace.id), eq(professionals.active, 1), professionalFilter)),
     db.select({
       id: appointmentsTable.id,
       contactId: appointmentsTable.contactId,
@@ -446,7 +507,7 @@ export async function getAgendaSnapshot() {
       .leftJoin(services, eq(services.id, appointmentsTable.serviceId))
       .leftJoin(professionals, eq(professionals.id, appointmentsTable.professionalId))
       .leftJoin(contacts, eq(contacts.id, appointmentsTable.contactId))
-      .where(eq(appointmentsTable.workspaceId, workspace.id))
+      .where(appointmentFilter)
       .orderBy(appointmentsTable.startsAt, appointmentsTable.id),
   ]);
   return { timezone: workspace.timezone, services: workspaceServices, professionals: workspaceProfessionals, appointments: workspaceAppointments };

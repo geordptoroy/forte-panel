@@ -43,6 +43,13 @@
       "when": 1790258239594,
       "tag": "0005_red_bloodscream",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790283019746,
+      "tag": "0006_lumpy_night_thrasher",
+      "breakpoints": true
     }
   ]
 }

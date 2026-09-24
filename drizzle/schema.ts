@@ -1,6 +1,7 @@
 import { index, integer, pgEnum, pgTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
+export const operationalRoleEnum = pgEnum("operational_role", ["human_attendant", "ai_attendant", "professional"]);
 export const workspacePlanEnum = pgEnum("workspace_plan", ["starter", "pro", "business"]);
 export const workspaceMemberRoleEnum = pgEnum("workspace_member_role", ["owner", "admin", "manager", "agent"]);
 export const whatsappProviderEnum = pgEnum("whatsapp_provider", ["papi", "meta_cloud_api"]);
@@ -23,6 +24,8 @@ export const users = pgTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: userRoleEnum("role").default("user").notNull(),
+  passwordHash: text("passwordHash"),
+  operationalRole: operationalRoleEnum("operationalRole"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -47,6 +50,7 @@ export const workspaceMembers = pgTable("workspaceMembers", {
   workspaceId: integer("workspaceId").notNull(),
   userId: integer("userId").notNull(),
   role: workspaceMemberRoleEnum("role").default("agent").notNull(),
+  professionalId: integer("professionalId"),
   active: integer("active").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
