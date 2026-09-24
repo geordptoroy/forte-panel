@@ -33,9 +33,8 @@ services:
       - panel-network
 
   forte-panel:
-    build:
-      context: .
-      dockerfile: infra/Dockerfile
+    image: ghcr.io/geordptoroy/forte-panel:latest
+    pull_policy: always
     container_name: forte_panel
     restart: unless-stopped
     env_file:

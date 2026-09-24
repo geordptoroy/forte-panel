@@ -23,7 +23,7 @@ extra_hosts:
   - "host.docker.internal:host-gateway"
 ```
 
-O repositório agora contém `docker-compose.local.yml`, que adiciona `postgres_panel`, `redis_panel` e `forte-panel`. O `postgres_panel` é um terceiro PostgreSQL, separado de `postgres_papi` e `postgres_n8n`; o painel não acessa nenhum dos bancos existentes. Ele aplica as migrations PostgreSQL ao iniciar e entra na mesma rede Docker do PAPI/n8n.
+O repositório agora contém `docker-compose.local.yml`, que adiciona `postgres_panel`, `redis_panel` e `forte-panel`. O `postgres_panel` é um terceiro PostgreSQL, separado de `postgres_papi` e `postgres_n8n`; o painel não acessa nenhum dos bancos existentes. O serviço do painel usa a imagem `ghcr.io/geordptoroy/forte-panel:latest`, publicada automaticamente pelo GitHub Actions, aplica as migrations PostgreSQL ao iniciar e entra na mesma rede Docker do PAPI/n8n.
 
 ## Comandos
 
@@ -31,6 +31,12 @@ Copie o exemplo de variáveis e revise a rede do compose principal:
 
 ```bash
 cp .env.local.example .env.local
+```
+
+Como o pacote GHCR do repositório é privado, faça login uma única vez na máquina que vai executar a stack:
+
+```bash
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u geordptoroy --password-stdin
 ```
 
 Na pasta do compose principal, suba a stack original já ajustada:
@@ -42,7 +48,7 @@ docker compose up -d postgres_papi postgres_n8n redis_papi n8n pastorini_api qdr
 Depois, na pasta do Forte Panel, suba o painel e seus serviços próprios:
 
 ```bash
-docker compose -p forte-local -f docker-compose.local.yml up -d --build
+docker compose -p forte-local -f docker-compose.local.yml up -d
 ```
 
 Se a stack principal foi iniciada com outro nome de projeto, defina `PASTORINI_NETWORK` em `.env.local` com o nome exibido por `docker network ls`.
