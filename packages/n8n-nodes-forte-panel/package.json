@@ -24,8 +24,8 @@
     "credentials": ["dist/credentials/FortePanelApi.credentials.js"],
     "nodes": ["dist/nodes/FortePanel/FortePanel.node.js"]
   },
-  "dependencies": {
-    "n8n-workflow": "2.15.1"
+  "peerDependencies": {
+    "n8n-workflow": "*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
