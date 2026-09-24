@@ -4,7 +4,7 @@
 
 O Forte Panel será um CRM operacional de WhatsApp para prestadores de serviço e lojas que precisam responder clientes, organizar oportunidades, agendar atendimentos e acompanhar vendas sem depender de várias ferramentas desconectadas.
 
-O produto será multiempresa. Cada empresa terá seus usuários, equipe, canais, serviços, agenda, funil, regras de automação, templates e indicadores. A experiência deve funcionar para clínicas, salões, barbearias, assistência técnica, oficinas, instaladores, lojas com atendimento consultivo e negócios locais em geral.
+O produto será preparado para múltiplas empresas no modelo comercial, mas cada instalação vendida terá um único workspace e um único administrador proprietário. O primeiro usuário autenticado faz o bootstrap do administrador; os demais usuários são atendentes/operadores. Cada instalação terá seus usuários, equipe, canais, serviços, agenda, funil, regras de automação, templates e indicadores. A experiência deve funcionar para clínicas, salões, barbearias, assistência técnica, oficinas, instaladores, lojas com atendimento consultivo e negócios locais em geral.
 
 ## Decisão de arquitetura
 
@@ -23,7 +23,7 @@ A fonte de verdade será o Forte Panel para contatos, conversas, mensagens, funi
 | Automação | Gatilhos de mensagem, mudança de estágio, agendamento e follow-up | P1 |
 | API e webhooks | Integração com n8n, sites, anúncios e sistemas externos | P1 |
 | Relatórios | Conversão, tempo de resposta, ocupação, receita e performance da equipe | P1 |
-| Multiusuário | Proprietário, administrador, atendente, agenda e leitura | P0 |
+| Multiusuário | Um administrador por instalação; atendentes com permissões operacionais | P0 |
 | Planos e limites | Empresas, usuários, conversas, automações e canais por plano | P2 |
 
 ## Fluxo principal de venda

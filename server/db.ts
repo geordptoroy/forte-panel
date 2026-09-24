@@ -49,6 +49,9 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
   const values: InsertUser = { openId: user.openId };
   const updateSet: Record<string, unknown> = {};
+  const existingUser = (await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.openId, user.openId)).limit(1))[0];
+  const anyAdmin = (await db.select({ id: users.id }).from(users).where(eq(users.role, "admin")).limit(1))[0];
+  const canBootstrapAdmin = !anyAdmin && !existingUser;
   const textFields = ["name", "email", "loginMethod"] as const;
   for (const field of textFields) {
     if (user[field] === undefined) continue;
@@ -62,7 +65,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (user.role !== undefined) {
     values.role = user.role;
     updateSet.role = user.role;
-  } else if (user.openId === ENV.ownerOpenId) {
+  } else if (existingUser?.role === "admin" || (user.openId === ENV.ownerOpenId && canBootstrapAdmin)) {
     values.role = "admin";
     updateSet.role = "admin";
   }

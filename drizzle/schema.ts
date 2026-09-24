@@ -1,4 +1,5 @@
-import { integer, pgEnum, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { integer, pgEnum, pgTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 export const workspacePlanEnum = pgEnum("workspace_plan", ["starter", "pro", "business"]);
 export const workspaceMemberRoleEnum = pgEnum("workspace_member_role", ["owner", "admin", "manager", "agent"]);
@@ -23,7 +24,9 @@ export const users = pgTable("users", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("users_single_admin_idx").on(table.role).where(sql`${table.role} = 'admin'`),
+]);
 
 export const workspaces = pgTable("workspaces", {
   id: serial("id").primaryKey(),
