@@ -6,6 +6,7 @@ import {
   Bell,
   BrainCircuit,
   CalendarDays,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
@@ -30,6 +31,7 @@ const navGroups = [
       { href: "/inbox", label: "Inbox", description: "Conversas e atendimento", icon: Inbox },
       { href: "/kanban", label: "Kanban", description: "Estágios comerciais", icon: KanbanSquare },
       { href: "/agenda", label: "Agenda", description: "Visitas e horários", icon: CalendarDays },
+      { href: "/my-work", label: "Meu trabalho", description: "Tarefas atribuídas", icon: ClipboardList },
     ],
   },
   {

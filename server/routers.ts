@@ -10,6 +10,7 @@ import {
   ensureDemoInbox,
   ensureDemoWorkspace,
   createLocalWorkspaceMember,
+  createProfessional,
   createAgendaAppointment,
   cancelAgendaAppointment,
   updateAgendaStatus,
@@ -29,6 +30,7 @@ import {
   getConversationByContact,
   listInboxContacts,
   listWorkspaceMembers,
+  listProfessionals,
   listMessagesForContact,
   listQuotes,
   moveContactStage,
@@ -126,6 +128,21 @@ export const appRouter = router({
         role: member.role,
         active: member.active === 1,
       }));
+    }),
+    professionals: protectedProcedure.query(async () => (await listProfessionals()).map((professional) => ({
+      id: professional.id,
+      name: professional.name,
+      specialty: professional.specialty,
+      color: professional.color,
+    }))),
+    createProfessional: protectedProcedure.input(z.object({
+      name: z.string().trim().min(2).max(160),
+      specialty: z.string().max(120).optional(),
+      color: z.string().max(20).optional(),
+    })).mutation(async ({ input, ctx }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Somente administradores podem cadastrar profissionais" });
+      const professional = await createProfessional(input);
+      return { id: professional.id, name: professional.name, specialty: professional.specialty, color: professional.color };
     }),
     createMember: protectedProcedure.input(z.object({
       name: z.string().trim().min(2).max(160),

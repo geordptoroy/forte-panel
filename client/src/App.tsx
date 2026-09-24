@@ -15,6 +15,7 @@ import {
   NotFoundPage,
   SettingsPage,
   TeamPage,
+  ProfessionalPortalPage,
 } from "./pages/PanelPages";
 import OnboardingPage from "./pages/OnboardingPage";
 import BillingPage from "./pages/BillingPage";
@@ -34,6 +35,7 @@ function Router() {
       <Route path="/integrations" component={IntegrationsPage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/team" component={TeamPage} />
+      <Route path="/my-work" component={ProfessionalPortalPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFoundPage} />
     </Switch>

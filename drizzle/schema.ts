@@ -197,6 +197,17 @@ export const professionals = pgTable("professionals", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
+export const professionalServices = pgTable("professionalServices", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspaceId").notNull(),
+  professionalId: integer("professionalId").notNull(),
+  serviceId: integer("serviceId").notNull(),
+  active: integer("active").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("professional_services_unique_idx").on(table.workspaceId, table.professionalId, table.serviceId),
+]);
+
 export const availability = pgTable("availability", {
   id: serial("id").primaryKey(),
   workspaceId: integer("workspaceId").notNull(),
@@ -274,6 +285,8 @@ export type Service = typeof services.$inferSelect;
 export type InsertService = typeof services.$inferInsert;
 export type Professional = typeof professionals.$inferSelect;
 export type InsertProfessional = typeof professionals.$inferInsert;
+export type ProfessionalService = typeof professionalServices.$inferSelect;
+export type InsertProfessionalService = typeof professionalServices.$inferInsert;
 export type Availability = typeof availability.$inferSelect;
 export type InsertAvailability = typeof availability.$inferInsert;
 export type Appointment = typeof appointmentsTable.$inferSelect;

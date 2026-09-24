@@ -13,6 +13,7 @@ import {
   domainEvents,
   messages,
   professionals,
+  professionalServices,
   quotes,
   services,
   users,
@@ -146,6 +147,28 @@ export async function getWorkspaceMemberForUser(userId: number) {
   if (!workspace) return undefined;
   const result = await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId), eq(workspaceMembers.active, 1))).limit(1);
   return result[0];
+}
+
+export async function listProfessionals() {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) return [];
+  return db.select().from(professionals).where(and(eq(professionals.workspaceId, workspace.id), eq(professionals.active, 1))).orderBy(asc(professionals.name));
+}
+
+export async function createProfessional(input: { name: string; specialty?: string; color?: string }) {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) throw new Error("Workspace unavailable");
+  const [professional] = await db.insert(professionals).values({ workspaceId: workspace.id, name: input.name.trim(), specialty: input.specialty?.trim() || null, color: input.color ?? "#56d68a" }).returning();
+  return professional;
+}
+
+export async function linkProfessionalService(professionalId: number, serviceId: number) {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) throw new Error("Workspace unavailable");
+  await db.insert(professionalServices).values({ workspaceId: workspace.id, professionalId, serviceId, active: 1 }).onConflictDoUpdate({ target: [professionalServices.workspaceId, professionalServices.professionalId, professionalServices.serviceId], set: { active: 1 } });
 }
 
 export const DEMO_WORKSPACE_SLUG = "forte-demo";
