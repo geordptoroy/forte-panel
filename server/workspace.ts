@@ -226,17 +226,22 @@ export async function replaceAvailability(professionalId: number, entries: { wee
   if (!db || !workspace) throw new Error("Workspace indisponível");
   const professional = await getProfessionalInWorkspace(professionalId);
   if (!professional) throw new Error("Profissional não encontrado neste workspace");
-  await db.delete(availability).where(and(eq(availability.workspaceId, workspace.id), eq(availability.professionalId, professionalId)));
-  if (entries.length > 0) {
-    await db.insert(availability).values(entries.map((entry) => ({
-      workspaceId: workspace!.id,
-      professionalId,
-      weekday: entry.weekday,
-      startMinute: entry.startMinute,
-      endMinute: entry.endMinute,
-      active: 1,
-    })));
-  }
+  await db.transaction(async (tx) => {
+    // Use the same per-professional lock as reservation checks, so changing
+    // weekly hours cannot race with a booking using the previous schedule.
+    await tx.execute(sql`SELECT "id" FROM "professionals" WHERE "id" = ${professionalId} AND "workspaceId" = ${workspace.id} FOR UPDATE`);
+    await tx.delete(availability).where(and(eq(availability.workspaceId, workspace.id), eq(availability.professionalId, professionalId)));
+    if (entries.length > 0) {
+      await tx.insert(availability).values(entries.map((entry) => ({
+        workspaceId: workspace.id,
+        professionalId,
+        weekday: entry.weekday,
+        startMinute: entry.startMinute,
+        endMinute: entry.endMinute,
+        active: 1,
+      })));
+    }
+  });
   return entries;
 }
 

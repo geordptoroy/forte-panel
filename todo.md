@@ -32,8 +32,13 @@
 - Ciclo de atendimento com status `in_progress`, iniciado e concluído pelo próprio profissional.
 - Telas administrativas de Serviços, Profissionais, Equipe e Configurações com ações persistidas.
 - Migrations `0007_professional_services` e `0008_operational_catalog` aplicadas e validadas em PostgreSQL 16 real.
-- Testes de isolamento entre profissionais e script `scripts/validate-flow.mjs` com 21 validações por HTTP.
-- Testes, TypeScript e build validados.
+- Testes de isolamento entre profissionais e script `scripts/validate-flow.mjs` com validações por HTTP.
+- Agendamentos validados contra a jornada semanal no fuso horário do workspace; horários sem jornada ou fora do horário são recusados.
+- Sobreposição entre qualquer estado ativo de atendimento (inclusive `requested`) é recusada; intervalos consecutivos são permitidos.
+- Criação/reagendamento e mudança da jornada serializados por lock da linha do profissional, protegendo contra reservas concorrentes.
+- API v1 de disponibilidade expõe as faixas semanais por profissional.
+- Testes unitários de fuso/jornada, integração PostgreSQL e validação E2E HTTP concluídos.
+- TypeScript, build e 30 testes com PostgreSQL aprovados.
 
 ## Próxima fase
 
@@ -43,15 +48,13 @@
 - Criar healthchecks, autenticação por usuário/empresa e proxy HTTPS na VPS.
 - Adicionar tela operacional para reprocessar eventos com status `failed` e visualizar tentativas do outbox.
 - Publicar eventos de confirmação de agendamento e tarefas quando esses módulos emitirem as transições correspondentes.
-- Validar a jornada semanal no agendamento: recusar horários fora da `availability` do profissional.
-- Impedir sobreposição de atendimentos para o mesmo profissional no mesmo intervalo.
 - Disparar de fato as notificações cujas preferências já estão persistidas em `workspaceSettings`.
 - Migrar a autenticação da API para chave por workspace com hash, no lugar da chave de ambiente.
 
 ## Bugs ou riscos conhecidos
 
 - O preview e o compose usam PostgreSQL. A validação desta etapa foi feita com um PostgreSQL 16 instalado no próprio sandbox, aplicando as migrations e executando os testes de isolamento; o `docker compose up --build` completo segue pendente porque o sandbox não possui Docker.
-- O agendamento valida vínculo profissional-serviço e período, mas ainda não compara o horário com a jornada semanal nem detecta sobreposição de atendimentos.
+- A jornada atual representa janelas dentro de um dia; agendamentos que cruzam a meia-noite são recusados porque o schema ainda não representa turnos noturnos.
 - As preferências de notificação são persistidas, porém nenhum canal de envio (e-mail, WhatsApp ou push) está ligado a elas.
 - As integrações externas permanecem bloqueadas em modo demo por segurança.
 - O compose anexado contém credenciais e licença em texto puro; elas precisam ser substituídas por secrets antes de qualquer deploy.

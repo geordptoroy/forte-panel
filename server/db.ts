@@ -28,6 +28,7 @@ import type { WhatsappProvider } from "./integrations/contracts";
 import { createN8nAdapter } from "./integrations/n8n";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
+import { assertWithinWorkingHours, ScheduleError } from "./schedule";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -568,7 +569,7 @@ export type AgendaSnapshot = {
   serviceLinks: { id: number; workspaceId: number; professionalId: number; serviceId: number; active: number; createdAt: Date }[];
 };
 
-export async function getAgendaSnapshot(professionalId?: number): Promise<AgendaSnapshot> {
+export async function getAgendaSnapshot(professionalId?: number, includeWorkspaceAvailability = false): Promise<AgendaSnapshot> {
   const db = await getDb();
   const emptySnapshot: AgendaSnapshot = { timezone: "America/Sao_Paulo", services: [], professionals: [], appointments: [], availability: [], serviceLinks: [] };
   if (!db) return emptySnapshot;
@@ -603,8 +604,12 @@ export async function getAgendaSnapshot(professionalId?: number): Promise<Agenda
   const visibleServices = professionalId
     ? workspaceServices.filter((service) => links.length === 0 || links.some((link) => link.serviceId === service.id && link.professionalId === professionalId))
     : workspaceServices;
-  const professionalAvailability = professionalId
-    ? await db.select().from(availability).where(and(eq(availability.workspaceId, workspace.id), eq(availability.professionalId, professionalId), eq(availability.active, 1))).orderBy(availability.weekday)
+  const professionalAvailability = professionalId || includeWorkspaceAvailability
+    ? await db.select().from(availability).where(and(
+      eq(availability.workspaceId, workspace.id),
+      eq(availability.active, 1),
+      ...(professionalId ? [eq(availability.professionalId, professionalId)] : []),
+    )).orderBy(availability.weekday)
     : [];
   return {
     timezone: workspace.timezone,
@@ -622,26 +627,43 @@ export async function createAgendaAppointment(input: { contactId?: number; servi
   await ensureDemoAgenda();
   const workspace = await ensureDemoWorkspace();
   if (!workspace) throw new Error("Workspace unavailable");
-  const conflict = await db.select({ id: appointmentsTable.id }).from(appointmentsTable).where(and(
-    eq(appointmentsTable.workspaceId, workspace.id),
-    eq(appointmentsTable.professionalId, input.professionalId),
-    eq(appointmentsTable.status, "confirmed"),
-    lt(appointmentsTable.startsAt, input.endsAt),
-    gt(appointmentsTable.endsAt, input.startsAt),
-  )).limit(1);
-  if (conflict.length > 0) throw new Error("Horário indisponível para este profissional");
-  const created = await db.insert(appointmentsTable).values({ workspaceId: workspace.id, ...input, status: "requested", source: "panel" }).returning();
-  if (created[0]) {
+  const createdAppointment = await db.transaction(async (tx) => {
+    // Serialize slot checks for this professional. A row-level lock means two
+    // concurrent requests cannot both pass the overlap query before inserting.
+    await tx.execute(sql`SELECT "id" FROM "professionals" WHERE "id" = ${input.professionalId} AND "workspaceId" = ${workspace.id} AND "active" = 1 FOR UPDATE`);
+    const professional = (await tx.select({ id: professionals.id }).from(professionals).where(and(
+      eq(professionals.id, input.professionalId),
+      eq(professionals.workspaceId, workspace.id),
+      eq(professionals.active, 1),
+    )).limit(1))[0];
+    if (!professional) throw new ScheduleError("professional_unavailable", "Este profissional não está ativo neste workspace");
+    const windows = await tx.select({ weekday: availability.weekday, startMinute: availability.startMinute, endMinute: availability.endMinute })
+      .from(availability)
+      .where(and(eq(availability.workspaceId, workspace.id), eq(availability.professionalId, input.professionalId), eq(availability.active, 1)));
+    assertWithinWorkingHours(input.startsAt, input.endsAt, workspace.timezone, windows);
+
+    const conflict = await tx.select({ id: appointmentsTable.id }).from(appointmentsTable).where(and(
+      eq(appointmentsTable.workspaceId, workspace.id),
+      eq(appointmentsTable.professionalId, input.professionalId),
+      ne(appointmentsTable.status, "cancelled"),
+      lt(appointmentsTable.startsAt, input.endsAt),
+      gt(appointmentsTable.endsAt, input.startsAt),
+    )).limit(1);
+    if (conflict.length > 0) throw new ScheduleError("appointment_conflict", "Horário indisponível: existe outro atendimento deste profissional neste intervalo");
+    const created = await tx.insert(appointmentsTable).values({ workspaceId: workspace.id, ...input, status: "requested", source: "panel" }).returning();
+    return created[0];
+  });
+  if (createdAppointment) {
     await enqueueDomainEvent({
       workspaceId: workspace.id,
       event: "appointment.created",
       aggregateType: "appointment",
-      aggregateId: created[0].id,
-      eventKey: `appointment.created:${created[0].id}`,
-      payload: { appointmentId: created[0].id, contactId: created[0].contactId, serviceId: created[0].serviceId, professionalId: created[0].professionalId, startsAt: created[0].startsAt, endsAt: created[0].endsAt, status: created[0].status },
+      aggregateId: createdAppointment.id,
+      eventKey: `appointment.created:${createdAppointment.id}`,
+      payload: { appointmentId: createdAppointment.id, contactId: createdAppointment.contactId, serviceId: createdAppointment.serviceId, professionalId: createdAppointment.professionalId, startsAt: createdAppointment.startsAt, endsAt: createdAppointment.endsAt, status: createdAppointment.status },
     });
   }
-  return created[0];
+  return createdAppointment;
 }
 
 export async function listInboxContacts() {
@@ -1083,20 +1105,33 @@ export async function rescheduleAgendaAppointment(appointmentId: number, startsA
   if (!db) throw new Error("Database unavailable");
   const workspace = await ensureDemoWorkspace();
   if (!workspace) throw new Error("Workspace unavailable");
-  const appointment = (await db.select().from(appointmentsTable).where(and(eq(appointmentsTable.id, appointmentId), eq(appointmentsTable.workspaceId, workspace.id))).limit(1))[0];
-  if (!appointment) return undefined;
-  const conflict = await db.select({ id: appointmentsTable.id }).from(appointmentsTable).where(and(
-    eq(appointmentsTable.workspaceId, workspace.id),
-    eq(appointmentsTable.professionalId, appointment.professionalId),
-    ne(appointmentsTable.id, appointmentId),
-    ne(appointmentsTable.status, "cancelled"),
-    lt(appointmentsTable.startsAt, endsAt),
-    gt(appointmentsTable.endsAt, startsAt),
-  )).limit(1);
-  if (conflict.length > 0) throw new Error("Horário indisponível para este profissional");
-  await db.update(appointmentsTable).set({ startsAt, endsAt, status: "requested", updatedAt: new Date() }).where(eq(appointmentsTable.id, appointmentId));
-  const updated = await db.select().from(appointmentsTable).where(eq(appointmentsTable.id, appointmentId)).limit(1);
-  return updated[0];
+  return db.transaction(async (tx) => {
+    const appointment = (await tx.select().from(appointmentsTable).where(and(
+      eq(appointmentsTable.id, appointmentId),
+      eq(appointmentsTable.workspaceId, workspace.id),
+    )).limit(1))[0];
+    if (!appointment) return undefined;
+    await tx.execute(sql`SELECT "id" FROM "professionals" WHERE "id" = ${appointment.professionalId} AND "workspaceId" = ${workspace.id} FOR UPDATE`);
+    const windows = await tx.select({ weekday: availability.weekday, startMinute: availability.startMinute, endMinute: availability.endMinute })
+      .from(availability)
+      .where(and(eq(availability.workspaceId, workspace.id), eq(availability.professionalId, appointment.professionalId), eq(availability.active, 1)));
+    assertWithinWorkingHours(startsAt, endsAt, workspace.timezone, windows);
+
+    const conflict = await tx.select({ id: appointmentsTable.id }).from(appointmentsTable).where(and(
+      eq(appointmentsTable.workspaceId, workspace.id),
+      eq(appointmentsTable.professionalId, appointment.professionalId),
+      ne(appointmentsTable.id, appointmentId),
+      ne(appointmentsTable.status, "cancelled"),
+      lt(appointmentsTable.startsAt, endsAt),
+      gt(appointmentsTable.endsAt, startsAt),
+    )).limit(1);
+    if (conflict.length > 0) throw new ScheduleError("appointment_conflict", "Horário indisponível: existe outro atendimento deste profissional neste intervalo");
+    const updated = await tx.update(appointmentsTable).set({ startsAt, endsAt, status: "requested", updatedAt: new Date() }).where(and(
+      eq(appointmentsTable.id, appointmentId),
+      eq(appointmentsTable.workspaceId, workspace.id),
+    )).returning();
+    return updated[0];
+  });
 }
 
 

@@ -21,6 +21,7 @@ import {
   upsertApiContact,
 } from "./db";
 import { professionalCanExecuteService } from "./agenda";
+import { ScheduleError } from "./schedule";
 
 const api = express.Router();
 const contactSchema = z.object({
@@ -188,7 +189,7 @@ api.get("/contacts/:id", async (req, res) => {
 api.get("/availability", async (req, res) => {
   if (!requireApiKey(req, res)) return;
   try {
-    const snapshot = await getAgendaSnapshot();
+    const snapshot = await getAgendaSnapshot(undefined, true);
     const requestedServiceId = req.query.serviceId ? Number(req.query.serviceId) : undefined;
     const requestedProfessionalId = req.query.professionalId ? Number(req.query.professionalId) : undefined;
     const serviceId = Number.isInteger(requestedServiceId) && (requestedServiceId ?? 0) > 0 ? requestedServiceId : undefined;
@@ -210,6 +211,9 @@ api.get("/availability", async (req, res) => {
         specialty: professional.specialty,
         color: professional.color,
         serviceIds: snapshot.serviceLinks.filter((link) => link.professionalId === professional.id && link.active === 1).map((link) => link.serviceId),
+        weeklyAvailability: snapshot.availability
+          .filter((window) => window.professionalId === professional.id)
+          .map((window) => ({ weekday: window.weekday, startMinute: window.startMinute, endMinute: window.endMinute })),
       }));
 
     const services = snapshot.services
@@ -252,13 +256,16 @@ api.post("/appointments", async (req, res) => {
   if (!parsed.success) return fail(res, 400, "Payload de agendamento inválido", "invalid_payload");
   if (parsed.data.endsAt <= parsed.data.startsAt) return fail(res, 400, "O horário final precisa ser maior que o inicial", "invalid_period");
   try {
-    return idempotent(req, res, async () => {
+    return await idempotent(req, res, async () => {
       const allowed = await professionalCanExecuteService(parsed.data.professionalId, parsed.data.serviceId);
       if (!allowed) return { statusCode: 409, body: { error: "service_not_linked", message: "Este profissional não executa o serviço informado" } };
       const appointment = await createAgendaAppointment(parsed.data);
       return { statusCode: 201, body: { data: { id: appointment?.id, status: appointment?.status, startsAt: appointment?.startsAt, endsAt: appointment?.endsAt } } };
     });
   } catch (error) {
+    if (error instanceof ScheduleError) {
+      return fail(res, error.reason === "invalid_period" ? 400 : 409, error.message, error.reason);
+    }
     const message = error instanceof Error ? error.message : "Falha ao criar agendamento";
     return fail(res, message.includes("indisponível") ? 409 : 500, message, message.includes("indisponível") ? "schedule_conflict" : "internal_error");
   }
@@ -321,12 +328,15 @@ api.post("/appointments/:id/reschedule", async (req, res) => {
   if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de agendamento inválido", "invalid_id");
   if (!parsed.success) return fail(res, 400, "Payload de reagendamento inválido", "invalid_payload");
   try {
-    return idempotent(req, res, async () => {
+    return await idempotent(req, res, async () => {
       const appointment = await rescheduleAgendaAppointment(id, parsed.data.startsAt, parsed.data.endsAt);
       if (!appointment) return { statusCode: 404, body: { error: "not_found", message: "Agendamento não encontrado" } };
       return { statusCode: 200, body: { data: { id, status: appointment.status, startsAt: appointment.startsAt, endsAt: appointment.endsAt } } };
     });
   } catch (error) {
+    if (error instanceof ScheduleError) {
+      return fail(res, error.reason === "invalid_period" ? 400 : 409, error.message, error.reason);
+    }
     const message = error instanceof Error ? error.message : "Falha ao reagendar";
     return fail(res, message.includes("indisponível") ? 409 : 500, message, message.includes("indisponível") ? "schedule_conflict" : "internal_error");
   }

@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { ensureDemoWorkspace, getDb } from "./db";
-import { appointmentsTable, professionals, professionalServices, services, users, workspaceMembers } from "../drizzle/schema";
+import { ensureDemoWorkspace, getDb, rescheduleAgendaAppointment } from "./db";
+import { appointmentsTable, availability, professionals, professionalServices, services, users, workspaceMembers } from "../drizzle/schema";
 import { and, eq, inArray } from "drizzle-orm";
+import { ScheduleError } from "./schedule";
 
 /**
  * The isolation suite runs against a real PostgreSQL instance. It is skipped
@@ -66,6 +67,10 @@ describe.skipIf(!hasDatabase)("professional agenda isolation", () => {
       { workspaceId, professionalId: professionalBId, serviceId },
     ]);
 
+    await db.insert(availability).values([professionalAId, professionalBId].flatMap((professionalId) =>
+      [1, 2, 3, 4, 5].map((weekday) => ({ workspaceId, professionalId, weekday, startMinute: 9 * 60, endMinute: 18 * 60 })),
+    ));
+
     const base = new Date("2030-01-10T13:00:00.000Z");
     const [appointmentA] = await db.insert(appointmentsTable).values({
       workspaceId, serviceId, professionalId: professionalAId,
@@ -83,6 +88,7 @@ describe.skipIf(!hasDatabase)("professional agenda isolation", () => {
     const db = await getDb();
     if (!db) return;
     await db.delete(appointmentsTable).where(inArray(appointmentsTable.professionalId, [professionalAId, professionalBId].filter(Boolean)));
+    await db.delete(availability).where(inArray(availability.professionalId, [professionalAId, professionalBId].filter(Boolean)));
     await db.delete(professionalServices).where(inArray(professionalServices.professionalId, [professionalAId, professionalBId].filter(Boolean)));
     await db.delete(services).where(inArray(services.id, serviceId ? [serviceId] : []));
     await db.delete(workspaceMembers).where(inArray(workspaceMembers.userId, [adminUserId, professionalAUserId, professionalBUserId].filter(Boolean)));
@@ -151,5 +157,52 @@ describe.skipIf(!hasDatabase)("professional agenda isolation", () => {
     await expect(caller.workspace.audit({ limit: 10 })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(caller.workspace.professionalsDetailed()).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(caller.workspace.services()).resolves.toBeInstanceOf(Array);
+  });
+
+  it("enforces the professional's local work hours for new appointments", async () => {
+    const manager = callerFor(adminUserId, "human_attendant");
+    await expect(manager.agenda.create({
+      serviceId,
+      professionalId: professionalAId,
+      startsAt: new Date("2030-01-10T22:00:00.000Z"), // 19:00 local, after the 18:00 close
+      endsAt: new Date("2030-01-10T23:00:00.000Z"),
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(manager.agenda.create({
+      serviceId,
+      professionalId: professionalAId,
+      startsAt: new Date("2030-01-12T13:00:00.000Z"), // Saturday, but the profile works Monday through Friday
+      endsAt: new Date("2030-01-12T14:00:00.000Z"),
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("rejects overlaps including requested appointments and validates rescheduling", async () => {
+    const manager = callerFor(adminUserId, "human_attendant");
+    await expect(manager.agenda.create({
+      serviceId,
+      professionalId: professionalAId,
+      startsAt: new Date("2030-01-10T13:30:00.000Z"),
+      endsAt: new Date("2030-01-10T14:30:00.000Z"),
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+
+    await expect(rescheduleAgendaAppointment(
+      appointmentAId,
+      new Date("2030-01-10T22:00:00.000Z"),
+      new Date("2030-01-10T23:00:00.000Z"),
+    )).rejects.toMatchObject({ reason: "outside_working_hours" } satisfies Partial<ScheduleError>);
+  });
+
+  it("serializes concurrent reservations for the same professional and time", async () => {
+    const manager = callerFor(adminUserId, "human_attendant");
+    const input = {
+      serviceId,
+      professionalId: professionalAId,
+      startsAt: new Date("2030-01-10T16:00:00.000Z"),
+      endsAt: new Date("2030-01-10T17:00:00.000Z"),
+    };
+    const outcomes = await Promise.allSettled([manager.agenda.create(input), manager.agenda.create(input)]);
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+    const rejected = outcomes.find((outcome) => outcome.status === "rejected");
+    expect(rejected).toMatchObject({ status: "rejected", reason: { code: "CONFLICT" } });
   });
 });

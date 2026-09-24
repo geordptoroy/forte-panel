@@ -6,6 +6,7 @@ import { ENV } from "./_core/env";
 import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { ScheduleError } from "./schedule";
 import {
   ensureDemoInbox,
   ensureDemoWorkspace,
@@ -96,6 +97,15 @@ const serializeAppointment = <T extends { startsAt: Date; endsAt: Date }>(appoin
   endsAt: appointment.endsAt.toISOString(),
 });
 const serializeAgendaAppointment = serializeAppointment;
+
+function throwScheduleTrpcError(error: unknown): never {
+  if (error instanceof ScheduleError) {
+    if (error.reason === "invalid_period") throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+    if (error.reason === "professional_unavailable") throw new TRPCError({ code: "NOT_FOUND", message: error.message });
+    throw new TRPCError({ code: "CONFLICT", message: error.message });
+  }
+  throw error;
+}
 
 /**
  * Builds a tRPC middleware that resolves the workspace access context once per
@@ -489,7 +499,12 @@ export const appRouter = router({
       if (input.endsAt <= input.startsAt) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser maior que o inicial" });
       const allowed = await professionalCanExecuteService(input.professionalId, input.serviceId);
       if (!allowed) throw new TRPCError({ code: "BAD_REQUEST", message: "Este profissional não executa o serviço selecionado" });
-      const appointment = await createAgendaAppointment(input);
+      let appointment;
+      try {
+        appointment = await createAgendaAppointment(input);
+      } catch (error) {
+        throwScheduleTrpcError(error);
+      }
       if (!appointment) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível criar o agendamento" });
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "appointment_created", summary: `Agendamento ${appointment.id} criado para ${input.startsAt.toISOString()}` });
       return { id: appointment.id, status: appointment.status };

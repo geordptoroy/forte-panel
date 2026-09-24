@@ -114,8 +114,9 @@ FORTE_API_KEY=<chave> node scripts/validate-flow.mjs http://localhost:3000
 
 ## Próximos passos sugeridos
 
-1. **Bloqueio de conflito por disponibilidade**: hoje o agendamento valida vínculo e período, mas ainda não compara o horário com a jornada semanal gravada em `availability`. O próximo incremento deve recusar reservas fora da jornada do profissional.
-2. **Alerta de sobreposição**: impedir dois atendimentos do mesmo profissional no mesmo intervalo.
-3. **Notificações reais**: as preferências já são persistidas em `workspaceSettings`, mas ainda não disparam e-mail, WhatsApp ou push.
-4. **Hashing de API key por workspace**: o contrato atual usa uma chave de ambiente; a evolução prevista é chave por workspace com hash.
-5. **Auditoria com escopo**: `workspace.audit` já é restrita a gestores, mas ainda não permite filtrar por contato ou período na interface.
+1. **Notificações reais**: as preferências já são persistidas em `workspaceSettings`, mas ainda não disparam e-mail, WhatsApp ou push.
+2. **Hashing de API key por workspace**: o contrato atual usa uma chave de ambiente; a evolução prevista é chave por workspace com hash.
+3. **Auditoria com escopo**: `workspace.audit` já é restrita a gestores, mas ainda não permite filtrar por contato ou período na interface.
+4. **Teste da stack Docker**: executar `docker compose up --build` numa máquina com Docker; o sandbox não tem Docker instalado.
+
+As validações de disponibilidade e sobreposição foram implementadas e têm detalhes em `CONTINUATION_2026-09-24_SCHEDULE_VALIDATION.md`.

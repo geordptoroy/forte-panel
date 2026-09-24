@@ -117,7 +117,9 @@ const run = async () => {
 
   console.log("\n5. Agendamento e transição de status");
   const startsAt = new Date(Date.now() + 86_400_000);
-  startsAt.setMinutes(0, 0, 0);
+  startsAt.setUTCHours(13, 0, 0, 0); // 10:00 in America/Sao_Paulo
+  const saoPauloWeekday = (date) => new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "America/Sao_Paulo" }).format(date);
+  while (!["Mon", "Wed"].includes(saoPauloWeekday(startsAt))) startsAt.setUTCDate(startsAt.getUTCDate() + 1);
   const endsAt = new Date(startsAt.getTime() + 90 * 60_000);
   const appointment = await trpc("agenda.create", {
     serviceId, professionalId: professionalAId,
@@ -133,6 +135,44 @@ const run = async () => {
     check("executor inicia o próprio atendimento", move.payload?.result?.data?.json?.status === "in_progress", JSON.stringify(move.payload).slice(0, 200));
   }
 
+  const appointmentData = appointment.payload?.result?.data?.json;
+  const outsideStart = new Date(startsAt);
+  outsideStart.setUTCHours(22, 0, 0, 0); // 19:00 local, after the configured 18:00 close
+  const outsideHours = await trpc("agenda.create", {
+    serviceId, professionalId: professionalAId,
+    startsAt: outsideStart.toISOString(), endsAt: new Date(outsideStart.getTime() + 60 * 60_000).toISOString(),
+  }, adminCookie);
+  const outsideHoursCode = outsideHours.payload?.error?.json?.data?.code ?? outsideHours.payload?.error?.data?.code;
+  check("tRPC recusa horário fora da jornada (CONFLICT)", outsideHours.status === 409 || outsideHoursCode === "CONFLICT", JSON.stringify(outsideHours.payload).slice(0, 200));
+
+  const restOutside = await fetch(`${base}/api/v1/appointments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, "Idempotency-Key": `validate-outside-${suffix}` },
+    body: JSON.stringify({ serviceId, professionalId: professionalAId, startsAt: outsideStart.toISOString(), endsAt: new Date(outsideStart.getTime() + 60 * 60_000).toISOString() }),
+  });
+  const restOutsideBody = await restOutside.json();
+  check("API recusa horário fora da jornada (409)", restOutside.status === 409 && restOutsideBody.error === "outside_working_hours", JSON.stringify(restOutsideBody).slice(0, 200));
+  const healthAfterRejectedBooking = await fetch(`${base}/api/v1/health`);
+  check("servidor continua saudável após reserva recusada", healthAfterRejectedBooking.status === 200);
+
+  const restOverlap = await fetch(`${base}/api/v1/appointments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, "Idempotency-Key": `validate-overlap-${suffix}` },
+    body: JSON.stringify({ serviceId, professionalId: professionalAId, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() }),
+  });
+  const restOverlapBody = await restOverlap.json();
+  check("API recusa sobreposição com outra reserva (409)", restOverlap.status === 409 && restOverlapBody.error === "appointment_conflict", JSON.stringify(restOverlapBody).slice(0, 200));
+
+  if (appointmentData?.id) {
+    const reschedule = await fetch(`${base}/api/v1/appointments/${appointmentData.id}/reschedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, "Idempotency-Key": `validate-reschedule-${suffix}` },
+      body: JSON.stringify({ startsAt: outsideStart.toISOString(), endsAt: new Date(outsideStart.getTime() + 60 * 60_000).toISOString() }),
+    });
+    const rescheduleBody = await reschedule.json();
+    check("API recusa reagendamento fora da jornada (409)", reschedule.status === 409 && rescheduleBody.error === "outside_working_hours", JSON.stringify(rescheduleBody).slice(0, 200));
+  }
+
   console.log("\n6. API v1 de disponibilidade");
   const availabilityResponse = await fetch(`${base}/api/v1/availability?serviceId=${serviceId}`, { headers: { Authorization: `Bearer ${apiKey}` } });
   const availabilityBody = await availabilityResponse.json();
@@ -140,6 +180,7 @@ const run = async () => {
   check("serviço consultado aparece", (availabilityBody.services ?? []).some((item) => item.id === serviceId));
   check("profissionais do serviço aparecem", (availabilityBody.professionals ?? []).length >= 2, JSON.stringify(availabilityBody.professionals ?? []).slice(0, 200));
   check("cada profissional traz serviceIds", (availabilityBody.professionals ?? []).every((item) => Array.isArray(item.serviceIds)));
+  check("profissional expõe jornada semanal", (availabilityBody.professionals ?? []).find((item) => item.id === professionalAId)?.weeklyAvailability?.length === 2, JSON.stringify(availabilityBody.professionals ?? []).slice(0, 240));
 
   const wrongLink = await fetch(`${base}/api/v1/appointments`, {
     method: "POST",
