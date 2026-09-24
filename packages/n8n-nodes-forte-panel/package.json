@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-forte-panel",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Community node that exposes the Forte Panel CRM, WhatsApp and scheduling API as one n8n AI Tool.",
   "license": "MIT",
   "keywords": ["n8n-community-node-package", "n8n", "forte-panel", "crm", "whatsapp", "ai-tool"],
@@ -22,10 +22,7 @@
     "n8nNodesApiVersion": 1,
     "strict": false,
     "credentials": ["dist/credentials/FortePanelApi.credentials.js"],
-    "nodes": [
-      "dist/nodes/FortePanel/FortePanel.node.js",
-      "dist/nodes/FortePanel/FortePanelTool.node.js"
-    ]
+    "nodes": ["dist/nodes/FortePanel/FortePanel.node.js"]
   },
   "peerDependencies": {
     "n8n-workflow": "*"
