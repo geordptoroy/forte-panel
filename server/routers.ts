@@ -28,6 +28,7 @@ import {
   sendManualMessage,
   saveOnboardingProfile,
   setContactAi,
+  upsertApiContact,
   upsertUser,
   updateQuotePayment,
 } from "./db";
@@ -204,6 +205,16 @@ export const appRouter = router({
     contacts: protectedProcedure.query(async () => {
       const items = await listInboxContacts();
       return items.map(mapContact);
+    }),
+    createContact: protectedProcedure.input(z.object({
+      name: z.string().trim().min(2).max(160),
+      phone: z.string().trim().min(8).max(32),
+      serviceRequested: z.string().trim().max(180).optional(),
+      city: z.string().trim().max(100).optional(),
+      neighborhood: z.string().trim().max(100).optional(),
+    })).mutation(async ({ input }) => {
+      const contact = await upsertApiContact(input);
+      return contact ? mapContact(contact) : null;
     }),
     thread: protectedProcedure.input(contactIdInput).query(async ({ input }) => {
       const contact = await getContactById(input.contactId);

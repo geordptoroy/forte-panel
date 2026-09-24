@@ -190,11 +190,28 @@ export function AgendaPage() {
 export function ContactsPage() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [service, setService] = useState("");
+  const [city, setCity] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
   const contactsQuery = trpc.inbox.contacts.useQuery();
+  const utils = trpc.useUtils();
+  const createMutation = trpc.inbox.createContact.useMutation({
+    onSuccess: async (contact) => {
+      await utils.inbox.contacts.invalidate();
+      setShowForm(false); setName(""); setPhone(""); setService(""); setCity(""); setNeighborhood("");
+      if (contact) navigate("/contacts/" + contact.id);
+    },
+  });
   const items = contactsQuery.data ?? [];
-  const filtered = items.filter((contact) => `${contact.name} ${contact.phone} ${contact.service}`.toLowerCase().includes(search.toLowerCase()));
-  return <PanelLayout eyebrow="Clientes / CRM local" title="Contatos" description="Clientes e leads sincronizados com o atendimento." actions={<button className="btn-primary"><Plus size={13} /> Novo contato</button>}>
-    <DemoBanner /><div className="filter-bar"><div className="search-field"><Search size={14} /><input className="input-control" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contato, telefone ou serviço" /></div><button className="btn-secondary"><Filter size={13} /> Filtros</button></div><div className="surface data-table-wrap"><table className="data-table"><thead><tr><th>Contato</th><th>Serviço</th><th>Estágio</th><th>Urgência</th><th>IA</th><th>Atualização</th><th></th></tr></thead><tbody>{filtered.map((contact) => <tr key={contact.id} onClick={() => navigate(`/contacts/${contact.id}`)} style={{ cursor: "pointer" }}><td><div className="table-person"><div className="avatar">{contact.initials}</div><div>{contact.name}<span className="table-secondary">{contact.phone}</span></div></div></td><td>{contact.service}<span className="table-secondary">{contact.neighborhood}, {contact.city}</span></td><td><StatusBadge tone={contact.stage === "Agendado" ? "green" : contact.stage === "Sem retorno" ? "amber" : "blue"}>{contact.stage}</StatusBadge></td><td><span className={`urgency urgency-${contact.urgency.toLowerCase().replace("é", "e")}`}>{contact.urgency}</span></td><td className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</td><td>{formatChatTime(contact.lastMessageAt)}</td><td><button className="icon-button"><ArrowUpRight size={14} /></button></td></tr>)}</tbody></table></div>
+  const filtered = items.filter((contact) => [contact.name, contact.phone, contact.service].join(" ").toLowerCase().includes(search.toLowerCase()));
+  const submit = () => createMutation.mutate({ name, phone, serviceRequested: service || undefined, city: city || undefined, neighborhood: neighborhood || undefined });
+  return <PanelLayout eyebrow="Clientes / CRM local" title="Contatos" description="Clientes e leads sincronizados com o atendimento." actions={<button className="btn-primary" onClick={() => setShowForm(true)}><Plus size={13} /> Novo contato</button>}>
+    <DemoBanner />
+    {showForm && <section className="surface contact-form-panel"><SectionTitle eyebrow="Novo cadastro" title="Adicionar contato" /><div className="form-grid"><div className="form-field"><label>Nome completo</label><input className="input-control" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Ana Souza" /></div><div className="form-field"><label>WhatsApp</label><input className="input-control" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="5511999999999" /></div><div className="form-field"><label>Serviço de interesse</label><input className="input-control" value={service} onChange={(event) => setService(event.target.value)} placeholder="Ex.: Corte e escova" /></div><div className="form-field"><label>Cidade</label><input className="input-control" value={city} onChange={(event) => setCity(event.target.value)} placeholder="São Paulo" /></div><div className="form-field"><label>Bairro</label><input className="input-control" value={neighborhood} onChange={(event) => setNeighborhood(event.target.value)} placeholder="Centro" /></div></div>{createMutation.error && <div className="form-error">{createMutation.error.message}</div>}<div className="form-actions"><button className="btn-primary" disabled={createMutation.isPending || name.trim().length < 2 || phone.trim().length < 8} onClick={submit}>{createMutation.isPending ? "Salvando..." : "Salvar contato"}</button><button className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button></div></section>}
+    <div className="filter-bar"><div className="search-field"><Search size={14} /><input className="input-control" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contato, telefone ou serviço" /></div><button className="btn-secondary"><Filter size={13} /> Filtros</button></div><div className="surface data-table-wrap"><table className="data-table"><thead><tr><th>Contato</th><th>Serviço</th><th>Estágio</th><th>Urgência</th><th>IA</th><th>Atualização</th><th></th></tr></thead><tbody>{filtered.map((contact) => <tr key={contact.id} onClick={() => navigate("/contacts/" + contact.id)} style={{ cursor: "pointer" }}><td><div className="table-person"><div className="avatar">{contact.initials}</div><div>{contact.name}<span className="table-secondary">{contact.phone}</span></div></div></td><td>{contact.service}<span className="table-secondary">{contact.neighborhood}, {contact.city}</span></td><td><StatusBadge tone={contact.stage === "Agendado" ? "green" : contact.stage === "Sem retorno" ? "amber" : "blue"}>{contact.stage}</StatusBadge></td><td><span className={"urgency urgency-" + contact.urgency.toLowerCase().replace("é", "e")}>{contact.urgency}</span></td><td className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</td><td>{formatChatTime(contact.lastMessageAt)}</td><td><button className="icon-button"><ArrowUpRight size={14} /></button></td></tr>)}</tbody></table></div>
   </PanelLayout>;
 }
 
