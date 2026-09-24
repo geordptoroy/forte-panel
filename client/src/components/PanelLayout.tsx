@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import {
   BarChart3,
   Bell,
+  BrainCircuit,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -47,6 +48,7 @@ const navGroups = [
     label: "Sistema",
     items: [
       { href: "/integrations", label: "Integrações", description: "Conexões externas", icon: PlugZap },
+      { href: "/onboarding", label: "Onboarding", description: "Regras da empresa e IA", icon: BrainCircuit },
       { href: "/team", label: "Equipe", description: "Acessos e permissões", icon: UserCog },
       { href: "/settings", label: "Configurações", description: "Preferências do painel", icon: Settings },
     ],

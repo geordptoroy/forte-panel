@@ -2,24 +2,30 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   ensureDemoInbox,
   ensureDemoWorkspace,
   createAgendaAppointment,
+  createQuote,
   getAgendaSnapshot,
   getDefaultWhatsappProvider,
   listWhatsappChannels,
   setDefaultWhatsappProvider,
   getAuditLogForContact,
+  getDashboardSnapshot,
+  getOnboardingProfile,
   getContactById,
   getConversationByContact,
   listInboxContacts,
   listWorkspaceMembers,
   listMessagesForContact,
+  listQuotes,
   moveContactStage,
   sendManualMessage,
+  saveOnboardingProfile,
   setContactAi,
+  updateQuotePayment,
 } from "./db";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
@@ -57,7 +63,7 @@ export const appRouter = router({
   }),
 
   workspace: router({
-    current: publicProcedure.query(async () => {
+    current: protectedProcedure.query(async () => {
       const workspace = await ensureDemoWorkspace();
       if (!workspace) return null;
       return {
@@ -69,7 +75,7 @@ export const appRouter = router({
         timezone: workspace.timezone,
       };
     }),
-    members: publicProcedure.query(async () => {
+    members: protectedProcedure.query(async () => {
       const members = await listWorkspaceMembers();
       return members.map((member) => ({
         id: member.id,
@@ -79,7 +85,7 @@ export const appRouter = router({
         active: member.active === 1,
       }));
     }),
-    channels: publicProcedure.query(async () => {
+    channels: protectedProcedure.query(async () => {
       const channels = await listWhatsappChannels();
       return channels.map((channel) => ({
         id: channel.id,
@@ -90,12 +96,66 @@ export const appRouter = router({
         active: channel.active === 1,
       }));
     }),
-    defaultChannel: publicProcedure.query(() => getDefaultWhatsappProvider()),
-    setDefaultChannel: publicProcedure.input(z.object({ provider: z.enum(["papi", "meta_cloud_api"]) })).mutation(({ input }) => setDefaultWhatsappProvider(input.provider)),
+    defaultChannel: protectedProcedure.query(() => getDefaultWhatsappProvider()),
+    setDefaultChannel: protectedProcedure.input(z.object({ provider: z.enum(["papi", "meta_cloud_api"]) })).mutation(({ input }) => setDefaultWhatsappProvider(input.provider)),
+  }),
+
+  dashboard: router({
+    snapshot: protectedProcedure.query(async () => {
+      const snapshot = await getDashboardSnapshot();
+      return {
+        ...snapshot,
+        recentEvents: snapshot.recentEvents.map((event) => ({ ...event, createdAt: event.createdAt.toISOString() })),
+        upcomingAppointments: snapshot.upcomingAppointments.map((appointment) => ({ ...appointment, startsAt: appointment.startsAt.toISOString(), endsAt: appointment.endsAt.toISOString() })),
+      };
+    }),
+  }),
+
+  onboarding: router({
+    profile: protectedProcedure.query(() => getOnboardingProfile()),
+    save: protectedProcedure.input(z.object({
+      profile: z.object({
+        businessName: z.string().max(160),
+        segment: z.string().max(80),
+        description: z.string().max(4000),
+        services: z.string().max(8000),
+        serviceArea: z.string().max(2000),
+        businessHours: z.string().max(2000),
+        toneOfVoice: z.string().max(500),
+        forbiddenWords: z.string().max(2000),
+        faq: z.string().max(8000),
+        cancellationPolicy: z.string().max(2000),
+        humanHandoffRules: z.string().max(2000),
+        qualificationRules: z.string().max(2000),
+      }),
+      publish: z.boolean().default(false),
+    })).mutation(({ input }) => saveOnboardingProfile(input.profile, input.publish)),
+  }),
+
+  billing: router({
+    quotes: protectedProcedure.query(async () => {
+      const items = await listQuotes();
+      return items.map((item) => ({ ...item, dueDate: item.dueDate?.toISOString() ?? null, createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() }));
+    }),
+    createQuote: protectedProcedure.input(z.object({
+      contactId: z.number().int().positive(),
+      serviceName: z.string().trim().min(1).max(160),
+      description: z.string().max(4000).optional(),
+      quotedCents: z.number().int().nonnegative(),
+      receivedCents: z.number().int().nonnegative().default(0),
+      status: z.enum(["orcamento", "aguardando_aprovacao", "aprovado", "sinal_pendente", "parcialmente_pago", "pago", "cancelado"]).default("orcamento"),
+      dueDate: z.coerce.date().optional(),
+      notes: z.string().max(1000).optional(),
+    })).mutation(({ input, ctx }) => createQuote(input, ctx.user.id)),
+    updatePayment: protectedProcedure.input(z.object({
+      id: z.number().int().positive(),
+      receivedCents: z.number().int().nonnegative(),
+      status: z.enum(["orcamento", "aguardando_aprovacao", "aprovado", "sinal_pendente", "parcialmente_pago", "pago", "cancelado"]),
+    })).mutation(({ input, ctx }) => updateQuotePayment(input.id, input.receivedCents, input.status, ctx.user.id)),
   }),
 
   agenda: router({
-    snapshot: publicProcedure.query(async () => {
+    snapshot: protectedProcedure.query(async () => {
       const snapshot = await getAgendaSnapshot();
       return {
         timezone: snapshot.timezone,
@@ -108,7 +168,7 @@ export const appRouter = router({
         })),
       };
     }),
-    create: publicProcedure.input(z.object({
+    create: protectedProcedure.input(z.object({
       contactId: z.number().int().positive().optional(),
       serviceId: z.number().int().positive(),
       professionalId: z.number().int().positive(),
@@ -122,11 +182,11 @@ export const appRouter = router({
   }),
 
   inbox: router({
-    contacts: publicProcedure.query(async () => {
+    contacts: protectedProcedure.query(async () => {
       const items = await listInboxContacts();
       return items.map(mapContact);
     }),
-    thread: publicProcedure.input(contactIdInput).query(async ({ input }) => {
+    thread: protectedProcedure.input(contactIdInput).query(async ({ input }) => {
       const contact = await getContactById(input.contactId);
       if (!contact) return null;
       const [conversation, items, audit] = await Promise.all([
@@ -147,21 +207,21 @@ export const appRouter = router({
         audit,
       };
     }),
-    toggleAi: publicProcedure.input(contactIdInput.extend({ enabled: z.boolean() })).mutation(async ({ input }) => {
+    toggleAi: protectedProcedure.input(contactIdInput.extend({ enabled: z.boolean() })).mutation(async ({ input }) => {
       await setContactAi(input.contactId, input.enabled);
       const contact = await getContactById(input.contactId);
       return contact ? mapContact(contact) : null;
     }),
-    sendMessage: publicProcedure.input(contactIdInput.extend({ content: z.string().trim().min(1).max(4000) })).mutation(async ({ input }) => {
+    sendMessage: protectedProcedure.input(contactIdInput.extend({ content: z.string().trim().min(1).max(4000) })).mutation(async ({ input }) => {
       const message = await sendManualMessage(input.contactId, input.content);
       return message ? { id: String(message.id), content: message.content, createdAt: message.createdAt.toISOString(), sender: message.senderType } : null;
     }),
-    moveStage: publicProcedure.input(contactIdInput.extend({ stage: z.string().min(1).max(80) })).mutation(async ({ input }) => {
+    moveStage: protectedProcedure.input(contactIdInput.extend({ stage: z.string().min(1).max(80) })).mutation(async ({ input }) => {
       await moveContactStage(input.contactId, input.stage);
       const contact = await getContactById(input.contactId);
       return contact ? mapContact(contact) : null;
     }),
-    seed: publicProcedure.mutation(async () => {
+    seed: protectedProcedure.mutation(async () => {
       await ensureDemoInbox();
       return { success: true } as const;
     }),

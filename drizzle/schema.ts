@@ -11,8 +11,9 @@ export const conversationStatusEnum = pgEnum("conversation_status", ["open", "re
 export const messageDirectionEnum = pgEnum("message_direction", ["inbound", "outbound", "system"]);
 export const messageSenderTypeEnum = pgEnum("message_sender_type", ["lead", "ai", "human", "system"]);
 export const messageTypeEnum = pgEnum("message_type", ["text", "image", "audio", "video", "document"]);
-export const messageStatusEnum = pgEnum("message_status", ["received", "queued", "sent", "failed"]);
+export const messageStatusEnum = pgEnum("message_status", ["received", "queued", "processing", "sent", "failed"]);
 export const appointmentStatusEnum = pgEnum("appointment_status", ["requested", "confirmed", "cancelled", "completed", "no_show"]);
+export const quoteStatusEnum = pgEnum("quote_status", ["orcamento", "aguardando_aprovacao", "aprovado", "sinal_pendente", "parcialmente_pago", "pago", "cancelado"]);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -142,6 +143,9 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   status: messageStatusEnum("status").default("received").notNull(),
   provider: whatsappProviderEnum("provider").default("papi").notNull(),
+  attemptCount: integer("attemptCount").default(0).notNull(),
+  lastError: text("lastError"),
+  sentAt: timestamp("sentAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -193,6 +197,21 @@ export const appointmentsTable = pgTable("appointments", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
+export const quotes = pgTable("quotes", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspaceId").notNull(),
+  contactId: integer("contactId").notNull(),
+  serviceName: varchar("serviceName", { length: 160 }).notNull(),
+  description: text("description"),
+  quotedCents: integer("quotedCents").default(0).notNull(),
+  receivedCents: integer("receivedCents").default(0).notNull(),
+  status: quoteStatusEnum("status").default("orcamento").notNull(),
+  dueDate: timestamp("dueDate"),
+  notes: varchar("notes", { length: 1000 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
 export const auditLogs = pgTable("auditLogs", {
   id: serial("id").primaryKey(),
   actorUserId: integer("actorUserId"),
@@ -232,5 +251,7 @@ export type Availability = typeof availability.$inferSelect;
 export type InsertAvailability = typeof availability.$inferInsert;
 export type Appointment = typeof appointmentsTable.$inferSelect;
 export type InsertAppointment = typeof appointmentsTable.$inferInsert;
+export type Quote = typeof quotes.$inferSelect;
+export type InsertQuote = typeof quotes.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;

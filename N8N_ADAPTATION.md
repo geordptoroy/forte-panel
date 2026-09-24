@@ -22,7 +22,7 @@ O desenho final será:
 | n8n | Orquestração, agente de IA, mídia, debounce, memória conversacional e automações externas |
 | PAPI | Canal WhatsApp não oficial já usado no workflow |
 | Meta Cloud API | Canal oficial alternativo, selecionável por workspace/canal |
-| Worker | Envio, retries, status de entrega e eventos assíncronos |
+| Worker | Envio, retries limitados, recuperação após reinício e status de entrega |
 
 PAPI e Meta podem coexistir no produto, inclusive em workspaces diferentes ou em números diferentes. **Não devemos operar o mesmo número simultaneamente pelos dois provedores**, pois a sessão PAPI e o registro oficial Cloud API são modelos de conexão diferentes.
 
@@ -82,10 +82,12 @@ O primeiro endpoint para essa troca já está disponível: `POST /api/v1/lead-me
 5. Mensagens geradas pelo agente usam `POST /api/v1/messages` com `provider: papi` ou `provider: meta_cloud_api`.
 6. Cada chamada mutável usa `Idempotency-Key` e nunca grava diretamente no banco do Panel.
 
-### Fase 3 — worker e Meta oficial
+### Fase 3 — worker e prompt publicado
 
-Depois do teste local com PAPI, o worker consumirá mensagens `queued`, escolherá o adapter do provedor e atualizará status de envio. Só então será ativado o adapter Meta Cloud API com token permanente, Phone Number ID e webhook HTTPS público. A Meta documenta que a Cloud API envia mensagens e recebe webhooks de mensagens e status, mas o endpoint precisa ser configurado na plataforma Meta e não funciona como substituto local do PAPI sem credenciais e configuração de negócio.
+O worker separado já consome mensagens `queued`, escolhe o adapter do provedor, recupera mensagens em `processing` após reinício e marca `sent` ou `failed` após as tentativas configuradas. O onboarding também salva o perfil estruturado e publica versões do prompt operacional; o n8n pode buscar somente a versão publicada por `GET /api/v1/onboarding/prompt`.
+
+Depois do teste local com PAPI, será ativado o adapter Meta Cloud API com token permanente, Phone Number ID e webhook HTTPS público. A Meta documenta que a Cloud API envia mensagens e recebe webhooks de mensagens e status, mas o endpoint precisa ser configurado na plataforma Meta e não funciona como substituto local do PAPI sem credenciais e configuração de negócio.
 
 ## Decisão
 
-Para o MVP local, manteremos **n8n + Forte Panel + PAPI**. A Meta Cloud API ficará pronta como segundo adapter, mas não será o primeiro canal de teste. O Forte Panel não tentará reimplementar toda a inteligência do workflow antes de validar o fluxo existente. Depois da validação, migraremos gradualmente memória, agenda, CRM, envio e retries para o Panel/worker.
+Para o MVP local, manteremos **n8n + Forte Panel + PAPI**. A Meta Cloud API ficará pronta como segundo adapter, mas não será o primeiro canal de teste. O Forte Panel não reimplementa a inteligência do workflow; ele fornece fonte de verdade, prompt publicado, API, fila e worker. O próximo passo de integração é trocar o nó Clientverse pela chamada HTTP ao `lead-memory` no workflow real e enviar o evento normalizado ao webhook inbound do Panel.

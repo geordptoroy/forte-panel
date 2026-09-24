@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import {
@@ -11,6 +11,7 @@ import {
   conversations,
   messages,
   professionals,
+  quotes,
   services,
   users,
   webhookEvents,
@@ -21,6 +22,7 @@ import {
   type InsertUser,
 } from "../drizzle/schema";
 import type { WhatsappProvider } from "./integrations/contracts";
+import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -72,6 +74,9 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   values.lastSignedIn ??= new Date();
   if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
   await db.insert(users).values(values).onConflictDoUpdate({ target: users.openId, set: updateSet });
+  const persisted = await db.select({ id: users.id }).from(users).where(eq(users.openId, user.openId)).limit(1);
+  const workspace = await ensureDemoWorkspace();
+  if (persisted[0] && workspace) await ensureWorkspaceMember(workspace.id, persisted[0].id, "owner");
 }
 
 export async function getUserByOpenId(openId: string) {
@@ -85,15 +90,18 @@ export const DEMO_WORKSPACE_SLUG = "forte-demo";
 
 export async function ensureDemoWorkspace() {
   const db = await getDb();
-  if (!db || process.env.DEMO_MODE === "false") return undefined;
+  if (!db) return undefined;
+  const demoMode = process.env.DEMO_MODE !== "false";
+  const slug = demoMode ? DEMO_WORKSPACE_SLUG : (process.env.WORKSPACE_SLUG ?? "forte-workspace");
+  const name = demoMode ? "Forte Serviços Demo" : (process.env.WORKSPACE_NAME ?? "Minha empresa");
   await db.insert(workspaces).values({
-    name: "Forte Serviços Demo",
-    slug: DEMO_WORKSPACE_SLUG,
-    segment: "servicos",
-    plan: "pro",
-    timezone: "America/Sao_Paulo",
-  }).onConflictDoUpdate({ target: workspaces.slug, set: { name: "Forte Serviços Demo", updatedAt: new Date() } });
-  const result = await db.select().from(workspaces).where(eq(workspaces.slug, DEMO_WORKSPACE_SLUG)).limit(1);
+    name,
+    slug,
+    segment: process.env.WORKSPACE_SEGMENT ?? "servicos",
+    plan: "starter",
+    timezone: process.env.WORKSPACE_TIMEZONE ?? "America/Sao_Paulo",
+  }).onConflictDoUpdate({ target: workspaces.slug, set: { name, updatedAt: new Date() } });
+  const result = await db.select().from(workspaces).where(eq(workspaces.slug, slug)).limit(1);
   return result[0];
 }
 
@@ -152,6 +160,81 @@ export async function setDefaultWhatsappProvider(provider: WhatsappProvider) {
     await db.insert(workspaceSettings).values({ workspaceId: workspace.id, key: "default_whatsapp_provider", value: provider });
   }
   return provider;
+}
+
+export type OnboardingProfile = {
+  businessName: string;
+  segment: string;
+  description: string;
+  services: string;
+  serviceArea: string;
+  businessHours: string;
+  toneOfVoice: string;
+  forbiddenWords: string;
+  faq: string;
+  cancellationPolicy: string;
+  humanHandoffRules: string;
+  qualificationRules: string;
+};
+
+const emptyOnboardingProfile: OnboardingProfile = {
+  businessName: "",
+  segment: "servicos",
+  description: "",
+  services: "",
+  serviceArea: "",
+  businessHours: "",
+  toneOfVoice: "profissional, claro e cordial",
+  forbiddenWords: "",
+  faq: "",
+  cancellationPolicy: "",
+  humanHandoffRules: "",
+  qualificationRules: "",
+};
+
+function buildBusinessPrompt(profile: OnboardingProfile, version: number) {
+  return `Você atende clientes da empresa ${profile.businessName || "da empresa configurada"}, do segmento ${profile.segment}. Este é o prompt operacional publicado v${version}.\n\nDescrição do negócio:\n${profile.description || "Não informada."}\n\nServiços, duração e preços:\n${profile.services || "Consultar a equipe antes de prometer preço ou prazo."}\n\nÁrea de atendimento:\n${profile.serviceArea || "Não informada."}\n\nHorários:\n${profile.businessHours || "Consultar disponibilidade real na agenda."}\n\nTom de voz:\n${profile.toneOfVoice || emptyOnboardingProfile.toneOfVoice}\n\nPalavras e condutas proibidas:\n${profile.forbiddenWords || "Não inventar informações, preços, horários ou confirmações."}\n\nPerguntas frequentes e respostas aprovadas:\n${profile.faq || "Não cadastradas."}\n\nPolítica de cancelamento, reagendamento e sinal:\n${profile.cancellationPolicy || "Escalar para atendimento humano quando não houver regra publicada."}\n\nSempre transferir para humano quando:\n${profile.humanHandoffRules || "o cliente pedir humano, houver reclamação, risco, dúvida fora do cadastro ou negociação especial."}\n\nCritérios de qualificação e follow-up:\n${profile.qualificationRules || "Identificar serviço, localização, urgência e próximo passo."}`;
+}
+
+async function getWorkspaceSetting(workspaceId: number, key: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, key))).orderBy(desc(workspaceSettings.updatedAt), desc(workspaceSettings.id)).limit(1);
+  return result[0];
+}
+
+async function upsertWorkspaceSetting(workspaceId: number, key: string, value: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const existing = await getWorkspaceSetting(workspaceId, key);
+  if (existing) await db.update(workspaceSettings).set({ value, updatedAt: new Date() }).where(eq(workspaceSettings.id, existing.id));
+  else await db.insert(workspaceSettings).values({ workspaceId, key, value });
+}
+
+export async function getOnboardingProfile() {
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return { profile: emptyOnboardingProfile, version: 0, prompt: "", published: false };
+  const profileSetting = await getWorkspaceSetting(workspace.id, "onboarding_profile");
+  const promptSetting = await getWorkspaceSetting(workspace.id, "ai_prompt_published");
+  const profile = { ...emptyOnboardingProfile, ...(profileSetting?.value ? JSON.parse(profileSetting.value) as Partial<OnboardingProfile> : {}) };
+  const published = promptSetting?.value ? JSON.parse(promptSetting.value) as { version: number; prompt: string } : undefined;
+  return { profile, version: published?.version ?? 0, prompt: published?.prompt ?? "", published: Boolean(published?.prompt) };
+}
+
+export async function saveOnboardingProfile(input: OnboardingProfile, publish: boolean) {
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const current = await getOnboardingProfile();
+  const nextVersion = current.version + 1;
+  await upsertWorkspaceSetting(workspace.id, "onboarding_profile", JSON.stringify(input));
+  const prompt = buildBusinessPrompt(input, nextVersion);
+  if (publish) await upsertWorkspaceSetting(workspace.id, "ai_prompt_published", JSON.stringify({ version: nextVersion, prompt, publishedAt: new Date().toISOString() }));
+  return { profile: input, version: publish ? nextVersion : current.version, prompt: publish ? prompt : current.prompt, published: publish || current.published };
+}
+
+export async function getPublishedAiPrompt() {
+  const onboarding = await getOnboardingProfile();
+  return { version: onboarding.version, prompt: onboarding.prompt, published: onboarding.published };
 }
 
 export async function getWorkspaceBySlug(slug: string) {
@@ -391,11 +474,12 @@ export async function sendManualMessage(contactId: number, content: string, acto
   if (!db) throw new Error("Database unavailable");
   const conversation = await getConversationByContact(contactId);
   if (!conversation) throw new Error("Conversation not found");
+  const provider = await getDefaultWhatsappProvider();
   const createdAt = new Date();
-  await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, status: "sent", createdAt });
+  await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, status: "queued", provider, createdAt });
   await db.update(contacts).set({ aiEnabled: 0, unreadCount: 0, lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
   await db.update(conversations).set({ humanControlled: 1, unreadCount: 0, lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
-  await db.insert(auditLogs).values({ actorUserId, contactId, action: "manual_message_sent", summary: "Mensagem manual enviada em modo demo" });
+  await db.insert(auditLogs).values({ actorUserId, contactId, action: "manual_message_queued", summary: `Mensagem manual enfileirada para ${provider}` });
   const result = await db.select().from(messages).where(and(eq(messages.conversationId, conversation.id), eq(messages.createdAt, createdAt))).orderBy(desc(messages.id)).limit(1);
   return result[0];
 }
@@ -430,6 +514,64 @@ export async function countContacts() {
   return Number(result[0]?.count ?? 0);
 }
 
+export async function getDashboardSnapshot() {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) return { newContactsToday: 0, awaitingResponse: 0, aiPaused: 0, urgentOpen: 0, quotesPendingCents: 0, appointmentsToday: 0, receivedMonthCents: 0, pendingCents: 0, recentEvents: [], upcomingAppointments: [] };
+  const workspaceContacts = await db.select().from(contacts).where(eq(contacts.workspaceId, workspace.id));
+  const workspaceAppointments = await db.select().from(appointmentsTable).where(eq(appointmentsTable.workspaceId, workspace.id)).orderBy(asc(appointmentsTable.startsAt));
+  const contactIds = workspaceContacts.map((contact) => contact.id);
+  const recentEvents = contactIds.length === 0 ? [] : await db.select().from(auditLogs).where(sql`${auditLogs.contactId} IN (${sql.join(contactIds.map((id) => sql`${id}`), sql`, `)})`).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(8);
+  const now = new Date();
+  const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+  const activeAppointments = workspaceAppointments.filter((appointment) => appointment.status !== "cancelled");
+  const pendingCents = workspaceContacts.reduce((total, contact) => total + contact.quoteCents, 0);
+  return {
+    newContactsToday: workspaceContacts.filter((contact) => contact.createdAt >= startOfToday).length,
+    awaitingResponse: workspaceContacts.filter((contact) => contact.unreadCount > 0).length,
+    aiPaused: workspaceContacts.filter((contact) => contact.aiEnabled === 0).length,
+    urgentOpen: workspaceContacts.filter((contact) => (contact.urgency === "Alta" || contact.urgency === "Crítica") && contact.stage !== "Concluído").length,
+    quotesPendingCents: pendingCents,
+    appointmentsToday: activeAppointments.filter((appointment) => appointment.startsAt >= startOfToday && appointment.startsAt < new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000)).length,
+    receivedMonthCents: 0,
+    pendingCents,
+    recentEvents,
+    upcomingAppointments: activeAppointments.filter((appointment) => appointment.startsAt >= now).slice(0, 5),
+  };
+}
+
+
+export async function listQuotes() {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) return [];
+  const rows = await db.select({ quote: quotes, contact: contacts }).from(quotes).leftJoin(contacts, eq(quotes.contactId, contacts.id)).where(eq(quotes.workspaceId, workspace.id)).orderBy(desc(quotes.createdAt));
+  return rows.map(({ quote, contact }) => ({ ...quote, contactName: contact?.name ?? "Contato removido", contactInitials: (contact?.name ?? "CR").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() }));
+}
+
+export async function createQuote(input: { contactId: number; serviceName: string; description?: string; quotedCents: number; receivedCents?: number; status?: "orcamento" | "aguardando_aprovacao" | "aprovado" | "sinal_pendente" | "parcialmente_pago" | "pago" | "cancelado"; dueDate?: Date; notes?: string }, actorUserId?: number) {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) throw new Error("Database unavailable");
+  const contact = await db.select({ id: contacts.id }).from(contacts).where(and(eq(contacts.id, input.contactId), eq(contacts.workspaceId, workspace.id))).limit(1);
+  if (!contact[0]) throw new Error("Contact not found");
+  const now = new Date();
+  const inserted = await db.insert(quotes).values({ workspaceId: workspace.id, contactId: input.contactId, serviceName: input.serviceName, description: input.description, quotedCents: input.quotedCents, receivedCents: input.receivedCents ?? 0, status: input.status ?? "orcamento", dueDate: input.dueDate, notes: input.notes, createdAt: now, updatedAt: now }).returning();
+  await db.update(contacts).set({ quoteCents: input.quotedCents, updatedAt: now }).where(eq(contacts.id, input.contactId));
+  await db.insert(auditLogs).values({ actorUserId, contactId: input.contactId, action: "quote_created", summary: `Orçamento criado: ${input.serviceName}` });
+  return inserted[0];
+}
+
+export async function updateQuotePayment(id: number, receivedCents: number, status: "orcamento" | "aguardando_aprovacao" | "aprovado" | "sinal_pendente" | "parcialmente_pago" | "pago" | "cancelado", actorUserId?: number) {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) throw new Error("Database unavailable");
+  const existing = await db.select().from(quotes).where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspace.id))).limit(1);
+  if (!existing[0]) throw new Error("Quote not found");
+  const updated = await db.update(quotes).set({ receivedCents, status, updatedAt: new Date() }).where(eq(quotes.id, id)).returning();
+  await db.insert(auditLogs).values({ actorUserId, contactId: existing[0].contactId, action: "quote_updated", summary: `Recebimento do orçamento atualizado para ${receivedCents} centavos` });
+  return updated[0];
+}
 
 export async function getApiIdempotency(key: string) {
   const db = await getDb();
@@ -572,6 +714,57 @@ export async function queueOutboundMessage(contactId: number, content: string, p
   await db.update(conversations).set({ humanControlled: 1, unreadCount: 0, lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
   await db.insert(auditLogs).values({ contactId, action: "api_message_queued", summary: "Mensagem enfileirada para o worker de WhatsApp" });
   return created[0];
+}
+
+export async function recoverProcessingMessages() {
+  const db = await getDb();
+  if (!db) return 0;
+  const recovered = await db.update(messages).set({ status: "queued" }).where(eq(messages.status, "processing")).returning({ id: messages.id });
+  return recovered.length;
+}
+
+export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
+  const db = await getDb();
+  if (!db) return { processed: 0, sent: 0, failed: 0 };
+  const pending = await db.select({
+    message: messages,
+    phone: contacts.externalPhone,
+    contactId: contacts.id,
+  }).from(messages)
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+    .where(eq(messages.status, "queued"))
+    .orderBy(asc(messages.createdAt), asc(messages.id))
+    .limit(limit);
+
+  let sent = 0;
+  let failed = 0;
+  for (const item of pending) {
+    const claimed = await db.update(messages).set({
+      status: "processing",
+      attemptCount: sql`${messages.attemptCount} + 1`,
+    }).where(and(eq(messages.id, item.message.id), eq(messages.status, "queued"))).returning({ id: messages.id });
+    if (claimed.length === 0) continue;
+    try {
+      const adapter = getWhatsappAdapter(item.message.provider);
+      const result = await adapter.sendMessage({
+        idempotencyKey: `forte-message-${item.message.id}`,
+        phone: item.phone,
+        content: item.message.content,
+        messageType: item.message.messageType,
+        provider: item.message.provider,
+      });
+      await db.update(messages).set({ status: "sent", externalId: result.externalId, sentAt: new Date(), lastError: null }).where(eq(messages.id, item.message.id));
+      await db.insert(auditLogs).values({ contactId: item.contactId, action: "message_sent", summary: `Mensagem enviada pelo provedor ${item.message.provider}` });
+      sent += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha desconhecida no envio";
+      const nextStatus = item.message.attemptCount + 1 >= maxAttempts ? "failed" : "queued";
+      await db.update(messages).set({ status: nextStatus, lastError: message }).where(eq(messages.id, item.message.id));
+      failed += 1;
+    }
+  }
+  return { processed: sent + failed, sent, failed };
 }
 
 export async function cancelAgendaAppointment(appointmentId: number) {

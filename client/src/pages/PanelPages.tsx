@@ -45,7 +45,6 @@ import {
   formatCurrency,
   getContact,
   integrations,
-  messagesByContact,
   quotes,
   stageOrder,
   type Contact,
@@ -77,22 +76,21 @@ function formatChatTime(value: string) {
 }
 
 export function DashboardPage() {
+  const dashboardQuery = trpc.dashboard.snapshot.useQuery();
+  const snapshot = dashboardQuery.data;
+  const money = (cents: number) => formatCurrency(cents / 100);
   return <PanelLayout eyebrow="Operação / Overview" title="Dashboard" description="Acompanhe o atendimento do Gabriel em um único lugar.">
-    <DemoBanner />
     <div className="stat-grid">
-      <PageLink href="/contacts"><StatCard label="Novos contatos hoje" value="08" foot="+3 desde ontem" icon={UsersRound} tone="blue" /></PageLink>
-      <PageLink href="/inbox"><StatCard label="Aguardando resposta" value="03" foot="2 com alta urgência" icon={MessageCircle} tone="amber" /></PageLink>
-      <PageLink href="/inbox"><StatCard label="IA pausada" value="02" foot="Controle humano ativo" icon={Pause} tone="amber" /></PageLink>
-      <PageLink href="/kanban"><StatCard label="Urgências abertas" value="01" foot="Requer atenção agora" icon={Zap} tone="red" /></PageLink>
-      <PageLink href="/billing"><StatCard label="Orçamentos pendentes" value={formatCurrency(2_000)} foot="4 registros no período" icon={FileText} tone="blue" /></PageLink>
-      <PageLink href="/agenda"><StatCard label="Agendamentos hoje" value="02" foot="Próximo às 14:00" icon={CalendarCheck2} tone="green" /></PageLink>
-      <PageLink href="/billing"><StatCard label="Recebido no mês" value={formatCurrency(1_840)} foot="+18% vs. mês anterior" icon={WalletCards} tone="green" /></PageLink>
-      <PageLink href="/billing"><StatCard label="Valor pendente" value={formatCurrency(2_380)} foot="3 clientes aguardando" icon={CircleDollarSign} tone="amber" /></PageLink>
+      <PageLink href="/contacts"><StatCard label="Novos contatos hoje" value={String(snapshot?.newContactsToday ?? 0).padStart(2, "0")} foot="Base persistente" icon={UsersRound} tone="blue" /></PageLink>
+      <PageLink href="/inbox"><StatCard label="Aguardando resposta" value={String(snapshot?.awaitingResponse ?? 0).padStart(2, "0")} foot="Conversas não lidas" icon={MessageCircle} tone="amber" /></PageLink>
+      <PageLink href="/inbox"><StatCard label="IA pausada" value={String(snapshot?.aiPaused ?? 0).padStart(2, "0")} foot="Controle humano ativo" icon={Pause} tone="amber" /></PageLink>
+      <PageLink href="/kanban"><StatCard label="Urgências abertas" value={String(snapshot?.urgentOpen ?? 0).padStart(2, "0")} foot="Alta ou crítica" icon={Zap} tone="red" /></PageLink>
+      <PageLink href="/billing"><StatCard label="Orçamentos pendentes" value={money(snapshot?.quotesPendingCents ?? 0)} foot="Soma registrada no CRM" icon={FileText} tone="blue" /></PageLink>
+      <PageLink href="/agenda"><StatCard label="Agendamentos hoje" value={String(snapshot?.appointmentsToday ?? 0).padStart(2, "0")} foot="Agenda nativa" icon={CalendarCheck2} tone="green" /></PageLink>
+      <PageLink href="/billing"><StatCard label="Recebido no mês" value={money(snapshot?.receivedMonthCents ?? 0)} foot="Controle financeiro manual" icon={WalletCards} tone="green" /></PageLink>
+      <PageLink href="/billing"><StatCard label="Valor pendente" value={money(snapshot?.pendingCents ?? 0)} foot="Orçamentos em aberto" icon={CircleDollarSign} tone="amber" /></PageLink>
     </div>
-    <div className="dashboard-grid">
-      <section><SectionTitle eyebrow="Atividade recente" title="Últimos eventos" action={<PageLink href="/inbox" className="btn-ghost">Ver tudo <ArrowUpRight size={13} /></PageLink>} /><div className="surface" style={{ padding: "0 17px" }}>{events.map((event) => <div className="event-row" key={event.title}><div className="event-icon"><EventIcon type={event.type} /></div><div className="row-copy"><strong>{event.title}</strong><small>{event.meta}</small></div><span className="row-meta">{event.time}</span></div>)}</div></section>
-      <section><SectionTitle eyebrow="Próximos horários" title="Agenda" action={<PageLink href="/agenda" className="btn-ghost">Abrir agenda <ArrowUpRight size={13} /></PageLink>} /><div className="surface" style={{ padding: "0 17px" }}>{appointments.slice(0, 3).map((appointment) => { const contact = getContact(appointment.contactId); return <div className="appointment-row" key={appointment.id}><div className="time-block">{appointment.time}</div><div className="row-copy"><strong>{contact.name}</strong><small>{appointment.service} · {appointment.date}</small></div><StatusBadge tone={appointment.status === "Confirmado" ? "green" : "amber"}>{appointment.status}</StatusBadge></div>; })}</div></section>
-    </div>
+    <div className="dashboard-grid"><section><SectionTitle eyebrow="Atividade recente" title="Últimos eventos" action={<PageLink href="/inbox" className="btn-ghost">Ver tudo <ArrowUpRight size={13} /></PageLink>} /><div className="surface" style={{ padding: "0 17px" }}>{(snapshot?.recentEvents ?? []).length > 0 ? snapshot?.recentEvents.map((event) => <div className="event-row" key={event.id}><div className="event-icon"><EventIcon type={event.action.includes("stage") ? "kanban" : event.action.includes("message") ? "message" : "calendar"} /></div><div className="row-copy"><strong>{event.action}</strong><small>{event.summary}</small></div><span className="row-meta">{formatChatTime(event.createdAt)}</span></div>) : <EmptyState icon={Clock3} title="Sem atividade ainda" description="As ações do atendimento aparecerão aqui." />}</div></section><section><SectionTitle eyebrow="Próximos horários" title="Agenda" action={<PageLink href="/agenda" className="btn-ghost">Abrir agenda <ArrowUpRight size={13} /></PageLink>} /><div className="surface" style={{ padding: "0 17px" }}>{(snapshot?.upcomingAppointments ?? []).length > 0 ? snapshot?.upcomingAppointments.map((appointment) => <div className="appointment-row" key={appointment.id}><div className="time-block">{new Date(appointment.startsAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div><div className="row-copy"><strong>Atendimento #{appointment.id}</strong><small>{new Date(appointment.startsAt).toLocaleDateString("pt-BR")} · {appointment.notes ?? "Sem observações"}</small></div><StatusBadge tone={appointment.status === "confirmed" ? "green" : "amber"}>{appointment.status}</StatusBadge></div>) : <EmptyState icon={CalendarCheck2} title="Agenda livre" description="Nenhum próximo horário confirmado." />}</div></section></div>
   </PanelLayout>;
 }
 
@@ -111,16 +109,13 @@ function ConversationProfile({ contact, onToggleAi }: { contact: ContactLike; on
 }
 
 export function InboxPage() {
-  const [selectedId, setSelectedId] = useState("1");
+  const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("Todos");
-  const [localContacts, setLocalContacts] = useState(contacts);
   const [draft, setDraft] = useState("");
-  const [sentMessages, setSentMessages] = useState<Record<string, Message[]>>({});
   const contactsQuery = trpc.inbox.contacts.useQuery();
   const remoteContacts = contactsQuery.data ?? [];
-  const usingRemote = remoteContacts.length > 0;
-  const items = usingRemote ? remoteContacts : localContacts;
+  const items = remoteContacts;
 
   useEffect(() => {
     if (items.length > 0 && !items.some((contact) => contact.id === selectedId)) setSelectedId(items[0].id);
@@ -129,27 +124,21 @@ export function InboxPage() {
   const selected = items.find((contact) => contact.id === selectedId) ?? items[0];
   const selectedNumericId = Number(selected?.id ?? 0);
   const threadInput = useMemo(() => ({ contactId: selectedNumericId }), [selectedNumericId]);
-  const threadQuery = trpc.inbox.thread.useQuery(threadInput, { enabled: usingRemote && selectedNumericId > 0 });
+  const threadQuery = trpc.inbox.thread.useQuery(threadInput, { enabled: selectedNumericId > 0 });
   const refresh = async () => { await Promise.all([contactsQuery.refetch(), threadQuery.refetch()]); };
   const toggleAiMutation = trpc.inbox.toggleAi.useMutation({ onSuccess: refresh });
   const sendMutation = trpc.inbox.sendMessage.useMutation({ onSuccess: refresh });
   const filtered = useMemo(() => items.filter((contact) => `${contact.name} ${contact.phone}`.toLowerCase().includes(search.toLowerCase()) && (stageFilter === "Todos" || contact.stage === stageFilter)), [items, search, stageFilter]);
 
-  if (!selected) return <PanelLayout eyebrow="Operação / Atendimento" title="Inbox" description="Converse com seus clientes sem sair do painel."><DemoBanner /><EmptyState icon={MessageCircle} title="Nenhuma conversa encontrada" description="Configure uma integração ou carregue dados demo para começar." /></PanelLayout>;
+  if (!selected) return <PanelLayout eyebrow="Operação / Atendimento" title="Inbox" description="Converse com seus clientes sem sair do painel.">{contactsQuery.isLoading ? <EmptyState icon={MessageCircle} title="Carregando conversas" description="Buscando os contatos persistidos deste workspace." /> : <EmptyState icon={MessageCircle} title="Nenhuma conversa encontrada" description="Quando o primeiro WhatsApp chegar, a conversa aparecerá aqui." />}</PanelLayout>;
 
-  const fallbackMessages = [...(messagesByContact[selected.id] ?? []), ...(sentMessages[selected.id] ?? [])];
-  const messages = usingRemote ? (threadQuery.data?.messages ?? []) : fallbackMessages;
+  const messages = threadQuery.data?.messages ?? [];
   const toggleAi = () => {
-    if (usingRemote) toggleAiMutation.mutate({ contactId: selectedNumericId, enabled: !selected.aiEnabled });
-    else setLocalContacts((items) => items.map((item) => item.id === selected.id ? { ...item, aiEnabled: !item.aiEnabled } : item));
+    toggleAiMutation.mutate({ contactId: selectedNumericId, enabled: !selected.aiEnabled });
   };
   const send = () => {
     if (!draft.trim()) return;
-    if (usingRemote) sendMutation.mutate({ contactId: selectedNumericId, content: draft.trim() });
-    else {
-      setSentMessages((current) => ({ ...current, [selected.id]: [...(current[selected.id] ?? []), { id: `manual-${Date.now()}`, sender: "human", text: draft.trim(), time: "agora" }] }));
-      setLocalContacts((items) => items.map((item) => item.id === selected.id ? { ...item, aiEnabled: false, lastMessage: draft.trim(), lastMessageAt: "agora", unread: 0 } : item));
-    }
+    sendMutation.mutate({ contactId: selectedNumericId, content: draft.trim() });
     setDraft("");
   };
   return <PanelLayout eyebrow="Operação / Atendimento" title="Inbox" description="Converse com seus clientes sem sair do painel." actions={<button className="btn-primary"><Plus size={13} /> Nova conversa</button>}>
@@ -160,20 +149,15 @@ export function InboxPage() {
 }
 
 export function KanbanPage() {
-  const [localContacts, setLocalContacts] = useState(contacts);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const contactsQuery = trpc.inbox.contacts.useQuery();
-  const remoteContacts = contactsQuery.data ?? [];
-  const usingRemote = remoteContacts.length > 0;
-  const items = usingRemote ? remoteContacts : localContacts;
+  const items = contactsQuery.data ?? [];
   const moveMutation = trpc.inbox.moveStage.useMutation({ onSuccess: () => contactsQuery.refetch() });
   const moveContact = (id: string, stage: string) => {
-    if (usingRemote) moveMutation.mutate({ contactId: Number(id), stage });
-    else setLocalContacts((current) => current.map((item) => item.id === id ? { ...item, stage: stage as Stage } : item));
+    moveMutation.mutate({ contactId: Number(id), stage });
   };
   return <PanelLayout eyebrow="Operação / Comercial" title="Kanban" description="Acompanhe cada lead até a conclusão do serviço." actions={<button className="btn-primary"><Plus size={13} /> Novo lead</button>}>
-    <DemoBanner />
-    <div className="filter-bar"><div className="search-field"><Search size={14} /><input className="input-control" placeholder="Buscar no funil" /></div><button className="btn-secondary"><Filter size={13} /> Filtrar por urgência</button><span className="muted" style={{ fontSize: 10, marginLeft: "auto" }}>{items.length} leads {usingRemote ? "persistidos" : "demo"}</span></div>
+    <div className="filter-bar"><div className="search-field"><Search size={14} /><input className="input-control" placeholder="Buscar no funil" /></div><button className="btn-secondary"><Filter size={13} /> Filtrar por urgência</button><span className="muted" style={{ fontSize: 10, marginLeft: "auto" }}>{items.length} leads persistidos</span></div>
     <div className="kanban-shell"><div className="kanban-board">{stageOrder.map((stage) => { const columnItems = items.filter((contact) => contact.stage === stage); return <div className="kanban-column" key={stage} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggingId) moveContact(draggingId, stage); setDraggingId(null); }}><div className="kanban-column-header"><strong>{stage}</strong><span>{columnItems.length.toString().padStart(2, "0")}</span></div>{columnItems.map((contact) => <article className="kanban-card" key={contact.id} draggable onDragStart={() => setDraggingId(contact.id)} onDragEnd={() => setDraggingId(null)}><div className="kanban-card-head"><div className="avatar">{contact.initials}</div><div><strong>{contact.name}</strong><small>{contact.service}</small></div></div><div className="kanban-card-body"><div className="kanban-meta"><span>Urgência</span><strong className={`urgency urgency-${contact.urgency.toLowerCase().replace("é", "e")}`}>{contact.urgency}</strong></div><div className="kanban-meta"><span>Local</span><strong>{contact.neighborhood}</strong></div><div className="kanban-meta"><span>Orçamento</span><strong>{formatCurrency(contact.quote)}</strong></div><div className="kanban-meta"><span>IA</span><strong className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</strong></div><div className="kanban-meta"><span>Dias sem resposta</span><strong>{contact.daysNoReply}</strong></div></div><div style={{ marginTop: 11 }}><select className="select-control" value={contact.stage} onChange={(event) => moveContact(contact.id, event.target.value)} aria-label={`Estágio de ${contact.name}`}><option value={contact.stage}>{contact.stage}</option>{stageOrder.filter((item) => item !== contact.stage).map((item) => <option key={item}>{item}</option>)}</select></div></article>)}</div>; })}</div></div>
   </PanelLayout>;
 }
@@ -194,12 +178,10 @@ export function AgendaPage() {
   const serviceOptions = agendaQuery.data?.services ?? [];
   const professionalOptions = agendaQuery.data?.professionals ?? [];
   const workspaceTimezone = agendaQuery.data?.timezone ?? "America/Sao_Paulo";
-  const localAppointments = appointments.map((item) => ({ id: item.id, contactName: getContact(item.contactId).name, service: item.service, date: item.date, time: item.time, duration: item.duration, status: item.status, notes: item.notes }));
   const remoteAppointments = (agendaQuery.data?.appointments ?? []).map((item) => { const startsAt = new Date(item.startsAt); const endsAt = new Date(item.endsAt); return { id: String(item.id), contactName: item.contactName ?? "Cliente sem nome", service: item.serviceName ?? "Atendimento", date: startsAt.toLocaleDateString("pt-BR", { timeZone: workspaceTimezone }), time: startsAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: workspaceTimezone }), duration: `${Math.max(15, Math.round((endsAt.getTime() - startsAt.getTime()) / 60000))} min`, status: item.status === "confirmed" ? "Confirmado" : item.status === "requested" ? "Solicitado" : item.status === "completed" ? "Concluído" : item.status === "cancelled" ? "Cancelado" : "Não compareceu", notes: item.notes ?? "" }; });
-  const agendaItems = remoteAppointments.length > 0 ? remoteAppointments : localAppointments;
+  const agendaItems = remoteAppointments;
   const submitAppointment = () => { const selectedService = serviceOptions.find((item) => String(item.id) === serviceId); const duration = selectedService?.durationMinutes ?? 60; const startsAt = new Date(`${date}T${time}:00`); const endsAt = new Date(startsAt.getTime() + duration * 60000); createMutation.mutate({ contactId: contactId ? Number(contactId) : undefined, serviceId: Number(serviceId || serviceOptions[0]?.id), professionalId: Number(professionalId || professionalOptions[0]?.id), startsAt, endsAt, notes: notes || undefined }); };
   return <PanelLayout eyebrow="Operação / Agenda" title="Agenda" description="Veja seus próximos atendimentos e disponibilidade." actions={<button className="btn-primary" onClick={() => setShowForm((value) => !value)}><Plus size={13} /> Novo agendamento</button>}>
-    <DemoBanner />
     {showForm && <section className="surface appointment-form-panel"><SectionTitle eyebrow="Novo atendimento" title="Reservar horário" /><div className="form-grid"><div className="form-field"><label>Cliente</label><select className="select-control" value={contactId} onChange={(event) => setContactId(event.target.value)}><option value="">Cliente sem cadastro</option>{(contactsQuery.data ?? contacts).map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}</select></div><div className="form-field"><label>Serviço</label><select className="select-control" value={serviceId || String(serviceOptions[0]?.id ?? "")} onChange={(event) => setServiceId(event.target.value)}>{serviceOptions.map((service) => <option key={service.id} value={service.id}>{service.name} · {service.durationMinutes} min</option>)}</select></div><div className="form-field"><label>Profissional</label><select className="select-control" value={professionalId || String(professionalOptions[0]?.id ?? "")} onChange={(event) => setProfessionalId(event.target.value)}>{professionalOptions.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}</select></div><div className="form-field"><label>Data</label><input className="input-control" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></div><div className="form-field"><label>Horário</label><input className="input-control" type="time" value={time} onChange={(event) => setTime(event.target.value)} /></div><div className="form-field full"><label>Observações</label><input className="input-control" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Ex.: confirmar pelo WhatsApp" /></div></div>{createMutation.error && <div className="demo-banner" style={{ marginTop: 15, marginBottom: 0 }}><Info size={14} /> {createMutation.error.message}</div>}<div style={{ display: "flex", gap: 8, marginTop: 16 }}><button className="btn-primary" disabled={createMutation.isPending || !serviceOptions.length || !professionalOptions.length} onClick={submitAppointment}>{createMutation.isPending ? "Salvando..." : "Reservar horário"}</button><button className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button></div></section>}
     <div className="agenda-layout"><section className="surface calendar-panel"><div className="calendar-toolbar"><div><span className="eyebrow">Setembro 2026</span><strong>21 — 27 de setembro</strong></div><ViewToggle active={view} onChange={setView} /></div>{view === "dia" ? <div style={{ paddingTop: 18 }}><SectionTitle eyebrow="Sábado, 26 de setembro" title="Agenda do dia" />{agendaItems.filter((appointment) => appointment.date === "26/09/2026").length > 0 ? <div className="list-stack">{agendaItems.filter((appointment) => appointment.date === "26/09/2026").map((appointment) => <div className="appointment-row" key={appointment.id}><div className="time-block">{appointment.time}</div><div className="row-copy"><strong>{appointment.contactName}</strong><small>{appointment.service} · {appointment.duration}</small><small>{appointment.notes}</small></div><StatusBadge tone={appointment.status === "Confirmado" ? "green" : appointment.status === "Cancelado" ? "red" : "amber"}>{appointment.status}</StatusBadge></div>)}</div> : <EmptyState icon={CalendarCheck2} title="Nenhum horário neste dia" description="Crie um agendamento ou escolha outra data." />}</div> : <><div className="week-grid"><div></div>{days.map((day, index) => <div className="day-name" key={day}>{day}<strong>{21 + index}</strong></div>)}{["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"].map((item) => <div key={item} className="time-label">{item}</div>)}{Array.from({ length: 7 * 9 }).map((_, index) => { const day = index % 7; const timeIndex = Math.floor(index / 7); const event = (day === 3 && timeIndex === 5) ? agendaItems[0] : (day === 5 && timeIndex === 8) ? agendaItems[1] : null; return <div key={`${day}-${timeIndex}`} className={event ? "calendar-event" : ""}>{event && <><strong>{event.service}</strong><small>{event.time} · {event.contactName.split(" ")[0]}</small></>}</div>; })}</div></>}</section><aside className="surface side-list"><h3>Próximos agendamentos</h3>{agendaItems.map((appointment) => <div className="appointment-row" key={appointment.id}><div className="time-block">{appointment.date.slice(0, 5)}<small style={{ display: "block", marginTop: 4, color: "#555" }}>{appointment.time}</small></div><div className="row-copy"><strong>{appointment.contactName}</strong><small>{appointment.service} · {appointment.status}</small></div></div>)}<button className="btn-secondary" style={{ width: "100%", marginTop: 14 }} onClick={() => setView("dia")}>Ver agenda do dia</button></aside></div>
   </PanelLayout>;
@@ -209,7 +191,7 @@ export function ContactsPage() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const contactsQuery = trpc.inbox.contacts.useQuery();
-  const items = contactsQuery.data ?? contacts;
+  const items = contactsQuery.data ?? [];
   const filtered = items.filter((contact) => `${contact.name} ${contact.phone} ${contact.service}`.toLowerCase().includes(search.toLowerCase()));
   return <PanelLayout eyebrow="Clientes / CRM local" title="Contatos" description="Clientes e leads sincronizados com o atendimento." actions={<button className="btn-primary"><Plus size={13} /> Novo contato</button>}>
     <DemoBanner /><div className="filter-bar"><div className="search-field"><Search size={14} /><input className="input-control" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contato, telefone ou serviço" /></div><button className="btn-secondary"><Filter size={13} /> Filtros</button></div><div className="surface data-table-wrap"><table className="data-table"><thead><tr><th>Contato</th><th>Serviço</th><th>Estágio</th><th>Urgência</th><th>IA</th><th>Atualização</th><th></th></tr></thead><tbody>{filtered.map((contact) => <tr key={contact.id} onClick={() => navigate(`/contacts/${contact.id}`)} style={{ cursor: "pointer" }}><td><div className="table-person"><div className="avatar">{contact.initials}</div><div>{contact.name}<span className="table-secondary">{contact.phone}</span></div></div></td><td>{contact.service}<span className="table-secondary">{contact.neighborhood}, {contact.city}</span></td><td><StatusBadge tone={contact.stage === "Agendado" ? "green" : contact.stage === "Sem retorno" ? "amber" : "blue"}>{contact.stage}</StatusBadge></td><td><span className={`urgency urgency-${contact.urgency.toLowerCase().replace("é", "e")}`}>{contact.urgency}</span></td><td className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</td><td>{formatChatTime(contact.lastMessageAt)}</td><td><button className="icon-button"><ArrowUpRight size={14} /></button></td></tr>)}</tbody></table></div>
@@ -221,12 +203,13 @@ export function ContactDetailPage() {
   const detailId = Number(params?.id ?? 0);
   const detailInput = useMemo(() => ({ contactId: detailId }), [detailId]);
   const threadQuery = trpc.inbox.thread.useQuery(detailInput, { enabled: detailId > 0 });
-  const contact = threadQuery.data?.contact ?? getContact(params?.id ?? "c1");
+  const contact = threadQuery.data?.contact;
   const [tab, setTab] = useState("overview");
-  const messages = threadQuery.data?.messages ?? messagesByContact[contact.id] ?? [];
+  const messages = threadQuery.data?.messages ?? [];
   const audit = threadQuery.data?.audit ?? [];
   const agendaQuery = trpc.agenda.snapshot.useQuery();
   const contactAppointments = agendaQuery.data?.appointments.filter((appointment) => appointment.contactId === detailId) ?? [];
+  if (!contact) return <PanelLayout eyebrow="Clientes / Ficha" title="Ficha do cliente" description="Histórico operacional, conversa e dados sincronizados." actions={<PageLink href="/contacts" className="btn-secondary"><ArrowDownRight size={13} /> Voltar para contatos</PageLink>}>{threadQuery.isLoading ? <EmptyState icon={UserRound} title="Carregando contato" description="Buscando os dados persistidos." /> : <EmptyState icon={UserRound} title="Contato não encontrado" description="Este contato ainda não existe neste workspace." />}</PanelLayout>;
   return <PanelLayout eyebrow="Clientes / Ficha" title="Ficha do cliente" description="Histórico operacional, conversa e dados sincronizados." actions={<PageLink href="/contacts" className="btn-secondary"><ArrowDownRight size={13} /> Voltar para contatos</PageLink>}>
     <DemoBanner /><div className="detail-layout"><aside className="surface detail-nav">{[["overview", "Visão geral"], ["conversation", "Conversa"], ["appointments", "Agendamentos"], ["notes", "Notas internas"], ["history", "Histórico de eventos"]].map(([key, label]) => <button key={key} className={tab === key ? "is-active" : ""} onClick={() => setTab(key)}>{label}</button>)}</aside><section className="surface detail-card"><div className="detail-hero"><div className="detail-person"><div className="avatar">{contact.initials}</div><div><h2>{contact.name}</h2><p>{contact.phone} · {contact.city}, {contact.neighborhood}</p></div></div><div className="detail-actions"><button className="btn-secondary"><Phone size={13} /> Ligar</button><PageLink href={`/inbox`} className="btn-primary"><MessageCircle size={13} /> Abrir conversa</PageLink></div></div><div className="detail-stats"><div className="detail-stat"><span>Serviço solicitado</span><strong>{contact.service}</strong></div><div className="detail-stat"><span>Estágio atual</span><strong>{contact.stage}</strong></div><div className="detail-stat"><span>Orçamento</span><strong>{formatCurrency(contact.quote)}</strong></div><div className="detail-stat"><span>IA</span><strong className={contact.aiEnabled ? "green" : "amber"}>{contact.aiEnabled ? "Ativa" : "Pausada"}</strong></div></div>{tab === "overview" && <><SectionTitle eyebrow="Resumo" title="Dados do atendimento" /><div className="timeline"><div className="timeline-row"><div className="timeline-time">{formatChatTime(contact.lastMessageAt)}</div><div className="timeline-marker" /><div className="timeline-copy"><strong>Última mensagem registrada</strong><p>{contact.lastMessage}</p></div></div><div className="timeline-row"><div className="timeline-time">Hoje</div><div className="timeline-marker" /><div className="timeline-copy"><strong>Contato sincronizado</strong><p>Dados carregados da base persistente do Forte Panel.</p></div></div></div></>}{tab === "conversation" && <div className="chat-body" style={{ padding: "4px 0" }}>{messages.map((message) => <MessageBubble key={message.id} message={message} />)}</div>}{tab === "appointments" && <div className="list-stack">{contactAppointments.length > 0 ? contactAppointments.map((appointment) => { const startsAt = new Date(appointment.startsAt); const timezone = agendaQuery.data?.timezone ?? "America/Sao_Paulo"; return <div className="appointment-row" key={appointment.id}><div className="time-block">{startsAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: timezone })}</div><div className="row-copy"><strong>{appointment.serviceName ?? "Atendimento"}</strong><small>{startsAt.toLocaleDateString("pt-BR", { timeZone: timezone })} · {appointment.professionalName ?? "Profissional"}</small><small>{appointment.notes ?? "Sem observações"}</small></div><StatusBadge tone={appointment.status === "confirmed" ? "green" : appointment.status === "cancelled" ? "red" : "amber"}>{appointment.status === "confirmed" ? "Confirmado" : appointment.status === "requested" ? "Solicitado" : appointment.status}</StatusBadge></div>; }) : <EmptyState icon={CalendarCheck2} title="Nenhum agendamento para este contato" description="Reserve um horário pela Agenda para acompanhar o atendimento aqui." />}</div>}{tab === "notes" && <div><textarea className="textarea-control" placeholder="Escreva uma nota interna para este contato..." /><button className="btn-primary" style={{ marginTop: 10 }}>Salvar nota</button></div>}{tab === "history" && <div className="timeline">{audit.length > 0 ? audit.map((item) => <div className="timeline-row" key={item.id}><div className="timeline-time">{formatChatTime(item.createdAt.toISOString())}</div><div className="timeline-marker" /><div className="timeline-copy"><strong>{item.action}</strong><p>{item.summary}</p></div></div>) : <EmptyState icon={Clock3} title="Ainda sem eventos de auditoria" description="As próximas ações do operador aparecerão aqui." />}</div>}</section></div>
   </PanelLayout>;
@@ -269,11 +252,11 @@ export function TeamPage() {
   const [showInvite, setShowInvite] = useState(false);
   const workspaceQuery = trpc.workspace.current.useQuery();
   const membersQuery = trpc.workspace.members.useQuery();
-  const members = membersQuery.data?.length ? membersQuery.data : [{ id: 0, name: "Gabriel Barbosa", email: "gabriel@fortepanel.demo", role: "owner" as const, active: true }];
+  const members = membersQuery.data ?? [];
   const roleLabels: Record<string, string> = { owner: "Proprietário", admin: "Administrador", manager: "Gerente", agent: "Atendente" };
   return <PanelLayout eyebrow="Sistema / Acessos" title="Equipe" description="Controle quem atende, gerencia e administra este workspace." actions={<button className="btn-primary" onClick={() => setShowInvite((value) => !value)}><Plus size={13} /> Convidar membro</button>}>
     <div className="team-summary-grid">
-      <div className="surface stat-card"><span className="stat-label">Workspace</span><strong className="team-summary-value">{workspaceQuery.data?.name ?? "Forte Serviços Demo"}</strong><span className="stat-foot">Plano {workspaceQuery.data?.plan ?? "pro"}</span></div>
+      <div className="surface stat-card"><span className="stat-label">Workspace</span><strong className="team-summary-value">{workspaceQuery.data?.name ?? "Carregando..."}</strong><span className="stat-foot">Plano {workspaceQuery.data?.plan ?? "—"}</span></div>
       <div className="surface stat-card"><span className="stat-label">Membros ativos</span><strong className="stat-value">{members.filter((member) => member.active).length.toString().padStart(2, "0")}</strong><span className="stat-foot">Acessos autorizados</span></div>
       <div className="surface stat-card"><span className="stat-label">Papéis</span><strong className="stat-value">04</strong><span className="stat-foot">Proprietário, admin, gerente e atendente</span></div>
     </div>

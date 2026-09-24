@@ -4,13 +4,13 @@ services:
     container_name: forte_postgres_panel
     restart: unless-stopped
     environment:
-      POSTGRES_DB: forte_panel
-      POSTGRES_USER: forte_panel
-      POSTGRES_PASSWORD: forte_panel_local
+      POSTGRES_DB: ${PANEL_POSTGRES_DB:-forte_panel}
+      POSTGRES_USER: ${PANEL_POSTGRES_USER:-forte_panel}
+      POSTGRES_PASSWORD: ${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}
     volumes:
       - forte_postgres_panel_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U forte_panel -d forte_panel"]
+      test: ["CMD-SHELL", "pg_isready -U $${PANEL_POSTGRES_USER:-forte_panel} -d $${PANEL_POSTGRES_DB:-forte_panel}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -40,19 +40,53 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      FORTE_API_KEY: ${FORTE_API_KEY:-teste-panel-local}
-      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:-teste-webhook-local}
-      DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
+      DEMO_MODE: ${DEMO_MODE:-false}
+      FORTE_API_KEY: ${FORTE_API_KEY:?FORTE_API_KEY is required}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
+      DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
       REDIS_URL: redis://redis_panel:6379/0
       RUN_MIGRATIONS: "true"
-      PAPI_BASE_URL: http://pastorini_api:3000
-      N8N_BASE_URL: http://n8n:5678
+      PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
+      PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
+      PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
+      N8N_BASE_URL: ${N8N_BASE_URL:-http://n8n:5678}
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
+      META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
+      META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
     ports:
-      - "3000:3000"
+      - "${PANEL_PORT:-3002}:3000"
     depends_on:
       postgres_panel:
         condition: service_healthy
       redis_panel:
+        condition: service_healthy
+    networks:
+      - panel-network
+      - pastorini-network
+
+  forte-panel-worker:
+    image: ghcr.io/geordptoroy/forte-panel:latest
+    pull_policy: always
+    container_name: forte_panel_worker
+    restart: unless-stopped
+    command: ["./docker-entrypoint.sh", "worker"]
+    environment:
+      NODE_ENV: production
+      DEMO_MODE: ${DEMO_MODE:-false}
+      FORTE_API_KEY: ${FORTE_API_KEY:?FORTE_API_KEY is required}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
+      DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
+      PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
+      PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
+      PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
+      META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
+      META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
+      WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS:-1500}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-10}
+      WORKER_MAX_ATTEMPTS: ${WORKER_MAX_ATTEMPTS:-3}
+    depends_on:
+      postgres_panel:
         condition: service_healthy
     networks:
       - panel-network

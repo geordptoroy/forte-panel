@@ -8,6 +8,7 @@ import {
   getApiIdempotency,
   getContactById,
   getDefaultWhatsappProvider,
+  getPublishedAiPrompt,
   ingestInboundWhatsApp,
   leadMemoryOperation,
   listWhatsappChannels,
@@ -126,6 +127,16 @@ api.get("/channels", async (req, res) => {
     return res.json({ data: channels.map((channel) => ({ id: channel.id, provider: channel.provider, name: channel.name, phoneNumber: channel.phoneNumber, configured: Boolean(channel.phoneNumberId || channel.credentialsRef), active: Boolean(channel.active) })) });
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao consultar canais", "internal_error");
+  }
+});
+
+api.get("/onboarding/prompt", async (req, res) => {
+  if (!requireApiKey(req, res)) return;
+  try {
+    const prompt = await getPublishedAiPrompt();
+    return res.json({ data: prompt });
+  } catch (error) {
+    return fail(res, 500, error instanceof Error ? error.message : "Falha ao consultar prompt publicado", "internal_error");
   }
 });
 

@@ -1,0 +1,32 @@
+import { processQueuedMessagesOnce, recoverProcessingMessages } from "./db";
+
+const intervalMs = Number(process.env.WORKER_INTERVAL_MS ?? 1500);
+const batchSize = Number(process.env.WORKER_BATCH_SIZE ?? 10);
+const maxAttempts = Number(process.env.WORKER_MAX_ATTEMPTS ?? 3);
+let stopping = false;
+
+async function tick() {
+  try {
+    const result = await processQueuedMessagesOnce(batchSize, maxAttempts);
+    if (result.processed > 0) {
+      console.log(`[forte-worker] processadas=${result.processed} enviadas=${result.sent} falhas=${result.failed}`);
+    }
+  } catch (error) {
+    console.error("[forte-worker] erro no ciclo", error);
+  }
+}
+
+async function main() {
+  const recovered = await recoverProcessingMessages();
+  console.log(`[forte-worker] iniciado; intervalo=${intervalMs}ms lote=${batchSize} tentativas=${maxAttempts} recuperadas=${recovered}`);
+  while (!stopping) {
+    await tick();
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
+const stop = () => { stopping = true; };
+process.on("SIGTERM", stop);
+process.on("SIGINT", stop);
+
+void main();

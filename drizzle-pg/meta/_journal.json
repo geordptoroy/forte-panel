@@ -15,6 +15,20 @@
       "when": 1790213227000,
       "tag": "0001_special_cannonball",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790213572108,
+      "tag": "0002_calm_scourge",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790214364314,
+      "tag": "0003_optimal_puff_adder",
+      "breakpoints": true
     }
   ]
 }

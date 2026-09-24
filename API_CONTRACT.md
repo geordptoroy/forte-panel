@@ -24,6 +24,7 @@ Toda operação mutável aceita `Idempotency-Key`. A mesma chave não pode execu
 |---|---|---|
 | `GET` | `/api/v1/health` | Healthcheck sem credencial |
 | `GET` | `/api/v1/channels` | Listar canais WhatsApp ativos do workspace |
+| `GET` | `/api/v1/onboarding/prompt` | Buscar o prompt operacional publicado da empresa |
 | `POST` | `/api/v1/contacts/upsert` | Criar ou atualizar lead por telefone |
 | `GET` | `/api/v1/contacts/:id` | Consultar contexto operacional do contato |
 | `POST` | `/api/v1/lead-memory` | Buscar, criar, atualizar lead ou registrar nota para o n8n |
@@ -42,7 +43,9 @@ O evento deve conter `eventId`, `phone`, `name`, `content`, `messageType` e `rec
 
 O workflow n8n pode substituir a antiga ferramenta de memória/CRM por uma chamada HTTP para `POST /api/v1/lead-memory`. O corpo usa `action` com `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota`, mais `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`. O retorno mantém `success`, `acao`, `telefone`, `resultado` e `mensagem` para facilitar a troca do nó sem alterar o agente.
 
-Mensagens enviadas por `POST /messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio no provedor. A primeira implementação mantém a fila no banco; Redis e retries serão adicionados na etapa da VPS.
+Mensagens enviadas por `POST /messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio no provedor. O worker separado consome a fila, usa o adapter registrado na mensagem, recupera jobs presos após reinício e tenta novamente até `WORKER_MAX_ATTEMPTS` antes de marcar `failed`.
+
+O n8n pode consultar `GET /onboarding/prompt` no início de uma execução para usar somente a versão publicada pelo administrador. O endpoint nunca devolve um rascunho não publicado.
 
 ```json
 {

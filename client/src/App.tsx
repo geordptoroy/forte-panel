@@ -5,7 +5,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
   AgendaPage,
-  BillingPage,
   ContactDetailPage,
   ContactsPage,
   DashboardPage,
@@ -16,6 +15,8 @@ import {
   SettingsPage,
   TeamPage,
 } from "./pages/PanelPages";
+import OnboardingPage from "./pages/OnboardingPage";
+import BillingPage from "./pages/BillingPage";
 
 function Router() {
   return (
@@ -29,6 +30,7 @@ function Router() {
       <Route path="/contacts/:id" component={ContactDetailPage} />
       <Route path="/billing" component={BillingPage} />
       <Route path="/integrations" component={IntegrationsPage} />
+      <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/team" component={TeamPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFoundPage} />

@@ -38,6 +38,7 @@ function normalizeMetaInbound(event: any): InboundMessageEvent {
 export function createPapiAdapter(): PapiAdapter {
   const baseUrl = process.env.PAPI_BASE_URL;
   const apiKey = process.env.PAPI_API_KEY;
+  const sendPath = process.env.PAPI_SEND_MESSAGE_PATH ?? "/messages";
   return {
     provider: "papi",
     async health() {
@@ -52,7 +53,7 @@ export function createPapiAdapter(): PapiAdapter {
     },
     async sendMessage(command: OutboundMessageCommand) {
       if (!baseUrl || !apiKey) throw new Error("PAPI não configurado");
-      const response = await fetch(`${baseUrl.replace(/\/$/, "")}/messages`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, "Idempotency-Key": command.idempotencyKey }, body: JSON.stringify({ to: normalizePhone(command.phone), type: command.messageType ?? "text", text: { body: command.content } }) });
+      const response = await fetch(`${baseUrl.replace(/\/$/, "")}${sendPath.startsWith("/") ? sendPath : `/${sendPath}`}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, "Idempotency-Key": command.idempotencyKey }, body: JSON.stringify({ to: normalizePhone(command.phone), type: command.messageType ?? "text", text: { body: command.content } }) });
       if (!response.ok) throw new Error(`PAPI respondeu ${response.status}`);
       const data = await response.json() as { id?: string; messageId?: string };
       return { externalId: String(data.id ?? data.messageId ?? command.idempotencyKey), status: "sent" as const };
