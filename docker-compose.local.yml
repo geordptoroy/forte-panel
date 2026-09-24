@@ -1,0 +1,73 @@
+services:
+  mysql_panel:
+    image: mysql:8.0
+    container_name: forte_mysql_panel
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: forte_panel
+      MYSQL_USER: forte_panel
+      MYSQL_PASSWORD: forte_panel_local
+      MYSQL_ROOT_PASSWORD: root_panel_local
+    volumes:
+      - forte_mysql_panel_data:/var/lib/mysql
+    healthcheck:
+      test:
+        ["CMD-SHELL", "mysqladmin ping -h localhost -u root -proot_panel_local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - panel-network
+
+  redis_panel:
+    image: redis:7-alpine
+    container_name: forte_redis_panel
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - forte_redis_panel_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - panel-network
+
+  forte-panel:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    container_name: forte_panel
+    restart: unless-stopped
+    env_file:
+      - .env.local
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: mysql://forte_panel:forte_panel_local@mysql_panel:3306/forte_panel
+      REDIS_URL: redis://redis_panel:6379/0
+      RUN_MIGRATIONS: "true"
+      PAPI_BASE_URL: http://pastorini_api:3000
+      N8N_BASE_URL: http://n8n:5678
+    ports:
+      - "3000:3000"
+    depends_on:
+      mysql_panel:
+        condition: service_healthy
+      redis_panel:
+        condition: service_healthy
+    networks:
+      - panel-network
+      - pastorini-network
+
+networks:
+  panel-network:
+    name: forte-panel-network
+  pastorini-network:
+    external: true
+    name: ${PASTORINI_NETWORK:-forte-local_pastorini-network}
+
+volumes:
+  forte_mysql_panel_data:
+  forte_redis_panel_data:

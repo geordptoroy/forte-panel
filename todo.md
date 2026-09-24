@@ -21,6 +21,7 @@
 - Arquitetura multi-provedor com adapters PAPI e Meta Cloud API; seleção de canal padrão por workspace.
 - Leitura e documentação do workflow n8n de 34 nós em `N8N_ADAPTATION.md`.
 - Procedimento de teste local da stack em `infra/LOCAL_TEST.md`, removendo Easy/Clientverse.
+- Dockerfile, entrypoint, `.env.local.example` e `docker-compose.local.yml` para painel + MySQL + Redis próprios.
 - Endpoint `POST /api/v1/lead-memory` e tabela de notas próprias para substituir a ferramenta Clientverse/Lead Memory.
 - Testes, TypeScript e build validados.
 
@@ -32,6 +33,7 @@
 - Ligar o worker aos adapters PAPI/Meta e confirmar status de entrega no CRM.
 - Adaptar o workflow n8n para chamar a API do Panel e substituir a ferramenta Clientverse.
 - Executar o primeiro teste local com a stack reduzida e importar o workflow real no n8n.
+- Validar `docker compose up --build` na máquina local; o sandbox não possui Docker instalado.
 - Publicar eventos de domínio assinados para n8n com retries e backoff no worker.
 - Criar healthchecks, autenticação por usuário/empresa e proxy HTTPS na VPS.
 

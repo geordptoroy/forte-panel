@@ -23,15 +23,31 @@ extra_hosts:
   - "host.docker.internal:host-gateway"
 ```
 
+O repositório agora contém `docker-compose.local.yml`, que adiciona `mysql_panel`, `redis_panel` e `forte-panel`. O painel não usa o banco do PAPI nem o banco do n8n. Ele aplica as migrations ao iniciar e entra na mesma rede Docker do PAPI/n8n.
+
 ## Comandos
 
-Na pasta do compose:
+Copie o exemplo de variáveis e revise a rede do compose principal:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Na pasta do compose principal, suba a stack original já ajustada:
 
 ```bash
 docker compose up -d postgres_papi postgres_n8n redis_papi n8n pastorini_api qdrant localai
 ```
 
-Em outra janela, no projeto Forte Panel:
+Depois, na pasta do Forte Panel, suba o painel e seus serviços próprios:
+
+```bash
+docker compose -p forte-local -f docker-compose.local.yml up -d --build
+```
+
+Se a stack principal foi iniciada com outro nome de projeto, defina `PASTORINI_NETWORK` em `.env.local` com o nome exibido por `docker network ls`.
+
+Alternativamente, para desenvolver o frontend fora do container:
 
 ```bash
 pnpm install
