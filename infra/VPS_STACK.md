@@ -11,6 +11,7 @@ Durante o desenvolvimento visual e a primeira vertical slice, o projeto continua
 | Serviço do compose | Papel no produto | Acesso do Forte Panel | Regra de segurança |
 |---|---|---|---|
 | `pastorini_api` | WhatsApp, mídia e sessões | `PAPI_BASE_URL` | Nunca expor a API key no frontend |
+| `meta_cloud_api` | WhatsApp Cloud API oficial | Graph API + token server-side | Nunca expor token, phone number ID ou webhook secret no frontend |
 | `redis_papi` | Filas, cache e eventos do PAPI | `REDIS_URL` | Usar senha e rede privada |
 | `postgres_papi` | Banco operacional do PAPI | Não acessar diretamente pelo painel | Apenas o PAPI deve ser dono desse schema |
 | `n8n` | Orquestração, IA e webhooks | `N8N_BASE_URL` + token | Webhooks assinados e idempotentes |
@@ -33,6 +34,9 @@ DATABASE_URL=postgresql://forte_panel:CHANGE_ME@postgres_panel:5432/forte_panel
 REDIS_URL=redis://:CHANGE_ME@redis_panel:6379/0
 PAPI_BASE_URL=http://pastorini_api:3000
 PAPI_API_KEY=CHANGE_ME
+META_GRAPH_API_VERSION=v23.0
+META_WHATSAPP_ACCESS_TOKEN=CHANGE_ME
+META_WHATSAPP_PHONE_NUMBER_ID=CHANGE_ME
 N8N_BASE_URL=http://n8n:5678
 N8N_API_KEY=CHANGE_ME
 QDRANT_URL=http://qdrant:6333

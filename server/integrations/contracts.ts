@@ -1,4 +1,5 @@
-export type IntegrationName = "papi" | "n8n" | "qdrant" | "localai";
+export type IntegrationName = "papi" | "meta_cloud_api" | "n8n" | "qdrant" | "localai";
+export type WhatsappProvider = "papi" | "meta_cloud_api";
 
 export type IntegrationHealth = {
   name: IntegrationName;
@@ -22,6 +23,7 @@ export type OutboundMessageCommand = {
   phone: string;
   content: string;
   messageType?: "text" | "image" | "audio" | "video" | "document";
+  provider?: WhatsappProvider;
 };
 
 export type WorkflowCommand = {
@@ -40,10 +42,19 @@ export type AppointmentSlot = {
   available: boolean;
 };
 
-export interface PapiAdapter {
+export interface WhatsappAdapter {
+  provider: WhatsappProvider;
   health(): Promise<IntegrationHealth>;
   sendMessage(command: OutboundMessageCommand): Promise<{ externalId: string; status: "queued" | "sent" }>;
   normalizeInbound(event: unknown): InboundMessageEvent;
+}
+
+export interface PapiAdapter extends WhatsappAdapter {
+  provider: "papi";
+}
+
+export interface MetaCloudApiAdapter extends WhatsappAdapter {
+  provider: "meta_cloud_api";
 }
 
 export interface N8nAdapter {

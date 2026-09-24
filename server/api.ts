@@ -7,7 +7,9 @@ import {
   getAgendaSnapshot,
   getApiIdempotency,
   getContactById,
+  getDefaultWhatsappProvider,
   ingestInboundWhatsApp,
+  listWhatsappChannels,
   markWebhookEvent,
   moveContactStage,
   queueOutboundMessage,
@@ -44,6 +46,7 @@ const webhookSchema = z.object({
 const messageSchema = z.object({
   contactId: z.number().int().positive(),
   content: z.string().min(1).max(10000),
+  provider: z.enum(["papi", "meta_cloud_api"]).optional(),
 });
 const stageSchema = z.object({ stage: z.string().min(1).max(80) });
 const rescheduleSchema = z.object({ startsAt: z.coerce.date(), endsAt: z.coerce.date() });
@@ -95,6 +98,16 @@ async function idempotent(req: Request, res: Response, handler: () => Promise<Ap
 }
 
 api.get("/health", (_req, res) => res.json({ status: "ok", service: "forte-panel-api", version: "v1", timestamp: new Date().toISOString() }));
+
+api.get("/channels", async (req, res) => {
+  if (!requireApiKey(req, res)) return;
+  try {
+    const channels = await listWhatsappChannels();
+    return res.json({ data: channels.map((channel) => ({ id: channel.id, provider: channel.provider, name: channel.name, phoneNumber: channel.phoneNumber, configured: Boolean(channel.phoneNumberId || channel.credentialsRef), active: Boolean(channel.active) })) });
+  } catch (error) {
+    return fail(res, 500, error instanceof Error ? error.message : "Falha ao consultar canais", "internal_error");
+  }
+});
 
 api.post("/contacts/upsert", async (req, res) => {
   if (!requireApiKey(req, res)) return;
@@ -156,8 +169,9 @@ api.post("/messages", async (req, res) => {
     return idempotent(req, res, async () => {
       const contact = await getContactById(parsed.data.contactId);
       if (!contact) return { statusCode: 404, body: { error: "not_found", message: "Contato não encontrado" } };
-      const message = await queueOutboundMessage(parsed.data.contactId, parsed.data.content);
-      return { statusCode: 202, body: { data: { id: message?.id, contactId: parsed.data.contactId, status: "queued" } } };
+      const provider = parsed.data.provider ?? await getDefaultWhatsappProvider();
+      const message = await queueOutboundMessage(parsed.data.contactId, parsed.data.content, provider);
+      return { statusCode: 202, body: { data: { id: message?.id, contactId: parsed.data.contactId, provider, status: "queued" } } };
     });
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao enfileirar mensagem", "internal_error");

@@ -18,6 +18,7 @@
 - Endpoints iniciais de contatos, disponibilidade, agendamentos e webhook inbound de WhatsApp.
 - Endpoints de mensagens enfileiradas, mudança de estágio, cancelamento e reagendamento.
 - Registro persistente de eventos webhook para evitar processamento duplicado.
+- Arquitetura multi-provedor com adapters PAPI e Meta Cloud API; seleção de canal padrão por workspace.
 - Testes, TypeScript e build validados.
 
 ## Próxima fase
@@ -25,6 +26,7 @@
 - Migrar a persistência do scaffold MySQL/TiDB para PostgreSQL próprio do painel antes de habilitar integrações reais.
 - Adicionar Redis próprio do painel e worker separado para retries, sincronização e webhooks.
 - Implementar adaptadores reais atrás dos contratos, começando pelo PAPI e n8n.
+- Ligar o worker aos adapters PAPI/Meta e confirmar status de entrega no CRM.
 - Publicar eventos de domínio assinados para n8n com retries e backoff no worker.
 - Criar healthchecks, autenticação por usuário/empresa e proxy HTTPS na VPS.
 

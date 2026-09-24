@@ -8,6 +8,9 @@ import {
   ensureDemoWorkspace,
   createAgendaAppointment,
   getAgendaSnapshot,
+  getDefaultWhatsappProvider,
+  listWhatsappChannels,
+  setDefaultWhatsappProvider,
   getAuditLogForContact,
   getContactById,
   getConversationByContact,
@@ -76,6 +79,19 @@ export const appRouter = router({
         active: member.active === 1,
       }));
     }),
+    channels: publicProcedure.query(async () => {
+      const channels = await listWhatsappChannels();
+      return channels.map((channel) => ({
+        id: channel.id,
+        provider: channel.provider,
+        name: channel.name,
+        phoneNumber: channel.phoneNumber,
+        configured: Boolean(channel.phoneNumberId || channel.credentialsRef),
+        active: channel.active === 1,
+      }));
+    }),
+    defaultChannel: publicProcedure.query(() => getDefaultWhatsappProvider()),
+    setDefaultChannel: publicProcedure.input(z.object({ provider: z.enum(["papi", "meta_cloud_api"]) })).mutation(({ input }) => setDefaultWhatsappProvider(input.provider)),
   }),
 
   agenda: router({

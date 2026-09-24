@@ -386,3 +386,16 @@ a { color: inherit; text-decoration: none; }
   .team-role { margin-left: 44px; }
   .permission-grid { grid-template-columns: 1fr 1fr; }
 }
+
+.channel-selector-panel { padding: 18px; margin-bottom: 20px; }
+.channel-selector-copy { max-width: 720px; margin: -4px 0 16px; font-size: 12px; line-height: 1.55; }
+.channel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.channel-option { appearance: none; text-align: left; min-height: 150px; padding: 15px; color: inherit; background: rgba(255,255,255,.018); border: 1px solid rgba(255,255,255,.08); transition: border-color 160ms ease-out, background 160ms ease-out, transform 160ms ease-out; }
+.channel-option:hover { background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.18); }
+.channel-option:active { transform: scale(.985); }
+.channel-option.is-selected { border-color: rgba(86,214,138,.75); background: rgba(86,214,138,.06); }
+.channel-option-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 19px; }
+.channel-option > strong { display: block; font-size: 12px; }
+.channel-option > small { display: block; max-width: 320px; margin-top: 9px; color: #767676; font-size: 10px; line-height: 1.5; }
+.channel-saving { display: block; margin-top: 10px; color: #56d68a; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+@media (max-width: 800px) { .channel-grid { grid-template-columns: 1fr; } }

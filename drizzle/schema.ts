@@ -43,6 +43,19 @@ export const workspaceSettings = mysqlTable("workspaceSettings", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const whatsappChannels = mysqlTable("whatsappChannels", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId").notNull(),
+  provider: mysqlEnum("provider", ["papi", "meta_cloud_api"]).notNull(),
+  name: varchar("name", { length: 120 }).notNull(),
+  phoneNumber: varchar("phoneNumber", { length: 32 }),
+  phoneNumberId: varchar("phoneNumberId", { length: 100 }),
+  credentialsRef: varchar("credentialsRef", { length: 160 }),
+  active: int("active").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const apiIdempotency = mysqlTable("apiIdempotency", {
   id: int("id").autoincrement().primaryKey(),
   workspaceId: int("workspaceId"),
@@ -103,6 +116,7 @@ export const messages = mysqlTable("messages", {
   messageType: mysqlEnum("messageType", ["text", "image", "audio", "video", "document"]).default("text").notNull(),
   content: text("content").notNull(),
   status: mysqlEnum("status", ["received", "queued", "sent", "failed"]).default("received").notNull(),
+  provider: mysqlEnum("provider", ["papi", "meta_cloud_api"]).default("papi").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -175,6 +189,8 @@ export type ApiIdempotency = typeof apiIdempotency.$inferSelect;
 export type InsertApiIdempotency = typeof apiIdempotency.$inferInsert;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type InsertWebhookEvent = typeof webhookEvents.$inferInsert;
+export type WhatsappChannel = typeof whatsappChannels.$inferSelect;
+export type InsertWhatsappChannel = typeof whatsappChannels.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = typeof contacts.$inferInsert;
 export type Conversation = typeof conversations.$inferSelect;

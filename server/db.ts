@@ -12,10 +12,13 @@ import {
   services,
   users,
   webhookEvents,
+  whatsappChannels,
   workspaceMembers,
+  workspaceSettings,
   workspaces,
   type InsertUser,
 } from "../drizzle/schema";
+import type { WhatsappProvider } from "./integrations/contracts";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -94,6 +97,53 @@ export async function ensureWorkspaceMember(workspaceId: number, userId: number,
   await db.insert(workspaceMembers).values({ workspaceId, userId, role });
   const created = await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId))).limit(1);
   return created[0];
+}
+
+export async function ensureDemoWhatsappChannels() {
+  const db = await getDb();
+  if (!db || process.env.DEMO_MODE === "false") return [];
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return [];
+  const existing = await db.select().from(whatsappChannels).where(eq(whatsappChannels.workspaceId, workspace.id));
+  if (existing.length === 0) {
+    await db.insert(whatsappChannels).values([
+      { workspaceId: workspace.id, provider: "papi", name: "PAPI · WhatsApp conectado", credentialsRef: "PAPI_API_KEY", active: 1 },
+      { workspaceId: workspace.id, provider: "meta_cloud_api", name: "WhatsApp Cloud API oficial", credentialsRef: "META_WHATSAPP_ACCESS_TOKEN", active: 1 },
+    ]);
+  }
+  return db.select().from(whatsappChannels).where(eq(whatsappChannels.workspaceId, workspace.id));
+}
+
+export async function listWhatsappChannels() {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureDemoWhatsappChannels();
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return [];
+  return db.select().from(whatsappChannels).where(and(eq(whatsappChannels.workspaceId, workspace.id), eq(whatsappChannels.active, 1)));
+}
+
+export async function getDefaultWhatsappProvider(): Promise<WhatsappProvider> {
+  const db = await getDb();
+  if (!db) return "papi";
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return "papi";
+  const setting = await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, workspace.id), eq(workspaceSettings.key, "default_whatsapp_provider"))).limit(1);
+  return setting[0]?.value === "meta_cloud_api" ? "meta_cloud_api" : "papi";
+}
+
+export async function setDefaultWhatsappProvider(provider: WhatsappProvider) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const existing = await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, workspace.id), eq(workspaceSettings.key, "default_whatsapp_provider"))).limit(1);
+  if (existing[0]) {
+    await db.update(workspaceSettings).set({ value: provider, updatedAt: new Date() }).where(eq(workspaceSettings.id, existing[0].id));
+  } else {
+    await db.insert(workspaceSettings).values({ workspaceId: workspace.id, key: "default_whatsapp_provider", value: provider });
+  }
+  return provider;
 }
 
 export async function getWorkspaceBySlug(slug: string) {
@@ -501,13 +551,16 @@ export async function upsertApiContact(input: { phone: string; name?: string; ci
 }
 
 
-export async function queueOutboundMessage(contactId: number, content: string) {
+export async function queueOutboundMessage(contactId: number, content: string, provider?: WhatsappProvider) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  const selectedProvider = provider ?? await getDefaultWhatsappProvider();
+  const channels = await listWhatsappChannels();
+  if (channels.length > 0 && !channels.some((channel) => channel.provider === selectedProvider)) throw new Error("Provedor de WhatsApp não está ativo neste workspace");
   const conversation = await getConversationByContact(contactId);
   if (!conversation) throw new Error("Conversation not found");
   const createdAt = new Date();
-  const result = await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, status: "queued", createdAt });
+  const result = await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, status: "queued", provider: selectedProvider, createdAt });
   await db.update(contacts).set({ aiEnabled: 0, unreadCount: 0, lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
   await db.update(conversations).set({ humanControlled: 1, unreadCount: 0, lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
   await db.insert(auditLogs).values({ contactId, action: "api_message_queued", summary: "Mensagem enfileirada para o worker de WhatsApp" });
