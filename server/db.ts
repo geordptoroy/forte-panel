@@ -1,10 +1,14 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
+  appointmentsTable,
   auditLogs,
+  availability,
   contacts,
   conversations,
   messages,
+  professionals,
+  services,
   users,
   workspaceMembers,
   workspaces,
@@ -196,6 +200,95 @@ export async function ensureDemoInbox() {
       });
     }
   }
+}
+
+const seedServices = [
+  { name: "Avaliação inicial", description: "Conversa de diagnóstico e definição do próximo passo.", durationMinutes: 45, priceCents: 0 },
+  { name: "Atendimento padrão", description: "Serviço principal do negócio.", durationMinutes: 60, priceCents: 18000 },
+  { name: "Retorno / manutenção", description: "Acompanhamento de cliente existente.", durationMinutes: 30, priceCents: 9000 },
+];
+
+export async function ensureDemoAgenda() {
+  const db = await getDb();
+  if (!db || process.env.DEMO_MODE === "false") return;
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return;
+  await ensureDemoInbox();
+  let workspaceServices = await db.select().from(services).where(eq(services.workspaceId, workspace.id));
+  if (workspaceServices.length === 0) {
+    for (const service of seedServices) await db.insert(services).values({ workspaceId: workspace.id, ...service });
+    workspaceServices = await db.select().from(services).where(eq(services.workspaceId, workspace.id));
+  }
+  let workspaceProfessionals = await db.select().from(professionals).where(eq(professionals.workspaceId, workspace.id));
+  if (workspaceProfessionals.length === 0) {
+    await db.insert(professionals).values({ workspaceId: workspace.id, name: "Gabriel Barbosa", specialty: "Atendimento principal", color: "#56d68a" });
+    workspaceProfessionals = await db.select().from(professionals).where(eq(professionals.workspaceId, workspace.id));
+  }
+  const existingAvailability = await db.select({ id: availability.id }).from(availability).where(eq(availability.workspaceId, workspace.id)).limit(1);
+  if (existingAvailability.length === 0 && workspaceProfessionals[0]) {
+    for (const weekday of [1, 2, 3, 4, 5, 6]) {
+      await db.insert(availability).values({ workspaceId: workspace.id, professionalId: workspaceProfessionals[0].id, weekday, startMinute: 9 * 60, endMinute: 18 * 60 });
+    }
+  }
+  const existingAppointments = await db.select({ id: appointmentsTable.id }).from(appointmentsTable).where(eq(appointmentsTable.workspaceId, workspace.id)).limit(1);
+  if (existingAppointments.length === 0 && workspaceServices[1] && workspaceProfessionals[0]) {
+    const paulo = await db.select({ id: contacts.id }).from(contacts).where(eq(contacts.externalPhone, "5511965407721")).limit(1);
+    const marcos = await db.select({ id: contacts.id }).from(contacts).where(eq(contacts.externalPhone, "5511987104522")).limit(1);
+    await db.insert(appointmentsTable).values([
+      { workspaceId: workspace.id, contactId: paulo[0]?.id, serviceId: workspaceServices[1].id, professionalId: workspaceProfessionals[0].id, startsAt: new Date("2026-09-24T14:00:00-03:00"), endsAt: new Date("2026-09-24T15:00:00-03:00"), status: "confirmed", notes: "Manutenção preventiva." },
+      { workspaceId: workspace.id, contactId: marcos[0]?.id, serviceId: workspaceServices[1].id, professionalId: workspaceProfessionals[0].id, startsAt: new Date("2026-09-26T17:30:00-03:00"), endsAt: new Date("2026-09-26T18:30:00-03:00"), status: "requested", notes: "Confirmar disponibilidade pelo WhatsApp." },
+    ]);
+  }
+}
+
+export async function getAgendaSnapshot() {
+  const db = await getDb();
+  if (!db) return { timezone: "America/Sao_Paulo", services: [], professionals: [], appointments: [] };
+  await ensureDemoAgenda();
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return { timezone: "America/Sao_Paulo", services: [], professionals: [], appointments: [] };
+  const [workspaceServices, workspaceProfessionals, workspaceAppointments] = await Promise.all([
+    db.select().from(services).where(and(eq(services.workspaceId, workspace.id), eq(services.active, 1))),
+    db.select().from(professionals).where(and(eq(professionals.workspaceId, workspace.id), eq(professionals.active, 1))),
+    db.select({
+      id: appointmentsTable.id,
+      contactId: appointmentsTable.contactId,
+      serviceId: appointmentsTable.serviceId,
+      professionalId: appointmentsTable.professionalId,
+      startsAt: appointmentsTable.startsAt,
+      endsAt: appointmentsTable.endsAt,
+      status: appointmentsTable.status,
+      notes: appointmentsTable.notes,
+      serviceName: services.name,
+      professionalName: professionals.name,
+      contactName: contacts.name,
+    }).from(appointmentsTable)
+      .leftJoin(services, eq(services.id, appointmentsTable.serviceId))
+      .leftJoin(professionals, eq(professionals.id, appointmentsTable.professionalId))
+      .leftJoin(contacts, eq(contacts.id, appointmentsTable.contactId))
+      .where(eq(appointmentsTable.workspaceId, workspace.id))
+      .orderBy(appointmentsTable.startsAt, appointmentsTable.id),
+  ]);
+  return { timezone: workspace.timezone, services: workspaceServices, professionals: workspaceProfessionals, appointments: workspaceAppointments };
+}
+
+export async function createAgendaAppointment(input: { contactId?: number; serviceId: number; professionalId: number; startsAt: Date; endsAt: Date; notes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await ensureDemoAgenda();
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const conflict = await db.select({ id: appointmentsTable.id }).from(appointmentsTable).where(and(
+    eq(appointmentsTable.workspaceId, workspace.id),
+    eq(appointmentsTable.professionalId, input.professionalId),
+    eq(appointmentsTable.status, "confirmed"),
+    lt(appointmentsTable.startsAt, input.endsAt),
+    gt(appointmentsTable.endsAt, input.startsAt),
+  )).limit(1);
+  if (conflict.length > 0) throw new Error("Horário indisponível para este profissional");
+  const result = await db.insert(appointmentsTable).values({ workspaceId: workspace.id, ...input, status: "requested", source: "panel" });
+  const created = await db.select().from(appointmentsTable).where(eq(appointmentsTable.id, Number(result[0].insertId))).limit(1);
+  return created[0];
 }
 
 export async function listInboxContacts() {

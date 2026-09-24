@@ -6,6 +6,8 @@ import { publicProcedure, router } from "./_core/trpc";
 import {
   ensureDemoInbox,
   ensureDemoWorkspace,
+  createAgendaAppointment,
+  getAgendaSnapshot,
   getAuditLogForContact,
   getContactById,
   getConversationByContact,
@@ -73,6 +75,33 @@ export const appRouter = router({
         role: member.role,
         active: member.active === 1,
       }));
+    }),
+  }),
+
+  agenda: router({
+    snapshot: publicProcedure.query(async () => {
+      const snapshot = await getAgendaSnapshot();
+      return {
+        timezone: snapshot.timezone,
+        services: snapshot.services,
+        professionals: snapshot.professionals,
+        appointments: snapshot.appointments.map((appointment) => ({
+          ...appointment,
+          startsAt: appointment.startsAt.toISOString(),
+          endsAt: appointment.endsAt.toISOString(),
+        })),
+      };
+    }),
+    create: publicProcedure.input(z.object({
+      contactId: z.number().int().positive().optional(),
+      serviceId: z.number().int().positive(),
+      professionalId: z.number().int().positive(),
+      startsAt: z.coerce.date(),
+      endsAt: z.coerce.date(),
+      notes: z.string().max(500).optional(),
+    })).mutation(async ({ input }) => {
+      const appointment = await createAgendaAppointment(input);
+      return appointment ? { id: appointment.id, status: appointment.status } : null;
     }),
   }),
 

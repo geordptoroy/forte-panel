@@ -85,6 +85,54 @@ export const messages = mysqlTable("messages", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const services = mysqlTable("services", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId").notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  description: text("description"),
+  durationMinutes: int("durationMinutes").default(60).notNull(),
+  priceCents: int("priceCents").default(0).notNull(),
+  active: int("active").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const professionals = mysqlTable("professionals", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId").notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  specialty: varchar("specialty", { length: 120 }),
+  color: varchar("color", { length: 20 }).default("#56d68a").notNull(),
+  active: int("active").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const availability = mysqlTable("availability", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId").notNull(),
+  professionalId: int("professionalId").notNull(),
+  weekday: int("weekday").notNull(),
+  startMinute: int("startMinute").notNull(),
+  endMinute: int("endMinute").notNull(),
+  active: int("active").default(1).notNull(),
+});
+
+export const appointmentsTable = mysqlTable("appointments", {
+  id: int("id").autoincrement().primaryKey(),
+  workspaceId: int("workspaceId").notNull(),
+  contactId: int("contactId"),
+  serviceId: int("serviceId").notNull(),
+  professionalId: int("professionalId").notNull(),
+  startsAt: timestamp("startsAt").notNull(),
+  endsAt: timestamp("endsAt").notNull(),
+  status: mysqlEnum("status", ["requested", "confirmed", "cancelled", "completed", "no_show"]).default("requested").notNull(),
+  notes: varchar("notes", { length: 500 }),
+  source: varchar("source", { length: 40 }).default("panel").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const auditLogs = mysqlTable("auditLogs", {
   id: int("id").autoincrement().primaryKey(),
   actorUserId: int("actorUserId"),
@@ -108,5 +156,13 @@ export type Conversation = typeof conversations.$inferSelect;
 export type InsertConversation = typeof conversations.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = typeof messages.$inferInsert;
+export type Service = typeof services.$inferSelect;
+export type InsertService = typeof services.$inferInsert;
+export type Professional = typeof professionals.$inferSelect;
+export type InsertProfessional = typeof professionals.$inferInsert;
+export type Availability = typeof availability.$inferSelect;
+export type InsertAvailability = typeof availability.$inferInsert;
+export type Appointment = typeof appointmentsTable.$inferSelect;
+export type InsertAppointment = typeof appointmentsTable.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
