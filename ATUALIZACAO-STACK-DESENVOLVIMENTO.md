@@ -8,6 +8,24 @@ PAPI atual → webhook existente → Forte Panel → Trigger comunitário do n8n
 
 O webhook automático da PAPI **não é configurado nesta etapa**. A URL PAPI existente continua sendo usada apenas para a entrada que você já possui.
 
+## Alteração manual obrigatória no webhook já existente
+
+O workflow novo não possui mais `PAPI Trigger`. Portanto, edite manualmente o webhook que já está configurado na PAPI e troque somente a URL de destino para:
+
+```text
+http://forte-panel:3000/api/v1/webhooks/providers/papi
+```
+
+Se a PAPI estiver fora da rede Docker, use a URL pública do Forte Panel:
+
+```text
+https://SEU_DOMINIO/api/v1/webhooks/providers/papi
+```
+
+Mantenha o evento de mensagens e habilite o envio de mensagens do proprietário (`sendFromMe: true`). Se você configurar o segredo, envie o header `X-PAPI-Webhook-Secret` com o mesmo valor de `PAPI_WEBHOOK_SECRET` do compose.
+
+Essa é uma alteração manual do webhook existente; nenhum código ou comando desta atualização cria webhook na PAPI.
+
 ## Arquivos
 
 - `docker-compose.current-dev.yml`: compose atualizado, sem apagar volumes.
