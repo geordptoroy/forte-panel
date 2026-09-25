@@ -1,14 +1,35 @@
 
 
-## Continuação pós-auditoria — correções aplicadas sem smoke test manual
+## Etapa 4 — Leases do worker de eventos — concluída
 
-Como o smoke test real da PAPI Cloud foi adiado, nenhuma instância externa foi criada e `PAPI_DEPLOYMENT` permanece self-hosted. O desenvolvimento continuou nas correções que não dependem de credencial Cloud:
+A tabela `domainEvents` agora possui:
 
-- `instanceId` agora é copiado do metadata da mensagem para o payload `message.received`.
-- O worker entrega `instanceId` ao `NativeAgentEvent`.
-- A resposta do agente preserva `instanceId` no outbound, evitando cair na instância padrão quando a entrada veio por uma instância específica.
-- Chamadas LLM agora têm timeout configurável por `AGENT_LLM_TIMEOUT_MS`, com padrão de 45 segundos e limite máximo de 180 segundos.
+- `workerId` para identificar o processo que fez o claim;
+- `claimedAt` para registrar o início do processamento;
+- `leaseUntil` para delimitar o tempo de posse;
+- índice de recuperação por status/lease.
 
-Validação após estas mudanças: `pnpm check`, `pnpm test` (39 aprovados; 13 ignorados por dependência externa), `pnpm build` e `git diff --check` passaram.
+O worker agora:
 
-Ainda permanecem no roadmap, para as próximas etapas, claim idempotente concorrente, leases robustos, outbox transacional, ledger de tool calls, fencing de handoff, parser de comandos humanos, mídia multimodal real, tenancy derivado da membership e testes reais PostgreSQL/E2E.
+- faz claim condicional de eventos `pending` ou de `processing` com lease expirado;
+- usa uma identidade estável por processo (`WORKER_ID` ou UUID gerado no startup);
+- limpa os campos de lease ao entregar, reagendar ou falhar;
+- só finaliza/reprograma um evento se ainda for o worker proprietário;
+- recupera apenas eventos abandonados, em vez de resetar todo `processing` no startup.
+
+Migration criada:
+
+```text
+drizzle-pg/0013_domain_event_leases.sql
+```
+
+Configuração opcional:
+
+```env
+WORKER_ID=forte-worker-1
+EVENT_WORKER_LEASE_MS=120000
+```
+
+A migration deve ser aplicada pelo fluxo normal (`pnpm db:push`) antes de atualizar o worker em um banco existente. Não remover volumes.
+
+Validação: typecheck, testes, build, journal JSON e diff check passaram.

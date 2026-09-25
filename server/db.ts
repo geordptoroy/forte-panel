@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import {
@@ -32,6 +32,9 @@ import { ENV } from "./_core/env";
 import { assertWithinWorkingHours, getLocalDayBounds, ScheduleError } from "./schedule";
 import { dailySummaryEventKey, dailySummaryFor, notificationForEvent, notificationPreferenceForEvent, parseNotificationPreferences, type NotificationEvent } from "./notification-contract";
 import { defaultAgentProviderSettings, decryptProviderSecret, encryptProviderSecret, maskProviderSecret, mergeAgentProviderSettings, type AgentProviderSettings } from "./llm-providers";
+
+const DOMAIN_EVENT_WORKER_ID = process.env.WORKER_ID?.trim() || `worker-${crypto.randomUUID()}`;
+const DOMAIN_EVENT_LEASE_MS = Math.max(10_000, Math.min(Number(process.env.EVENT_WORKER_LEASE_MS ?? 120_000), 900_000));
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -1784,8 +1787,8 @@ export async function recoverProcessingDomainEvents() {
   const db = await getDb();
   if (!db) return 0;
   const recovered = await db.update(domainEvents)
-    .set({ status: "pending", updatedAt: new Date() })
-    .where(eq(domainEvents.status, "processing"))
+    .set({ status: "pending", workerId: null, claimedAt: null, leaseUntil: null, updatedAt: new Date() })
+    .where(and(eq(domainEvents.status, "processing"), or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, new Date()))))
     .returning({ id: domainEvents.id });
   return recovered.length;
 }
@@ -1795,7 +1798,10 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
   if (!db) return { processed: 0, delivered: 0, failed: 0, skipped: true };
   const now = new Date();
   const pending = await db.select().from(domainEvents)
-    .where(and(eq(domainEvents.status, "pending"), lte(domainEvents.availableAt, now)))
+    .where(or(
+      and(eq(domainEvents.status, "pending"), lte(domainEvents.availableAt, now)),
+      and(eq(domainEvents.status, "processing"), or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, now))),
+    ))
     .orderBy(asc(domainEvents.availableAt), asc(domainEvents.id))
     .limit(limit);
 
@@ -1804,11 +1810,21 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
   const debounceMsRaw = Number(process.env.AGENT_DEBOUNCE_MS ?? process.env.N8N_DEBOUNCE_MS ?? 1500);
   const debounceMs = Number.isFinite(debounceMsRaw) && debounceMsRaw >= 0 ? Math.min(debounceMsRaw, 30_000) : 1500;
   for (const item of pending) {
+    const leaseUntil = new Date(Date.now() + DOMAIN_EVENT_LEASE_MS);
     const claimed = await db.update(domainEvents).set({
       status: "processing",
+      workerId: DOMAIN_EVENT_WORKER_ID,
+      claimedAt: now,
+      leaseUntil,
       attemptCount: sql`${domainEvents.attemptCount} + 1`,
       updatedAt: new Date(),
-    }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.status, "pending"), lte(domainEvents.availableAt, now))).returning({ id: domainEvents.id });
+    }).where(and(
+      eq(domainEvents.id, item.id),
+      or(
+        and(eq(domainEvents.status, "pending"), lte(domainEvents.availableAt, now)),
+        and(eq(domainEvents.status, "processing"), or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, now))),
+      ),
+    )).returning({ id: domainEvents.id });
     if (claimed.length === 0) continue;
 
     try {
@@ -1824,14 +1840,14 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
             .limit(1))[0]
           : undefined;
         if (latestMessage && latestMessage.id > Number(eventPayload.messageId ?? 0)) {
-          await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: "debounced_by_newer_message", updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
+          await db.update(domainEvents).set({ status: "delivered", workerId: null, claimedAt: null, leaseUntil: null, deliveredAt: new Date(), lastError: "debounced_by_newer_message", updatedAt: new Date() }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)));
           delivered += 1;
           continue;
         }
         if (latestMessage && debounceMs > 0) {
           const quietUntil = latestMessage.createdAt.getTime() + debounceMs;
           if (quietUntil > Date.now()) {
-            await db.update(domainEvents).set({ status: "pending", availableAt: new Date(quietUntil), updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
+            await db.update(domainEvents).set({ status: "pending", workerId: null, claimedAt: null, leaseUntil: null, availableAt: new Date(quietUntil), updatedAt: new Date() }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)));
             continue;
           }
         }
@@ -1843,7 +1859,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
             .limit(1))[0]
           : undefined;
         if (control && (control.aiEnabled !== 1 || control.humanControlled === 1)) {
-          await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: "skipped_human_control", updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
+          await db.update(domainEvents).set({ status: "delivered", workerId: null, claimedAt: null, leaseUntil: null, deliveredAt: new Date(), lastError: "skipped_human_control", updatedAt: new Date() }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)));
           delivered += 1;
           continue;
         }
@@ -1861,7 +1877,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
       if (item.eventType === "message.received") {
         const config = await getNativeAgentRuntimeConfig();
         if (!config.enabled) {
-          await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: "native_agent_disabled", updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
+          await db.update(domainEvents).set({ status: "delivered", workerId: null, claimedAt: null, leaseUntil: null, deliveredAt: new Date(), lastError: "native_agent_disabled", updatedAt: new Date() }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)));
           delivered += 1;
           continue;
         }
@@ -1877,7 +1893,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
           messages: Array.isArray(eventPayload.messages) ? eventPayload.messages as Array<{ content: string; messageType: string; receivedAt: Date }> : undefined,
         }, config);
       }
-      await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: null, updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
+      await db.update(domainEvents).set({ status: "delivered", workerId: null, claimedAt: null, leaseUntil: null, deliveredAt: new Date(), lastError: null, updatedAt: new Date() }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)));
       delivered += 1;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha desconhecida na entrega do evento";
@@ -1886,10 +1902,13 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
       const backoffMs = Math.min(60_000, 1_000 * (2 ** Math.max(0, attempt - 1)));
       await db.update(domainEvents).set({
         status: terminal ? "failed" : "pending",
+        workerId: null,
+        claimedAt: null,
+        leaseUntil: null,
         availableAt: new Date(Date.now() + backoffMs),
         lastError: message,
         updatedAt: new Date(),
-      }).where(eq(domainEvents.id, item.id));
+      }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)));
       failed += 1;
     }
   }

@@ -137,6 +137,9 @@ export const domainEvents = pgTable("domainEvents", {
   payload: text("payload").notNull(),
   status: domainEventStatusEnum("status").default("pending").notNull(),
   attemptCount: integer("attemptCount").default(0).notNull(),
+  workerId: varchar("workerId", { length: 120 }),
+  claimedAt: timestamp("claimedAt"),
+  leaseUntil: timestamp("leaseUntil"),
   availableAt: timestamp("availableAt").defaultNow().notNull(),
   lastError: text("lastError"),
   deliveredAt: timestamp("deliveredAt"),
@@ -144,6 +147,7 @@ export const domainEvents = pgTable("domainEvents", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, (table) => [
   index("domain_events_pending_idx").on(table.status, table.availableAt, table.id),
+  index("domain_events_lease_idx").on(table.status, table.leaseUntil, table.id),
   index("domain_events_workspace_idx").on(table.workspaceId, table.createdAt),
 ]);
 
