@@ -34,12 +34,12 @@
     {
       "parameters": {
         "operation": "queue_message",
-        "phone": "={{ String($json.remetente || '').replace(/\\D/g, '') }}",
+        "phone": "={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}",
         "name": "",
         "content": "={{ String($json.content || '') }}",
         "provider": "papi",
         "messageType": "={{ $json.type === 'button' ? 'button' : ($json.type === 'audio' ? 'audio' : 'text') }}",
-        "instanceId": "={{ String($json.instanceId || '') }}",
+        "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
         "metadata": "={{ JSON.stringify($json.type === 'button' ? { buttons: $json.buttons } : ($json.type === 'audio' ? { ptt: true } : {})) }}",
         "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
       },
@@ -64,12 +64,12 @@
     {
       "parameters": {
         "operation": "queue_message",
-        "phone": "={{ String($json.remetente || '').replace(/\\D/g, '') }}",
+        "phone": "={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}",
         "name": "",
         "content": "={{ String($json.content || '') }}",
         "provider": "papi",
         "messageType": "={{ $json.type === 'button' ? 'button' : ($json.type === 'audio' ? 'audio' : 'text') }}",
-        "instanceId": "={{ String($json.instanceId || '') }}",
+        "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
         "metadata": "={{ JSON.stringify($json.type === 'button' ? { buttons: $json.buttons } : ($json.type === 'audio' ? { ptt: true } : {})) }}",
         "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
       },
@@ -717,12 +717,12 @@
     {
       "parameters": {
         "operation": "queue_message",
-        "phone": "={{ String($('Preparar Debounce').item.json.remetente || '').replace(/\\D/g, '') }}",
+        "phone": "={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}",
         "name": "",
         "content": "={{ String($json.mensagens[0].content || '') }}",
         "provider": "papi",
         "messageType": "text",
-        "instanceId": "={{ String($('Preparar Debounce').item.json.instanceId || '') }}",
+        "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
         "metadata": "{}",
         "idempotencyKey": "={{ String($('Preparar Debounce').item.json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback' }}"
       },
@@ -747,12 +747,12 @@
     {
       "parameters": {
         "operation": "queue_message",
-        "phone": "={{ String($json.remetente || '').replace(/\\D/g, '') }}",
+        "phone": "={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}",
         "name": "",
         "content": "={{ String($json.content || '') }}",
         "provider": "papi",
         "messageType": "={{ $json.type === 'button' ? 'button' : ($json.type === 'audio' ? 'audio' : 'text') }}",
-        "instanceId": "={{ String($json.instanceId || '') }}",
+        "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
         "metadata": "={{ JSON.stringify($json.type === 'button' ? { buttons: $json.buttons } : ($json.type === 'audio' ? { ptt: true } : {})) }}",
         "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
       },
@@ -883,7 +883,7 @@
           },
           "conditions": [
             {
-              "id": "881f53e8-cc41-4f46-9a04-879e8662669c",
+              "id": "df763151-1b88-49af-b306-f50fec5d68fc",
               "leftValue": "={{ $json.eventKind }}",
               "rightValue": "lead_message",
               "operator": {
@@ -896,7 +896,7 @@
         },
         "options": {}
       },
-      "id": "c6a2e9f4-0e39-4da6-aecc-d849bfda05d1",
+      "id": "d722507c-53c7-4815-b025-ff251dc28daa",
       "name": "Filtro entrada Inbox",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -935,7 +935,7 @@
           "timeout": 15000
         }
       },
-      "id": "65703911-4813-4601-9bf2-a4b7808a7bea",
+      "id": "29958451-428e-4208-b73e-752a4a3c47ce",
       "name": "Registrar entrada Forte Panel",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -952,7 +952,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "return [{ json: $('Limpeza').first().json }];"
       },
-      "id": "1a8f2f22-181f-4243-b32a-bc34fbe78a1a",
+      "id": "b149360f-3661-462c-8823-41a6eca23b29",
       "name": "Restaurar item após webhook",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

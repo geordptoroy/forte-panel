@@ -165,10 +165,10 @@ workflow.connections[restoreNode.name] = { main: [[{ node: humanControl, type: '
 
 const panelCredentials = panelTool.credentials;
 const outgoingNodeConfig = {
-  phoneExpression: `={{ String($json.remetente || '').replace(/\\D/g, '') }}`,
+  phoneExpression: `={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}`,
   contentExpression: `={{ String($json.content || '') }}`,
   messageTypeExpression: `={{ $json.type === 'button' ? 'button' : ($json.type === 'audio' ? 'audio' : 'text') }}`,
-  instanceIdExpression: `={{ String($json.instanceId || '') }}`,
+  instanceIdExpression: `={{ String($('Limpeza').first().json.instanceId || '') }}`,
   metadataExpression: `={{ JSON.stringify($json.type === 'button' ? { buttons: $json.buttons } : ($json.type === 'audio' ? { ptt: true } : {})) }}`,
   credentials: panelCredentials,
 };
@@ -192,10 +192,10 @@ const fallback = findNode('SendText message');
 if (!fallback) throw new Error('Node SendText message (fallback) não encontrado.');
 const fallbackKey = `={{ String($('Preparar Debounce').item.json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback' }}`;
 toCommunityQueueNode(fallback, {
-  phoneExpression: `={{ String($('Preparar Debounce').item.json.remetente || '').replace(/\\D/g, '') }}`,
+  phoneExpression: `={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}`,
   contentExpression: `={{ String($json.mensagens[0].content || '') }}`,
   messageTypeExpression: 'text',
-  instanceIdExpression: `={{ String($('Preparar Debounce').item.json.instanceId || '') }}`,
+  instanceIdExpression: `={{ String($('Limpeza').first().json.instanceId || '') }}`,
   metadataExpression: '{}',
   idemExpression: fallbackKey,
   credentials: panelCredentials,
