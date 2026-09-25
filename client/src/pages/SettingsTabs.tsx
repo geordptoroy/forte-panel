@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, Clock3, KeyRound, Plus, ScrollText, ShieldCheck, UserRound } from "lucide-react";
+import { AlertTriangle, Bell, Clock3, KeyRound, Plus, ScrollText, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import PanelLayout, { EmptyState, SectionTitle, StatusBadge } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -38,6 +38,7 @@ export function SettingsTabsPage() {
     if (access?.canSeeFullAgenda) list.push({ key: "notifications", label: "Notificações" });
     if (isProfessional) list.splice(1, 0, { key: "availability", label: "Minha disponibilidade" });
     if (access?.canSeeFullAgenda) list.push({ key: "audit", label: "Auditoria" });
+    if (access?.canManageTeam) list.push({ key: "development", label: "Limpeza de desenvolvimento" });
     return list;
   }, [access?.canSeeFullAgenda, isProfessional]);
   const [tab, setTab] = useState("profile");
@@ -57,6 +58,7 @@ export function SettingsTabsPage() {
         {tab === "notifications" && <NotificationsTab />}
         {tab === "availability" && <AvailabilityTab />}
         {tab === "audit" && <AuditTab />}
+        {tab === "development" && <DevelopmentTab />}
       </section>
     </div>
   </PanelLayout>;
@@ -204,6 +206,23 @@ function AuditTab() {
         <small>{new Date(row.createdAt).toLocaleString("pt-BR")}</small>
       </div>
     </div>)}</div>
+  </div>;
+}
+
+function DevelopmentTab() {
+  const [confirmation, setConfirmation] = useState("");
+  const reset = trpc.development.resetWorkspace.useMutation({
+    onSuccess: () => { setConfirmation(""); toast.success("Dados do Forte Panel apagados. Usuários e acesso foram preservados."); },
+    onError: (error) => toast.error(error.message),
+  });
+  const phrase = "APAGAR DADOS DO FORTE PANEL";
+  return <div>
+    <SectionTitle eyebrow="Somente desenvolvimento" title="Limpar dados do Forte Panel" action={<StatusBadge tone="red">Ação destrutiva</StatusBadge>} />
+    <div className="demo-banner" style={{ marginBottom: 18 }}><AlertTriangle size={15} /><span>Isso apaga contatos, conversas, mensagens, agenda, serviços, profissionais, notas, eventos, configurações do agente e canais do Forte Panel. Não apaga nem acessa o n8n, seus fluxos, banco ou volumes.</span></div>
+    <p className="muted">O usuário administrador e o workspace permanecem para você entrar novamente. O botão só funciona quando você digitar exatamente:</p>
+    <code style={{ display: "block", padding: 12, margin: "12px 0", background: "rgba(255,255,255,.04)" }}>{phrase}</code>
+    <input className="input-control" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder={phrase} />
+    <button className="btn-primary" style={{ marginTop: 16, background: "#8f3030" }} disabled={reset.isPending || confirmation !== phrase} onClick={() => { if (window.confirm("Confirma apagar todos os dados de desenvolvimento do Forte Panel? O n8n não será alterado.")) reset.mutate({ confirmation: phrase }); }}><Trash2 size={13} /> {reset.isPending ? "Apagando..." : "Apagar dados do Forte Panel"}</button>
   </div>;
 }
 

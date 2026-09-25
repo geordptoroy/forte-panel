@@ -1,0 +1,212 @@
+services:
+  # ============================================================================
+  # BANCOS DE DADOS E ARMAZENAMENTO
+  # ============================================================================
+  postgres_papi:
+    image: postgres:13-alpine
+    container_name: postgres_papi
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PAPI_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${PAPI_POSTGRES_PASSWORD:?PAPI_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${PAPI_POSTGRES_DB:-pastorini}
+    volumes:
+      - postgres_papi_data:/var/lib/postgresql/data
+    networks:
+      - pastorini-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres_panel:
+    image: postgres:16-alpine
+    container_name: postgres_panel
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PANEL_POSTGRES_USER:-forte_panel}
+      POSTGRES_PASSWORD: ${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${PANEL_POSTGRES_DB:-forte_panel}
+    volumes:
+      - postgres_panel_data:/var/lib/postgresql/data
+    networks:
+      - pastorini-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forte_panel -d forte_panel"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis_papi:
+    image: redis:7-alpine
+    container_name: redis_papi
+    restart: unless-stopped
+    volumes:
+      - redis_papi_data:/data
+    networks:
+      - pastorini-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis_panel:
+    image: redis:7-alpine
+    container_name: redis_panel
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_panel_data:/data
+    networks:
+      - pastorini-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ============================================================================
+  pastorini_api:
+    image: intrategica/papi-free:1.5.2
+    container_name: pastorini_api
+    restart: unless-stopped
+    ports:
+      - "${PAPI_PORT_PUBLIC:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      PANEL_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
+      STORAGE_TYPE: postgres+redis
+      POSTGRES_HOST: postgres_papi
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${PAPI_POSTGRES_DB:-pastorini}
+      POSTGRES_USER: ${PAPI_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${PAPI_POSTGRES_PASSWORD:?PAPI_POSTGRES_PASSWORD is required}
+      POSTGRES_SSL: "false"
+      REDIS_HOST: redis_papi
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      LICENSE_KEY: ${PAPI_LICENSE_KEY:?PAPI_LICENSE_KEY is required}
+    volumes:
+      - pastorini_sessions:/app/sessions
+      - pastorini_media:/app/Media
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      postgres_papi:
+        condition: service_healthy
+      redis_papi:
+        condition: service_healthy
+    networks:
+      - pastorini-network
+
+  # ============================================================================
+  # CRM FORTE PANEL - SERVIDOR WEB
+  # ============================================================================
+  forte-panel:
+    image: ghcr.io/geordptoroy/forte-panel:latest
+    container_name: forte_panel
+    restart: unless-stopped
+    ports:
+      - "${PANEL_PORT:-3002}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DEMO_MODE: "false"
+      LOCAL_AUTH_ENABLED: "true"
+      LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:?LOCAL_ADMIN_EMAIL is required}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?LOCAL_ADMIN_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      FORTE_API_KEY: ${FORTE_API_KEY:?FORTE_API_KEY is required}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
+      DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
+      REDIS_URL: redis://redis_panel:6379/0
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
+      PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
+      PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
+      PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:?PAPI_WEBHOOK_SECRET is required}
+      BUILT_IN_FORGE_API_URL: ${BUILT_IN_FORGE_API_URL:-https://forge.manus.im}
+      BUILT_IN_FORGE_API_KEY: ${BUILT_IN_FORGE_API_KEY:-}
+      AGENT_MODEL: ${AGENT_MODEL:-gpt-5-mini}
+      AGENT_DEBOUNCE_MS: ${AGENT_DEBOUNCE_MS:-1500}
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
+      META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
+      META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
+    depends_on:
+      postgres_panel:
+        condition: service_healthy
+      redis_panel:
+        condition: service_healthy
+      pastorini_api:
+        condition: service_started
+    networks:
+      - pastorini-network
+
+  # ============================================================================
+  # CRM FORTE PANEL - WORKER DE ENVIO WHATSAPP
+  # ============================================================================
+  forte-panel-worker:
+    image: ghcr.io/geordptoroy/forte-panel:latest
+    container_name: forte_panel_worker
+    restart: unless-stopped
+    command: ["./docker-entrypoint.sh", "worker"]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DEMO_MODE: "false"
+      LOCAL_AUTH_ENABLED: "true"
+      LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:?LOCAL_ADMIN_EMAIL is required}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?LOCAL_ADMIN_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      FORTE_API_KEY: ${FORTE_API_KEY:?FORTE_API_KEY is required}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
+      DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
+      REDIS_URL: redis://redis_panel:6379/0
+      RUN_MIGRATIONS: "false"
+      PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
+      PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
+      PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
+      PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:?PAPI_WEBHOOK_SECRET is required}
+      BUILT_IN_FORGE_API_URL: ${BUILT_IN_FORGE_API_URL:-https://forge.manus.im}
+      BUILT_IN_FORGE_API_KEY: ${BUILT_IN_FORGE_API_KEY:-}
+      AGENT_MODEL: ${AGENT_MODEL:-gpt-5-mini}
+      AGENT_DEBOUNCE_MS: ${AGENT_DEBOUNCE_MS:-1500}
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
+      META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
+      META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
+      WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS:-1500}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-10}
+      WORKER_MAX_ATTEMPTS: ${WORKER_MAX_ATTEMPTS:-3}
+      EVENT_WORKER_BATCH_SIZE: ${EVENT_WORKER_BATCH_SIZE:-10}
+      EVENT_WORKER_MAX_ATTEMPTS: ${EVENT_WORKER_MAX_ATTEMPTS:-5}
+    depends_on:
+      postgres_panel:
+        condition: service_healthy
+      redis_panel:
+        condition: service_healthy
+      pastorini_api:
+        condition: service_started
+      forte-panel:
+        condition: service_started
+    networks:
+      - pastorini-network
+
+networks:
+  pastorini-network:
+    driver: bridge
+
+volumes:
+  postgres_papi_data:
+  redis_papi_data:
+  pastorini_sessions:
+  pastorini_media:
+  postgres_panel_data:
+  redis_panel_data:

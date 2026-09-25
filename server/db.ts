@@ -652,6 +652,32 @@ export async function getWorkspaceBySlug(slug: string) {
   return result[0];
 }
 
+export async function resetWorkspaceDevelopmentData() {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) throw new Error("Workspace unavailable");
+  return db.transaction(async (tx) => {
+    await tx.delete(notifications).where(eq(notifications.workspaceId, workspace.id));
+    await tx.delete(auditLogs).where(inArray(auditLogs.contactId, sql`(SELECT "id" FROM "contacts" WHERE "workspaceId" = ${workspace.id})`));
+    await tx.delete(contactNotes).where(eq(contactNotes.workspaceId, workspace.id));
+    await tx.delete(messages).where(inArray(messages.conversationId, sql`(SELECT "id" FROM "conversations" WHERE "contactId" IN (SELECT "id" FROM "contacts" WHERE "workspaceId" = ${workspace.id}))`));
+    await tx.delete(domainEvents).where(eq(domainEvents.workspaceId, workspace.id));
+    await tx.delete(webhookEvents).where(eq(webhookEvents.workspaceId, workspace.id));
+    await tx.delete(apiIdempotency).where(eq(apiIdempotency.workspaceId, workspace.id));
+    await tx.delete(appointmentsTable).where(eq(appointmentsTable.workspaceId, workspace.id));
+    await tx.delete(quotes).where(eq(quotes.workspaceId, workspace.id));
+    await tx.delete(professionalServices).where(eq(professionalServices.workspaceId, workspace.id));
+    await tx.delete(availability).where(eq(availability.workspaceId, workspace.id));
+    await tx.delete(conversations).where(inArray(conversations.contactId, sql`(SELECT "id" FROM "contacts" WHERE "workspaceId" = ${workspace.id})`));
+    await tx.delete(contacts).where(eq(contacts.workspaceId, workspace.id));
+    await tx.delete(services).where(eq(services.workspaceId, workspace.id));
+    await tx.delete(professionals).where(eq(professionals.workspaceId, workspace.id));
+    await tx.delete(whatsappChannels).where(eq(whatsappChannels.workspaceId, workspace.id));
+    await tx.delete(workspaceSettings).where(eq(workspaceSettings.workspaceId, workspace.id));
+    return { workspaceId: workspace.id, reset: true };
+  });
+}
+
 export async function listWorkspaceMembers(slug = DEMO_WORKSPACE_SLUG) {
   const db = await getDb();
   if (!db) return [];

@@ -11,12 +11,14 @@ O **n8n foi retirado do fluxo**. O Forte Panel concentra contatos, conversas, de
 ## Arquivos principais
 
 - `docker-compose.yaml`: compose final com PAPI, seus bancos, Forte Panel e worker.
+- `docker-compose.forte-panel-papi.yaml`: cópia explícita do compose sem serviço n8n; o container e os volumes antigos do n8n não são declarados nem alterados.
+- `.env.forte-panel-papi.example`: modelo seguro do ambiente; preserve o `.env` atual para manter as credenciais existentes.
 - `.env`: configurações e credenciais da sua stack; não publique este arquivo.
 - `.env.stack.example`: referência sem segredos.
 - `server/native-agent.ts`: execução do agente e tools nativas.
 - `ATUALIZACAO-STACK-DESENVOLVIMENTO.md`: este procedimento.
 
-Os arquivos em `infra/n8n/` e o `.tgz` do community node são históricos da etapa de desenvolvimento e não devem ser instalados nesta etapa.
+Os arquivos em `infra/n8n/` e o `.tgz` do community node são históricos da etapa de desenvolvimento e não devem ser instalados nesta etapa. O n8n existente pode continuar parado ou ligado: este compose não executa `pull`, `stop`, `rm` ou `down` nele.
 
 ## 1. Backup e atualização
 
@@ -30,20 +32,15 @@ Copy-Item .\docker-compose.yaml .\docker-compose.before-native-agent.yaml
 
 Não use `docker compose down -v`: o `-v` remove volumes e dados.
 
+O reset disponível em **Configurações → Limpeza de desenvolvimento** apaga somente os registros do workspace do Forte Panel, depois de exigir a frase `APAGAR DADOS DO FORTE PANEL` e uma confirmação do navegador. Ele não toca em nenhum container, volume ou banco do n8n.
+
 Copie o `docker-compose.yaml` final e mantenha o `.env` existente. Os volumes continuam sendo `postgres_papi_data`, `redis_papi_data`, `pastorini_sessions`, `pastorini_media`, `postgres_panel_data` e `redis_panel_data`.
 
 ## 2. Configuração do modelo
 
-No `.env`, configure a chave OpenAI-compatible usada pelo agente:
+As credenciais dos modelos são cadastradas na interface. O `.env` deve manter as credenciais atuais da PAPI e da infraestrutura; não copie um `.env` de exemplo por cima do seu arquivo real.
 
-```env
-BUILT_IN_FORGE_API_URL=https://forge.manus.im
-BUILT_IN_FORGE_API_KEY=COLOQUE_A_CHAVE_DO_MODELO
-AGENT_MODEL=gpt-5-mini
-AGENT_DEBOUNCE_MS=1500
-```
-
-Também são aceitos `OPENAI_API_BASE` e `OPENAI_API_KEY`. As chaves ficam somente no ambiente do servidor. A interface mostra apenas o status configurado.
+O arquivo `.env.forte-panel-papi.example` documenta os nomes esperados sem conter segredos. O arquivo `.env` real não deve ser publicado.
 
 ## 3. Recriar os serviços sem apagar dados
 

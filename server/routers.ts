@@ -29,6 +29,7 @@ import {
   getOnboardingProfile,
   getNativeAgentConfig,
   saveNativeAgentConfig,
+  resetWorkspaceDevelopmentData,
   listContactNotes,
   addContactNote,
   getContactById,
@@ -517,6 +518,14 @@ export const appRouter = router({
       } catch {
         return { data: [], configured: false };
       }
+    }),
+  }),
+
+  development: router({
+    resetWorkspace: requireAdministrator.input(z.object({ confirmation: z.literal("APAGAR DADOS DO FORTE PANEL") })).mutation(async ({ ctx }) => {
+      const result = await resetWorkspaceDevelopmentData();
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "development_workspace_reset", summary: "Dados operacionais do Forte Panel apagados pelo administrador" });
+      return result;
     }),
   }),
 
