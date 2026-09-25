@@ -214,15 +214,23 @@ export class FortePanel implements INodeType {
           request.url = `${baseUrl}/messages`;
           const metadataRaw = this.getNodeParameter('metadata', index, '{}');
           const metadata = typeof metadataRaw === 'string' ? JSON.parse(metadataRaw || '{}') : metadataRaw;
+          const contactId = this.getNodeParameter('contactId', index, undefined);
+          const content = String(this.getNodeParameter('content', index, '')).trim();
+          const provider = String(this.getNodeParameter('provider', index, 'papi'));
+          const messageType = String(this.getNodeParameter('messageType', index, 'text'));
+          const instanceId = String(this.getNodeParameter('instanceId', index, '')).trim();
+          if (!contactId && !phone) throw new NodeOperationError(this.getNode(), 'Envio sem destinatário: informe phone ou contactId.');
+          if (!content) throw new NodeOperationError(this.getNode(), 'Envio sem conteúdo: o campo content está vazio.');
+          if (provider === 'papi' && !instanceId) throw new NodeOperationError(this.getNode(), 'Envio PAPI sem instanceId: o node precisa receber o ID da instância que recebeu a conversa.');
           request.body = {
-            contactId: this.getNodeParameter('contactId', index, undefined),
+            contactId,
             phone: phone || undefined,
             name: name || undefined,
-            content: this.getNodeParameter('content', index),
-            provider: this.getNodeParameter('provider', index, 'papi'),
+            content,
+            provider,
             senderType: 'ai',
-            messageType: this.getNodeParameter('messageType', index, 'text'),
-            instanceId: this.getNodeParameter('instanceId', index, '') || undefined,
+            messageType,
+            instanceId: instanceId || undefined,
             metadata,
           };
         } else if (operation !== 'published_prompt') {
@@ -245,8 +253,12 @@ export class FortePanel implements INodeType {
         const response = await this.helpers.httpRequestWithAuthentication.call(this, 'fortePanelApi', request);
         output.push({ json: (typeof response === 'object' && response !== null ? response : { data: response }) as IDataObject });
       } catch (error) {
-        if (this.continueOnFail()) output.push({ json: { success: false, error: error instanceof Error ? error.message : String(error) } });
-        else throw new NodeOperationError(this.getNode(), error instanceof Error ? error.message : String(error), { itemIndex: index });
+        const caught = error as { response?: { body?: unknown }; cause?: { response?: { body?: unknown } } };
+        const responseBody = caught.response?.body ?? caught.cause?.response?.body;
+        const detail = responseBody === undefined ? '' : ` — API: ${typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody)}`;
+        const message = `${error instanceof Error ? error.message : String(error)}${detail}`;
+        if (this.continueOnFail()) output.push({ json: { success: false, error: message } });
+        else throw new NodeOperationError(this.getNode(), message, { itemIndex: index });
       }
     }
 
