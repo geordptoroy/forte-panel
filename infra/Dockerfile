@@ -23,7 +23,11 @@ COPY infra/docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN npm install -g corepack@latest \
   && corepack enable \
-  && chmod +x ./docker-entrypoint.sh
+  && chmod +x ./docker-entrypoint.sh \
+  && groupadd --system --gid 10001 forte \
+  && useradd --system --uid 10001 --gid 10001 --home-dir /app --no-create-home forte \
+  && chown -R forte:forte /app
 
 EXPOSE 3000
+USER forte
 CMD ["./docker-entrypoint.sh"]

@@ -115,4 +115,13 @@ describe("versioned API", () => {
       else process.env.FORTE_API_KEY = previousKey;
     }
   });
+
+  it("rejects PAPI webhooks without a secret, signature, or API key", async () => {
+    const response = await fetch(`${baseUrl}/api/v1/webhooks/providers/papi`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId: "unauthenticated-event", data: {} }),
+    });
+    expect([401, 403, 503]).toContain(response.status);
+  });
 });

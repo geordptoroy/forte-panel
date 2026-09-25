@@ -1,11 +1,24 @@
 import type { Express } from "express";
 import { ENV } from "./env";
+import { sdk } from "./sdk";
 
 export function registerStorageProxy(app: Express) {
   app.get("/manus-storage/*", async (req, res) => {
     const key = (req.params as Record<string, string>)[0];
     if (!key) {
       res.status(400).send("Missing storage key");
+      return;
+    }
+
+    try {
+      await sdk.authenticateRequest(req);
+    } catch {
+      res.status(401).send("Authentication required");
+      return;
+    }
+
+    if (key.length > 512 || key.startsWith("/") || key.includes("..") || /[\r\n]/.test(key)) {
+      res.status(400).send("Invalid storage key");
       return;
     }
 

@@ -27,6 +27,7 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").default("user").notNull(),
   passwordHash: text("passwordHash"),
   operationalRole: operationalRoleEnum("operationalRole"),
+  sessionVersion: integer("sessionVersion").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

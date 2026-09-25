@@ -121,10 +121,25 @@ export async function getUserById(userId: number) {
   return result[0];
 }
 
+export async function isWorkspaceMemberActive(userId: number) {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace || userId < 0) return true;
+  const member = await db.select({ active: workspaceMembers.active }).from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId))).limit(1);
+  return member[0]?.active === 1;
+}
+
 export async function setLocalPassword(userId: number, password: string) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   await db.update(users).set({ passwordHash: hashLocalPassword(password), updatedAt: new Date() }).where(eq(users.id, userId));
+}
+
+export async function revokeUserSessions(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.update(users).set({ sessionVersion: sql`${users.sessionVersion} + 1`, updatedAt: new Date() }).where(eq(users.id, userId));
 }
 
 export async function touchLastSignedIn(userId: number) {
@@ -504,7 +519,7 @@ export type PapiWebhookConfig = {
 };
 
 export type PapiIntegrationConfig = {
-  webhooks: Array<PapiWebhookConfig & { webhookUrl: string }>;
+  webhooks: Array<Omit<PapiWebhookConfig, "secret"> & { secretMasked: string; webhookUrl: string }>;
   defaultWebhookId: string | null;
 };
 
@@ -533,16 +548,22 @@ async function getStoredPapiWebhooks() {
   return { workspace, webhooks };
 }
 
-function withPapiWebhookUrl(webhook: PapiWebhookConfig) {
+function withPapiWebhookUrl(webhook: PapiWebhookConfig, includeSecret = false) {
   const base = papiWebhookBaseUrl();
-  return { ...webhook, webhookUrl: webhook.legacy ? base : `${base}/${encodeURIComponent(webhook.id)}` };
+  const { secret, ...safeWebhook } = webhook;
+  return {
+    ...safeWebhook,
+    ...(includeSecret ? { secret } : {}),
+    secretMasked: secret ? `${secret.slice(0, 4)}…${secret.slice(-4)}` : "não configurado",
+    webhookUrl: webhook.legacy ? base : `${base}/${encodeURIComponent(webhook.id)}`,
+  };
 }
 
 export async function getPapiIntegrationConfig(): Promise<PapiIntegrationConfig> {
   const { workspace, webhooks } = await getStoredPapiWebhooks();
   const setting = workspace ? await getWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING) : undefined;
   const defaultWebhookId = setting?.value || (webhooks[0]?.id ?? null);
-  return { webhooks: webhooks.map(withPapiWebhookUrl), defaultWebhookId };
+  return { webhooks: webhooks.map((webhook) => withPapiWebhookUrl(webhook)), defaultWebhookId };
 }
 
 export async function getPapiWebhookById(id: string) {
@@ -561,7 +582,7 @@ export async function createPapiWebhook(input: { name: string; instanceId: strin
   const webhook: PapiWebhookConfig = { id: crypto.randomUUID(), name: input.name.trim(), instanceId: input.instanceId.trim(), secret: crypto.randomBytes(24).toString("hex"), createdAt: new Date().toISOString() };
   await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify([...webhooks.filter((item) => !item.legacy), webhook]));
   if (webhooks.length === 0 || webhooks.every((item) => item.legacy)) await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, webhook.id);
-  return withPapiWebhookUrl(webhook);
+  return withPapiWebhookUrl(webhook, true);
 }
 
 export async function setDefaultPapiWebhook(id: string) {

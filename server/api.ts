@@ -454,10 +454,13 @@ async function handlePapiWebhook(req: Request, res: Response, webhookId?: string
   if (webhookId && !webhook) return fail(res, 404, "Webhook PAPI não encontrado", "papi_webhook_not_found");
   const configuredSecret = webhook?.secret?.trim() || process.env.PAPI_WEBHOOK_SECRET?.trim();
   const providedSecret = req.header("X-PAPI-Webhook-Secret") ?? req.header("X-Webhook-Secret") ?? "";
-  const secretAccepted = Boolean(configuredSecret && providedSecret && providedSecret === configuredSecret);
-  // A URL individual already contains a high-entropy identifier. The secret
-  // remains available for PAPI installations that support custom headers.
-  if (!webhookId && !secretAccepted && !hasValidWebhookSignature(req) && !requireApiKey(req, res)) return;
+  const secretAccepted = Boolean(
+    configuredSecret &&
+    providedSecret &&
+    configuredSecret.length === providedSecret.length &&
+    crypto.timingSafeEqual(Buffer.from(configuredSecret), Buffer.from(providedSecret)),
+  );
+  if (!secretAccepted && !hasValidWebhookSignature(req) && !requireApiKey(req, res)) return;
   let eventId = "papi-unknown-event";
   try {
     const normalized = getWhatsappAdapter("papi").normalizeInbound(req.body);

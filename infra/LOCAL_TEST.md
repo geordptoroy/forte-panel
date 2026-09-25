@@ -72,7 +72,7 @@ O n8n ficará em `http://localhost:5678`, o PAPI em `http://localhost:3001` e o 
 DEMO_MODE=true
 FORTE_API_KEY=teste-panel-local
 PAPI_BASE_URL=http://localhost:3001
-PAPI_API_KEY=teste123
+PAPI_API_KEY=<test-only-key>
 N8N_BASE_URL=http://localhost:5678
 N8N_EVENTS_WEBHOOK_URL=http://n8n:5678/webhook/forte-panel-events
 N8N_WEBHOOK_SECRET=troque-este-segredo-do-webhook

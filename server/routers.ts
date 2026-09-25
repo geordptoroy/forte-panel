@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, SESSION_TTL_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { sdk } from "./_core/sdk";
@@ -19,6 +19,7 @@ import {
   getAgendaSnapshot,
   getUserByEmail,
   getUserById,
+  revokeUserSessions,
   setLocalPassword,
   touchLastSignedIn,
   getDefaultWhatsappProvider,
@@ -176,6 +177,7 @@ export const appRouter = router({
         throw new TRPCError({ code: "UNAUTHORIZED", message: "Senha atual incorreta" });
       }
       await setLocalPassword(ctx.user.id, input.newPassword);
+      await revokeUserSessions(ctx.user.id);
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "password_changed", summary: "Senha do operador atualizada" });
       return { success: true } as const;
     }),
@@ -199,8 +201,8 @@ export const appRouter = router({
         if (!access.memberActive) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado. Fale com o administrador." });
         }
-        const token = await sdk.signSession({ openId: account.openId, appId: "local", name: account.name ?? email });
-        ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: 1000 * 60 * 60 * 24 * 365 });
+        const token = await sdk.signSession({ openId: account.openId, appId: "local", name: account.name ?? email, sessionVersion: account.sessionVersion });
+        ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: SESSION_TTL_MS });
         await touchLastSignedIn(account.id);
         await logWorkspaceAction({ actorUserId: account.id, action: "login_success", summary: `Login local de ${email}` });
         return { success: true, role: access.role, operationalRole: access.operationalRole } as const;

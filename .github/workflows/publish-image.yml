@@ -13,7 +13,37 @@ env:
   IMAGE_NAME: ghcr.io/geordptoroy/forte-panel
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm check
+      - name: Tests
+        run: pnpm test
+      - name: Production build
+        run: pnpm build
+      - name: Check tracked files for common secret assignments
+        run: |
+          if git grep -nE '(JWT_SECRET|PAPI_API_KEY|PANEL_POSTGRES_PASSWORD|OPENAI_API_KEY)=[^$<{[:space:]]{8,}' -- ':!*.lock' ':!AUDITORIA-TECNICA-E-ROADMAP.md'; then
+            echo 'Potential hard-coded secret found in tracked files' >&2
+            exit 1
+          fi
+
   publish:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -300,6 +300,9 @@ export async function setMemberProfile(memberId: number, input: { role?: Workspa
   if (input.operationalRole) {
     await db.update(users).set({ operationalRole: input.operationalRole, updatedAt: new Date() }).where(eq(users.id, member.userId));
   }
+  if (input.active === false) {
+    await db.update(users).set({ sessionVersion: sql`${users.sessionVersion} + 1`, updatedAt: new Date() }).where(eq(users.id, member.userId));
+  }
   return updated[0];
 }
 

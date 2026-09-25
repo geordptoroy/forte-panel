@@ -56,13 +56,15 @@ services:
     image: redis:7-alpine
     container_name: redis_panel
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PANEL_PASSWORD:?REDIS_PANEL_PASSWORD is required}"]
+    environment:
+      REDIS_PANEL_PASSWORD: ${REDIS_PANEL_PASSWORD:?REDIS_PANEL_PASSWORD is required}
     volumes:
       - redis_panel_data:/data
     networks:
       - pastorini-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PANEL_PASSWORD}\" ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -73,7 +75,7 @@ services:
     container_name: pastorini_api
     restart: unless-stopped
     ports:
-      - "${PAPI_PORT_PUBLIC:-3000}:3000"
+      - "127.0.0.1:${PAPI_PORT_PUBLIC:-3000}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -87,7 +89,7 @@ services:
       POSTGRES_SSL: "false"
       REDIS_HOST: redis_papi
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ""
+      REDIS_PASSWORD: ${PAPI_REDIS_PASSWORD:?PAPI_REDIS_PASSWORD is required}
       REDIS_DB: 0
       LICENSE_KEY: ${PAPI_LICENSE_KEY:?PAPI_LICENSE_KEY is required}
     volumes:
@@ -111,11 +113,11 @@ services:
   # CRM FORTE PANEL - SERVIDOR WEB
   # ============================================================================
   forte-panel:
-    image: ghcr.io/geordptoroy/forte-panel:latest
+    image: ${FORTE_PANEL_IMAGE:?FORTE_PANEL_IMAGE must be pinned to a digest or immutable tag}
     container_name: forte_panel
     restart: unless-stopped
     ports:
-      - "${PANEL_PORT:-3002}:3000"
+      - "127.0.0.1:${PANEL_PORT:-3002}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -127,7 +129,7 @@ services:
       FORTE_API_KEY: ${FORTE_API_KEY:?FORTE_API_KEY is required}
       WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
       DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
-      REDIS_URL: redis://redis_panel:6379/0
+      REDIS_URL: redis://:${REDIS_PANEL_PASSWORD:?REDIS_PANEL_PASSWORD is required}@redis_panel:6379/0
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
       PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
@@ -156,7 +158,7 @@ services:
   # CRM FORTE PANEL - WORKER DE ENVIO WHATSAPP
   # ============================================================================
   forte-panel-worker:
-    image: ghcr.io/geordptoroy/forte-panel:latest
+    image: ${FORTE_PANEL_IMAGE:?FORTE_PANEL_IMAGE must be pinned to a digest or immutable tag}
     container_name: forte_panel_worker
     restart: unless-stopped
     command: ["./docker-entrypoint.sh", "worker"]
@@ -171,7 +173,7 @@ services:
       FORTE_API_KEY: ${FORTE_API_KEY:?FORTE_API_KEY is required}
       WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
       DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
-      REDIS_URL: redis://redis_panel:6379/0
+      REDIS_URL: redis://:${REDIS_PANEL_PASSWORD:?REDIS_PANEL_PASSWORD is required}@redis_panel:6379/0
       RUN_MIGRATIONS: "false"
       PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
       PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
