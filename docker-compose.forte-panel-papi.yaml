@@ -132,6 +132,10 @@ services:
       REDIS_URL: redis://:${REDIS_PANEL_PASSWORD:?REDIS_PANEL_PASSWORD is required}@redis_panel:6379/0
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
+      PAPI_DEPLOYMENT: ${PAPI_DEPLOYMENT:-self_hosted}
+      PAPI_CLOUD_API_URL: ${PAPI_CLOUD_API_URL:-https://api.papi.api.br}
+      PAPI_CLOUD_MANAGEMENT_URL: ${PAPI_CLOUD_MANAGEMENT_URL:-https://papi.api.br}
+      PAPI_CLOUD_PANEL_TOKEN: ${PAPI_CLOUD_PANEL_TOKEN:-}
       PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
       PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
       PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:?PAPI_WEBHOOK_SECRET is required}
@@ -176,6 +180,10 @@ services:
       REDIS_URL: redis://:${REDIS_PANEL_PASSWORD:?REDIS_PANEL_PASSWORD is required}@redis_panel:6379/0
       RUN_MIGRATIONS: "false"
       PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
+      PAPI_DEPLOYMENT: ${PAPI_DEPLOYMENT:-self_hosted}
+      PAPI_CLOUD_API_URL: ${PAPI_CLOUD_API_URL:-https://api.papi.api.br}
+      PAPI_CLOUD_MANAGEMENT_URL: ${PAPI_CLOUD_MANAGEMENT_URL:-https://papi.api.br}
+      PAPI_CLOUD_PANEL_TOKEN: ${PAPI_CLOUD_PANEL_TOKEN:-}
       PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
       PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
       PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:?PAPI_WEBHOOK_SECRET is required}

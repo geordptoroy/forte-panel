@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { IntegrationHealth, InboundMessageEvent, MetaCloudApiAdapter, OutboundMessageCommand, PapiAdapter, WhatsappAdapter, WhatsappProvider } from "./contracts";
+import { ENV } from "../_core/env";
 
 function nowHealth(name: "papi" | "meta_cloud_api" | "n8n", ok: boolean, detail: string, latencyMs?: number): IntegrationHealth {
   return { name, ok, detail, latencyMs, checkedAt: new Date() };
@@ -51,7 +52,7 @@ function normalizeMetaInbound(event: any): InboundMessageEvent {
 }
 
 export function createPapiAdapter(): PapiAdapter {
-  const baseUrl = process.env.PAPI_BASE_URL;
+  const baseUrl = ENV.papiDeployment === "cloud" ? ENV.papiCloudApiUrl : process.env.PAPI_BASE_URL;
   const apiKey = process.env.PAPI_API_KEY;
   const sendPath = process.env.PAPI_SEND_MESSAGE_PATH ?? "/messages";
   return {

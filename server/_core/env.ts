@@ -10,4 +10,8 @@ export const ENV = {
   localAuthEnabled: process.env.LOCAL_AUTH_ENABLED === "true",
   localAdminEmail: process.env.LOCAL_ADMIN_EMAIL ?? "admin@fortepanel.local",
   localAdminPassword: process.env.LOCAL_ADMIN_PASSWORD ?? "",
+  papiDeployment: process.env.PAPI_DEPLOYMENT === "cloud" ? "cloud" : "self_hosted",
+  papiCloudApiUrl: process.env.PAPI_CLOUD_API_URL ?? "https://api.papi.api.br",
+  papiCloudManagementUrl: process.env.PAPI_CLOUD_MANAGEMENT_URL ?? "https://papi.api.br",
+  papiCloudPanelToken: process.env.PAPI_CLOUD_PANEL_TOKEN ?? "",
 };

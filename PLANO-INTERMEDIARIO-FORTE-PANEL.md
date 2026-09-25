@@ -131,3 +131,65 @@ A primeira implementação será para o adapter PAPI atualmente usado. Depois se
 - O n8n envia uma lista de respostas para um único node comunitário.
 - O Forte Panel registra e envia cada item sem duplicar mensagens.
 - A tela de Atendimento não cresce indefinidamente; somente o chat rola.
+
+
+## Decisão arquitetural — desenvolvimento local agora, PAPI Cloud depois
+
+A stack continuará sendo desenvolvida e validada localmente em Docker. A PAPI self-hosted não será removida nesta etapa. O alvo de produção é uma VPS Oracle Cloud, inicialmente usando o Always Free quando houver capacidade e compatibilidade ARM64, com PostgreSQL mantido como banco principal do Forte Panel.
+
+A PAPI Cloud será adotada posteriormente para retirar da VPS os containers `pastorini_api`, `postgres_papi`, `redis_papi`, sessões e mídia da PAPI. A migração será reversível: o adapter self-hosted permanece disponível até os testes de envio, webhook, múltiplas instâncias, mídia, retry e reconexão serem aprovados.
+
+### Contrato futuro PAPI Cloud
+
+A PAPI Cloud possui dois níveis de credencial e eles não podem ser misturados:
+
+- **Token SaaS de perfil** (`x-panel-token`): administra instâncias, cria/remove instâncias, recupera ou rotaciona API keys.
+- **API key da instância**: envia mensagens e consulta status/configuração nos endpoints `https://api.papi.api.br/api/instances/{id}`.
+
+O token SaaS ficará exclusivamente no backend. A API key da instância será armazenada criptografada e vinculada a `workspaceId` + instância. O frontend receberá somente status, nome, identificador mascarado e últimos erros.
+
+A URL Cloud documentada para administração é `https://papi.api.br/api/v1`; a URL de operação da instância é `https://api.papi.api.br/api/instances/{id}`. Essa distinção deve permanecer explícita no adapter e na configuração.
+
+### Modelo de dados alvo
+
+```text
+workspace
+  └── whatsappChannel
+       └── providerDeployment (papi_self_hosted | papi_cloud | meta_cloud_api)
+            ├── instanceId
+            ├── encryptedInstanceApiKey
+            ├── webhookId
+            ├── status
+            ├── active/default
+            └── lastHealthError
+```
+
+A implementação atual usa settings para alguns webhooks; a próxima refatoração deve migrar credenciais e instâncias para entidades próprias, com índices e ownership por workspace. Não haverá credencial global compartilhada entre clientes.
+
+### Próximo passo em execução
+
+1. Isolar o adapter PAPI do restante do worker e tornar base URL, autenticação e endpoint configuráveis.
+2. Preservar `instanceId` da entrada até o outbound.
+3. Adicionar contrato de health/status por instância.
+4. Preparar a tabela/entidade de credenciais por canal sem preencher token Cloud no frontend.
+5. Manter a self-hosted como default de desenvolvimento.
+6. Adicionar testes de contrato para as duas bases: self-hosted e Cloud.
+
+### Critérios antes de ligar PAPI Cloud
+
+- Confirmar com a PAPI o formato completo do payload de webhook.
+- Confirmar assinatura/segredo de webhook e proteção contra replay.
+- Confirmar retry, timeout, limite de rate e SLA aplicável ao plano.
+- Confirmar se todos os endpoints usados pelo Panel aceitam `x-api-key` de instância.
+- Testar texto, imagem, áudio, documento, botão, status e mensagens `fromMe`.
+- Testar duas instâncias Cloud no mesmo workspace e dois workspaces separados.
+- Testar rotação de API key sem expor a chave antiga.
+- Validar ARM64 da aplicação local antes do deploy Oracle.
+
+### Regras preservadas
+
+- O login administrativo/proprietário único não será substituído.
+- PostgreSQL continuará sendo o banco principal.
+- Nenhum banco ou volume será apagado durante a migração.
+- O desenvolvimento local continuará usando Docker.
+- A PAPI Cloud só será ativada por configuração explícita e reversível.
