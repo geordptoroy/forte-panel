@@ -1,21 +1,33 @@
 
 
-### Etapa atual — entidade persistente de instâncias — concluída
+## Etapa 2 — Canais conectados e webhooks persistentes — concluída
 
-Foi criada a migration `drizzle-pg/0012_whatsapp_instances.sql` e o schema `whatsappInstances`. A entidade separa workspace, canal, provider, deployment (`self_hosted` ou `cloud`), `instanceId`, status, instância padrão, webhook e credenciais criptografadas.
+A tela **Canais conectados** agora consulta `workspace.papiInstances` e exibe, por workspace:
 
-A API interna agora possui listagem segura (`papiInstances`) e seleção de instância padrão. As listagens retornam apenas chave mascarada; o segredo é descriptografado somente no backend durante o envio. Ao criar um webhook PAPI pela interface, o registro também é sincronizado com a entidade de instância.
+- nome e `instanceId`;
+- deployment self-hosted ou Cloud;
+- status e estado ativo/inativo;
+- API key mascarada;
+- instância padrão de saída;
+- último erro de health quando existir.
 
-O worker outbound passou a preferir a API key criptografada vinculada ao `instanceId`, mantendo fallback para `PAPI_API_KEY` enquanto os registros antigos são migrados. O login proprietário único não foi alterado.
+A criação de webhook continua sendo compatível com o fluxo local, mas agora também sincroniza a instância persistente. O backfill é idempotente: quando a tela consulta as instâncias, webhooks antigos guardados em `workspaceSettings` são convertidos para `whatsappInstances` sem remover nem alterar os dados originais.
 
-Validação desta etapa:
+Selecionar o webhook padrão ou a instância padrão mantém os dois estados sincronizados. Remover um webhook marca sua instância como inativa, impedindo que ela seja selecionada para novos envios, mas não apaga o registro histórico.
+
+Para aplicar em um banco local existente, execute apenas o mecanismo normal de migration, sem remover volumes:
+
+```bash
+pnpm db:push
+```
+
+Se o ambiente usar migrations SQL versionadas em vez de `db:push`, aplique `drizzle-pg/0012_whatsapp_instances.sql` pelo procedimento já usado pela stack. Não execute `docker compose down -v`.
+
+Validação da etapa 2:
 
 - `pnpm check`: passou.
 - `pnpm test`: 39 passaram; 13 continuam ignorados por dependerem de banco/configuração externa.
 - `pnpm build`: passou.
 - `git diff --check`: passou.
-- Journal JSON de migrations: válido.
 
-### Próxima etapa imediata
-
-Migrar a tela de **Canais conectados** para consumir `papiInstances`, fazer backfill controlado dos webhooks/settings legados e ligar o endpoint de webhook ao registro persistido. Em seguida serão adicionados os endpoints de provisionamento PAPI Cloud, mas o deployment local continuará self-hosted até os testes do contrato Cloud.
+A próxima etapa será adicionar provisionamento PAPI Cloud (criar instância, recuperar/rotacionar API key e configurar webhook) atrás de uma configuração explícita. A tela continuará usando self-hosted enquanto `PAPI_DEPLOYMENT=cloud` não for ativado.

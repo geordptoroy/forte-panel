@@ -523,6 +523,23 @@ export async function listPapiInstances() {
   const db = await getDb();
   const workspace = await ensureDemoWorkspace();
   if (!db || !workspace) return [];
+  const existingRows = await db.select().from(whatsappInstances)
+    .where(eq(whatsappInstances.workspaceId, workspace.id))
+    .orderBy(asc(whatsappInstances.id));
+  const existingIds = new Set(existingRows.map((row) => row.instanceId));
+  const legacyWebhooks = (await getStoredPapiWebhooks()).webhooks;
+  for (const webhook of legacyWebhooks) {
+    if (existingIds.has(webhook.instanceId)) continue;
+    await upsertPapiInstance({
+      instanceId: webhook.instanceId,
+      name: webhook.name,
+      deployment: ENV.papiDeployment as "self_hosted" | "cloud",
+      apiKey: ENV.papiDeployment === "self_hosted" ? process.env.PAPI_API_KEY ?? null : undefined,
+      webhookId: webhook.id,
+      webhookSecret: webhook.secret,
+      status: "configured",
+    });
+  }
   const rows = await db.select().from(whatsappInstances)
     .where(eq(whatsappInstances.workspaceId, workspace.id))
     .orderBy(asc(whatsappInstances.id));
@@ -584,6 +601,9 @@ export async function setDefaultPapiInstance(id: number) {
     await tx.update(whatsappInstances).set({ isDefault: 0, updatedAt: new Date() }).where(eq(whatsappInstances.workspaceId, workspace.id));
     const selected = await tx.update(whatsappInstances).set({ isDefault: 1, updatedAt: new Date() }).where(and(eq(whatsappInstances.id, id), eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.active, 1))).returning();
     if (!selected[0]) throw new Error("Instância PAPI não encontrada ou inativa");
+    if (selected[0].webhookId) {
+      await tx.update(workspaceSettings).set({ value: selected[0].webhookId, updatedAt: new Date() }).where(and(eq(workspaceSettings.workspaceId, workspace.id), eq(workspaceSettings.key, PAPI_DEFAULT_WEBHOOK_SETTING)));
+    }
     return summarizePapiInstance(selected[0]);
   });
 }
@@ -697,17 +717,22 @@ export async function createPapiWebhook(input: { name: string; instanceId: strin
 }
 
 export async function setDefaultPapiWebhook(id: string) {
+  const db = await getDb();
   const { workspace, webhooks } = await getStoredPapiWebhooks();
-  if (!workspace || !webhooks.some((webhook) => webhook.id === id)) throw new Error("Webhook PAPI não encontrado");
+  if (!db || !workspace || !webhooks.some((webhook) => webhook.id === id)) throw new Error("Webhook PAPI não encontrado");
   await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, id);
+  await db.update(whatsappInstances).set({ isDefault: 0, updatedAt: new Date() }).where(eq(whatsappInstances.workspaceId, workspace.id));
+  await db.update(whatsappInstances).set({ isDefault: 1, updatedAt: new Date() }).where(and(eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.webhookId, id), eq(whatsappInstances.active, 1)));
   return id;
 }
 
 export async function deletePapiWebhook(id: string) {
+  const db = await getDb();
   const { workspace, webhooks } = await getStoredPapiWebhooks();
-  if (!workspace) throw new Error("Workspace unavailable");
+  if (!db || !workspace) throw new Error("Workspace unavailable");
   const next = webhooks.filter((webhook) => webhook.id !== id && !webhook.legacy);
   await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify(next));
+  await db.update(whatsappInstances).set({ active: 0, isDefault: 0, updatedAt: new Date() }).where(and(eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.webhookId, id)));
   const config = await getPapiIntegrationConfig();
   if (config.defaultWebhookId === id) await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, next[0]?.id ?? "");
 }
