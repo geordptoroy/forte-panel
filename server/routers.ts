@@ -483,6 +483,7 @@ export const appRouter = router({
           papiConfigured: Boolean(process.env.PAPI_BASE_URL && process.env.PAPI_API_KEY),
           papiSource: "Variáveis do ambiente do servidor",
         },
+        providers: Object.fromEntries(Object.entries(config.llm.providers).map(([id, provider]) => [id, { enabled: provider.enabled, baseUrl: provider.baseUrl, configured: Boolean(provider.apiKey), maskedKey: provider.apiKey }])),
       };
     }),
     save: requireAdministrator.input(z.object({
@@ -490,6 +491,19 @@ export const appRouter = router({
       model: z.string().trim().min(1).max(120),
       systemPrompt: z.string().max(30000),
       maxSteps: z.number().int().min(1).max(8),
+      llm: z.object({
+        providers: z.object({
+          nvidia_nim: z.object({ enabled: z.boolean(), baseUrl: z.string().max(500), apiKey: z.string().max(500) }),
+          google_gemini: z.object({ enabled: z.boolean(), baseUrl: z.string().max(500), apiKey: z.string().max(500) }),
+          openai_compatible: z.object({ enabled: z.boolean(), baseUrl: z.string().max(500), apiKey: z.string().max(500) }),
+        }),
+        routing: z.object({
+          text: z.object({ provider: z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]), model: z.string().max(200) }),
+          vision: z.object({ provider: z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]), model: z.string().max(200) }),
+          audio: z.object({ provider: z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]), model: z.string().max(200) }),
+          document: z.object({ provider: z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]), model: z.string().max(200) }),
+        }),
+      }),
     })).mutation(async ({ input, ctx }) => {
       const result = await saveNativeAgentConfig(input);
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "native_agent_config_updated", summary: `Agente nativo ${result.enabled ? "ativado" : "pausado"}; modelo ${result.model}` });

@@ -1,4 +1,4 @@
-import { invokeLLM, type Message, type Tool } from "./_core/llm";
+import { type Message, type Tool } from "./_core/llm";
 import {
   createAgendaAppointment,
   getAgendaSnapshot,
@@ -9,6 +9,7 @@ import {
   queueOutboundMessage,
   setContactAi,
 } from "./db";
+import { capabilityForMessageType, invokeConfiguredLLM, type AgentProviderSettings } from "./llm-providers";
 
 export type NativeAgentEvent = {
   eventId: string;
@@ -25,6 +26,7 @@ type AgentConfig = {
   model: string;
   systemPrompt: string;
   maxSteps: number;
+  llm: AgentProviderSettings;
 };
 
 const defaultModel = process.env.AGENT_MODEL ?? "gpt-5-mini";
@@ -64,7 +66,7 @@ export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfi
   let messages: Message[] = [{ role: "system", content: system }, ...history];
   const maxSteps = Math.max(1, Math.min(8, config.maxSteps || 6));
   for (let step = 0; step < maxSteps; step += 1) {
-    const response = await invokeLLM({ model: config.model || defaultModel, messages, tools, toolChoice: "auto", maxTokens: 1800 });
+    const response = await invokeConfiguredLLM(config.llm, capabilityForMessageType(event.messageType), { model: config.model || defaultModel, messages, tools, toolChoice: "auto", maxTokens: 1800 });
     const assistant = response.choices[0]?.message;
     if (!assistant) throw new Error("O modelo não retornou resposta");
     messages.push({ role: "assistant", content: assistant.content ?? "", ...(assistant.tool_calls ? { tool_calls: assistant.tool_calls } : {}) });

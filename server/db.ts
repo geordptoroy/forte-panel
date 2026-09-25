@@ -30,6 +30,7 @@ import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
 import { assertWithinWorkingHours, getLocalDayBounds, ScheduleError } from "./schedule";
 import { dailySummaryEventKey, dailySummaryFor, notificationForEvent, notificationPreferenceForEvent, parseNotificationPreferences, type NotificationEvent } from "./notification-contract";
+import { defaultAgentProviderSettings, encryptProviderSecret, maskProviderSecret, mergeAgentProviderSettings, type AgentProviderSettings } from "./llm-providers";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -574,11 +575,32 @@ export type NativeAgentConfig = {
   systemPrompt: string;
   maxSteps: number;
   apiSource: "environment";
+  llm: AgentProviderSettings;
 };
 
 export async function getNativeAgentConfig(): Promise<NativeAgentConfig> {
   const workspace = await ensureDemoWorkspace();
-  if (!workspace) return { enabled: true, model: process.env.AGENT_MODEL ?? "gpt-5-mini", systemPrompt: "", maxSteps: 6, apiSource: "environment" };
+  if (!workspace) return { enabled: true, model: process.env.AGENT_MODEL ?? "gpt-5-mini", systemPrompt: "", maxSteps: 6, apiSource: "environment", llm: defaultAgentProviderSettings() };
+  const setting = await getWorkspaceSetting(workspace.id, "native_agent_config");
+  let stored: Partial<NativeAgentConfig> = {};
+  if (setting?.value) {
+    try { stored = JSON.parse(setting.value) as Partial<NativeAgentConfig>; } catch { stored = {}; }
+  }
+  const llm = mergeAgentProviderSettings(stored.llm);
+  for (const provider of Object.values(llm.providers)) provider.apiKey = maskProviderSecret(provider.apiKey);
+  return {
+    enabled: stored.enabled !== false,
+    model: stored.model?.trim() || process.env.AGENT_MODEL || "gpt-5-mini",
+    systemPrompt: stored.systemPrompt ?? "",
+    maxSteps: Math.max(1, Math.min(8, Number(stored.maxSteps ?? 6))),
+    apiSource: "environment",
+    llm,
+  };
+}
+
+export async function getNativeAgentRuntimeConfig(): Promise<NativeAgentConfig> {
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return { enabled: true, model: process.env.AGENT_MODEL ?? "gpt-5-mini", systemPrompt: "", maxSteps: 6, apiSource: "environment", llm: defaultAgentProviderSettings() };
   const setting = await getWorkspaceSetting(workspace.id, "native_agent_config");
   let stored: Partial<NativeAgentConfig> = {};
   if (setting?.value) {
@@ -590,6 +612,7 @@ export async function getNativeAgentConfig(): Promise<NativeAgentConfig> {
     systemPrompt: stored.systemPrompt ?? "",
     maxSteps: Math.max(1, Math.min(8, Number(stored.maxSteps ?? 6))),
     apiSource: "environment",
+    llm: mergeAgentProviderSettings(stored.llm),
   };
 }
 
@@ -603,9 +626,23 @@ export async function saveNativeAgentConfig(input: Partial<NativeAgentConfig>) {
     systemPrompt: input.systemPrompt ?? current.systemPrompt,
     maxSteps: Math.max(1, Math.min(8, Number(input.maxSteps ?? current.maxSteps))),
     apiSource: "environment",
+    llm: mergeAgentProviderSettings(input.llm ?? current.llm),
   };
+  const rawSetting = await getWorkspaceSetting(workspace.id, "native_agent_config");
+  let rawConfig: Partial<NativeAgentConfig> = {};
+  if (rawSetting?.value) {
+    try { rawConfig = JSON.parse(rawSetting.value) as Partial<NativeAgentConfig>; } catch { rawConfig = {}; }
+  }
+  const stored = mergeAgentProviderSettings(rawConfig.llm);
+  for (const providerId of Object.keys(next.llm.providers) as Array<keyof typeof next.llm.providers>) {
+    const incoming = next.llm.providers[providerId];
+    const previous = stored.providers[providerId];
+    incoming.apiKey = incoming.apiKey && !incoming.apiKey.startsWith("••••") ? encryptProviderSecret(incoming.apiKey) : previous.apiKey;
+  }
   await upsertWorkspaceSetting(workspace.id, "native_agent_config", JSON.stringify(next));
-  return next;
+  const response = { ...next, llm: mergeAgentProviderSettings(next.llm) };
+  for (const provider of Object.values(response.llm.providers)) provider.apiKey = maskProviderSecret(provider.apiKey);
+  return response;
 }
 
 export async function getWorkspaceBySlug(slug: string) {
@@ -1538,7 +1575,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
         }
       }
       if (item.eventType === "message.received") {
-        const config = await getNativeAgentConfig();
+        const config = await getNativeAgentRuntimeConfig();
         if (!config.enabled) {
           await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: "native_agent_disabled", updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
           delivered += 1;

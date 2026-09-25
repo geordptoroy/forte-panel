@@ -18,6 +18,10 @@ type Profile = {
   qualificationRules: string;
 };
 
+type ProviderId = "nvidia_nim" | "google_gemini" | "openai_compatible";
+type Capability = "text" | "vision" | "audio" | "document";
+type AgentConfig = { enabled: boolean; model: string; systemPrompt: string; maxSteps: number; llm: { providers: Record<ProviderId, { enabled: boolean; baseUrl: string; apiKey: string }>; routing: Record<Capability, { provider: ProviderId; model: string }> } };
+
 const emptyProfile: Profile = {
   businessName: "",
   segment: "servicos",
@@ -38,7 +42,7 @@ export default function OnboardingPage() {
   const agentQuery = trpc.agent.config.useQuery();
   const modelsQuery = trpc.agent.models.useQuery();
   const [profile, setProfile] = useState<Profile>(emptyProfile);
-  const [agentConfig, setAgentConfig] = useState({ enabled: true, model: "gpt-5-mini", systemPrompt: "", maxSteps: 6 });
+  const [agentConfig, setAgentConfig] = useState<AgentConfig>({ enabled: true, model: "gpt-5-mini", systemPrompt: "", maxSteps: 6, llm: { providers: { nvidia_nim: { enabled: false, baseUrl: "https://integrate.api.nvidia.com/v1", apiKey: "" }, google_gemini: { enabled: false, baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: "" }, openai_compatible: { enabled: false, baseUrl: "", apiKey: "" } }, routing: { text: { provider: "nvidia_nim", model: "meta/llama-3.1-70b-instruct" }, vision: { provider: "google_gemini", model: "gemini-2.0-flash" }, audio: { provider: "google_gemini", model: "gemini-2.0-flash" }, document: { provider: "google_gemini", model: "gemini-2.0-flash" } } } });
   const [published, setPublished] = useState(false);
   const [savedVersion, setSavedVersion] = useState(0);
   const saveMutation = trpc.onboarding.save.useMutation({
@@ -58,7 +62,7 @@ export default function OnboardingPage() {
   }, [profileQuery.data]);
 
   useEffect(() => {
-    if (agentQuery.data) setAgentConfig({ enabled: agentQuery.data.enabled, model: agentQuery.data.model, systemPrompt: agentQuery.data.systemPrompt, maxSteps: agentQuery.data.maxSteps });
+    if (agentQuery.data) setAgentConfig({ enabled: agentQuery.data.enabled, model: agentQuery.data.model, systemPrompt: agentQuery.data.systemPrompt, maxSteps: agentQuery.data.maxSteps, llm: agentQuery.data.llm });
   }, [agentQuery.data]);
 
   const update = (key: keyof Profile, value: string) => setProfile((current) => ({ ...current, [key]: value }));
@@ -70,6 +74,9 @@ export default function OnboardingPage() {
   );
 
   const saveAgent = () => saveAgentMutation.mutate(agentConfig);
+  const providerLabel: Record<ProviderId, string> = { nvidia_nim: "NVIDIA NIM", google_gemini: "Google Gemini", openai_compatible: "Outro OpenAI-compatible" };
+  const updateProvider = (id: ProviderId, patch: Partial<AgentConfig["llm"]["providers"][ProviderId]>) => setAgentConfig((current) => ({ ...current, llm: { ...current.llm, providers: { ...current.llm.providers, [id]: { ...current.llm.providers[id], ...patch } } } }));
+  const updateRoute = (capability: Capability, patch: Partial<AgentConfig["llm"]["routing"][Capability]>) => setAgentConfig((current) => ({ ...current, llm: { ...current.llm, routing: { ...current.llm.routing, [capability]: { ...current.llm.routing[capability], ...patch } } } }));
   return <PanelLayout eyebrow="Sistema / Configuração" title="Agente e configuração da empresa" description="O agente nativo do Forte Panel atende, agenda, registra dados e envia pelo WhatsApp sem depender do n8n.">
     <section className="surface" style={{ padding: 22, marginBottom: 18 }}>
       <SectionTitle eyebrow="Agente nativo" title="Modelo, prompt e credenciais" />
@@ -80,6 +87,8 @@ export default function OnboardingPage() {
         <div className="form-field"><label>Máximo de etapas por resposta</label><input className="input-control" type="number" min={1} max={8} value={agentConfig.maxSteps} onChange={(event) => setAgentConfig({ ...agentConfig, maxSteps: Math.max(1, Math.min(8, Number(event.target.value) || 1)) })} /></div>
         <div className="form-field"><label>Credencial de IA</label><input className="input-control" value={agentQuery.data?.credentials.llmConfigured ? "Configurada no ambiente do servidor" : "Não configurada"} readOnly /></div>
         <div className="form-field"><label>Credencial PAPI</label><input className="input-control" value={agentQuery.data?.credentials.papiConfigured ? "Configurada no ambiente do servidor" : "Não configurada"} readOnly /></div>
+        {(Object.keys(providerLabel) as ProviderId[]).map((id) => <div className="form-field full" key={id}><label>{providerLabel[id]}</label><div style={{ display: "grid", gridTemplateColumns: "minmax(150px, .35fr) minmax(220px, 1fr) minmax(220px, 1fr)", gap: 8 }}><select className="select-control" value={agentConfig.llm.providers[id].enabled ? "true" : "false"} onChange={(event) => updateProvider(id, { enabled: event.target.value === "true" })}><option value="true">Ativo</option><option value="false">Desativado</option></select><input className="input-control" value={agentConfig.llm.providers[id].baseUrl} onChange={(event) => updateProvider(id, { baseUrl: event.target.value })} placeholder="URL base da API" /><input className="input-control" type="password" value={agentConfig.llm.providers[id].apiKey} onChange={(event) => updateProvider(id, { apiKey: event.target.value })} placeholder={agentConfig.llm.providers[id].apiKey ? "Chave cadastrada — deixe como está" : "Cole a chave aqui"} /></div></div>)}
+        <div className="form-field full"><label>Roteamento por tipo de conteúdo</label><div style={{ display: "grid", gap: 8 }}>{(["text", "vision", "audio", "document"] as Capability[]).map((capability) => <div key={capability} style={{ display: "grid", gridTemplateColumns: "120px minmax(170px, .5fr) minmax(220px, 1fr)", gap: 8, alignItems: "center" }}><strong style={{ fontSize: 12 }}>{capability === "text" ? "Texto" : capability === "vision" ? "Imagem" : capability === "audio" ? "Áudio" : "Documentos"}</strong><select className="select-control" value={agentConfig.llm.routing[capability].provider} onChange={(event) => updateRoute(capability, { provider: event.target.value as ProviderId })}>{(Object.keys(providerLabel) as ProviderId[]).map((id) => <option key={id} value={id}>{providerLabel[id]}</option>)}</select><input className="input-control" value={agentConfig.llm.routing[capability].model} onChange={(event) => updateRoute(capability, { model: event.target.value })} placeholder="ID do modelo" /></div>)}</div><small className="muted">Exemplo: NVIDIA NIM para texto, Gemini para imagens, áudio e PDFs. Cada entrada usa o modelo da capacidade correspondente.</small></div>
         <div className="form-field full"><label>System prompt próprio do agente</label><textarea className="textarea-control" rows={8} value={agentConfig.systemPrompt} onChange={(event) => setAgentConfig({ ...agentConfig, systemPrompt: event.target.value })} placeholder="Opcional. Se vazio, o agente usa o prompt operacional publicado abaixo." /></div>
       </div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 16 }}><button className="btn-primary" disabled={saveAgentMutation.isPending} onClick={saveAgent}>{saveAgentMutation.isPending ? "Salvando..." : "Salvar configuração do agente"}</button>{saveAgentMutation.isSuccess && <span className="green"><CheckCircle2 size={14} style={{ verticalAlign: "middle", marginRight: 5 }} />Configuração salva</span>}{saveAgentMutation.error && <span className="form-error">{saveAgentMutation.error.message}</span>}</div>
