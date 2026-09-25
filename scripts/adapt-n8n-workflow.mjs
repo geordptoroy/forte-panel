@@ -166,10 +166,10 @@ workflow.connections[restoreNode.name] = { main: [[{ node: humanControl, type: '
 const panelCredentials = panelTool.credentials;
 const outgoingNodeConfig = {
   phoneExpression: `={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}`,
-  contentExpression: `={{ String($json.content || '') }}`,
-  messageTypeExpression: `={{ $json.type === 'button' ? 'button' : ($json.type === 'audio' ? 'audio' : 'text') }}`,
+  contentExpression: `={{ String($('Preparar Envio').item.json.content || '') }}`,
+  messageTypeExpression: `={{ $('Preparar Envio').item.json.type === 'button' ? 'button' : ($('Preparar Envio').item.json.type === 'audio' ? 'audio' : 'text') }}`,
   instanceIdExpression: `={{ String($('Limpeza').first().json.instanceId || '') }}`,
-  metadataExpression: `={{ JSON.stringify($json.type === 'button' ? { buttons: $json.buttons } : ($json.type === 'audio' ? { ptt: true } : {})) }}`,
+  metadataExpression: `={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : {})) }}`,
   credentials: panelCredentials,
 };
 const loopKey = `={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}`;
@@ -193,7 +193,7 @@ if (!fallback) throw new Error('Node SendText message (fallback) não encontrado
 const fallbackKey = `={{ String($('Preparar Debounce').item.json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback' }}`;
 toCommunityQueueNode(fallback, {
   phoneExpression: `={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}`,
-  contentExpression: `={{ String($json.mensagens[0].content || '') }}`,
+  contentExpression: `={{ String($('Preparar Envio').first().json.content || $json.mensagens?.[0]?.content || '') }}`,
   messageTypeExpression: 'text',
   instanceIdExpression: `={{ String($('Limpeza').first().json.instanceId || '') }}`,
   metadataExpression: '{}',
