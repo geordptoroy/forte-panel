@@ -1506,7 +1506,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
       aggregateType: "message",
       aggregateId: created[0].id,
       eventKey: `message.received:${input.eventId}`,
-      payload: { messageId: created[0].id, contactId: contact.id, conversationId: conversation.id, phone: contact.externalPhone, content: input.content, messageType: input.messageType ?? "text", receivedAt },
+      payload: { messageId: created[0].id, contactId: contact.id, conversationId: conversation.id, phone: contact.externalPhone, content: input.content, messageType: input.messageType ?? "text", receivedAt, ...(typeof input.metadata?.instanceId === "string" ? { instanceId: input.metadata.instanceId } : {}) },
     });
   }
   await db.update(conversations).set({ ...(fromMe ? { humanControlled: 1 } : {}), unreadCount: fromMe ? 0 : sql`${conversations.unreadCount} + 1`, lastMessageAt: receivedAt, updatedAt: receivedAt }).where(eq(conversations.id, conversation.id));
@@ -1871,6 +1871,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
           workspaceId: item.workspaceId,
           contactId: Number(eventPayload.contactId ?? 0),
           conversationId: Number(eventPayload.conversationId ?? 0),
+          instanceId: typeof eventPayload.instanceId === "string" ? eventPayload.instanceId : undefined,
           content: String(eventPayload.content ?? ""),
           messageType: String(eventPayload.messageType ?? "text"),
           messages: Array.isArray(eventPayload.messages) ? eventPayload.messages as Array<{ content: string; messageType: string; receivedAt: Date }> : undefined,

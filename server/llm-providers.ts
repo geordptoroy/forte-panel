@@ -96,10 +96,13 @@ export async function invokeConfiguredLLM(settings: AgentProviderSettings, capab
   const route = settings.routing[capability];
   const provider = settings.providers[route.provider];
   if (!provider?.enabled || !provider.baseUrl || !provider.apiKey) throw new Error(`Provedor configurado para ${capability} não está disponível`);
+  const timeoutMsRaw = Number(process.env.AGENT_LLM_TIMEOUT_MS ?? 45_000);
+  const timeoutMs = Number.isFinite(timeoutMsRaw) ? Math.max(1_000, Math.min(timeoutMsRaw, 180_000)) : 45_000;
   const response = await fetch(`${endpoint(provider.baseUrl)}/chat/completions`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${decryptProviderSecret(provider.apiKey)}` },
     body: JSON.stringify(normalizeParams({ ...params, model: route.model || params.model })),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error(`LLM ${route.provider} respondeu ${response.status}: ${await response.text()}`);
   return await response.json() as InvokeResult;

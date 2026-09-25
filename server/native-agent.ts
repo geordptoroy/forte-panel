@@ -16,6 +16,7 @@ export type NativeAgentEvent = {
   workspaceId: number;
   contactId: number;
   conversationId: number;
+  instanceId?: string;
   content: string;
   messageType?: string;
   messages?: Array<{ content: string; messageType: string; receivedAt: Date }>;
@@ -72,7 +73,7 @@ export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfi
     messages.push({ role: "assistant", content: assistant.content ?? "", ...(assistant.tool_calls ? { tool_calls: assistant.tool_calls } : {}) });
     if (!assistant.tool_calls?.length) {
       const text = typeof assistant.content === "string" ? assistant.content.trim() : "";
-      if (text) await queueOutboundMessage(event.contactId, text, undefined, "ai", "text", { agent: true, eventId: event.eventId, model: response.model });
+      if (text) await queueOutboundMessage(event.contactId, text, undefined, "ai", "text", { agent: true, eventId: event.eventId, model: response.model, ...(event.instanceId ? { instanceId: event.instanceId } : {}) });
       return { response: text, steps: step + 1, model: response.model };
     }
     for (const call of assistant.tool_calls) {
