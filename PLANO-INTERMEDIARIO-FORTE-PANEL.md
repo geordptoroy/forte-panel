@@ -39,7 +39,7 @@ O Forte Panel será responsável por contato, conversa, histórico, idempotênci
 - `pnpm build` passou, gerando o frontend e os bundles do servidor.
 - O build ainda exibe apenas o aviso já existente sobre tamanho de chunk do frontend.
 
-## Próxima etapa em implementação
+## Entrada PAPI → Forte Panel
 
 ### Entrada PAPI → Forte Panel
 
@@ -60,18 +60,20 @@ O backend já executa as seguintes etapas:
 5. Gravar a mensagem uma única vez.
 6. Não gerar evento para o n8n quando a mensagem tiver `fromMe=true`.
 7. Registrar mensagens do proprietário como saída humana, sem aumentar não lidas.
-8. Preservar a decisão de controle humano para a próxima etapa de despacho:
+8. Aplicar o controle humano no despacho:
    - mensagem do proprietário (`fromMe=true`): já grava e não chama n8n;
-   - IA pausada: será filtrada antes do disparo ao n8n;
-   - IA ativa: será disparada ao n8n.
+   - IA pausada: o evento é consumido sem envio ao n8n;
+   - IA ativa: o evento é enviado ao n8n.
 
-O filtro de IA pausada versus IA ativa ainda depende da etapa de despacho do evento de domínio, que será conectada ao Trigger comunitário na próxima fase. A entrada, a persistência e a proteção contra mensagens do proprietário já estão preparadas.
+O filtro de IA pausada versus IA ativa agora ocorre no worker de eventos de domínio, antes da chamada ao webhook do n8n. A entrada, a persistência e a proteção contra mensagens do proprietário estão preparadas.
 
 ## Etapas seguintes
 
-### Node comunitário de entrada
+### Node comunitário de entrada — concluído na versão 0.6.0
 
-Criar o **Forte Panel Trigger** para entregar ao n8n o evento já normalizado pelo Panel. O n8n não deverá mais conhecer o payload bruto da PAPI.
+O pacote agora fornece o **Forte Panel — Receber evento**. Ele cria um webhook POST no n8n no caminho `forte-panel-event` e entrega o evento já normalizado pelo Panel. O node não acessa PAPI nem banco de dados e preserva headers, query e parâmetros em `_fortePanel`.
+
+Para ativá-lo, configure `N8N_EVENTS_WEBHOOK_URL` com a URL de produção do node e, se desejar assinatura HMAC, configure `N8N_WEBHOOK_SECRET`.
 
 ### Node comunitário de saída
 

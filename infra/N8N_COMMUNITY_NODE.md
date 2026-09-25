@@ -51,6 +51,21 @@ Se o n8n estiver em outro diretório, faça o build apontando o contexto para a 
 
 ## Configuração no workflow
 
+### Trigger de entrada do Forte Panel
+
+O pacote também fornece o node **Forte Panel — Receber evento**. Ele cria um webhook POST do n8n e entrega ao fluxo o evento já normalizado pelo Forte Panel.
+
+No n8n, depois de adicionar o node e ativar o workflow, copie a URL de produção exibida pelo node e configure no Forte Panel:
+
+```env
+N8N_EVENTS_WEBHOOK_URL=https://seu-n8n/webhook/forte-panel-event
+N8N_WEBHOOK_SECRET=um-segredo-compartilhado
+```
+
+O Forte Panel enviará `X-Forte-Signature`, `X-Forte-Event-Id` e `Idempotency-Key`. O payload entregue ao fluxo terá `event`, `eventId`, `workspaceId`, `aggregateType`, `aggregateId`, `payload` e `occurredAt`. O node também preserva headers, query e parâmetros em `_fortePanel` para diagnóstico.
+
+Mensagens com controle humano ativo não devem ser despachadas para esse webhook. Mensagens recebidas com `fromMe=true` também são registradas como saída humana e não devem retornar ao agente.
+
 1. Importe `infra/n8n/forte-panel-workflow.json` (gerado a partir do export original já fornecido).
 2. Crie a credencial **Forte Panel API** para o node AI Tool, com Base URL `http://forte-panel:3000/api/v1` e a mesma chave configurada em `FORTE_API_KEY` no servidor.
 3. Nos cinco nodes **HTTP Request** adicionados/substituídos para a API, associe uma credencial **HTTP Bearer Auth** com o mesmo valor de `FORTE_API_KEY`.

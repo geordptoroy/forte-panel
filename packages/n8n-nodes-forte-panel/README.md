@@ -40,6 +40,12 @@ Além do **Forte Panel Tool**, o pacote registra um node separado para cada oper
 
 O node **Forte Panel Tool** continua sendo o node próprio para conectar ao conector `Tools` do AI Agent. Os nodes determinísticos não usam `$fromAI()` e não substituem nem duplicam o Tool no agente.
 
+## Trigger de entrada
+
+O pacote também fornece o node **Forte Panel — Receber evento**. Ele cria um webhook POST para receber eventos já normalizados pelo Forte Panel. No servidor do Panel, configure `N8N_EVENTS_WEBHOOK_URL` com a URL de produção exibida por esse node e, opcionalmente, `N8N_WEBHOOK_SECRET` para assinar o corpo com `X-Forte-Signature`.
+
+O evento chega ao workflow com `eventId`, `event`, `workspaceId`, `aggregateType`, `aggregateId`, `payload` e `occurredAt`. O node preserva os headers recebidos em `_fortePanel.headers`. O controle humano é aplicado antes do despacho: conversa com IA pausada ou mensagem `fromMe` não chega ao AI Agent.
+
 ## Instalação local
 
 Dentro do pacote:

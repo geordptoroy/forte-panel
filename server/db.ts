@@ -1432,13 +1432,29 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
     if (claimed.length === 0) continue;
 
     try {
+      const eventPayload = JSON.parse(item.payload) as Record<string, unknown>;
+      if (item.eventType === "message.received") {
+        const contactId = Number(eventPayload.contactId ?? 0);
+        const control = contactId > 0
+          ? (await db.select({ aiEnabled: contacts.aiEnabled, humanControlled: conversations.humanControlled })
+            .from(contacts)
+            .leftJoin(conversations, eq(conversations.contactId, contacts.id))
+            .where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, item.workspaceId)))
+            .limit(1))[0]
+          : undefined;
+        if (control && (control.aiEnabled !== 1 || control.humanControlled === 1)) {
+          await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: "skipped_human_control", updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
+          delivered += 1;
+          continue;
+        }
+      }
       const result = await adapter.dispatchEvent({
         eventId: item.eventKey,
         event: item.eventType,
         workspaceId: item.workspaceId,
         aggregateType: item.aggregateType,
         aggregateId: item.aggregateId ?? undefined,
-        payload: JSON.parse(item.payload) as Record<string, unknown>,
+        payload: eventPayload,
         occurredAt: item.createdAt,
       });
       if (!result.accepted) throw new Error("n8n não aceitou o evento");
