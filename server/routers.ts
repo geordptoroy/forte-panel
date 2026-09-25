@@ -28,7 +28,9 @@ import {
   getPapiIntegrationConfig,
   listWhatsappChannels,
   listPapiInstances,
+  upsertPapiInstance,
   setDefaultPapiInstance,
+  updatePapiInstanceApiKey,
   setDefaultPapiWebhook,
   setDefaultWhatsappProvider,
   getAuditLogForContact,
@@ -57,6 +59,7 @@ import {
   verifyLocalPassword,
   updateQuotePayment,
 } from "./db";
+import { configurePapiCloudWebhook, createPapiCloudInstance, deletePapiCloudInstance, getPapiCloudInstanceApiKey, isPapiCloudConfigured, rotatePapiCloudInstanceApiKey } from "./integrations/papi-cloud";
 import {
   countWorkspaceMembers,
   createService,
@@ -442,6 +445,40 @@ export const appRouter = router({
     defaultChannel: protectedProcedure.query(() => getDefaultWhatsappProvider()),
     papiConfig: protectedProcedure.query(() => getPapiIntegrationConfig()),
     papiInstances: requireActiveMember.query(() => listPapiInstances()),
+    papiCloudStatus: protectedProcedure.query(() => ({
+      provisioningEnabled: ENV.papiCloudProvisioningEnabled,
+      tokenConfigured: isPapiCloudConfigured(),
+      deployment: ENV.papiDeployment,
+    })),
+    createPapiCloudInstance: requireAdministrator.input(z.object({
+      name: z.string().trim().min(1, "Informe o nome da instância").max(120),
+    })).mutation(async ({ input, ctx }) => {
+      if (!ENV.papiCloudProvisioningEnabled) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Provisionamento PAPI Cloud está desativado. Defina PAPI_CLOUD_PROVISIONING_ENABLED=true no backend." });
+      if (!isPapiCloudConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure PAPI_CLOUD_PANEL_TOKEN no backend antes de provisionar." });
+      const created = await createPapiCloudInstance(input.name);
+      const apiKey = await getPapiCloudInstanceApiKey(created.id);
+      let webhook: Awaited<ReturnType<typeof createPapiWebhook>> | undefined;
+      try {
+        webhook = await createPapiWebhook({ name: input.name, instanceId: created.id });
+        await configurePapiCloudWebhook(created.id, apiKey, { url: webhook.webhookUrl, events: ["messages", "status"] });
+        await upsertPapiInstance({ instanceId: created.id, name: input.name, deployment: "cloud", apiKey, webhookId: webhook.id, webhookSecret: webhook.secret, status: "provisioned" });
+      } catch (error) {
+        if (webhook) {
+          try { await deletePapiWebhook(webhook.id); } catch { /* preserve original provisioning error */ }
+        }
+        try { await deletePapiCloudInstance(created.id); } catch { /* provider cleanup is best effort */ }
+        throw new TRPCError({ code: "BAD_GATEWAY", message: error instanceof Error ? error.message : "Não foi possível configurar o webhook Cloud" });
+      }
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_cloud_instance_created", summary: `Instância PAPI Cloud ${created.id} provisionada` });
+      return { instanceId: created.id, name: input.name, webhookUrl: webhook.webhookUrl, webhookSecret: webhook.secret };
+    }),
+    rotatePapiCloudApiKey: requireAdministrator.input(z.object({ instanceId: z.string().trim().min(1).max(160) })).mutation(async ({ input, ctx }) => {
+      if (!ENV.papiCloudProvisioningEnabled || !isPapiCloudConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Provisionamento PAPI Cloud não está configurado." });
+      const apiKey = await rotatePapiCloudInstanceApiKey(input.instanceId);
+      const instance = await updatePapiInstanceApiKey(input.instanceId, apiKey);
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_cloud_api_key_rotated", summary: `API key da instância PAPI Cloud ${input.instanceId} rotacionada` });
+      return instance;
+    }),
     createPapiWebhook: requireAdministrator.input(z.object({
       name: z.string().trim().min(1, "Informe um nome para o webhook").max(120),
       instanceId: z.string().trim().min(1, "Informe o instanceId da PAPI").max(160),

@@ -593,6 +593,16 @@ export async function getPapiInstanceSecret(instanceId: string) {
   return decryptProviderSecret(row[0]?.encryptedApiKey ?? "");
 }
 
+export async function updatePapiInstanceApiKey(instanceId: string, apiKey: string) {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) throw new Error("Workspace unavailable");
+  const updated = await db.update(whatsappInstances).set({ encryptedApiKey: encryptProviderSecret(apiKey), status: "configured", lastHealthError: null, updatedAt: new Date() })
+    .where(and(eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.instanceId, instanceId), eq(whatsappInstances.active, 1))).returning();
+  if (!updated[0]) throw new Error("Instância PAPI não encontrada ou inativa");
+  return summarizePapiInstance(updated[0]);
+}
+
 export async function setDefaultPapiInstance(id: number) {
   const db = await getDb();
   const workspace = await ensureDemoWorkspace();

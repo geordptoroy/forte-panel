@@ -14,4 +14,5 @@ export const ENV = {
   papiCloudApiUrl: process.env.PAPI_CLOUD_API_URL ?? "https://api.papi.api.br",
   papiCloudManagementUrl: process.env.PAPI_CLOUD_MANAGEMENT_URL ?? "https://papi.api.br",
   papiCloudPanelToken: process.env.PAPI_CLOUD_PANEL_TOKEN ?? "",
+  papiCloudProvisioningEnabled: process.env.PAPI_CLOUD_PROVISIONING_ENABLED === "true",
 };

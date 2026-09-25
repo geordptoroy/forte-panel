@@ -1,33 +1,45 @@
 
 
-## Etapa 2 — Canais conectados e webhooks persistentes — concluída
+## Etapa 3 — Provisionamento PAPI Cloud — implementado atrás de flag
 
-A tela **Canais conectados** agora consulta `workspace.papiInstances` e exibe, por workspace:
+Foi criado o cliente backend `server/integrations/papi-cloud.ts`, que usa o token SaaS somente no servidor para:
 
-- nome e `instanceId`;
-- deployment self-hosted ou Cloud;
-- status e estado ativo/inativo;
-- API key mascarada;
-- instância padrão de saída;
-- último erro de health quando existir.
+- criar instância;
+- recuperar API key da instância;
+- rotacionar API key;
+- configurar webhook com eventos `messages` e `status`;
+- consultar status;
+- remover instância durante rollback de provisionamento incompleto.
 
-A criação de webhook continua sendo compatível com o fluxo local, mas agora também sincroniza a instância persistente. O backfill é idempotente: quando a tela consulta as instâncias, webhooks antigos guardados em `workspaceSettings` são convertidos para `whatsappInstances` sem remover nem alterar os dados originais.
+A tela **Canais conectados** ganhou o formulário de provisionamento Cloud. A operação cria a instância remota, cria o webhook local, configura o webhook remoto e salva a API key criptografada em `whatsappInstances`. Se a configuração falhar, o webhook local e a instância remota são removidos em tentativa de rollback.
 
-Selecionar o webhook padrão ou a instância padrão mantém os dois estados sincronizados. Remover um webhook marca sua instância como inativa, impedindo que ela seja selecionada para novos envios, mas não apaga o registro histórico.
+O provisionamento não fica ativo por padrão. São necessárias as duas condições abaixo no backend:
 
-Para aplicar em um banco local existente, execute apenas o mecanismo normal de migration, sem remover volumes:
-
-```bash
-pnpm db:push
+```env
+PAPI_CLOUD_PROVISIONING_ENABLED=true
+PAPI_CLOUD_PANEL_TOKEN=sk_live_...
 ```
 
-Se o ambiente usar migrations SQL versionadas em vez de `db:push`, aplique `drizzle-pg/0012_whatsapp_instances.sql` pelo procedimento já usado pela stack. Não execute `docker compose down -v`.
+A escolha do provider de operação continua separada:
 
-Validação da etapa 2:
+```env
+PAPI_DEPLOYMENT=self_hosted
+```
 
-- `pnpm check`: passou.
-- `pnpm test`: 39 passaram; 13 continuam ignorados por dependerem de banco/configuração externa.
-- `pnpm build`: passou.
-- `git diff --check`: passou.
+Enquanto esse valor permanecer `self_hosted`, o envio local continua usando a PAPI self-hosted. A troca para `cloud` só deve ocorrer depois de validar uma instância real.
 
-A próxima etapa será adicionar provisionamento PAPI Cloud (criar instância, recuperar/rotacionar API key e configurar webhook) atrás de uma configuração explícita. A tela continuará usando self-hosted enquanto `PAPI_DEPLOYMENT=cloud` não for ativado.
+A API key Cloud nunca é retornada para o frontend. Na criação, a interface recebe somente o `instanceId`, URL do webhook e o segredo do webhook para cópia única. O token SaaS e a API key da instância ficam no backend.
+
+### Limitação atual
+
+O contrato da PAPI Cloud foi implementado conforme a documentação enviada, mas não foi executada uma chamada real porque nenhum `PAPI_CLOUD_PANEL_TOKEN` foi fornecido/configurado nesta sessão. Antes de usar em produção, validar com uma instância de teste:
+
+1. criar instância;
+2. confirmar QR/status na PAPI;
+3. verificar recebimento de mensagem;
+4. enviar resposta pelo Panel;
+5. testar status e `fromMe`;
+6. testar rotação de API key;
+7. confirmar assinatura/segredo e retry do webhook.
+
+Não configurar `PAPI_DEPLOYMENT=cloud` no ambiente local antes desse smoke test.
