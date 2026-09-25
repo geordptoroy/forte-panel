@@ -46,6 +46,10 @@ O pacote também fornece o node **Forte Panel — Receber evento**. Ele cria um 
 
 O evento chega ao workflow com `eventId`, `event`, `workspaceId`, `aggregateType`, `aggregateId`, `payload` e `occurredAt`. O node preserva os headers recebidos em `_fortePanel.headers`. O controle humano é aplicado antes do despacho: conversa com IA pausada ou mensagem `fromMe` não chega ao AI Agent.
 
+## Envio em lote
+
+Use o node **Forte Panel — Enviar mensagens** depois do AI Agent. Ele recebe uma lista de até 50 respostas e faz uma única chamada ao Panel. Cada item pode conter `content`, `messageType`, `metadata`, `phone`, `contactId`, `provider` e `instanceId`. O Forte Panel registra cada item, aplica idempotência e o worker faz o envio pela PAPI.
+
 ## Instalação local
 
 Dentro do pacote:

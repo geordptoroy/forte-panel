@@ -77,7 +77,7 @@ Para ativá-lo, configure `N8N_EVENTS_WEBHOOK_URL` com a URL de produção do no
 
 ### Node comunitário de saída
 
-Criar o **Forte Panel Send** para receber uma lista de mensagens e enviar o lote ao Panel. O loop, a idempotência e o registro individual ficarão no backend.
+Implementado na versão **0.7.0** como **Forte Panel — Enviar mensagens**. O node recebe uma lista de até 50 mensagens e chama `/api/v1/messages/batch`. O loop, a idempotência, o registro individual e o envio pelo worker ficam no Forte Panel.
 
 ### Deduplicação
 

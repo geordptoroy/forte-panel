@@ -66,6 +66,16 @@ O Forte Panel enviará `X-Forte-Signature`, `X-Forte-Event-Id` e `Idempotency-Ke
 
 Mensagens com controle humano ativo não devem ser despachadas para esse webhook. Mensagens recebidas com `fromMe=true` também são registradas como saída humana e não devem retornar ao agente.
 
+### Envio de lote pelo Forte Panel
+
+O node **Forte Panel — Enviar mensagens** substitui o loop de nodes HTTP do n8n. Ele recebe uma lista de até 50 objetos e chama:
+
+```text
+POST /api/v1/messages/batch
+```
+
+O Panel registra cada item como mensagem outbound, aplica idempotência do lote e deixa o worker enviar pela PAPI. Um item pode informar `phone`, `contactId`, `content`, `messageType`, `metadata`, `provider` e `instanceId`. Os valores padrão podem ser definidos no próprio node.
+
 1. Importe `infra/n8n/forte-panel-workflow.json` (gerado a partir do export original já fornecido).
 2. Crie a credencial **Forte Panel API** para o node AI Tool, com Base URL `http://forte-panel:3000/api/v1` e a mesma chave configurada em `FORTE_API_KEY` no servidor.
 3. Nos cinco nodes **HTTP Request** adicionados/substituídos para a API, associe uma credencial **HTTP Bearer Auth** com o mesmo valor de `FORTE_API_KEY`.

@@ -9,6 +9,7 @@ import {
   getContactById,
   getDefaultWhatsappProvider,
   getPublishedAiPrompt,
+  findQueuedBatchMessage,
   ingestInboundWhatsApp,
   leadMemoryOperation,
   listWhatsappChannels,
@@ -75,6 +76,10 @@ const messageSchema = z.object({
   }).optional(),
 }).refine((input) => Boolean(input.contactId || input.phone), { message: "contactId ou phone é obrigatório" })
   .refine((input) => input.messageType !== "button" || Boolean(input.metadata?.buttons?.length), { message: "Mensagem de botão exige metadata.buttons" });
+const messageBatchSchema = z.object({
+  messages: z.array(messageSchema).min(1).max(50),
+  batchId: z.string().trim().min(1).max(180).optional(),
+});
 const stageSchema = z.object({ stage: z.string().min(1).max(80) });
 const rescheduleSchema = z.object({ startsAt: z.coerce.date(), endsAt: z.coerce.date() });
 const leadMemorySchema = z.object({
@@ -314,6 +319,36 @@ api.post("/messages", async (req, res) => {
     });
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao enfileirar mensagem", "internal_error");
+  }
+});
+
+api.post("/messages/batch", async (req, res) => {
+  if (!requireApiKey(req, res)) return;
+  const parsed = messageBatchSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, "Payload de mensagens em lote inválido", "invalid_payload");
+  try {
+    return idempotent(req, res, async () => {
+      const results: Array<Record<string, unknown>> = [];
+      for (let index = 0; index < parsed.data.messages.length; index += 1) {
+        const item = parsed.data.messages[index];
+        const contact = item.contactId
+          ? await getContactById(item.contactId)
+          : await upsertApiContact({ phone: String(item.phone).replace(/[^0-9]/g, ""), name: item.name });
+        if (!contact) return { statusCode: 404, body: { error: "not_found", message: `Contato não encontrado no item ${index + 1}` } };
+        const provider = item.provider ?? await getDefaultWhatsappProvider();
+        const senderType = item.senderType ?? "ai";
+        const messageType = item.messageType ?? "text";
+        if (provider === "meta_cloud_api" && messageType !== "text") return { statusCode: 422, body: { error: "unsupported_message_type", message: `Tipo não suportado no item ${index + 1}` } };
+        if (provider === "papi" && !item.instanceId && !process.env.PAPI_INSTANCE_ID) return { statusCode: 422, body: { error: "papi_instance_required", message: `Informe instanceId no item ${index + 1} ou configure PAPI_INSTANCE_ID` } };
+        const batchId = parsed.data.batchId ?? req.header("Idempotency-Key") ?? `request-${Date.now()}`;
+        const existing = await findQueuedBatchMessage(contact.id, batchId, index);
+        const message = existing ?? await queueOutboundMessage(contact.id, item.content, provider, senderType, messageType, { ...(item.metadata ?? {}), batchId, batchIndex: index, ...(item.instanceId ? { instanceId: item.instanceId } : {}) });
+        results.push({ id: message?.id, contactId: contact.id, provider, senderType, messageType, status: "queued", index });
+      }
+      return { statusCode: 202, body: { accepted: true, count: results.length, data: results } };
+    });
+  } catch (error) {
+    return fail(res, 500, error instanceof Error ? error.message : "Falha ao enfileirar lote de mensagens", "internal_error");
   }
 });
 

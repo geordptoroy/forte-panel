@@ -1195,6 +1195,19 @@ export async function upsertApiContact(input: { phone: string; name?: string; ci
 }
 
 
+export async function findQueuedBatchMessage(contactId: number, batchId: string, batchIndex: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const conversation = await getConversationByContact(contactId);
+  if (!conversation) return undefined;
+  const found = await db.select().from(messages).where(and(
+    eq(messages.conversationId, conversation.id),
+    sql`${messages.metadata}->>'batchId' = ${batchId}`,
+    sql`${messages.metadata}->>'batchIndex' = ${String(batchIndex)}`,
+  )).orderBy(desc(messages.id)).limit(1);
+  return found[0];
+}
+
 export async function queueOutboundMessage(contactId: number, content: string, provider?: WhatsappProvider, senderType: "ai" | "human" = "human", messageType: "text" | "audio" | "button" = "text", metadata?: Record<string, unknown>) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
