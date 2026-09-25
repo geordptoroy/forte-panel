@@ -7,9 +7,9 @@ services:
     container_name: postgres_papi
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "postgres123"
-      POSTGRES_DB: pastorini
+      POSTGRES_USER: ${PAPI_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${PAPI_POSTGRES_PASSWORD:?PAPI_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${PAPI_POSTGRES_DB:-pastorini}
     volumes:
       - postgres_papi_data:/var/lib/postgresql/data
     networks:
@@ -25,9 +25,9 @@ services:
     container_name: postgres_n8n
     restart: unless-stopped
     environment:
-      POSTGRES_USER: n8n
-      POSTGRES_PASSWORD: n8n123
-      POSTGRES_DB: n8n
+      POSTGRES_USER: ${N8N_POSTGRES_USER:-n8n}
+      POSTGRES_PASSWORD: ${N8N_POSTGRES_PASSWORD:?N8N_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${N8N_POSTGRES_DB:-n8n}
     volumes:
       - postgres_n8n_data:/var/lib/postgresql/data
     networks:
@@ -43,9 +43,9 @@ services:
     container_name: postgres_panel
     restart: unless-stopped
     environment:
-      POSTGRES_USER: forte_panel
-      POSTGRES_PASSWORD: forte_panel_local
-      POSTGRES_DB: forte_panel
+      POSTGRES_USER: ${PANEL_POSTGRES_USER:-forte_panel}
+      POSTGRES_PASSWORD: ${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${PANEL_POSTGRES_DB:-forte_panel}
     volumes:
       - postgres_panel_data:/var/lib/postgresql/data
     networks:
@@ -93,29 +93,30 @@ services:
     container_name: n8n
     restart: unless-stopped
     ports:
-      - "5678:5678"
+      - "${N8N_PORT_PUBLIC:-5678}:5678"
     environment:
-      - GENERIC_TIMEZONE=America/Sao_Paulo
-      - TZ=America/Sao_Paulo
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-America/Sao_Paulo}
+      - TZ=${TZ:-America/Sao_Paulo}
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres_n8n
       - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=n8n
-      - DB_POSTGRESDB_USER=n8n
-      - DB_POSTGRESDB_PASSWORD=n8n123
+      - DB_POSTGRESDB_DATABASE=${N8N_POSTGRES_DB:-n8n}
+      - DB_POSTGRESDB_USER=${N8N_POSTGRES_USER:-n8n}
+      - DB_POSTGRESDB_PASSWORD=${N8N_POSTGRES_PASSWORD:?N8N_POSTGRES_PASSWORD is required}
       - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=admin123
-      - N8N_HOST=n8n
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:?N8N_BASIC_AUTH_USER is required}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:?N8N_BASIC_AUTH_PASSWORD is required}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY is required}
+      - N8N_HOST=${N8N_HOST:-n8n}
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
-      - WEBHOOK_URL=http://n8n:5678
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://n8n:5678}
       - N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/nodes/node_modules/n8n-nodes-forte-panel
       - N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true
-      - N8N_AI_TIMEOUT=3600000
+      - N8N_AI_TIMEOUT=${N8N_AI_TIMEOUT:-3600000}
     volumes:
       - n8n_data:/home/node/.n8n
-      - /mnt/c/Users/Rafae/Desktop/audios:/home/node/midias
+      - ${N8N_AUDIO_HOST_PATH:-./audios}:/home/node/midias
     depends_on:
       postgres_n8n:
         condition: service_healthy
@@ -130,23 +131,23 @@ services:
     container_name: pastorini_api
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${PAPI_PORT_PUBLIC:-3000}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
-      PANEL_API_KEY: "teste123"
+      PANEL_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
       STORAGE_TYPE: postgres+redis
       POSTGRES_HOST: postgres_papi
       POSTGRES_PORT: 5432
-      POSTGRES_DB: pastorini
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "postgres123"
+      POSTGRES_DB: ${PAPI_POSTGRES_DB:-pastorini}
+      POSTGRES_USER: ${PAPI_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${PAPI_POSTGRES_PASSWORD:?PAPI_POSTGRES_PASSWORD is required}
       POSTGRES_SSL: "false"
       REDIS_HOST: redis_papi
       REDIS_PORT: 6379
       REDIS_PASSWORD: ""
       REDIS_DB: 0
-      LICENSE_KEY: "93FCC67B-950C58A6-3A68BCEF-C77B80F0"
+      LICENSE_KEY: ${PAPI_LICENSE_KEY:?PAPI_LICENSE_KEY is required}
     volumes:
       - pastorini_sessions:/app/sessions
       - pastorini_media:/app/Media
@@ -172,32 +173,32 @@ services:
     container_name: forte_panel
     restart: unless-stopped
     ports:
-      - "3002:3000"
+      - "${PANEL_PORT:-3002}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
       DEMO_MODE: "false"
       LOCAL_AUTH_ENABLED: "true"
-      LOCAL_ADMIN_EMAIL: admin@fortepanel.local
-      LOCAL_ADMIN_PASSWORD: trocar-esta-senha
-      JWT_SECRET: troque-por-uma-chave-jwt-com-mais-de-32-caracteres
-      FORTE_API_KEY: "teste-panel-local"
-      WEBHOOK_SIGNING_SECRET: "teste-webhook-local"
-      DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
+      LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:?LOCAL_ADMIN_EMAIL is required}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?LOCAL_ADMIN_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      FORTE_API_KEY: ${FORTE_API_KEY:?FORTE_API_KEY is required}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
+      DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
       REDIS_URL: redis://redis_panel:6379/0
-      RUN_MIGRATIONS: "true"
-      PAPI_BASE_URL: http://pastorini_api:3000
-      PAPI_API_KEY: "teste123"
-      PAPI_SEND_MESSAGE_PATH: /messages
-      PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:-troque-este-segredo-papi}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
+      PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
+      PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
+      PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:?PAPI_WEBHOOK_SECRET is required}
       N8N_BASE_URL: http://n8n:5678
       N8N_EVENTS_WEBHOOK_URL: ${N8N_EVENTS_WEBHOOK_URL:-http://n8n:5678/webhook/forte-panel-event}
-      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-troque-este-segredo-do-webhook}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:?N8N_WEBHOOK_SECRET is required}
       N8N_WEBHOOK_TIMEOUT_MS: ${N8N_WEBHOOK_TIMEOUT_MS:-10000}
       N8N_DEBOUNCE_MS: ${N8N_DEBOUNCE_MS:-1500}
-      META_GRAPH_API_VERSION: v23.0
-      META_WHATSAPP_ACCESS_TOKEN: ""
-      META_WHATSAPP_PHONE_NUMBER_ID: ""
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
+      META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
+      META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
     depends_on:
       postgres_panel:
         condition: service_healthy
@@ -223,30 +224,31 @@ services:
       PORT: 3000
       DEMO_MODE: "false"
       LOCAL_AUTH_ENABLED: "true"
-      LOCAL_ADMIN_EMAIL: admin@fortepanel.local
-      LOCAL_ADMIN_PASSWORD: trocar-esta-senha
-      JWT_SECRET: troque-por-uma-chave-jwt-com-mais-de-32-caracteres
-      FORTE_API_KEY: "teste-panel-local"
-      WEBHOOK_SIGNING_SECRET: "teste-webhook-local"
-      DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
+      LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:?LOCAL_ADMIN_EMAIL is required}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?LOCAL_ADMIN_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      FORTE_API_KEY: ${FORTE_API_KEY:?FORTE_API_KEY is required}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
+      DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
       REDIS_URL: redis://redis_panel:6379/0
       RUN_MIGRATIONS: "false"
-      PAPI_BASE_URL: http://pastorini_api:3000
-      PAPI_API_KEY: "teste123"
-      PAPI_SEND_MESSAGE_PATH: /messages
+      PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
+      PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
+      PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
+      PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:?PAPI_WEBHOOK_SECRET is required}
       N8N_BASE_URL: http://n8n:5678
       N8N_EVENTS_WEBHOOK_URL: ${N8N_EVENTS_WEBHOOK_URL:-http://n8n:5678/webhook/forte-panel-event}
-      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-troque-este-segredo-do-webhook}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:?N8N_WEBHOOK_SECRET is required}
       N8N_WEBHOOK_TIMEOUT_MS: ${N8N_WEBHOOK_TIMEOUT_MS:-10000}
       N8N_DEBOUNCE_MS: ${N8N_DEBOUNCE_MS:-1500}
-      META_GRAPH_API_VERSION: v23.0
-      META_WHATSAPP_ACCESS_TOKEN: ""
-      META_WHATSAPP_PHONE_NUMBER_ID: ""
-      WORKER_INTERVAL_MS: "1500"
-      WORKER_BATCH_SIZE: "10"
-      WORKER_MAX_ATTEMPTS: "3"
-      EVENT_WORKER_BATCH_SIZE: "10"
-      EVENT_WORKER_MAX_ATTEMPTS: "5"
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
+      META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
+      META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
+      WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS:-1500}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-10}
+      WORKER_MAX_ATTEMPTS: ${WORKER_MAX_ATTEMPTS:-3}
+      EVENT_WORKER_BATCH_SIZE: ${EVENT_WORKER_BATCH_SIZE:-10}
+      EVENT_WORKER_MAX_ATTEMPTS: ${EVENT_WORKER_MAX_ATTEMPTS:-5}
     depends_on:
       postgres_panel:
         condition: service_healthy
