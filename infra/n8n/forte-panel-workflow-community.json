@@ -35,12 +35,13 @@
       "parameters": {
         "operation": "queue_message",
         "phone": "={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}",
-        "name": "",
+        "contactId": "={{ Number($('Restaurar item após webhook').first().json.contactId || 0) || undefined }}",
+        "name": "={{ String($('Limpeza').first().json.pushName || '') }}",
         "content": "={{ String($('Preparar Envio').item.json.content || '') }}",
         "provider": "papi",
         "messageType": "={{ $('Preparar Envio').item.json.type === 'button' ? 'button' : ($('Preparar Envio').item.json.type === 'audio' ? 'audio' : 'text') }}",
         "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
-        "metadata": "={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : {})) }}",
+        "metadata": "={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : { ptt: false })) }}",
         "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
       },
       "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
@@ -65,12 +66,13 @@
       "parameters": {
         "operation": "queue_message",
         "phone": "={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}",
-        "name": "",
+        "contactId": "={{ Number($('Restaurar item após webhook').first().json.contactId || 0) || undefined }}",
+        "name": "={{ String($('Limpeza').first().json.pushName || '') }}",
         "content": "={{ String($('Preparar Envio').item.json.content || '') }}",
         "provider": "papi",
         "messageType": "={{ $('Preparar Envio').item.json.type === 'button' ? 'button' : ($('Preparar Envio').item.json.type === 'audio' ? 'audio' : 'text') }}",
         "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
-        "metadata": "={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : {})) }}",
+        "metadata": "={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : { ptt: false })) }}",
         "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
       },
       "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
@@ -718,12 +720,13 @@
       "parameters": {
         "operation": "queue_message",
         "phone": "={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}",
-        "name": "",
+        "contactId": "={{ Number($('Restaurar item após webhook').first().json.contactId || 0) || undefined }}",
+        "name": "={{ String($('Limpeza').first().json.pushName || '') }}",
         "content": "={{ String($('Preparar Envio').first().json.content || $json.mensagens?.[0]?.content || '') }}",
         "provider": "papi",
         "messageType": "text",
         "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
-        "metadata": "{}",
+        "metadata": "{\"ptt\":false}",
         "idempotencyKey": "={{ String($('Preparar Debounce').item.json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback' }}"
       },
       "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
@@ -748,12 +751,13 @@
       "parameters": {
         "operation": "queue_message",
         "phone": "={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}",
-        "name": "",
+        "contactId": "={{ Number($('Restaurar item após webhook').first().json.contactId || 0) || undefined }}",
+        "name": "={{ String($('Limpeza').first().json.pushName || '') }}",
         "content": "={{ String($('Preparar Envio').item.json.content || '') }}",
         "provider": "papi",
         "messageType": "={{ $('Preparar Envio').item.json.type === 'button' ? 'button' : ($('Preparar Envio').item.json.type === 'audio' ? 'audio' : 'text') }}",
         "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
-        "metadata": "={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : {})) }}",
+        "metadata": "={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : { ptt: false })) }}",
         "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
       },
       "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
@@ -883,7 +887,7 @@
           },
           "conditions": [
             {
-              "id": "e4aee6d6-8f8b-4fe2-a4dd-0ba4f9e12e73",
+              "id": "1d02d5df-8d06-4d9c-85fb-8bcabc9ac579",
               "leftValue": "={{ $json.eventKind }}",
               "rightValue": "lead_message",
               "operator": {
@@ -896,7 +900,7 @@
         },
         "options": {}
       },
-      "id": "ecdff57d-ae63-4acb-8609-0c3e43bf13d7",
+      "id": "2167f37b-1425-4c84-a527-4b56f5bd638c",
       "name": "Filtro entrada Inbox",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -923,7 +927,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={{ (() => { const raw = $json.timestamp; const n = Number(raw); const receivedAt = Number.isFinite(n) && n > 0 ? new Date(n * (n < 1e12 ? 1000 : 1)).toISOString() : new Date(raw || Date.now()).toISOString(); const fallbackId = [raw || '', $json.remetente || '', $itemIndex].join(':') || $execution.id; const metadata = Object.fromEntries(Object.entries({ instanceId: $json.instanceId, mediaUrl: $json.mediaUrl, mediaMimeType: $json.mediaMimeType, fileName: $json.fileName, fileLength: Number($json.fileLength) || undefined, buttonId: $json.buttonId, buttonText: $json.buttonText, isGroup: $json.isGroup }).filter(([, value]) => value !== null && value !== undefined && value !== '')); return JSON.stringify({\n  eventId: (String($json.instanceId || 'papi').slice(0,40) + ':' + String($json.messageId || fallbackId)).slice(0,180),\n  phone: String($json.remetente || '').replace(/\\D/g, ''),\n  content: String($json.texto || $json.mediaCaption || $json.buttonText || ($json.messageType === 'audio' ? '[Áudio recebido]' : $json.messageType === 'image' ? '[Imagem recebida]' : $json.messageType === 'video' ? '[Vídeo recebido]' : $json.messageType === 'document' ? '[Documento recebido]' : '[Mensagem recebida]')),\n  messageType: ['text','image','audio','video','document'].includes($json.messageType) ? $json.messageType : 'text',\n  receivedAt,\n  metadata\n}); })() }}",
+        "jsonBody": "={{ (() => { const raw = $json.timestamp; const n = Number(raw); const receivedAt = Number.isFinite(n) && n > 0 ? new Date(n * (n < 1e12 ? 1000 : 1)).toISOString() : new Date(raw || Date.now()).toISOString(); const fallbackId = [raw || '', $json.remetente || '', $itemIndex].join(':') || $execution.id; const metadata = Object.fromEntries(Object.entries({ instanceId: $json.instanceId, mediaUrl: $json.mediaUrl, mediaMimeType: $json.mediaMimeType, fileName: $json.fileName, fileLength: Number($json.fileLength) || undefined, buttonId: $json.buttonId, buttonText: $json.buttonText, isGroup: $json.isGroup }).filter(([, value]) => value !== null && value !== undefined && value !== '')); return JSON.stringify({\n  eventId: (String($json.instanceId || 'papi').slice(0,40) + ':' + String($json.messageId || fallbackId)).slice(0,180),\n  name: String($json.pushName || '').trim() || undefined,\n  phone: String($json.remetente || '').replace(/\\D/g, ''),\n  content: String($json.texto || $json.mediaCaption || $json.buttonText || ($json.messageType === 'audio' ? '[Áudio recebido]' : $json.messageType === 'image' ? '[Imagem recebida]' : $json.messageType === 'video' ? '[Vídeo recebido]' : $json.messageType === 'document' ? '[Documento recebido]' : '[Mensagem recebida]')),\n  messageType: ['text','image','audio','video','document'].includes($json.messageType) ? $json.messageType : 'text',\n  receivedAt,\n  metadata\n}); })() }}",
         "options": {
           "response": {
             "response": {
@@ -935,7 +939,7 @@
           "timeout": 15000
         }
       },
-      "id": "219e3ae1-9f43-49c2-952c-d03ac6bac8a4",
+      "id": "a4e395b2-0b15-47dc-ac09-6afc38c8a055",
       "name": "Registrar entrada Forte Panel",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -950,9 +954,9 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return [{ json: $('Limpeza').first().json }];"
+        "jsCode": "const original = $('Limpeza').first().json; const response = $input.first()?.json || {}; const data = response.data || {}; return [{ json: { ...original, contactId: data.contactId || original.contactId || null, contactName: data.name || original.pushName || '' } }];"
       },
-      "id": "91adb6ac-d954-4286-8b58-f50e70e28d92",
+      "id": "74846114-daec-4b01-8460-91127edfd830",
       "name": "Restaurar item após webhook",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

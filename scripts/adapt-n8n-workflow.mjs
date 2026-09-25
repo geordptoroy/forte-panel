@@ -8,13 +8,14 @@ const outputPath = process.argv[3] ?? path.resolve('infra/n8n/forte-panel-workfl
 const workflow = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
 const findNode = (name) => workflow.nodes.find((node) => node.name === name);
 const id = () => crypto.randomUUID();
-const toCommunityQueueNode = (node, { phoneExpression, contentExpression, messageTypeExpression, instanceIdExpression, metadataExpression, idemExpression, credentials }) => {
+const toCommunityQueueNode = (node, { phoneExpression, contactIdExpression, nameExpression, contentExpression, messageTypeExpression, instanceIdExpression, metadataExpression, idemExpression, credentials }) => {
   node.type = 'n8n-nodes-forte-panel.fortePanelQueueMessage';
   node.typeVersion = 1;
   node.parameters = {
     operation: 'queue_message',
     phone: phoneExpression,
-    name: '',
+    contactId: contactIdExpression,
+    name: nameExpression,
     content: contentExpression,
     provider: 'papi',
     messageType: messageTypeExpression,
@@ -124,7 +125,7 @@ const inboundNode = {
     sendBody: true,
     contentType: 'json',
     specifyBody: 'json',
-    jsonBody: `={{ (() => { const raw = $json.timestamp; const n = Number(raw); const receivedAt = Number.isFinite(n) && n > 0 ? new Date(n * (n < 1e12 ? 1000 : 1)).toISOString() : new Date(raw || Date.now()).toISOString(); const fallbackId = [raw || '', $json.remetente || '', $itemIndex].join(':') || $execution.id; const metadata = Object.fromEntries(Object.entries({ instanceId: $json.instanceId, mediaUrl: $json.mediaUrl, mediaMimeType: $json.mediaMimeType, fileName: $json.fileName, fileLength: Number($json.fileLength) || undefined, buttonId: $json.buttonId, buttonText: $json.buttonText, isGroup: $json.isGroup }).filter(([, value]) => value !== null && value !== undefined && value !== '')); return JSON.stringify({\n  eventId: (String($json.instanceId || 'papi').slice(0,40) + ':' + String($json.messageId || fallbackId)).slice(0,180),\n  phone: String($json.remetente || '').replace(/\\D/g, ''),\n  content: String($json.texto || $json.mediaCaption || $json.buttonText || ($json.messageType === 'audio' ? '[Áudio recebido]' : $json.messageType === 'image' ? '[Imagem recebida]' : $json.messageType === 'video' ? '[Vídeo recebido]' : $json.messageType === 'document' ? '[Documento recebido]' : '[Mensagem recebida]')),\n  messageType: ['text','image','audio','video','document'].includes($json.messageType) ? $json.messageType : 'text',\n  receivedAt,\n  metadata\n}); })() }}`,
+    jsonBody: `={{ (() => { const raw = $json.timestamp; const n = Number(raw); const receivedAt = Number.isFinite(n) && n > 0 ? new Date(n * (n < 1e12 ? 1000 : 1)).toISOString() : new Date(raw || Date.now()).toISOString(); const fallbackId = [raw || '', $json.remetente || '', $itemIndex].join(':') || $execution.id; const metadata = Object.fromEntries(Object.entries({ instanceId: $json.instanceId, mediaUrl: $json.mediaUrl, mediaMimeType: $json.mediaMimeType, fileName: $json.fileName, fileLength: Number($json.fileLength) || undefined, buttonId: $json.buttonId, buttonText: $json.buttonText, isGroup: $json.isGroup }).filter(([, value]) => value !== null && value !== undefined && value !== '')); return JSON.stringify({\n  eventId: (String($json.instanceId || 'papi').slice(0,40) + ':' + String($json.messageId || fallbackId)).slice(0,180),\n  name: String($json.pushName || '').trim() || undefined,\n  phone: String($json.remetente || '').replace(/\\D/g, ''),\n  content: String($json.texto || $json.mediaCaption || $json.buttonText || ($json.messageType === 'audio' ? '[Áudio recebido]' : $json.messageType === 'image' ? '[Imagem recebida]' : $json.messageType === 'video' ? '[Vídeo recebido]' : $json.messageType === 'document' ? '[Documento recebido]' : '[Mensagem recebida]')),\n  messageType: ['text','image','audio','video','document'].includes($json.messageType) ? $json.messageType : 'text',\n  receivedAt,\n  metadata\n}); })() }}`,
     options: {
       response: { response: { responseFormat: 'json', neverError: false, fullResponse: false } },
       timeout: 15000,
@@ -142,7 +143,7 @@ const inboundNode = {
 const restoreNode = {
   parameters: {
     mode: 'runOnceForAllItems',
-    jsCode: "return [{ json: $('Limpeza').first().json }];",
+    jsCode: "const original = $('Limpeza').first().json; const response = $input.first()?.json || {}; const data = response.data || {}; return [{ json: { ...original, contactId: data.contactId || original.contactId || null, contactName: data.name || original.pushName || '' } }];",
   },
   id: restoreId,
   name: 'Restaurar item após webhook',
@@ -166,10 +167,12 @@ workflow.connections[restoreNode.name] = { main: [[{ node: humanControl, type: '
 const panelCredentials = panelTool.credentials;
 const outgoingNodeConfig = {
   phoneExpression: `={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}`,
+  contactIdExpression: `={{ Number($('Restaurar item após webhook').first().json.contactId || 0) || undefined }}`,
+  nameExpression: `={{ String($('Limpeza').first().json.pushName || '') }}`,
   contentExpression: `={{ String($('Preparar Envio').item.json.content || '') }}`,
   messageTypeExpression: `={{ $('Preparar Envio').item.json.type === 'button' ? 'button' : ($('Preparar Envio').item.json.type === 'audio' ? 'audio' : 'text') }}`,
   instanceIdExpression: `={{ String($('Limpeza').first().json.instanceId || '') }}`,
-  metadataExpression: `={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : {})) }}`,
+  metadataExpression: `={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : { ptt: false })) }}`,
   credentials: panelCredentials,
 };
 const loopKey = `={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}`;
@@ -193,10 +196,12 @@ if (!fallback) throw new Error('Node SendText message (fallback) não encontrado
 const fallbackKey = `={{ String($('Preparar Debounce').item.json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback' }}`;
 toCommunityQueueNode(fallback, {
   phoneExpression: `={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}`,
+  contactIdExpression: `={{ Number($('Restaurar item após webhook').first().json.contactId || 0) || undefined }}`,
+  nameExpression: `={{ String($('Limpeza').first().json.pushName || '') }}`,
   contentExpression: `={{ String($('Preparar Envio').first().json.content || $json.mensagens?.[0]?.content || '') }}`,
   messageTypeExpression: 'text',
   instanceIdExpression: `={{ String($('Limpeza').first().json.instanceId || '') }}`,
-  metadataExpression: '{}',
+  metadataExpression: '{"ptt":false}',
   idemExpression: fallbackKey,
   credentials: panelCredentials,
 });
