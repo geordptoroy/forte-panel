@@ -11,15 +11,33 @@ async function callPanel(ctx: ISupplyDataFunctions, input: string, invocationInd
   const credentials = await ctx.getCredentials('fortePanelApi');
   const baseUrl = asString(credentials.baseUrl).replace(/\/$/, '');
   let args: Record<string, unknown>;
-  try {
-    args = JSON.parse(input) as Record<string, unknown>;
-  } catch {
-    args = { operation: input };
+  const rawInput = input as unknown;
+  if (rawInput && typeof rawInput === 'object') {
+    args = rawInput as Record<string, unknown>;
+  } else {
+    const text = asString(rawInput).replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    try {
+      args = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      args = { operation: text };
+    }
   }
+  const nested = [args.input, args.arguments, args.tool_input].find((value) => value && typeof value === 'object') as Record<string, unknown> | undefined;
+  if (nested) args = { ...args, ...nested };
 
-  const operation = asString(args.operation || 'published_prompt');
-  const phone = asString(args.phone).replace(/\D/g, '');
+  const operation = asString(args.operation || args.action || 'published_prompt');
+  const phone = asString(args.phone ?? args.telefone ?? args.remetente ?? args.phoneNumber).replace(/\D/g, '');
   const contactId = Number(args.contactId);
+  const fields = (args.fields && typeof args.fields === 'object' ? args.fields : {
+    name: args.name ?? args.nome,
+    city: args.city ?? args.cidade,
+    neighborhood: args.neighborhood ?? args.bairro,
+    serviceRequested: args.serviceRequested ?? args.servico ?? args.service,
+    urgency: args.urgency,
+    stage: args.stage,
+    quoteCents: args.quoteCents,
+    aiEnabled: args.aiEnabled,
+  }) as IDataObject;
   const request: IHttpRequestOptions = { method: 'GET', url: `${baseUrl}/onboarding/prompt`, json: true };
 
   if (['buscar_lead', 'criar_lead', 'atualizar_lead', 'registrar_nota'].includes(operation)) {
@@ -28,9 +46,9 @@ async function callPanel(ctx: ISupplyDataFunctions, input: string, invocationInd
     request.body = {
       action: operation,
       phone,
-      name: asString(args.name) || undefined,
-      fields: (args.fields ?? {}) as IDataObject,
-      note: asString(args.note) || undefined,
+      name: asString(args.name ?? args.nome) || undefined,
+      fields,
+      note: asString(args.note ?? args.nota) || undefined,
     };
   } else if (operation === 'availability') {
     request.url = `${baseUrl}/availability`;
