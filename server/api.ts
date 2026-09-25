@@ -22,6 +22,7 @@ import {
 } from "./db";
 import { professionalCanExecuteService } from "./agenda";
 import { ScheduleError } from "./schedule";
+import { getWhatsappAdapter } from "./integrations/whatsapp";
 
 const api = express.Router();
 const contactSchema = z.object({
@@ -387,6 +388,28 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
   } catch (error) {
     await markWebhookEvent(parsed.data.eventId, "failed");
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao processar webhook", "internal_error");
+  }
+});
+
+api.post("/webhooks/providers/papi", async (req, res) => {
+  const configuredSecret = process.env.PAPI_WEBHOOK_SECRET?.trim();
+  const providedSecret = req.header("X-PAPI-Webhook-Secret") ?? req.header("X-Webhook-Secret") ?? "";
+  const secretAccepted = Boolean(configuredSecret && providedSecret && providedSecret === configuredSecret);
+  if (!secretAccepted && !hasValidWebhookSignature(req) && !requireApiKey(req, res)) return;
+  let eventId = "papi-unknown-event";
+  try {
+    const normalized = getWhatsappAdapter("papi").normalizeInbound(req.body);
+    eventId = normalized.eventId;
+    if (normalized.phone.length < 8 || !normalized.content.trim()) return fail(res, 400, "Evento PAPI sem telefone ou conteúdo", "invalid_payload");
+    const registered = await registerWebhookEvent({ eventId: normalized.eventId, provider: "papi", payload: req.body });
+    if (registered.conflict) return fail(res, 409, "O evento PAPI já foi usado com outro payload", "idempotency_conflict");
+    if (registered.duplicate) return res.status(200).json({ accepted: true, duplicate: true, eventId: normalized.eventId });
+    const result = await ingestInboundWhatsApp({ ...normalized, metadata: { ...(normalized.metadata ?? {}), fromMe: normalized.fromMe === true } });
+    await markWebhookEvent(normalized.eventId, "processed");
+    return res.status(202).json({ accepted: true, duplicate: result.duplicate === true, eventId: normalized.eventId, data: result });
+  } catch (error) {
+    await markWebhookEvent(eventId, "failed");
+    return fail(res, 500, error instanceof Error ? error.message : "Falha ao processar webhook PAPI", "internal_error");
   }
 });
 

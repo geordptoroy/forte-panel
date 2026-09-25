@@ -1069,7 +1069,7 @@ export async function markWebhookEvent(eventId: string, status: "processed" | "f
   await db.update(webhookEvents).set({ status, processedAt: new Date() }).where(and(eq(webhookEvents.eventId, eventId), eq(webhookEvents.status, "received")));
 }
 
-export async function ingestInboundWhatsApp(input: { eventId: string; phone: string; name?: string; content: string; messageType?: "text" | "image" | "audio" | "video" | "document"; metadata?: Record<string, unknown>; receivedAt?: Date }) {
+export async function ingestInboundWhatsApp(input: { eventId: string; phone: string; name?: string; content: string; messageType?: "text" | "image" | "audio" | "video" | "document"; metadata?: Record<string, unknown>; fromMe?: boolean; receivedAt?: Date }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   await ensureDemoInbox();
@@ -1083,6 +1083,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
     .limit(1);
   if (priorMessage[0]) return { ...priorMessage[0], duplicate: true };
   const receivedAt = input.receivedAt ?? new Date();
+  const fromMe = input.fromMe === true || input.metadata?.fromMe === true;
   let contact = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, input.phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
   if (!contact) {
     await db.insert(contacts).values({
@@ -1093,7 +1094,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
       stage: "Novo contato",
       aiEnabled: 1,
       quoteCents: 0,
-      unreadCount: 1,
+      unreadCount: fromMe ? 0 : 1,
       lastMessagePreview: input.content.slice(0, 500),
       lastMessageAt: receivedAt,
     });
@@ -1111,7 +1112,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
   } else {
     await db.update(contacts).set({
       name: input.name?.trim() || contact.name,
-      unreadCount: sql`${contacts.unreadCount} + 1`,
+      unreadCount: fromMe ? contacts.unreadCount : sql`${contacts.unreadCount} + 1`,
       lastMessagePreview: input.content.slice(0, 500),
       lastMessageAt: receivedAt,
       updatedAt: receivedAt,
@@ -1127,15 +1128,15 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
   const created = await db.insert(messages).values({
     conversationId: conversation.id,
     externalId: input.eventId,
-    direction: "inbound",
-    senderType: "lead",
+    direction: fromMe ? "outbound" : "inbound",
+    senderType: fromMe ? "human" : "lead",
     messageType: input.messageType ?? "text",
     content: input.content,
     metadata: input.metadata,
     status: "received",
     createdAt: receivedAt,
   }).returning();
-  if (created[0]) {
+  if (created[0] && !fromMe) {
     await enqueueDomainEvent({
       workspaceId: workspace.id,
       event: "message.received",
@@ -1145,7 +1146,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
       payload: { messageId: created[0].id, contactId: contact.id, conversationId: conversation.id, phone: contact.externalPhone, content: input.content, messageType: input.messageType ?? "text", receivedAt },
     });
   }
-  await db.update(conversations).set({ unreadCount: sql`${conversations.unreadCount} + 1`, lastMessageAt: receivedAt, updatedAt: receivedAt }).where(eq(conversations.id, conversation.id));
+  await db.update(conversations).set({ unreadCount: fromMe ? conversations.unreadCount : sql`${conversations.unreadCount} + 1`, lastMessageAt: receivedAt, updatedAt: receivedAt }).where(eq(conversations.id, conversation.id));
   return { contactId: contact.id, conversationId: conversation.id, messageId: created[0]?.id, duplicate: false };
 }
 

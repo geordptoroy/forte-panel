@@ -15,6 +15,8 @@ export type InboundMessageEvent = {
   name?: string;
   content: string;
   messageType: "text" | "image" | "audio" | "video" | "document";
+  metadata?: Record<string, unknown>;
+  fromMe?: boolean;
   receivedAt: Date;
 };
 

@@ -34,29 +34,29 @@ const managementNav: NavGroup[] = [
     label: "Operação",
     items: [
       { href: "/dashboard", label: "Dashboard", description: "Visão geral", icon: LayoutDashboard },
-      { href: "/inbox", label: "Inbox", description: "Conversas e atendimento", icon: Inbox },
-      { href: "/kanban", label: "Kanban", description: "Estágios comerciais", icon: KanbanSquare },
-      { href: "/agenda", label: "Agenda completa", description: "Visitas e horários", icon: CalendarDays },
-      { href: "/my-work", label: "Meu trabalho", description: "Agenda do dia", icon: ClipboardList },
+      { href: "/inbox", label: "Atendimento", description: "Conversas com clientes", icon: Inbox },
+      { href: "/kanban", label: "Funil de atendimento", description: "Etapas dos clientes", icon: KanbanSquare },
+      { href: "/agenda", label: "Agenda", description: "Visitas e horários", icon: CalendarDays },
+      { href: "/my-work", label: "Minha agenda", description: "Atendimentos do dia", icon: ClipboardList },
     ],
   },
   {
     label: "Clientes",
-    items: [{ href: "/contacts", label: "Contatos", description: "Leads e histórico", icon: ContactRound }],
+    items: [{ href: "/contacts", label: "Clientes e contatos", description: "Cadastro e histórico", icon: ContactRound }],
   },
   {
     label: "Financeiro",
-    items: [{ href: "/billing", label: "Faturamento", description: "Orçamentos e recebimentos", icon: CircleDollarSign }],
+    items: [{ href: "/billing", label: "Orçamentos e pagamentos", description: "Valores e recebimentos", icon: CircleDollarSign }],
   },
   {
     label: "Sistema",
     items: [
-      { href: "/integrations", label: "Integrações", description: "Conexões externas", icon: PlugZap },
-      { href: "/onboarding", label: "Onboarding", description: "Regras da empresa e IA", icon: BrainCircuit },
+      { href: "/integrations", label: "Canais conectados", description: "WhatsApp e serviços externos", icon: PlugZap },
+      { href: "/onboarding", label: "Configuração da empresa", description: "Regras do atendimento e IA", icon: BrainCircuit },
       { href: "/team", label: "Equipe", description: "Acessos e permissões", icon: UserCog },
       { href: "/services", label: "Serviços", description: "Catálogo executável", icon: Scissors },
       { href: "/professionals", label: "Profissionais", description: "Executores e jornada", icon: UserCog },
-      { href: "/settings", label: "Configurações", description: "Preferências do painel", icon: Settings },
+      { href: "/settings", label: "Preferências", description: "Preferências do painel", icon: Settings },
     ],
   },
 ];
@@ -84,15 +84,15 @@ const attendantNav: NavGroup[] = [
   {
     label: "Atendimento",
     items: [
-      { href: "/inbox", label: "Inbox", description: "Conversas e atendimento", icon: Inbox },
-      { href: "/contacts", label: "Contatos", description: "Leads e histórico", icon: ContactRound },
-      { href: "/kanban", label: "Kanban", description: "Estágios comerciais", icon: KanbanSquare },
+      { href: "/inbox", label: "Atendimento", description: "Conversas com clientes", icon: Inbox },
+      { href: "/contacts", label: "Clientes e contatos", description: "Cadastro e histórico", icon: ContactRound },
+      { href: "/kanban", label: "Funil de atendimento", description: "Etapas dos clientes", icon: KanbanSquare },
       { href: "/my-work", label: "Minhas tarefas", description: "Pendências atribuídas", icon: ClipboardList },
     ],
   },
   {
     label: "Perfil",
-    items: [{ href: "/settings", label: "Configurações", description: "Preferências da conta", icon: Settings }],
+    items: [{ href: "/settings", label: "Preferências", description: "Preferências da conta", icon: Settings }],
   },
 ];
 

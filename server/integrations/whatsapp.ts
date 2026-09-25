@@ -10,13 +10,27 @@ function normalizePhone(phone: string) {
 }
 
 function normalizePapiInbound(event: any): InboundMessageEvent {
+  const data = event?.data ?? event?.payload ?? event?.body ?? event;
+  const message = data?.message ?? data?.messages?.[0] ?? data;
+  const key = message?.key ?? message?.message?.key ?? data?.key ?? {};
+  const phone = normalizePhone(String(
+    message?.phone ?? message?.from ?? message?.sender?.phone ?? message?.sender?.id ?? message?.remoteJid ?? key?.remoteJid ?? data?.phone ?? data?.from ?? "",
+  ).replace(/@s\.whatsapp\.net$/, ""));
+  const rawType = String(message?.messageType ?? message?.type ?? data?.messageType ?? data?.type ?? "text");
+  const messageType = (["text", "image", "audio", "video", "document"].includes(rawType) ? rawType : "text") as InboundMessageEvent["messageType"];
+  const content = message?.content ?? message?.text?.body ?? message?.text ?? message?.caption ?? message?.image?.caption ?? message?.document?.caption ?? data?.content ?? "[mídia recebida]";
+  const eventId = String(message?.messageId ?? message?.id ?? key?.id ?? data?.messageId ?? data?.eventId ?? event?.eventId ?? crypto.randomUUID());
+  const instanceId = message?.instanceId ?? data?.instanceId ?? event?.instanceId;
+  const fromMe = Boolean(message?.fromMe ?? message?.key?.fromMe ?? data?.fromMe ?? event?.fromMe);
   return {
-    eventId: String(event.eventId ?? event.id ?? crypto.randomUUID()),
-    phone: normalizePhone(String(event.phone ?? event.from ?? event.sender?.phone ?? "")),
-    name: event.name ?? event.sender?.name,
-    content: String(event.content ?? event.text?.body ?? event.message?.text ?? ""),
-    messageType: event.messageType ?? event.type ?? "text",
-    receivedAt: event.receivedAt ? new Date(event.receivedAt) : new Date(),
+    eventId,
+    phone,
+    name: message?.name ?? message?.sender?.name ?? data?.name ?? event?.name,
+    content: String(content),
+    messageType,
+    fromMe,
+    metadata: { provider: "papi", ...(instanceId ? { instanceId: String(instanceId) } : {}), ...(fromMe ? { fromMe: true } : {}), rawType, messageId: eventId },
+    receivedAt: message?.timestamp ? new Date(Number(message.timestamp) * 1000) : new Date(data?.receivedAt ?? event?.receivedAt ?? Date.now()),
   };
 }
 
