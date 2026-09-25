@@ -1,12 +1,13 @@
 import { DynamicTool } from '@langchain/core/tools';
 import type { IDataObject, IHttpRequestOptions, IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription, ISupplyDataFunctions, SupplyData } from 'n8n-workflow';
 import { NodeConnectionTypes } from 'n8n-workflow';
+import { createIdempotencyKey } from './idempotency';
 
 function asString(value: unknown): string {
   return value === undefined || value === null ? '' : String(value);
 }
 
-async function callPanel(ctx: ISupplyDataFunctions, input: string): Promise<string> {
+async function callPanel(ctx: ISupplyDataFunctions, input: string, invocationIndex = 0): Promise<string> {
   const credentials = await ctx.getCredentials('fortePanelApi');
   const baseUrl = asString(credentials.baseUrl).replace(/\/$/, '');
   let args: Record<string, unknown>;
@@ -18,6 +19,7 @@ async function callPanel(ctx: ISupplyDataFunctions, input: string): Promise<stri
 
   const operation = asString(args.operation || 'published_prompt');
   const phone = asString(args.phone).replace(/\D/g, '');
+  const contactId = Number(args.contactId);
   const request: IHttpRequestOptions = { method: 'GET', url: `${baseUrl}/onboarding/prompt`, json: true };
 
   if (['buscar_lead', 'criar_lead', 'atualizar_lead', 'registrar_nota'].includes(operation)) {
@@ -54,9 +56,32 @@ async function callPanel(ctx: ISupplyDataFunctions, input: string): Promise<stri
   } else if (operation === 'queue_message') {
     request.method = 'POST';
     request.url = `${baseUrl}/messages`;
-    request.body = { contactId: args.contactId as number, content: asString(args.content), provider: asString(args.provider || 'papi') };
+    request.body = {
+      contactId: Number.isInteger(contactId) && contactId > 0 ? contactId : undefined,
+      phone: asString(args.phone) || undefined,
+      name: asString(args.name) || undefined,
+      content: asString(args.content),
+      provider: asString(args.provider || 'papi'),
+      senderType: asString(args.senderType || 'ai'),
+      messageType: asString(args.messageType || 'text'),
+      instanceId: asString(args.instanceId) || undefined,
+      metadata: args.metadata && typeof args.metadata === 'object' ? args.metadata : undefined,
+    };
   } else if (operation !== 'published_prompt') {
     throw new Error(`Ação não reconhecida: ${operation}`);
+  }
+
+  if (request.method !== 'GET') {
+    request.headers = {
+      ...request.headers,
+      'Idempotency-Key': createIdempotencyKey({
+        executionId: `${ctx.getExecutionId()}-${invocationIndex}`,
+        operation,
+        path: request.url.slice(baseUrl.length),
+        body: request.body,
+        suppliedKey: asString(args.idempotencyKey),
+      }),
+    };
   }
 
   const response = await ctx.helpers.httpRequestWithAuthentication.call(ctx, 'fortePanelApi', request);
@@ -80,11 +105,12 @@ export class FortePanelAiTool implements INodeType {
   };
 
   async supplyData(this: ISupplyDataFunctions): Promise<SupplyData> {
+    let invocationIndex = 0;
     return {
       response: new DynamicTool({
         name: 'fortePanel',
-        description: 'Use esta ferramenta para operar o Forte Panel. Input JSON: {operation:"buscar_lead|criar_lead|atualizar_lead|registrar_nota|availability|create_appointment|cancel_appointment|reschedule_appointment|published_prompt|queue_message", phone?, name?, fields?, note?, contactId?, serviceId?, professionalId?, startsAt?, endsAt?, appointmentId?, notes?, content?, provider?}.',
-        func: async (input: string) => callPanel(this, input),
+        description: 'Use esta ferramenta para operar o Forte Panel. Input JSON: {operation:"buscar_lead|criar_lead|atualizar_lead|registrar_nota|availability|create_appointment|cancel_appointment|reschedule_appointment|published_prompt|queue_message", phone?, name?, fields?, note?, contactId?, serviceId?, professionalId?, startsAt?, endsAt?, appointmentId?, notes?, content?, provider?, senderType?, messageType?, instanceId?, metadata?, idempotencyKey?}. Para botões use messageType="button" e metadata.buttons com objetos {id,displayText}; para áudio use messageType="audio" e content com URL. queue_message assume senderType="ai" e não ativa controle humano.',
+        func: async (input: string) => callPanel(this, input, invocationIndex++),
       }),
     };
   }
@@ -100,7 +126,7 @@ export class FortePanelAiTool implements INodeType {
     const output: INodeExecutionData[] = [];
     for (let index = 0; index < input.length; index += 1) {
       const value = input[index]?.json ?? {};
-      const response = await callPanel(this as unknown as ISupplyDataFunctions, JSON.stringify(value));
+      const response = await callPanel(this as unknown as ISupplyDataFunctions, JSON.stringify(value), index);
       output.push({ json: { response }, pairedItem: { item: index } });
     }
     return [output];

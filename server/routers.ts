@@ -660,6 +660,8 @@ export const appRouter = router({
           id: String(message.id),
           sender: message.senderType,
           text: message.content,
+          messageType: message.messageType,
+          metadata: message.metadata,
           time: message.createdAt.toISOString(),
           status: message.status,
         })),

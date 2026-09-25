@@ -22,7 +22,9 @@ export type OutboundMessageCommand = {
   idempotencyKey: string;
   phone: string;
   content: string;
-  messageType?: "text" | "image" | "audio" | "video" | "document";
+  messageType?: "text" | "image" | "audio" | "video" | "document" | "button";
+  metadata?: Record<string, unknown>;
+  instanceId?: string;
   provider?: WhatsappProvider;
 };
 

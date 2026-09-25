@@ -881,11 +881,14 @@ export async function setContactAi(contactId: number, enabled: boolean, actorUse
 export async function sendManualMessage(contactId: number, content: string, actorUserId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  const contact = await getContactById(contactId);
+  if (!contact) throw new Error("Contact not found");
   const conversation = await getConversationByContact(contactId);
   if (!conversation) throw new Error("Conversation not found");
   const provider = await getDefaultWhatsappProvider();
+  if (provider === "papi" && !process.env.PAPI_INSTANCE_ID) throw new Error("Configure PAPI_INSTANCE_ID para enviar mensagens manuais pelo painel");
   const createdAt = new Date();
-  await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, status: "queued", provider, createdAt });
+  await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, metadata: provider === "papi" ? { instanceId: process.env.PAPI_INSTANCE_ID } : undefined, status: "queued", provider, createdAt });
   await db.update(contacts).set({ aiEnabled: 0, unreadCount: 0, lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
   await db.update(conversations).set({ humanControlled: 1, unreadCount: 0, lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
   await db.insert(auditLogs).values({ actorUserId, contactId, action: "manual_message_queued", summary: `Mensagem manual enfileirada para ${provider}` });
@@ -1036,33 +1039,51 @@ export async function saveApiIdempotency(input: { key: string; fingerprint: stri
 export async function registerWebhookEvent(input: { eventId: string; provider: string; payload: unknown; workspaceId?: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const existing = await db.select().from(webhookEvents).where(eq(webhookEvents.eventId, input.eventId)).limit(1);
-  if (existing[0]) return { duplicate: true, event: existing[0] };
-  await db.insert(webhookEvents).values({
+  const payload = JSON.stringify(input.payload);
+  const inserted = await db.insert(webhookEvents).values({
     eventId: input.eventId,
     provider: input.provider,
-    payload: JSON.stringify(input.payload),
+    payload,
     workspaceId: input.workspaceId,
     status: "received",
-  });
-  const created = await db.select().from(webhookEvents).where(eq(webhookEvents.eventId, input.eventId)).limit(1);
-  return { duplicate: false, event: created[0] };
+  }).onConflictDoNothing({ target: webhookEvents.eventId }).returning();
+  if (inserted[0]) return { duplicate: false, conflict: false, event: inserted[0] };
+  const existing = await db.select().from(webhookEvents).where(eq(webhookEvents.eventId, input.eventId)).limit(1);
+  if (existing[0]) {
+    if (existing[0].payload !== payload) return { duplicate: true, conflict: true, event: existing[0] };
+    if (existing[0].status === "failed") {
+      const retried = await db.update(webhookEvents)
+        .set({ status: "received", payload, processedAt: null })
+        .where(and(eq(webhookEvents.id, existing[0].id), eq(webhookEvents.status, "failed")))
+        .returning();
+      if (retried[0]) return { duplicate: false, conflict: false, event: retried[0] };
+    }
+    return { duplicate: true, conflict: false, event: existing[0] };
+  }
+  throw new Error("Webhook event could not be registered");
 }
 
 export async function markWebhookEvent(eventId: string, status: "processed" | "failed") {
   const db = await getDb();
   if (!db) return;
-  await db.update(webhookEvents).set({ status, processedAt: new Date() }).where(eq(webhookEvents.eventId, eventId));
+  await db.update(webhookEvents).set({ status, processedAt: new Date() }).where(and(eq(webhookEvents.eventId, eventId), eq(webhookEvents.status, "received")));
 }
 
-export async function ingestInboundWhatsApp(input: { eventId: string; phone: string; name?: string; content: string; messageType?: "text" | "image" | "audio" | "video" | "document"; receivedAt?: Date }) {
+export async function ingestInboundWhatsApp(input: { eventId: string; phone: string; name?: string; content: string; messageType?: "text" | "image" | "audio" | "video" | "document"; metadata?: Record<string, unknown>; receivedAt?: Date }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   await ensureDemoInbox();
   const workspace = await ensureDemoWorkspace();
   if (!workspace) throw new Error("Workspace unavailable");
+  const priorMessage = await db.select({ messageId: messages.id, contactId: conversations.contactId, conversationId: conversations.id })
+    .from(messages)
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+    .where(and(eq(messages.externalId, input.eventId), eq(contacts.workspaceId, workspace.id)))
+    .limit(1);
+  if (priorMessage[0]) return { ...priorMessage[0], duplicate: true };
   const receivedAt = input.receivedAt ?? new Date();
-  let contact = (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+  let contact = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, input.phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
   if (!contact) {
     await db.insert(contacts).values({
       workspaceId: workspace.id,
@@ -1076,7 +1097,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
       lastMessagePreview: input.content.slice(0, 500),
       lastMessageAt: receivedAt,
     });
-    contact = (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+    contact = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, input.phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
     if (contact) {
       await enqueueDomainEvent({
         workspaceId: workspace.id,
@@ -1110,6 +1131,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
     senderType: "lead",
     messageType: input.messageType ?? "text",
     content: input.content,
+    metadata: input.metadata,
     status: "received",
     createdAt: receivedAt,
   }).returning();
@@ -1124,7 +1146,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
     });
   }
   await db.update(conversations).set({ unreadCount: sql`${conversations.unreadCount} + 1`, lastMessageAt: receivedAt, updatedAt: receivedAt }).where(eq(conversations.id, conversation.id));
-  return { contactId: contact.id, conversationId: conversation.id, messageId: created[0]?.id };
+  return { contactId: contact.id, conversationId: conversation.id, messageId: created[0]?.id, duplicate: false };
 }
 
 
@@ -1133,7 +1155,7 @@ export async function upsertApiContact(input: { phone: string; name?: string; ci
   if (!db) throw new Error("Database unavailable");
   const workspace = await ensureDemoWorkspace();
   if (!workspace) throw new Error("Workspace unavailable");
-  const existing = (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+  const existing = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, input.phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
   if (existing) {
     await db.update(contacts).set({
       name: input.name?.trim() || existing.name,
@@ -1157,7 +1179,7 @@ export async function upsertApiContact(input: { phone: string; name?: string; ci
     quoteCents: 0,
     unreadCount: 0,
   });
-  const created = (await db.select().from(contacts).where(eq(contacts.externalPhone, input.phone)).limit(1))[0];
+  const created = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, input.phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
   if (created) {
     await enqueueDomainEvent({
       workspaceId: workspace.id,
@@ -1172,19 +1194,27 @@ export async function upsertApiContact(input: { phone: string; name?: string; ci
 }
 
 
-export async function queueOutboundMessage(contactId: number, content: string, provider?: WhatsappProvider) {
+export async function queueOutboundMessage(contactId: number, content: string, provider?: WhatsappProvider, senderType: "ai" | "human" = "human", messageType: "text" | "audio" | "button" = "text", metadata?: Record<string, unknown>) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const selectedProvider = provider ?? await getDefaultWhatsappProvider();
+  const contact = await getContactById(contactId);
+  if (!contact) throw new Error("Contact not found");
+  if (selectedProvider === "papi" && !metadata?.instanceId && !process.env.PAPI_INSTANCE_ID) throw new Error("PAPI instanceId não informado");
   const channels = await listWhatsappChannels();
   if (channels.length > 0 && !channels.some((channel) => channel.provider === selectedProvider)) throw new Error("Provedor de WhatsApp não está ativo neste workspace");
-  const conversation = await getConversationByContact(contactId);
+  let conversation = await getConversationByContact(contactId);
+  if (!conversation) {
+    await db.insert(conversations).values({ contactId, unreadCount: 0, lastMessageAt: new Date() });
+    conversation = await getConversationByContact(contactId);
+  }
   if (!conversation) throw new Error("Conversation not found");
   const createdAt = new Date();
-  const created = await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, status: "queued", provider: selectedProvider, createdAt }).returning();
-  await db.update(contacts).set({ aiEnabled: 0, unreadCount: 0, lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
-  await db.update(conversations).set({ humanControlled: 1, unreadCount: 0, lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
-  await db.insert(auditLogs).values({ contactId, action: "api_message_queued", summary: "Mensagem enfileirada para o worker de WhatsApp" });
+  const resolvedMetadata = { ...metadata, ...(selectedProvider === "papi" && !metadata?.instanceId && process.env.PAPI_INSTANCE_ID ? { instanceId: process.env.PAPI_INSTANCE_ID } : {}) };
+  const created = await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType, messageType, content, metadata: Object.keys(resolvedMetadata).length ? resolvedMetadata : undefined, status: "queued", provider: selectedProvider, createdAt }).returning();
+  await db.update(contacts).set({ ...(senderType === "human" ? { aiEnabled: 0, unreadCount: 0 } : {}), lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
+  await db.update(conversations).set({ ...(senderType === "human" ? { humanControlled: 1, unreadCount: 0 } : {}), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
+  await db.insert(auditLogs).values({ contactId, action: "api_message_queued", summary: `${senderType === "ai" ? "Mensagem da IA" : "Mensagem humana"} enfileirada para o worker de WhatsApp` });
   return created[0];
 }
 
@@ -1225,6 +1255,8 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
         phone: item.phone,
         content: item.message.content,
         messageType: item.message.messageType,
+        metadata: item.message.metadata ?? undefined,
+        instanceId: typeof item.message.metadata?.instanceId === "string" ? item.message.metadata.instanceId : undefined,
         provider: item.message.provider,
       });
       await db.update(messages).set({ status: "sent", externalId: result.externalId, sentAt: new Date(), lastError: null }).where(eq(messages.id, item.message.id));

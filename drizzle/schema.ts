@@ -1,4 +1,4 @@
-import { index, integer, pgEnum, pgTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgEnum, pgTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 export const operationalRoleEnum = pgEnum("operational_role", ["human_attendant", "ai_attendant", "professional"]);
@@ -12,7 +12,7 @@ export const noteAuthorTypeEnum = pgEnum("note_author_type", ["human", "ai", "sy
 export const conversationStatusEnum = pgEnum("conversation_status", ["open", "resolved"]);
 export const messageDirectionEnum = pgEnum("message_direction", ["inbound", "outbound", "system"]);
 export const messageSenderTypeEnum = pgEnum("message_sender_type", ["lead", "ai", "human", "system"]);
-export const messageTypeEnum = pgEnum("message_type", ["text", "image", "audio", "video", "document"]);
+export const messageTypeEnum = pgEnum("message_type", ["text", "image", "audio", "video", "document", "button"]);
 export const messageStatusEnum = pgEnum("message_status", ["received", "queued", "processing", "sent", "failed"]);
 export const appointmentStatusEnum = pgEnum("appointment_status", ["requested", "confirmed", "in_progress", "completed", "cancelled", "no_show"]);
 export const quoteStatusEnum = pgEnum("quote_status", ["orcamento", "aguardando_aprovacao", "aprovado", "sinal_pendente", "parcialmente_pago", "pago", "cancelado"]);
@@ -126,7 +126,7 @@ export const domainEvents = pgTable("domainEvents", {
 export const contacts = pgTable("contacts", {
   id: serial("id").primaryKey(),
   workspaceId: integer("workspaceId"),
-  externalPhone: varchar("externalPhone", { length: 32 }).notNull().unique(),
+  externalPhone: varchar("externalPhone", { length: 32 }).notNull(),
   name: varchar("name", { length: 160 }).notNull(),
   city: varchar("city", { length: 100 }),
   neighborhood: varchar("neighborhood", { length: 100 }),
@@ -140,7 +140,9 @@ export const contacts = pgTable("contacts", {
   lastMessageAt: timestamp("lastMessageAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("contacts_workspace_phone_unique_idx").on(table.workspaceId, table.externalPhone).where(sql`${table.workspaceId} IS NOT NULL`),
+]);
 
 export const contactNotes = pgTable("contactNotes", {
   id: serial("id").primaryKey(),
@@ -165,18 +167,21 @@ export const conversations = pgTable("conversations", {
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   conversationId: integer("conversationId").notNull(),
-  externalId: varchar("externalId", { length: 160 }),
+  externalId: varchar("externalId", { length: 180 }),
   direction: messageDirectionEnum("direction").notNull(),
   senderType: messageSenderTypeEnum("senderType").notNull(),
   messageType: messageTypeEnum("messageType").default("text").notNull(),
   content: text("content").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   status: messageStatusEnum("status").default("received").notNull(),
   provider: whatsappProviderEnum("provider").default("papi").notNull(),
   attemptCount: integer("attemptCount").default(0).notNull(),
   lastError: text("lastError"),
   sentAt: timestamp("sentAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("messages_external_id_unique_idx").on(table.externalId).where(sql`${table.externalId} IS NOT NULL`),
+]);
 
 export const services = pgTable("services", {
   id: serial("id").primaryKey(),

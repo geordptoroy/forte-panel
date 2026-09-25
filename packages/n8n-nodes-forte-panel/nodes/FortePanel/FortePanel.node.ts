@@ -8,6 +8,7 @@ import type {
   IDataObject,
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { createIdempotencyKey } from './idempotency';
 
 const fromAi = (name: string, description: string, type = 'string') => `={{ $fromAI('${name}', '${description.replace(/'/g, "\\'")}', '${type}') }}`;
 
@@ -106,6 +107,30 @@ const properties: INodeProperties[] = [
     default: 'papi',
   },
   {
+    displayName: 'Tipo da mensagem',
+    name: 'messageType',
+    type: 'options',
+    options: [
+      { name: 'Texto', value: 'text' },
+      { name: 'Áudio PTT', value: 'audio' },
+      { name: 'Botões', value: 'button' },
+    ],
+    default: 'text',
+    description: 'Áudio exige uma URL acessível ao serviço PAPI; botões usam metadata.buttons.',
+  },
+  {
+    displayName: 'ID da instância PAPI',
+    name: 'instanceId',
+    type: 'string',
+    default: fromAi('instanceId', 'ID da instância PAPI que recebeu a conversa'),
+  },
+  {
+    displayName: 'Metadados (JSON)',
+    name: 'metadata',
+    type: 'json',
+    default: fromAi('metadata', 'Para botões: {"buttons":[{"id":"agendar","displayText":"Agendar"}]}', 'json'),
+  },
+  {
     displayName: 'Idempotency Key',
     name: 'idempotencyKey',
     type: 'string',
@@ -122,7 +147,7 @@ export class FortePanel implements INodeType {
     group: ['transform'],
     version: 1,
     subtitle: '={{$parameter["operation"]}}',
-    description: 'AI Tool oficial do Forte Panel para CRM, agenda, prompt publicado e fila de WhatsApp. Use esta ferramenta como fonte de verdade para consultar e atualizar leads, registrar notas, consultar disponibilidade, criar, cancelar ou reagendar agendamentos e enfileirar mensagens.',
+    description: 'AI Tool oficial do Forte Panel para CRM, agenda, prompt publicado e fila de WhatsApp. Use esta ferramenta como fonte de verdade para consultar e atualizar leads, registrar notas, consultar disponibilidade, criar, cancelar ou reagendar agendamentos e enfileirar mensagens de texto, áudio ou botões.',
     defaults: { name: 'Forte Panel' },
     inputs: [NodeConnectionTypes.Main],
     outputs: [NodeConnectionTypes.Main],
@@ -174,9 +199,34 @@ export class FortePanel implements INodeType {
         } else if (operation === 'queue_message') {
           request.method = 'POST';
           request.url = `${baseUrl}/messages`;
-          request.body = { contactId: this.getNodeParameter('contactId', index), content: this.getNodeParameter('content', index), provider: this.getNodeParameter('provider', index, 'papi') };
+          const metadataRaw = this.getNodeParameter('metadata', index, '{}');
+          const metadata = typeof metadataRaw === 'string' ? JSON.parse(metadataRaw || '{}') : metadataRaw;
+          request.body = {
+            contactId: this.getNodeParameter('contactId', index, undefined),
+            phone: phone || undefined,
+            name: name || undefined,
+            content: this.getNodeParameter('content', index),
+            provider: this.getNodeParameter('provider', index, 'papi'),
+            senderType: 'ai',
+            messageType: this.getNodeParameter('messageType', index, 'text'),
+            instanceId: this.getNodeParameter('instanceId', index, '') || undefined,
+            metadata,
+          };
         } else if (operation !== 'published_prompt') {
           throw new NodeOperationError(this.getNode(), `Ação não reconhecida: ${operation}`);
+        }
+
+        if (request.method !== 'GET') {
+          request.headers = {
+            ...request.headers,
+            'Idempotency-Key': createIdempotencyKey({
+              executionId: this.getExecutionId(),
+              operation,
+              path: request.url.slice(baseUrl.length),
+              body: request.body,
+              suppliedKey: String(this.getNodeParameter('idempotencyKey', index, '') || ''),
+            }),
+          };
         }
 
         const response = await this.helpers.httpRequestWithAuthentication.call(this, 'fortePanelApi', request);
