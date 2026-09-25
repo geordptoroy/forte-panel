@@ -76,6 +76,16 @@ POST /api/v1/messages/batch
 
 O Panel registra cada item como mensagem outbound, aplica idempotência do lote e deixa o worker enviar pela PAPI. Um item pode informar `phone`, `contactId`, `content`, `messageType`, `metadata`, `provider` e `instanceId`. Os valores padrão podem ser definidos no próprio node.
 
+## Deduplicação de contatos e conversas
+
+Antes de atualizar a aplicação, faça backup do PostgreSQL. A migration `drizzle/0007_dedupe_contacts_conversations.sql` consolida contatos pelo par workspace + telefone, move as referências relacionadas e consolida conversas pelo contato. Depois dela, o banco impede mais de uma conversa para o mesmo contato.
+
+Em ambientes que executam migrations pelo Drizzle, use o comando de migration já adotado pela stack. Em execução manual, rode o SQL dentro de uma transação no banco correto:
+
+```bash
+psql "$DATABASE_URL" -f drizzle/0007_dedupe_contacts_conversations.sql
+```
+
 1. Importe `infra/n8n/forte-panel-workflow.json` (gerado a partir do export original já fornecido).
 2. Crie a credencial **Forte Panel API** para o node AI Tool, com Base URL `http://forte-panel:3000/api/v1` e a mesma chave configurada em `FORTE_API_KEY` no servidor.
 3. Nos cinco nodes **HTTP Request** adicionados/substituídos para a API, associe uma credencial **HTTP Bearer Auth** com o mesmo valor de `FORTE_API_KEY`.

@@ -1097,7 +1097,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
       unreadCount: fromMe ? 0 : 1,
       lastMessagePreview: input.content.slice(0, 500),
       lastMessageAt: receivedAt,
-    });
+    }).onConflictDoNothing({ target: [contacts.workspaceId, contacts.externalPhone] });
     contact = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, input.phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
     if (contact) {
       await enqueueDomainEvent({
@@ -1121,7 +1121,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
   if (!contact) throw new Error("Contact could not be created");
   let conversation = (await db.select().from(conversations).where(eq(conversations.contactId, contact.id)).limit(1))[0];
   if (!conversation) {
-    await db.insert(conversations).values({ contactId: contact.id, unreadCount: 1, lastMessageAt: receivedAt });
+    await db.insert(conversations).values({ contactId: contact.id, unreadCount: 1, lastMessageAt: receivedAt }).onConflictDoNothing({ target: conversations.contactId });
     conversation = (await db.select().from(conversations).where(eq(conversations.contactId, contact.id)).limit(1))[0];
   }
   if (!conversation) throw new Error("Conversation could not be created");
@@ -1179,7 +1179,7 @@ export async function upsertApiContact(input: { phone: string; name?: string; ci
     aiEnabled: 1,
     quoteCents: 0,
     unreadCount: 0,
-  });
+  }).onConflictDoNothing({ target: [contacts.workspaceId, contacts.externalPhone] });
   const created = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, input.phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
   if (created) {
     await enqueueDomainEvent({
@@ -1219,7 +1219,7 @@ export async function queueOutboundMessage(contactId: number, content: string, p
   if (channels.length > 0 && !channels.some((channel) => channel.provider === selectedProvider)) throw new Error("Provedor de WhatsApp não está ativo neste workspace");
   let conversation = await getConversationByContact(contactId);
   if (!conversation) {
-    await db.insert(conversations).values({ contactId, unreadCount: 0, lastMessageAt: new Date() });
+    await db.insert(conversations).values({ contactId, unreadCount: 0, lastMessageAt: new Date() }).onConflictDoNothing({ target: conversations.contactId });
     conversation = await getConversationByContact(contactId);
   }
   if (!conversation) throw new Error("Conversation not found");

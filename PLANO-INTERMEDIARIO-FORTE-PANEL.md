@@ -81,10 +81,11 @@ Implementado na versão **0.7.0** como **Forte Panel — Enviar mensagens**. O n
 
 ### Deduplicação
 
-- Consolidar contatos já duplicados por workspace e telefone.
-- Consolidar conversas repetidas do mesmo contato.
-- Garantir upsert transacional.
-- Adicionar proteção única para conversa por contato, depois de uma migration segura dos dados atuais.
+Implementada na migration `drizzle/0007_dedupe_contacts_conversations.sql`. Ela escolhe o menor ID como registro canônico, move notas, mensagens, agendamentos, orçamentos, auditoria e eventos, soma os contadores e remove os registros repetidos dentro de uma transação.
+
+Também foi adicionado índice único para uma conversa por contato. Os caminhos inbound, outbound e upsert agora usam `onConflictDoNothing` para suportar duas mensagens simultâneas sem criar contato ou conversa duplicados.
+
+Antes de subir a nova versão, faça backup do banco e execute as migrations normais da aplicação. A migration não apaga dados de mensagens: ela apenas move as referências para o registro canônico.
 
 ### Debounce
 

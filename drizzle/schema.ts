@@ -162,7 +162,9 @@ export const conversations = pgTable("conversations", {
   unreadCount: integer("unreadCount").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("conversations_contact_unique_idx").on(table.contactId),
+]);
 
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
