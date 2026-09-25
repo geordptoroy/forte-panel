@@ -1436,6 +1436,8 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
   let delivered = 0;
   let failed = 0;
   const adapter = createN8nAdapter();
+  const debounceMsRaw = Number(process.env.N8N_DEBOUNCE_MS ?? 1500);
+  const debounceMs = Number.isFinite(debounceMsRaw) && debounceMsRaw >= 0 ? Math.min(debounceMsRaw, 30_000) : 1500;
   for (const item of pending) {
     const claimed = await db.update(domainEvents).set({
       status: "processing",
@@ -1448,6 +1450,26 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
       const eventPayload = JSON.parse(item.payload) as Record<string, unknown>;
       if (item.eventType === "message.received") {
         const contactId = Number(eventPayload.contactId ?? 0);
+        const conversationId = Number(eventPayload.conversationId ?? 0);
+        const latestMessage = conversationId > 0
+          ? (await db.select({ id: messages.id, createdAt: messages.createdAt, content: messages.content, messageType: messages.messageType })
+            .from(messages)
+            .where(and(eq(messages.conversationId, conversationId), eq(messages.direction, "inbound")))
+            .orderBy(desc(messages.createdAt), desc(messages.id))
+            .limit(1))[0]
+          : undefined;
+        if (latestMessage && latestMessage.id > Number(eventPayload.messageId ?? 0)) {
+          await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: "debounced_by_newer_message", updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
+          delivered += 1;
+          continue;
+        }
+        if (latestMessage && debounceMs > 0) {
+          const quietUntil = latestMessage.createdAt.getTime() + debounceMs;
+          if (quietUntil > Date.now()) {
+            await db.update(domainEvents).set({ status: "pending", availableAt: new Date(quietUntil), updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
+            continue;
+          }
+        }
         const control = contactId > 0
           ? (await db.select({ aiEnabled: contacts.aiEnabled, humanControlled: conversations.humanControlled })
             .from(contacts)
@@ -1459,6 +1481,16 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
           await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: "skipped_human_control", updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
           delivered += 1;
           continue;
+        }
+        if (conversationId > 0 && latestMessage) {
+          const windowStart = new Date(latestMessage.createdAt.getTime() - Math.max(debounceMs, 1));
+          const grouped = await db.select({ content: messages.content, messageType: messages.messageType, createdAt: messages.createdAt })
+            .from(messages)
+            .where(and(eq(messages.conversationId, conversationId), eq(messages.direction, "inbound"), gte(messages.createdAt, windowStart)))
+            .orderBy(asc(messages.createdAt), asc(messages.id));
+          eventPayload.messages = grouped.map((message) => ({ content: message.content, messageType: message.messageType, receivedAt: message.createdAt }));
+          eventPayload.content = grouped.map((message) => message.content).join("\n");
+          eventPayload.debounceMs = debounceMs;
         }
       }
       const result = await adapter.dispatchEvent({

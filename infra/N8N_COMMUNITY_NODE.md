@@ -86,6 +86,16 @@ Em ambientes que executam migrations pelo Drizzle, use o comando de migration j�
 psql "$DATABASE_URL" -f drizzle/0007_dedupe_contacts_conversations.sql
 ```
 
+## Debounce no Forte Panel
+
+O worker aguarda o silêncio da conversa antes de enviar `message.received` ao Trigger do n8n. Configure o intervalo em milissegundos:
+
+```env
+N8N_DEBOUNCE_MS=1500
+```
+
+Mensagens recebidas dentro da mesma janela são entregues juntas em `payload.messages`, enquanto `payload.content` contém o texto combinado. O intervalo máximo aceito é de 30 segundos.
+
 1. Importe `infra/n8n/forte-panel-workflow.json` (gerado a partir do export original já fornecido).
 2. Crie a credencial **Forte Panel API** para o node AI Tool, com Base URL `http://forte-panel:3000/api/v1` e a mesma chave configurada em `FORTE_API_KEY` no servidor.
 3. Nos cinco nodes **HTTP Request** adicionados/substituídos para a API, associe uma credencial **HTTP Bearer Auth** com o mesmo valor de `FORTE_API_KEY`.

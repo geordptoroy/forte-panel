@@ -89,7 +89,13 @@ Antes de subir a nova versão, faça backup do banco e execute as migrations nor
 
 ### Debounce
 
-Permanece no n8n por enquanto. Depois que a entrada e saída estiverem estáveis, será avaliado o debounce no Forte Panel.
+Implementado no worker do Forte Panel. O worker aguarda o período de silêncio configurado antes de entregar `message.received` ao n8n. Mensagens que chegam juntas são agrupadas em `payload.messages` e também ficam disponíveis como um único `payload.content` separado por quebra de linha. A configuração padrão é de 1.500 ms:
+
+```env
+N8N_DEBOUNCE_MS=1500
+```
+
+O valor aceito vai de `0` a `30000` ms. O evento mais novo é o responsável pelo disparo; eventos anteriores são encerrados como `debounced_by_newer_message`, evitando chamadas duplicadas ao n8n.
 
 ### PAPI Cloud e WABA
 
