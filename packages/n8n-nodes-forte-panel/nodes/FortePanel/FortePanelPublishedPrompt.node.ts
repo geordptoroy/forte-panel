@@ -1,1 +1,1 @@
-export { FortePanelPromptPublicado as FortePanelPublishedPrompt } from './FortePanelOperations.node';
+export { FortePanelPromptPublicado as FortePanelPublishedPrompt } from './FortePanelOperations';

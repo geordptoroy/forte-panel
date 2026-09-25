@@ -1,1 +1,1 @@
-export { FortePanelCriarAgendamento as FortePanelCreateAppointment } from './FortePanelOperations.node';
+export { FortePanelCriarAgendamento as FortePanelCreateAppointment } from './FortePanelOperations';

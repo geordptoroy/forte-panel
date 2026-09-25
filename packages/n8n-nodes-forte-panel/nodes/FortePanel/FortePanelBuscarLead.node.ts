@@ -1,1 +1,1 @@
-export { FortePanelBuscarLead } from './FortePanelOperations.node';
+export { FortePanelBuscarLead } from './FortePanelOperations';

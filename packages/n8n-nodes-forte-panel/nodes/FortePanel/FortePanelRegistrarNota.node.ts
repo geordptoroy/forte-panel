@@ -1,1 +1,1 @@
-export { FortePanelRegistrarNota } from './FortePanelOperations.node';
+export { FortePanelRegistrarNota } from './FortePanelOperations';

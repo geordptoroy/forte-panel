@@ -1,1 +1,1 @@
-export { FortePanelAtualizarLead } from './FortePanelOperations.node';
+export { FortePanelAtualizarLead } from './FortePanelOperations';

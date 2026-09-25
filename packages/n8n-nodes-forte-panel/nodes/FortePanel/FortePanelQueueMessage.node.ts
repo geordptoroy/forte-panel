@@ -1,1 +1,1 @@
-export { FortePanelEnfileirarMensagem as FortePanelQueueMessage } from './FortePanelOperations.node';
+export { FortePanelEnfileirarMensagem as FortePanelQueueMessage } from './FortePanelOperations';
