@@ -494,6 +494,92 @@ export async function setDefaultWhatsappProvider(provider: WhatsappProvider) {
   return provider;
 }
 
+export type PapiWebhookConfig = {
+  id: string;
+  name: string;
+  instanceId: string;
+  secret: string;
+  createdAt: string;
+  legacy?: boolean;
+};
+
+export type PapiIntegrationConfig = {
+  webhooks: Array<PapiWebhookConfig & { webhookUrl: string }>;
+  defaultWebhookId: string | null;
+};
+
+const PAPI_WEBHOOKS_SETTING = "papi_webhooks";
+const PAPI_DEFAULT_WEBHOOK_SETTING = "papi_default_webhook";
+
+function papiWebhookBaseUrl() {
+  const configured = process.env.PAPI_WEBHOOK_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  const publicUrl = process.env.PANEL_PUBLIC_URL?.trim();
+  if (publicUrl) return `${publicUrl.replace(/\/$/, "")}/api/v1/webhooks/providers/papi`;
+  return "http://forte-panel:3000/api/v1/webhooks/providers/papi";
+}
+
+async function getStoredPapiWebhooks() {
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return { workspace: undefined, webhooks: [] as PapiWebhookConfig[] };
+  const setting = await getWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING);
+  let webhooks: PapiWebhookConfig[] = [];
+  if (setting?.value) {
+    try { webhooks = JSON.parse(setting.value) as PapiWebhookConfig[]; } catch { webhooks = []; }
+  }
+  if (webhooks.length === 0 && process.env.PAPI_INSTANCE_ID?.trim()) {
+    webhooks = [{ id: "legacy", name: "PAPI existente", instanceId: process.env.PAPI_INSTANCE_ID.trim(), secret: process.env.PAPI_WEBHOOK_SECRET?.trim() ?? "", createdAt: new Date(0).toISOString(), legacy: true }];
+  }
+  return { workspace, webhooks };
+}
+
+function withPapiWebhookUrl(webhook: PapiWebhookConfig) {
+  const base = papiWebhookBaseUrl();
+  return { ...webhook, webhookUrl: webhook.legacy ? base : `${base}/${encodeURIComponent(webhook.id)}` };
+}
+
+export async function getPapiIntegrationConfig(): Promise<PapiIntegrationConfig> {
+  const { workspace, webhooks } = await getStoredPapiWebhooks();
+  const setting = workspace ? await getWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING) : undefined;
+  const defaultWebhookId = setting?.value || (webhooks[0]?.id ?? null);
+  return { webhooks: webhooks.map(withPapiWebhookUrl), defaultWebhookId };
+}
+
+export async function getPapiWebhookById(id: string) {
+  const { webhooks } = await getStoredPapiWebhooks();
+  return webhooks.find((webhook) => webhook.id === id);
+}
+
+export async function getDefaultPapiWebhook() {
+  const config = await getPapiIntegrationConfig();
+  return config.webhooks.find((webhook) => webhook.id === config.defaultWebhookId) ?? config.webhooks[0];
+}
+
+export async function createPapiWebhook(input: { name: string; instanceId: string }) {
+  const { workspace, webhooks } = await getStoredPapiWebhooks();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const webhook: PapiWebhookConfig = { id: crypto.randomUUID(), name: input.name.trim(), instanceId: input.instanceId.trim(), secret: crypto.randomBytes(24).toString("hex"), createdAt: new Date().toISOString() };
+  await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify([...webhooks.filter((item) => !item.legacy), webhook]));
+  if (webhooks.length === 0 || webhooks.every((item) => item.legacy)) await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, webhook.id);
+  return withPapiWebhookUrl(webhook);
+}
+
+export async function setDefaultPapiWebhook(id: string) {
+  const { workspace, webhooks } = await getStoredPapiWebhooks();
+  if (!workspace || !webhooks.some((webhook) => webhook.id === id)) throw new Error("Webhook PAPI não encontrado");
+  await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, id);
+  return id;
+}
+
+export async function deletePapiWebhook(id: string) {
+  const { workspace, webhooks } = await getStoredPapiWebhooks();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const next = webhooks.filter((webhook) => webhook.id !== id && !webhook.legacy);
+  await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify(next));
+  const config = await getPapiIntegrationConfig();
+  if (config.defaultWebhookId === id) await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, next[0]?.id ?? "");
+}
+
 export type OnboardingProfile = {
   businessName: string;
   segment: string;
@@ -993,9 +1079,11 @@ export async function sendManualMessage(contactId: number, content: string, acto
   const conversation = await getConversationByContact(contactId);
   if (!conversation) throw new Error("Conversation not found");
   const provider = await getDefaultWhatsappProvider();
-  if (provider === "papi" && !process.env.PAPI_INSTANCE_ID) throw new Error("Configure PAPI_INSTANCE_ID para enviar mensagens manuais pelo painel");
+  const defaultPapiWebhook = provider === "papi" ? await getDefaultPapiWebhook() : undefined;
+  if (provider === "papi" && !defaultPapiWebhook?.instanceId) throw new Error("Associe uma instância PAPI em Canais conectados para enviar mensagens manuais pelo painel");
   const createdAt = new Date();
-  await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, metadata: provider === "papi" ? { instanceId: process.env.PAPI_INSTANCE_ID } : undefined, status: "queued", provider, createdAt });
+  const manualInstanceId = provider === "papi" ? defaultPapiWebhook?.instanceId : undefined;
+  await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, metadata: manualInstanceId ? { instanceId: manualInstanceId } : undefined, status: "queued", provider, createdAt });
   await db.update(contacts).set({ aiEnabled: 0, unreadCount: 0, lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
   await db.update(conversations).set({ humanControlled: 1, unreadCount: 0, lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
   await db.insert(auditLogs).values({ actorUserId, contactId, action: "manual_message_queued", summary: `Mensagem manual enfileirada para ${provider}` });
@@ -1320,9 +1408,10 @@ export async function queueOutboundMessage(contactId: number, content: string, p
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const selectedProvider = provider ?? await getDefaultWhatsappProvider();
+  const defaultPapiWebhook = selectedProvider === "papi" ? await getDefaultPapiWebhook() : undefined;
   const contact = await getContactById(contactId);
   if (!contact) throw new Error("Contact not found");
-  if (selectedProvider === "papi" && !metadata?.instanceId && !process.env.PAPI_INSTANCE_ID) throw new Error("PAPI instanceId não informado");
+  if (selectedProvider === "papi" && !metadata?.instanceId && !defaultPapiWebhook?.instanceId) throw new Error("PAPI instanceId não informado; associe uma instância em Canais conectados");
   const channels = await listWhatsappChannels();
   if (channels.length > 0 && !channels.some((channel) => channel.provider === selectedProvider)) throw new Error("Provedor de WhatsApp não está ativo neste workspace");
   let conversation = await getConversationByContact(contactId);
@@ -1332,7 +1421,7 @@ export async function queueOutboundMessage(contactId: number, content: string, p
   }
   if (!conversation) throw new Error("Conversation not found");
   const createdAt = new Date();
-  const resolvedMetadata = { ...metadata, ...(selectedProvider === "papi" && !metadata?.instanceId && process.env.PAPI_INSTANCE_ID ? { instanceId: process.env.PAPI_INSTANCE_ID } : {}) };
+  const resolvedMetadata = { ...metadata, ...(selectedProvider === "papi" && !metadata?.instanceId && defaultPapiWebhook?.instanceId ? { instanceId: defaultPapiWebhook.instanceId } : {}) };
   const created = await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType, messageType, content, metadata: Object.keys(resolvedMetadata).length ? resolvedMetadata : undefined, status: "queued", provider: selectedProvider, createdAt }).returning();
   await db.update(contacts).set({ ...(senderType === "human" ? { aiEnabled: 0, unreadCount: 0 } : {}), lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
   await db.update(conversations).set({ ...(senderType === "human" ? { humanControlled: 1, unreadCount: 0 } : {}), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));

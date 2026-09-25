@@ -12,16 +12,17 @@ function normalizePhone(phone: string) {
 function normalizePapiInbound(event: any): InboundMessageEvent {
   const data = event?.data ?? event?.payload ?? event?.body ?? event;
   const message = data?.message ?? data?.messages?.[0] ?? data;
-  const key = message?.key ?? message?.message?.key ?? data?.key ?? {};
+  const key = data?.key ?? message?.key ?? message?.message?.key ?? {};
   const phone = normalizePhone(String(
-    message?.phone ?? message?.from ?? message?.sender?.phone ?? message?.sender?.id ?? message?.remoteJid ?? key?.remoteJid ?? data?.phone ?? data?.from ?? "",
+    message?.phone ?? message?.from ?? message?.sender?.phone ?? message?.sender?.id ?? message?.remoteJidAlt ?? message?.remoteJid ?? key?.remoteJidAlt ?? key?.remoteJid ?? data?.phone ?? data?.from ?? "",
   ).replace(/@s\.whatsapp\.net$/, ""));
-  const rawType = String(message?.messageType ?? message?.type ?? data?.messageType ?? data?.type ?? "text");
+  const rawType = String(message?.messageType ?? message?.type ?? data?.messageType ?? data?.type ?? (message?.imageMessage ? "image" : message?.audioMessage ? "audio" : message?.videoMessage ? "video" : message?.documentMessage ? "document" : "text"));
   const messageType = (["text", "image", "audio", "video", "document"].includes(rawType) ? rawType : "text") as InboundMessageEvent["messageType"];
-  const content = message?.content ?? message?.text?.body ?? message?.text ?? message?.caption ?? message?.image?.caption ?? message?.document?.caption ?? data?.content ?? "[mídia recebida]";
+  const content = message?.content ?? message?.conversation ?? message?.extendedTextMessage?.text ?? message?.text?.body ?? message?.text ?? message?.caption ?? message?.image?.caption ?? message?.imageMessage?.caption ?? message?.document?.caption ?? message?.documentMessage?.caption ?? data?.content ?? "[mídia recebida]";
   const eventId = String(message?.messageId ?? message?.id ?? key?.id ?? data?.messageId ?? data?.eventId ?? event?.eventId ?? crypto.randomUUID());
-  const instanceId = message?.instanceId ?? data?.instanceId ?? event?.instanceId;
-  const fromMe = Boolean(message?.fromMe ?? message?.key?.fromMe ?? data?.fromMe ?? event?.fromMe);
+  const instanceId = message?.instanceId ?? data?.instanceId ?? event?.instanceId ?? event?._meta?.instanceId;
+  const fromMe = Boolean(message?.fromMe ?? key?.fromMe ?? data?.fromMe ?? event?.fromMe);
+  const isGroup = String(key?.remoteJid ?? message?.remoteJid ?? "").endsWith("@g.us");
   return {
     eventId,
     phone,
@@ -29,7 +30,7 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
     content: String(content),
     messageType,
     fromMe,
-    metadata: { provider: "papi", ...(instanceId ? { instanceId: String(instanceId) } : {}), ...(fromMe ? { fromMe: true } : {}), rawType, messageId: eventId },
+    metadata: { provider: "papi", ...(instanceId ? { instanceId: String(instanceId) } : {}), ...(fromMe ? { fromMe: true } : {}), ...(isGroup ? { isGroup: true } : {}), rawType, messageId: eventId },
     receivedAt: message?.timestamp ? new Date(Number(message.timestamp) * 1000) : new Date(data?.receivedAt ?? event?.receivedAt ?? Date.now()),
   };
 }

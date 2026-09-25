@@ -22,7 +22,11 @@ import {
   setLocalPassword,
   touchLastSignedIn,
   getDefaultWhatsappProvider,
+  createPapiWebhook,
+  deletePapiWebhook,
+  getPapiIntegrationConfig,
   listWhatsappChannels,
+  setDefaultPapiWebhook,
   setDefaultWhatsappProvider,
   getAuditLogForContact,
   getDashboardSnapshot,
@@ -432,6 +436,21 @@ export const appRouter = router({
       }));
     }),
     defaultChannel: protectedProcedure.query(() => getDefaultWhatsappProvider()),
+    papiConfig: protectedProcedure.query(() => getPapiIntegrationConfig()),
+    createPapiWebhook: requireAdministrator.input(z.object({
+      name: z.string().trim().min(1, "Informe um nome para o webhook").max(120),
+      instanceId: z.string().trim().min(1, "Informe o instanceId da PAPI").max(160),
+    })).mutation(async ({ input, ctx }) => {
+      const webhook = await createPapiWebhook(input);
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_webhook_created", summary: `Webhook PAPI criado para a instância ${input.instanceId}` });
+      return webhook;
+    }),
+    setDefaultPapiWebhook: requireAdministrator.input(z.object({ id: z.string().min(1).max(100) })).mutation(({ input }) => setDefaultPapiWebhook(input.id)),
+    deletePapiWebhook: requireAdministrator.input(z.object({ id: z.string().min(1).max(100) })).mutation(async ({ input, ctx }) => {
+      await deletePapiWebhook(input.id);
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_webhook_deleted", summary: `Webhook PAPI ${input.id} removido` });
+      return { ok: true };
+    }),
     setDefaultChannel: protectedProcedure.input(z.object({ provider: z.enum(["papi", "meta_cloud_api"]) })).mutation(({ input }) => {
       const configured = input.provider === "papi"
         ? Boolean(process.env.PAPI_BASE_URL && process.env.PAPI_API_KEY)

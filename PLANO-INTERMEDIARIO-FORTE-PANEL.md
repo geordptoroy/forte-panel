@@ -48,7 +48,7 @@ O histórico local consolidado está disponível em `GET /api/v1/contacts/:id/me
 O primeiro endpoint já foi criado em:
 
 ```text
-POST /api/v1/webhooks/providers/papi
+POST /api/v1/webhooks/providers/papi/:webhookId
 ```
 
 Ele recebe o payload bruto, normaliza formatos com `data`, `payload`, `body`, `message` ou `messages[0]`, preserva identificadores e aplica o registro idempotente do webhook. A autenticação aceita `X-PAPI-Webhook-Secret` quando `PAPI_WEBHOOK_SECRET` está configurado; como alternativas de integração, também aceita a assinatura geral do webhook ou a chave da API do Forte Panel.
@@ -68,6 +68,18 @@ O backend já executa as seguintes etapas:
    - IA ativa: o evento é enviado ao n8n.
 
 O filtro de IA pausada versus IA ativa agora ocorre no worker de eventos de domínio, antes da chamada ao webhook do n8n. A entrada, a persistência e a proteção contra mensagens do proprietário estão preparadas.
+
+### Associação da instância e configuração do webhook — concluído
+
+Em **Canais conectados**, o administrador pode criar vários webhooks PAPI, cada um com nome, `instanceId`, URL individual e segredo próprio. A URL individual identifica a instância mesmo quando o payload não traz `instanceId`; o header opcional `X-PAPI-Webhook-Secret` também é aceito. Os registros ficam em `workspaceSettings`, sem migration adicional. O webhook marcado como padrão fornece apenas o fallback de `instanceId` para envios sem instância explícita; o envio continua direto aos endpoints PAPI (`send-text`, `send-buttons` etc.), nunca pelo webhook.
+
+Quando PAPI e Panel estão na mesma rede Docker, a URL padrão é:
+
+```text
+http://forte-panel:3000/api/v1/webhooks/providers/papi/<id-do-webhook>
+```
+
+Para PAPI fora da rede Docker, defina `PANEL_PUBLIC_URL` ou `PAPI_WEBHOOK_URL` com uma URL HTTPS acessível pelo provedor antes de copiar a URL na tela.
 
 ## Etapas seguintes
 

@@ -8,6 +8,8 @@ import {
   getApiIdempotency,
   getContactById,
   getDefaultWhatsappProvider,
+  getDefaultPapiWebhook,
+  getPapiWebhookById,
   getPublishedAiPrompt,
   findQueuedBatchMessage,
   ingestInboundWhatsApp,
@@ -332,7 +334,8 @@ api.post("/messages", async (req, res) => {
       const senderType = parsed.data.senderType ?? "human";
       const messageType = parsed.data.messageType ?? "text";
       if (provider === "meta_cloud_api" && messageType !== "text") return { statusCode: 422, body: { error: "unsupported_message_type", message: "Este tipo de mensagem ainda não é suportado pela Meta Cloud API neste worker" } };
-      if (provider === "papi" && !parsed.data.instanceId && !process.env.PAPI_INSTANCE_ID) return { statusCode: 422, body: { error: "papi_instance_required", message: "Informe instanceId do PAPI ou configure PAPI_INSTANCE_ID" } };
+      const defaultPapiWebhook = provider === "papi" ? await getDefaultPapiWebhook() : undefined;
+      if (provider === "papi" && !parsed.data.instanceId && !defaultPapiWebhook?.instanceId) return { statusCode: 422, body: { error: "papi_instance_required", message: "Informe instanceId do PAPI ou associe uma instância em Canais conectados" } };
       const message = await queueOutboundMessage(contact.id, parsed.data.content, provider, senderType, messageType, { ...(parsed.data.metadata ?? {}), ...(parsed.data.instanceId ? { instanceId: parsed.data.instanceId } : {}) });
       return { statusCode: 202, body: { data: { id: message?.id, contactId: contact.id, provider, senderType, messageType, status: "queued" } } };
     });
@@ -358,7 +361,8 @@ api.post("/messages/batch", async (req, res) => {
         const senderType = item.senderType ?? "ai";
         const messageType = item.messageType ?? "text";
         if (provider === "meta_cloud_api" && messageType !== "text") return { statusCode: 422, body: { error: "unsupported_message_type", message: `Tipo não suportado no item ${index + 1}` } };
-        if (provider === "papi" && !item.instanceId && !process.env.PAPI_INSTANCE_ID) return { statusCode: 422, body: { error: "papi_instance_required", message: `Informe instanceId no item ${index + 1} ou configure PAPI_INSTANCE_ID` } };
+        const defaultPapiWebhook = provider === "papi" ? await getDefaultPapiWebhook() : undefined;
+        if (provider === "papi" && !item.instanceId && !defaultPapiWebhook?.instanceId) return { statusCode: 422, body: { error: "papi_instance_required", message: `Informe instanceId no item ${index + 1} ou associe uma instância em Canais conectados` } };
         const batchId = parsed.data.batchId ?? req.header("Idempotency-Key") ?? `request-${Date.now()}`;
         const existing = await findQueuedBatchMessage(contact.id, batchId, index);
         const message = existing ?? await queueOutboundMessage(contact.id, item.content, provider, senderType, messageType, { ...(item.metadata ?? {}), batchId, batchIndex: index, ...(item.instanceId ? { instanceId: item.instanceId } : {}) });
@@ -445,27 +449,36 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
   }
 });
 
-api.post("/webhooks/providers/papi", async (req, res) => {
-  const configuredSecret = process.env.PAPI_WEBHOOK_SECRET?.trim();
+async function handlePapiWebhook(req: Request, res: Response, webhookId?: string) {
+  const webhook = webhookId ? await getPapiWebhookById(webhookId) : undefined;
+  if (webhookId && !webhook) return fail(res, 404, "Webhook PAPI não encontrado", "papi_webhook_not_found");
+  const configuredSecret = webhook?.secret?.trim() || process.env.PAPI_WEBHOOK_SECRET?.trim();
   const providedSecret = req.header("X-PAPI-Webhook-Secret") ?? req.header("X-Webhook-Secret") ?? "";
   const secretAccepted = Boolean(configuredSecret && providedSecret && providedSecret === configuredSecret);
-  if (!secretAccepted && !hasValidWebhookSignature(req) && !requireApiKey(req, res)) return;
+  // A URL individual already contains a high-entropy identifier. The secret
+  // remains available for PAPI installations that support custom headers.
+  if (!webhookId && !secretAccepted && !hasValidWebhookSignature(req) && !requireApiKey(req, res)) return;
   let eventId = "papi-unknown-event";
   try {
     const normalized = getWhatsappAdapter("papi").normalizeInbound(req.body);
+    const instanceId = webhook?.instanceId || (normalized.metadata?.instanceId as string | undefined);
     eventId = normalized.eventId;
+    if (normalized.metadata?.isGroup === true) return res.status(202).json({ accepted: true, ignored: true, reason: "group_message", eventId: normalized.eventId });
     if (normalized.phone.length < 8 || !normalized.content.trim()) return fail(res, 400, "Evento PAPI sem telefone ou conteúdo", "invalid_payload");
     const registered = await registerWebhookEvent({ eventId: normalized.eventId, provider: "papi", payload: req.body });
     if (registered.conflict) return fail(res, 409, "O evento PAPI já foi usado com outro payload", "idempotency_conflict");
     if (registered.duplicate) return res.status(200).json({ accepted: true, duplicate: true, eventId: normalized.eventId });
-    const result = await ingestInboundWhatsApp({ ...normalized, metadata: { ...(normalized.metadata ?? {}), fromMe: normalized.fromMe === true } });
+    const result = await ingestInboundWhatsApp({ ...normalized, metadata: { ...(normalized.metadata ?? {}), ...(instanceId ? { instanceId } : {}), fromMe: normalized.fromMe === true } });
     await markWebhookEvent(normalized.eventId, "processed");
-    return res.status(202).json({ accepted: true, duplicate: result.duplicate === true, eventId: normalized.eventId, data: result });
+    return res.status(202).json({ accepted: true, duplicate: result.duplicate === true, eventId: normalized.eventId, instanceId, data: result });
   } catch (error) {
     await markWebhookEvent(eventId, "failed");
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao processar webhook PAPI", "internal_error");
   }
-});
+}
+
+api.post("/webhooks/providers/papi/:webhookId", async (req, res) => handlePapiWebhook(req, res, req.params.webhookId));
+api.post("/webhooks/providers/papi", async (req, res) => handlePapiWebhook(req, res));
 
 export function registerApiRoutes(app: Express) {
   app.use("/api/v1", api);

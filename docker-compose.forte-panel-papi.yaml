@@ -133,6 +133,8 @@ services:
       PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
       PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
       PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:?PAPI_WEBHOOK_SECRET is required}
+      PAPI_WEBHOOK_URL: ${PAPI_WEBHOOK_URL:-http://forte-panel:3000/api/v1/webhooks/providers/papi}
+      PANEL_PUBLIC_URL: ${PANEL_PUBLIC_URL:-}
       BUILT_IN_FORGE_API_URL: ${BUILT_IN_FORGE_API_URL:-https://forge.manus.im}
       BUILT_IN_FORGE_API_KEY: ${BUILT_IN_FORGE_API_KEY:-}
       AGENT_MODEL: ${AGENT_MODEL:-gpt-5-mini}
@@ -175,6 +177,8 @@ services:
       PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
       PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
       PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:?PAPI_WEBHOOK_SECRET is required}
+      PAPI_WEBHOOK_URL: ${PAPI_WEBHOOK_URL:-http://forte-panel:3000/api/v1/webhooks/providers/papi}
+      PANEL_PUBLIC_URL: ${PANEL_PUBLIC_URL:-}
       BUILT_IN_FORGE_API_URL: ${BUILT_IN_FORGE_API_URL:-https://forge.manus.im}
       BUILT_IN_FORGE_API_KEY: ${BUILT_IN_FORGE_API_KEY:-}
       AGENT_MODEL: ${AGENT_MODEL:-gpt-5-mini}
