@@ -75,6 +75,14 @@ agentNode.parameters.options.systemMessage = agentNode.parameters.options.system
 const cleanup = findNode('Limpeza');
 const sendPreparation = findNode('Preparar Envio');
 if (!cleanup || !sendPreparation) throw new Error('Node Limpeza ou Preparar Envio não encontrado.');
+if (typeof cleanup.parameters.jsCode === 'string') {
+  cleanup.parameters.jsCode = cleanup.parameters.jsCode
+    .replace('const item = $input.item.json;', 'const item = $input.item.json;\nconst payload = item.data ?? item.body?.data ?? item.body ?? item;\nconst parsed = item._parsed ?? payload._parsed ?? {};')
+    .replace(/item\.data\?\./g, 'payload?.')
+    .replace(/item\._parsed\?\./g, 'parsed?.')
+    .replace(/item\.instanceId/g, '(item.instanceId ?? payload.instanceId)')
+    .replace(/item\._meta\?\./g, 'item._meta?.');
+}
 const cleanupPosition = cleanup.position ?? [0, 0];
 const triggerId = id();
 const httpInboundId = id();
