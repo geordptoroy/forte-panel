@@ -42,7 +42,7 @@
         "messageType": "={{ $('Preparar Envio').item.json.type === 'button' ? 'button' : ($('Preparar Envio').item.json.type === 'audio' ? 'audio' : 'text') }}",
         "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
         "metadata": "={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : { ptt: false })) }}",
-        "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
+        "idempotencyKey": "={{ String($('Limpeza').first().json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:v2:' + String($('Preparar Envio').item.json.outboundIndex || 0) }}"
       },
       "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
       "typeVersion": 1,
@@ -73,7 +73,7 @@
         "messageType": "={{ $('Preparar Envio').item.json.type === 'button' ? 'button' : ($('Preparar Envio').item.json.type === 'audio' ? 'audio' : 'text') }}",
         "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
         "metadata": "={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : { ptt: false })) }}",
-        "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
+        "idempotencyKey": "={{ String($('Limpeza').first().json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:v2:' + String($('Preparar Envio').item.json.outboundIndex || 0) }}"
       },
       "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
       "typeVersion": 1,
@@ -727,7 +727,7 @@
         "messageType": "text",
         "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
         "metadata": "{\"ptt\":false}",
-        "idempotencyKey": "={{ String($('Preparar Debounce').item.json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback' }}"
+        "idempotencyKey": "={{ String($('Limpeza').first().json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback:v2' }}"
       },
       "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
       "typeVersion": 1,
@@ -758,7 +758,7 @@
         "messageType": "={{ $('Preparar Envio').item.json.type === 'button' ? 'button' : ($('Preparar Envio').item.json.type === 'audio' ? 'audio' : 'text') }}",
         "instanceId": "={{ String($('Limpeza').first().json.instanceId || '') }}",
         "metadata": "={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : { ptt: false })) }}",
-        "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
+        "idempotencyKey": "={{ String($('Limpeza').first().json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:v2:' + String($('Preparar Envio').item.json.outboundIndex || 0) }}"
       },
       "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
       "typeVersion": 1,
@@ -887,7 +887,7 @@
           },
           "conditions": [
             {
-              "id": "1d02d5df-8d06-4d9c-85fb-8bcabc9ac579",
+              "id": "f2d00a42-128f-43c3-a607-b7d671a88773",
               "leftValue": "={{ $json.eventKind }}",
               "rightValue": "lead_message",
               "operator": {
@@ -900,7 +900,7 @@
         },
         "options": {}
       },
-      "id": "2167f37b-1425-4c84-a527-4b56f5bd638c",
+      "id": "ff0a9770-1ac5-43a1-8e74-5d6fa247e0a1",
       "name": "Filtro entrada Inbox",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -939,7 +939,7 @@
           "timeout": 15000
         }
       },
-      "id": "a4e395b2-0b15-47dc-ac09-6afc38c8a055",
+      "id": "52a8fa3a-5fcc-4fb3-bde5-324a42083df2",
       "name": "Registrar entrada Forte Panel",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -956,7 +956,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const original = $('Limpeza').first().json; const response = $input.first()?.json || {}; const data = response.data || {}; return [{ json: { ...original, contactId: data.contactId || original.contactId || null, contactName: data.name || original.pushName || '' } }];"
       },
-      "id": "74846114-daec-4b01-8460-91127edfd830",
+      "id": "8c0f962f-1442-4ca8-a0c1-3c40fec6f4db",
       "name": "Restaurar item após webhook",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

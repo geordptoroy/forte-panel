@@ -175,7 +175,7 @@ const outgoingNodeConfig = {
   metadataExpression: `={{ JSON.stringify($('Preparar Envio').item.json.type === 'button' ? { buttons: $('Preparar Envio').item.json.buttons } : ($('Preparar Envio').item.json.type === 'audio' ? { ptt: true } : { ptt: false })) }}`,
   credentials: panelCredentials,
 };
-const loopKey = `={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}`;
+const loopKey = `={{ String($('Limpeza').first().json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:v2:' + String($('Preparar Envio').item.json.outboundIndex || 0) }}`;
 for (const name of ['SendText message1', 'SendAudio message', 'SendButtons message1']) {
   const node = findNode(name);
   if (!node) throw new Error(`Node ${name} não encontrado.`);
@@ -193,7 +193,7 @@ sendPreparation.parameters.jsCode = prepareCode
 
 const fallback = findNode('SendText message');
 if (!fallback) throw new Error('Node SendText message (fallback) não encontrado.');
-const fallbackKey = `={{ String($('Preparar Debounce').item.json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback' }}`;
+const fallbackKey = `={{ String($('Limpeza').first().json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback:v2' }}`;
 toCommunityQueueNode(fallback, {
   phoneExpression: `={{ String($('Limpeza').first().json.remetente || '').replace(/[^0-9]/g, '') }}`,
   contactIdExpression: `={{ Number($('Restaurar item após webhook').first().json.contactId || 0) || undefined }}`,
