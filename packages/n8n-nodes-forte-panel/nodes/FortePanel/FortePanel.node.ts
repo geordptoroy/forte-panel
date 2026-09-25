@@ -253,10 +253,14 @@ export class FortePanel implements INodeType {
         const response = await this.helpers.httpRequestWithAuthentication.call(this, 'fortePanelApi', request);
         output.push({ json: (typeof response === 'object' && response !== null ? response : { data: response }) as IDataObject });
       } catch (error) {
-        const caught = error as { response?: { body?: unknown }; cause?: { response?: { body?: unknown } } };
-        const responseBody = caught.response?.body ?? caught.cause?.response?.body;
-        const detail = responseBody === undefined ? '' : ` — API: ${typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody)}`;
-        const message = `${error instanceof Error ? error.message : String(error)}${detail}`;
+        const caught = error as Record<string, any>;
+        const response = caught.response ?? caught.cause?.response ?? caught.errorResponse ?? caught;
+        const responseBody = response?.body ?? response?.data ?? caught.description ?? caught.cause?.description;
+        const status = response?.statusCode ?? response?.status ?? caught.httpCode ?? caught.statusCode;
+        const apiMessage = responseBody === undefined ? '' : ` — API: ${typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody)}`;
+        const statusText = status ? ` (HTTP ${status})` : '';
+        const description = caught.description && caught.description !== caught.message ? ` — ${caught.description}` : '';
+        const message = `${error instanceof Error ? error.message : String(error)}${statusText}${description}${apiMessage}`;
         if (this.continueOnFail()) output.push({ json: { success: false, error: message } });
         else throw new NodeOperationError(this.getNode(), message, { itemIndex: index });
       }
