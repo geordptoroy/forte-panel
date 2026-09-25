@@ -1,1 +1,1 @@
-export { FortePanelCancelarAgendamento } from './FortePanelOperations.node';
+export { FortePanelCancelarAgendamento as FortePanelCancelAppointment } from './FortePanelOperations.node';

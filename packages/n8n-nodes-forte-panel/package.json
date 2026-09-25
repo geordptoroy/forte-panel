@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-forte-panel",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Community node that exposes the Forte Panel CRM, WhatsApp and scheduling API as one n8n AI Tool.",
   "license": "MIT",
   "keywords": [

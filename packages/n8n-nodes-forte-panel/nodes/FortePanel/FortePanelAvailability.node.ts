@@ -1,1 +1,1 @@
-export { FortePanelDisponibilidade } from './FortePanelOperations.node';
+export { FortePanelDisponibilidade as FortePanelAvailability } from './FortePanelOperations.node';

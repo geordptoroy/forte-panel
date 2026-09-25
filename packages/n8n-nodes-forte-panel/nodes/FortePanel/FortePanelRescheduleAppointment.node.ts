@@ -1,1 +1,1 @@
-export { FortePanelReagendar } from './FortePanelOperations.node';
+export { FortePanelReagendar as FortePanelRescheduleAppointment } from './FortePanelOperations.node';
