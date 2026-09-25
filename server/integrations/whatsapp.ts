@@ -45,7 +45,7 @@ export function createPapiAdapter(): PapiAdapter {
       if (!baseUrl) return nowHealth("papi", false, "PAPI_BASE_URL não configurada");
       const started = Date.now();
       try {
-        const response = await fetch(`${baseUrl.replace(/\/$/, "")}/health`, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined });
+        const response = await fetch(`${baseUrl.replace(/\/$/, "")}/health`, { headers: apiKey ? { "x-api-key": apiKey } : undefined });
         return nowHealth("papi", response.ok, response.ok ? "PAPI disponível" : `PAPI respondeu ${response.status}`, Date.now() - started);
       } catch (error) {
         return nowHealth("papi", false, error instanceof Error ? error.message : "Falha de conexão", Date.now() - started);
@@ -53,10 +53,33 @@ export function createPapiAdapter(): PapiAdapter {
     },
     async sendMessage(command: OutboundMessageCommand) {
       if (!baseUrl || !apiKey) throw new Error("PAPI não configurado");
-      const response = await fetch(`${baseUrl.replace(/\/$/, "")}${sendPath.startsWith("/") ? sendPath : `/${sendPath}`}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, "Idempotency-Key": command.idempotencyKey }, body: JSON.stringify({ to: normalizePhone(command.phone), type: command.messageType ?? "text", text: { body: command.content } }) });
+      const resolvedInstanceId = command.instanceId ?? process.env.PAPI_INSTANCE_ID;
+      if (!resolvedInstanceId) throw new Error("PAPI instanceId não informado (envie instanceId ou configure PAPI_INSTANCE_ID)");
+      const instancePath = encodeURIComponent(resolvedInstanceId);
+      const metadata = command.metadata ?? {};
+      const messageType = command.messageType ?? "text";
+      let endpoint: string;
+      let payload: Record<string, unknown>;
+      if (messageType === "audio") {
+        endpoint = `/api/instances/${instancePath}/send-audio`;
+        payload = { jid: normalizePhone(command.phone), url: command.content, ptt: metadata.ptt !== false };
+      } else if (messageType === "button") {
+        const buttons = metadata.buttons;
+        if (!Array.isArray(buttons) || buttons.length < 1 || buttons.length > 3) throw new Error("Mensagem de botões PAPI exige de 1 a 3 botões");
+        endpoint = `/api/instances/${instancePath}/send-buttons`;
+        payload = { jid: normalizePhone(command.phone), text: command.content, footer: typeof metadata.footer === "string" ? metadata.footer : "", buttons, headerType: typeof metadata.headerType === "string" ? metadata.headerType : "none" };
+      } else if (messageType === "text") {
+        endpoint = `/api/instances/${instancePath}/send-text`;
+        payload = { jid: normalizePhone(command.phone), text: command.content };
+        // Preserve custom historical installations, but treat the old default /messages as deprecated.
+        if (sendPath && sendPath !== "/messages") endpoint = sendPath.startsWith("/") ? sendPath : `/${sendPath}`;
+      } else {
+        throw new Error(`Tipo de mensagem ${messageType} ainda não é suportado pelo adapter PAPI`);
+      }
+      const response = await fetch(`${baseUrl.replace(/\/$/, "")}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": apiKey, "Idempotency-Key": command.idempotencyKey }, body: JSON.stringify(payload) });
       if (!response.ok) throw new Error(`PAPI respondeu ${response.status}`);
-      const data = await response.json() as { id?: string; messageId?: string };
-      return { externalId: String(data.id ?? data.messageId ?? command.idempotencyKey), status: "sent" as const };
+      const data = await response.json() as { id?: string; messageId?: string; key?: { id?: string }; message?: { key?: { id?: string } } };
+      return { externalId: String(data.id ?? data.messageId ?? data.key?.id ?? data.message?.key?.id ?? command.idempotencyKey), status: "sent" as const };
     },
     normalizeInbound: normalizePapiInbound,
   };
@@ -81,6 +104,7 @@ export function createMetaCloudApiAdapter(): MetaCloudApiAdapter {
     },
     async sendMessage(command: OutboundMessageCommand) {
       if (!accessToken || !phoneNumberId) throw new Error("WhatsApp Cloud API não configurada");
+      if (command.messageType && command.messageType !== "text") throw new Error(`WhatsApp Cloud API ainda não suporta o tipo ${command.messageType} neste worker`);
       const response = await fetch(`${baseUrl}/${phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: normalizePhone(command.phone), type: "text", text: { body: command.content } }) });
       if (!response.ok) throw new Error(`Meta Cloud API respondeu ${response.status}`);
       const data = await response.json() as { messages?: Array<{ id?: string }> };

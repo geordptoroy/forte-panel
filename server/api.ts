@@ -45,13 +45,35 @@ const webhookSchema = z.object({
   name: z.string().max(160).optional(),
   content: z.string().min(1).max(10000),
   messageType: z.enum(["text", "image", "audio", "video", "document"]).optional(),
+  metadata: z.object({
+    instanceId: z.string().max(160).optional(),
+    mediaUrl: z.string().max(4000).optional(),
+    mediaMimeType: z.string().max(180).optional(),
+    fileName: z.string().max(255).optional(),
+    fileLength: z.number().nonnegative().optional(),
+    buttonId: z.string().max(180).optional(),
+    buttonText: z.string().max(500).optional(),
+    isGroup: z.boolean().optional(),
+  }).optional(),
   receivedAt: z.coerce.date().optional(),
 });
 const messageSchema = z.object({
-  contactId: z.number().int().positive(),
+  contactId: z.number().int().positive().optional(),
+  phone: z.string().min(8).max(32).optional(),
+  name: z.string().max(160).optional(),
   content: z.string().min(1).max(10000),
   provider: z.enum(["papi", "meta_cloud_api"]).optional(),
-});
+  senderType: z.enum(["ai", "human"]).optional(),
+  messageType: z.enum(["text", "audio", "button"]).optional(),
+  instanceId: z.string().trim().max(160).optional().transform((value) => value || undefined),
+  metadata: z.object({
+    buttons: z.array(z.object({ id: z.string().min(1).max(100), displayText: z.string().min(1).max(80) }).passthrough()).min(1).max(3).optional(),
+    footer: z.string().max(180).optional(),
+    headerType: z.enum(["none", "text", "image", "video"]).optional(),
+    ptt: z.boolean().optional(),
+  }).optional(),
+}).refine((input) => Boolean(input.contactId || input.phone), { message: "contactId ou phone é obrigatório" })
+  .refine((input) => input.messageType !== "button" || Boolean(input.metadata?.buttons?.length), { message: "Mensagem de botão exige metadata.buttons" });
 const stageSchema = z.object({ stage: z.string().min(1).max(80) });
 const rescheduleSchema = z.object({ startsAt: z.coerce.date(), endsAt: z.coerce.date() });
 const leadMemorySchema = z.object({
@@ -277,11 +299,17 @@ api.post("/messages", async (req, res) => {
   if (!parsed.success) return fail(res, 400, "Payload de mensagem inválido", "invalid_payload");
   try {
     return idempotent(req, res, async () => {
-      const contact = await getContactById(parsed.data.contactId);
+      const contact = parsed.data.contactId
+        ? await getContactById(parsed.data.contactId)
+        : await upsertApiContact({ phone: String(parsed.data.phone).replace(/[^0-9]/g, ""), name: parsed.data.name });
       if (!contact) return { statusCode: 404, body: { error: "not_found", message: "Contato não encontrado" } };
       const provider = parsed.data.provider ?? await getDefaultWhatsappProvider();
-      const message = await queueOutboundMessage(parsed.data.contactId, parsed.data.content, provider);
-      return { statusCode: 202, body: { data: { id: message?.id, contactId: parsed.data.contactId, provider, status: "queued" } } };
+      const senderType = parsed.data.senderType ?? "human";
+      const messageType = parsed.data.messageType ?? "text";
+      if (provider === "meta_cloud_api" && messageType !== "text") return { statusCode: 422, body: { error: "unsupported_message_type", message: "Este tipo de mensagem ainda não é suportado pela Meta Cloud API neste worker" } };
+      if (provider === "papi" && !parsed.data.instanceId && !process.env.PAPI_INSTANCE_ID) return { statusCode: 422, body: { error: "papi_instance_required", message: "Informe instanceId do PAPI ou configure PAPI_INSTANCE_ID" } };
+      const message = await queueOutboundMessage(contact.id, parsed.data.content, provider, senderType, messageType, { ...(parsed.data.metadata ?? {}), ...(parsed.data.instanceId ? { instanceId: parsed.data.instanceId } : {}) });
+      return { statusCode: 202, body: { data: { id: message?.id, contactId: contact.id, provider, senderType, messageType, status: "queued" } } };
     });
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao enfileirar mensagem", "internal_error");
@@ -346,12 +374,16 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
   if (!hasValidWebhookSignature(req) && !requireApiKey(req, res)) return;
   const parsed = webhookSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "Evento de WhatsApp inválido", "invalid_payload");
+  const idempotencyKey = req.header("Idempotency-Key");
+  if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 180) return fail(res, 400, "Idempotency-Key é obrigatório", "idempotency_key_required");
+  if (idempotencyKey !== parsed.data.eventId) return fail(res, 409, "Idempotency-Key deve corresponder ao eventId", "idempotency_conflict");
   try {
     const registered = await registerWebhookEvent({ eventId: parsed.data.eventId, provider: "whatsapp", payload: parsed.data });
+    if (registered.conflict) return fail(res, 409, "O eventId já foi usado com outro payload", "idempotency_conflict");
     if (registered.duplicate) return res.status(200).json({ accepted: true, duplicate: true, eventId: parsed.data.eventId });
     const result = await ingestInboundWhatsApp(parsed.data);
     await markWebhookEvent(parsed.data.eventId, "processed");
-    return res.status(202).json({ accepted: true, duplicate: false, eventId: parsed.data.eventId, data: result });
+    return res.status(202).json({ accepted: true, duplicate: result.duplicate === true, eventId: parsed.data.eventId, data: result });
   } catch (error) {
     await markWebhookEvent(parsed.data.eventId, "failed");
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao processar webhook", "internal_error");

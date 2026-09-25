@@ -36,6 +36,8 @@ export type Message = {
   sender: "lead" | "ai" | "human" | "system";
   text: string;
   time: string;
+  messageType?: "text" | "image" | "audio" | "video" | "document" | "button";
+  metadata?: Record<string, unknown> | null;
 };
 
 export type Appointment = {

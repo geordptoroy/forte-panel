@@ -71,6 +71,13 @@
       "when": 1790290872325,
       "tag": "0009_in_app_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790295107110,
+      "tag": "0010_n8n_message_sync",
+      "breakpoints": true
     }
   ]
 }

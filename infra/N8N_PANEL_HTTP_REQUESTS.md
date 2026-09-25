@@ -1,135 +1,112 @@
-# Nós HTTP do Forte Panel no workflow n8n
+# Workflow n8n integrado ao Forte Panel
 
-O JSON exportado do workflow original não está dentro do repositório; por isso este guia descreve as chamadas exatas que devem substituir o Clientverse sem alterar o restante do agente.
+O export preparado em `infra/n8n/forte-panel-workflow.json` foi criado como cópia do workflow fornecido; o arquivo original não é alterado. Ele mantém as ramificações de controle humano, debounce, memória curta, modelo, áudio e botões, mas remove a antiga subworkflow `Lead Memory Tool` e usa o Forte Panel como fonte única do CRM.
 
-## Credencial
+Para adaptar uma exportação posterior do mesmo workflow, rode `node scripts/adapt-n8n-workflow.mjs <workflow-export.json> [workflow-adaptado.json]` na raiz do repositório. O script interrompe se não encontrar os nodes e as seções de prompt esperados, em vez de gravar uma migração parcial.
 
-Crie uma credencial de Header Auth no n8n com:
+## Importação e credenciais
 
-```text
-Authorization: Bearer {{$env.FORTE_API_KEY}}
+Importe o JSON no n8n. Associe a credencial existente **Forte Panel API** ao node AI Tool **Forte Panel**. Nos cinco nodes HTTP de integração, crie/associe uma credencial **HTTP Bearer Auth** cujo token seja o mesmo valor configurado no servidor como `FORTE_API_KEY`. Não grave a chave diretamente em parâmetros, expressions, workflow JSON ou Git.
+
+O host configurado nos nodes é `http://forte-panel:3000`, nome do serviço Compose e porta interna quando n8n e Forte Panel compartilham a mesma rede Docker. Se os containers estiverem em redes diferentes, publique o Panel por um proxy HTTPS e altere os URLs para o domínio protegido.
+
+## Entrada PAPI → Inbox → AI Agent
+
+O node `Limpeza` identifica o `messageId`, a instância, o remetente, o texto, o tipo de conteúdo e dados de mídia. O `Filtro entrada Inbox` deixa apenas eventos `lead_message` seguirem para `POST /api/v1/webhooks/inbound/whatsapp`; controles humanos e eventos fromMe não viram mensagem inbound. O fluxo só continua ao processamento do agente após o webhook retornar sucesso.
+
+O `eventId` enviado ao painel combina `instanceId` e `messageId`. Ele é usado no cabeçalho `Idempotency-Key` e persistido como `externalId`, impedindo uma segunda linha caso o PAPI/n8n repita uma entrega. O webhook recebe texto ou placeholder de mídia junto com metadados como URL, MIME, nome, tamanho e resposta de botão; o payload base64 completo não é enviado para não inflar o banco.
+
+## Saída AI Agent → worker → PAPI
+
+Os nodes de texto, áudio PTT e botões chamam `POST /api/v1/messages`, com `Idempotency-Key` derivada da mensagem inbound e da posição da resposta. O servidor registra como `senderType: "ai"`, para não pausar o bot nem ativar controle humano, e enfileira a mensagem. Cada request repassa o `instanceId` da conversa.
+
+| Tipo | `content` | Metadados enviados |
+|---|---|---|
+| Texto | Conteúdo da mensagem | Nenhum |
+| Áudio | URL da mídia | `{ "ptt": true }` |
+| Botões | Texto do corpo | `{ "buttons": [{ "id": "agendar", "displayText": "Agendar" }] }` |
+
+A URL de áudio deve ser acessível **pelo container do PAPI**. No fluxo, os botões são limitados a três, que é o máximo aceito pelo adapter deste worker. `queued` significa que a API aceitou o job; o worker atualiza o estado de entrega depois de chamar o provedor.
+
+## Validação após importação
+
+Antes de ativar o fluxo de produção, execute um teste com uma conversa de teste e confirme: (1) mensagem recebida aparece uma vez na Inbox; (2) a resposta de texto aparece no histórico e sai pelo PAPI; (3) áudio PTT com uma URL acessível pelo PAPI; e (4) um botão é visível na conversa e é entregue pelo canal. O envio de imagem, vídeo e documento ainda não é suportado pelo worker; esses tipos podem ser recebidos e guardados no histórico.
+
+O fallback de `Preparar Debounce` também usa a API do panel. A integração grava o estado no Forte Panel; o Postgres Chat Memory permanece apenas como memória curta do diálogo. O PAPI pode executar um envio e perder a resposta HTTP, portanto a chave idempotente impede duplicação no worker do painel, mas não pode assegurar exactly-once dentro do provedor em um timeout ambíguo.
+
+## Instalação Docker do community node
+
+A imagem `infra/n8n/Dockerfile` instala o pacote local. Na raiz do repositório:
+
+```bash
+docker build -f infra/n8n/Dockerfile -t forte-n8n:local .
 ```
 
-O host deve ser o nome do serviço na rede Docker, por exemplo `http://forte-panel:3000`.
+No serviço `n8n` do Compose, use `forte-n8n:local` e configure:
 
-## 1. Depois de `Limpeza`: registrar mensagem recebida
-
-Adicione um nó **HTTP Request**:
-
-```text
-Method: POST
-URL: http://forte-panel:3000/api/v1/webhooks/inbound/whatsapp
-Authentication: Header Auth
-Header: Idempotency-Key = {{$json.eventId}}
-Body Content Type: JSON
+```yaml
+environment:
+  N8N_CUSTOM_EXTENSIONS: /opt/n8n-custom-nodes/node_modules/n8n-nodes-forte-panel
+  N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE: "true"
 ```
 
-Body:
+Depois recrie somente o n8n:
+
+```bash
+docker compose up -d --no-deps --force-recreate n8n
+docker compose logs -f n8n
+```
+
+A instalação inclui o pacote do node, mas não migra credenciais salvas dentro do n8n. Preserve o volume persistente `n8n_data` ao recriar o container.
+
+## Chamada HTTP inbound (equivalente fora do export)
+
+```http
+POST /api/v1/webhooks/inbound/whatsapp
+Authorization: Bearer <FORTE_API_KEY>
+Idempotency-Key: <instanceId>:<messageId>
+Content-Type: application/json
+```
 
 ```json
 {
-  "eventId": "={{$json.eventId || $json.id}}",
-  "phone": "={{String($json.phone || $json.from || '').replace(/\\D/g, '')}}",
-  "name": "={{$json.name || $json.pushName || 'Cliente'}}",
-  "content": "={{$json.content || $json.text || $json.body || '[mídia recebida]'}}",
-  "messageType": "={{$json.messageType || 'text'}}",
-  "receivedAt": "={{$now.toISO()}}"
+  "eventId": "instance-01:message-id",
+  "phone": "5511999999999",
+  "content": "Olá, gostaria de agendar",
+  "messageType": "text",
+  "receivedAt": "2026-09-24T12:00:00.000Z",
+  "metadata": { "instanceId": "instance-01" }
 }
 ```
 
-Esse nó deve ser colocado depois que o workflow já tiver normalizado texto, telefone e tipo de mídia. O `eventId` impede duplicação.
+## Chamada HTTP de saída (equivalente fora do export)
 
-## 2. Substituir `Lead Memory Tool` / Clientverse
-
-Use quatro nós HTTP ou um nó com o `action` dinâmico:
-
-```text
-Method: POST
-URL: http://forte-panel:3000/api/v1/lead-memory
-Authentication: Header Auth
-Header: Idempotency-Key = forte-lead-{{$json.phone}}-{{$execution.id}}-{{$json.action}}
-Body Content Type: JSON
+```http
+POST /api/v1/messages
+Authorization: Bearer <FORTE_API_KEY>
+Idempotency-Key: <chave-estável-para-esta-resposta>
+Content-Type: application/json
 ```
-
-Buscar:
 
 ```json
 {
-  "action": "buscar_lead",
-  "phone": "={{String($json.phone).replace(/\\D/g, '')}}"
-}
-```
-
-Criar/atualizar:
-
-```json
-{
-  "action": "={{$json.action}}",
-  "phone": "={{String($json.phone).replace(/\\D/g, '')}}",
-  "name": "={{$json.name}}",
-  "fields": {
-    "city": "={{$json.city}}",
-    "neighborhood": "={{$json.neighborhood}}",
-    "serviceRequested": "={{$json.serviceRequested}}",
-    "urgency": "={{$json.urgency}}",
-    "stage": "={{$json.stage}}",
-    "quoteCents": "={{$json.quoteCents}}",
-    "aiEnabled": "={{$json.aiEnabled !== false}}"
+  "phone": "5511999999999",
+  "content": "Como posso ajudar?",
+  "provider": "papi",
+  "senderType": "ai",
+  "messageType": "button",
+  "instanceId": "instance-01",
+  "metadata": {
+    "buttons": [{ "id": "agendar", "displayText": "Agendar" }]
   }
 }
 ```
 
-Nota interna:
+A API registra o evento como `queued`, não como entregue. Em operações mutáveis, retries devem reutilizar a mesma chave e exatamente o mesmo payload.
 
-```json
-{
-  "action": "registrar_nota",
-  "phone": "={{String($json.phone).replace(/\\D/g, '')}}",
-  "note": "={{$json.note}}"
-}
-```
+## References
 
-O retorno mantém `success`, `acao`, `telefone`, `resultado` e `mensagem`, então o agente pode continuar usando o mesmo formato sem acessar banco externo.
+O workflow PAPI foi verificado contra o pacote `n8n-nodes-papi` versão `1.2.0`, que implementa o node Pastorini usado no export [1] [2]. Seus endpoints não foram inferidos da Evolution API, que tem contrato diferente. O PAPI Docker local do workflow também é distinto do serviço SaaS homônimo. Consulte a [API_CONTRACT.md](../API_CONTRACT.md) e o guia [N8N_COMMUNITY_NODE.md](N8N_COMMUNITY_NODE.md).
 
-## 3. Prompt operacional publicado
-
-Antes de montar a mensagem do agente, adicione um **HTTP Request** de leitura:
-
-```text
-Method: GET
-URL: http://forte-panel:3000/api/v1/onboarding/prompt
-Authentication: Header Auth
-```
-
-Use `{{$json.data.prompt}}` como instrução de negócio publicada. Se `data.published` for `false`, o fluxo deve usar um comportamento seguro e encaminhar a configuração para revisão humana, sem inventar preço, horário ou política.
-
-## 4. Agenda
-
-Troque a ferramenta antiga por:
-
-```text
-GET  http://forte-panel:3000/api/v1/availability
-POST http://forte-panel:3000/api/v1/appointments
-```
-
-Para mutações, sempre enviar `Idempotency-Key`. Conflito de horário retorna HTTP `409`; o agente deve informar que aquele horário não está disponível e consultar outra opção.
-
-## 5. Envio de resposta
-
-Durante o primeiro teste local, mantenha os nós de envio da PAPI já existentes para não alterar o fluxo validado. Quando o worker do Panel for o responsável pelo envio, use:
-
-```text
-POST http://forte-panel:3000/api/v1/messages
-```
-
-Body:
-
-```json
-{
-  "contactId": "={{$json.contactId}}",
-  "content": "={{$json.response}}",
-  "provider": "papi"
-}
-```
-
-A resposta `202` com `status: queued` significa apenas que o worker aceitou a mensagem. O workflow não deve tratá-la como entregue antes de existir confirmação do provedor.
+[1]: https://www.npmjs.com/package/n8n-nodes-papi "Pacote n8n-nodes-papi no npm"
+[2]: https://github.com/mktpastorini/papi "Repositório do node PAPI de Pastorini"

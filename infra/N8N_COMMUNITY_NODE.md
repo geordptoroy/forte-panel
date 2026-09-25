@@ -51,13 +51,13 @@ Se o n8n estiver em outro diretório, faça o build apontando o contexto para a 
 
 ## Configuração no workflow
 
-1. Remova as duas tools antigas do conector `Tools` do AI Agent.
-2. Adicione somente o node **Forte Panel**.
-3. Crie a credencial **Forte Panel API**.
-4. Use `http://forte-panel:3000/api/v1` como Base URL quando ambos os containers estiverem na mesma rede Docker.
-5. Use a mesma chave de `FORTE_API_KEY` do painel.
-6. Conecte o node Forte Panel uma única vez ao conector `Tools` do AI Agent.
-7. Mantenha a tool de envio e alterações de agenda sob Human Review no n8n durante o piloto.
+1. Importe `infra/n8n/forte-panel-workflow.json` (gerado a partir do export original já fornecido).
+2. Crie a credencial **Forte Panel API** para o node AI Tool, com Base URL `http://forte-panel:3000/api/v1` e a mesma chave configurada em `FORTE_API_KEY` no servidor.
+3. Nos cinco nodes **HTTP Request** adicionados/substituídos para a API, associe uma credencial **HTTP Bearer Auth** com o mesmo valor de `FORTE_API_KEY`.
+4. O fluxo repassa `instanceId` de cada mensagem recebida; configure `PAPI_INSTANCE_ID` no servidor apenas como fallback para mensagens manuais originadas no próprio painel.
+5. O workflow grava eventos inbound no Forte Panel antes de chamar o AI Agent. A `Lead Memory Tool` antiga foi removida; mantenha a conexão única do node **Forte Panel** no conector `Tools`.
+6. Os nodes de texto, áudio e botões enfileiram pela API do Panel. O status `queued` indica aceite da fila, não entrega final.
+7. Após importar, valide uma mensagem de texto em uma conversa de teste antes de habilitar a produção; depois teste áudio PTT e botões com uma URL de mídia que seja acessível ao container PAPI.
 
 ## Descrição recomendada para o agente
 
@@ -74,6 +74,6 @@ Use queue_message para enviar uma mensagem somente quando a resposta estiver pro
 Não invente preço, disponibilidade, política ou confirmação.
 ``` 
 
-## Observação importante
+## Limites do worker
 
-O export JSON do workflow original não está dentro do repositório neste momento. O pacote e o contrato já estão prontos; a troca dos dois nós no workflow concreto deve ser feita no export/import do n8n, preservando o restante do fluxo de mídia, debounce, memória e modelo.
+Atualmente o worker suporta texto, áudio (PTT) e botões na PAPI. Imagem, vídeo e documento podem ser recebidos e armazenados no histórico; o envio outbound desses tipos ainda não é exposto pela API do worker. A Meta Cloud API também está limitada a texto nesta implementação.

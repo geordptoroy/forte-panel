@@ -30,7 +30,7 @@ Toda operação mutável aceita `Idempotency-Key`. A mesma chave não pode execu
 | `POST` | `/api/v1/lead-memory` | Buscar, criar, atualizar lead ou registrar nota para o n8n |
 | `GET` | `/api/v1/availability` | Consultar serviços, profissionais ativos e horários futuros reais |
 | `POST` | `/api/v1/appointments` | Criar reserva com checagem de conflito |
-| `POST` | `/api/v1/messages` | Enfileirar mensagem para o worker de WhatsApp |
+| `POST` | `/api/v1/messages` | Enfileirar texto, áudio PTT ou botões para o worker e registrar no histórico |
 | `PATCH` | `/api/v1/contacts/:id/stage` | Mover contato no funil com auditoria |
 | `POST` | `/api/v1/appointments/:id/cancel` | Cancelar reserva |
 | `POST` | `/api/v1/appointments/:id/reschedule` | Reagendar reserva com checagem de conflito |
@@ -48,13 +48,23 @@ Cada profissional traz `serviceIds` e `weeklyAvailability` (faixas com `weekday`
 
 ## Webhook de entrada
 
-O evento deve conter `eventId`, `phone`, `name`, `content`, `messageType` e `receivedAt`. O `eventId` funciona como chave de idempotência do canal. O endpoint poderá exigir `X-Webhook-Signature` com HMAC quando `WEBHOOK_SIGNING_SECRET` estiver configurado.
+O evento deve conter `eventId`, `phone`, `content` e `receivedAt`; `name`, `messageType` e `metadata` são opcionais. Toda requisição exige `Idempotency-Key` igual ao `eventId`; o `eventId` deve ser único por instância/canal. Ele também é gravado em `messages.externalId` sob índice único, impedindo duplicação no histórico mesmo se um processamento anterior falhar depois da gravação. A mesma chave com outro payload retorna conflito. Eventos com status `failed` podem ser reprocessados; eventos em `received` ou `processed` são tratados como duplicados. O endpoint poderá exigir `X-Webhook-Signature` com HMAC quando `WEBHOOK_SIGNING_SECRET` estiver configurado.
 
 ### Substituição da Lead Memory Tool
 
-O workflow n8n pode substituir a antiga ferramenta de memória/CRM por uma chamada HTTP para `POST /api/v1/lead-memory`. O corpo usa `action` com `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota`, mais `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`. O retorno mantém `success`, `acao`, `telefone`, `resultado` e `mensagem` para facilitar a troca do nó sem alterar o agente.
+O workflow n8n usa o node `Forte Panel Tool` como fonte única para CRM, anotações e agenda; não deve manter uma segunda base privada de estado do lead. A API equivalente para outros clientes é `POST /api/v1/lead-memory`, que aceita `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota` com `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`.
 
-Mensagens enviadas por `POST /messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio no provedor. O worker separado consome a fila, usa o adapter registrado na mensagem, recupera jobs presos após reinício e tenta novamente até `WORKER_MAX_ATTEMPTS` antes de marcar `failed`.
+Mensagens enviadas por `POST /api/v1/messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio. Toda mutação exige `Idempotency-Key`; retries iguais retornam a resposta original e o mesmo key com body diferente conflita. O payload aceita `contactId` ou `phone`, `provider`, `senderType: "ai" | "human"` (padrão `human`), `messageType` e `instanceId`. Para PAPI, o fluxo repassa o `instanceId` recebido pelo webhook, ou o servidor usa `PAPI_INSTANCE_ID` como fallback. Mensagens `ai` não desligam `aiEnabled` nem ativam `humanControlled`; mensagens `human` mantêm o comportamento de takeover do painel.
+
+PAPI suporta estes formatos no worker:
+
+| `messageType` | `content` | `metadata` | Operação PAPI |
+|---|---|---|---|
+| `text` (padrão) | Texto da mensagem | Opcional | `POST /api/instances/:instanceId/send-text` |
+| `audio` | URL acessível ao serviço PAPI | `{ "ptt": true }` (padrão) | `POST /api/instances/:instanceId/send-audio` |
+| `button` | Texto do corpo | `buttons` (1–3 objetos `{ "id", "displayText" }`), `footer?`, `headerType?` | `POST /api/instances/:instanceId/send-buttons` |
+
+O adapter usa o cabeçalho `x-api-key`, igual ao community node PAPI no workflow. Outros tipos não textuais não são aceitos pela Meta Cloud API neste worker e retornam `422` no enqueue. O worker recupera jobs presos após reinício e tenta novamente até `WORKER_MAX_ATTEMPTS` antes de marcar `failed`. A chave idempotente protege a fila do painel; a confirmação final de entrega depende da resposta do provedor.
 
 O n8n pode consultar `GET /onboarding/prompt` no início de uma execução para usar somente a versão publicada pelo administrador. O endpoint nunca devolve um rascunho não publicado.
 
@@ -62,9 +72,9 @@ O n8n pode consultar `GET /onboarding/prompt` no início de uma execução para 
 {
   "eventId": "papi-msg-123",
   "phone": "5511999999999",
-  "name": "Cliente novo",
   "content": "Olá, gostaria de agendar",
   "messageType": "text",
+  "metadata": { "instanceId": "ID_DA_INSTANCIA" },
   "receivedAt": "2026-09-24T12:00:00.000Z"
 }
 ```
