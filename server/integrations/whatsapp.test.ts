@@ -92,4 +92,11 @@ describe("PAPI outbound adapter", () => {
     await expect(createPapiAdapter().sendMessage({ idempotencyKey: "forte-message-4", phone: "5511999999999", content: "Oi" }))
       .rejects.toThrow("instanceId não informado");
   });
+
+  it("preserves messages sent from the owner as fromMe", () => {
+    const normalized = createPapiAdapter().normalizeInbound({ data: { message: { key: { id: "m-owner", remoteJid: "5511999999999@s.whatsapp.net", fromMe: true }, messageType: "text", text: "Resposta manual", timestamp: 1770000000 } } });
+    expect(normalized.fromMe).toBe(true);
+    expect(normalized.metadata?.fromMe).toBe(true);
+    expect(normalized.eventId).toBe("m-owner");
+  });
 });

@@ -859,12 +859,17 @@ export async function getConversationByContact(contactId: number) {
   return result[0];
 }
 
-export async function listMessagesForContact(contactId: number) {
+export async function listMessagesForContact(contactId: number, options?: { limit?: number; since?: Date }) {
   const db = await getDb();
   if (!db) return [];
   const conversation = await getConversationByContact(contactId);
   if (!conversation) return [];
-  return db.select().from(messages).where(eq(messages.conversationId, conversation.id)).orderBy(messages.createdAt, messages.id);
+  const limit = Math.min(Math.max(options?.limit ?? 200, 1), 500);
+  const rows = await db.select().from(messages).where(and(
+    eq(messages.conversationId, conversation.id),
+    ...(options?.since ? [gte(messages.createdAt, options.since)] : []),
+  )).orderBy(desc(messages.createdAt), desc(messages.id)).limit(limit);
+  return rows.reverse();
 }
 
 export async function setContactAi(contactId: number, enabled: boolean, actorUserId?: number) {
@@ -1112,7 +1117,8 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
   } else {
     await db.update(contacts).set({
       name: input.name?.trim() || contact.name,
-      unreadCount: fromMe ? contacts.unreadCount : sql`${contacts.unreadCount} + 1`,
+      ...(fromMe ? { aiEnabled: 0 } : {}),
+      unreadCount: fromMe ? 0 : sql`${contacts.unreadCount} + 1`,
       lastMessagePreview: input.content.slice(0, 500),
       lastMessageAt: receivedAt,
       updatedAt: receivedAt,
@@ -1146,7 +1152,7 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
       payload: { messageId: created[0].id, contactId: contact.id, conversationId: conversation.id, phone: contact.externalPhone, content: input.content, messageType: input.messageType ?? "text", receivedAt },
     });
   }
-  await db.update(conversations).set({ unreadCount: fromMe ? conversations.unreadCount : sql`${conversations.unreadCount} + 1`, lastMessageAt: receivedAt, updatedAt: receivedAt }).where(eq(conversations.id, conversation.id));
+  await db.update(conversations).set({ ...(fromMe ? { humanControlled: 1 } : {}), unreadCount: fromMe ? 0 : sql`${conversations.unreadCount} + 1`, lastMessageAt: receivedAt, updatedAt: receivedAt }).where(eq(conversations.id, conversation.id));
   return { contactId: contact.id, conversationId: conversation.id, messageId: created[0]?.id, duplicate: false };
 }
 

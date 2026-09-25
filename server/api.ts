@@ -12,6 +12,7 @@ import {
   findQueuedBatchMessage,
   ingestInboundWhatsApp,
   leadMemoryOperation,
+  listMessagesForContact,
   listWhatsappChannels,
   markWebhookEvent,
   moveContactStage,
@@ -198,6 +199,24 @@ api.post("/contacts/upsert", async (req, res) => {
     });
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao atualizar contato", "internal_error");
+  }
+});
+
+api.get("/contacts/:id/messages", async (req, res) => {
+  if (!requireApiKey(req, res)) return;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de contato inválido", "invalid_id");
+  const limit = req.query.limit ? Number(req.query.limit) : 200;
+  const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) return fail(res, 400, "limit deve estar entre 1 e 500", "invalid_query");
+  if (since && Number.isNaN(since.getTime())) return fail(res, 400, "since deve ser uma data ISO válida", "invalid_query");
+  try {
+    const contact = await getContactById(id);
+    if (!contact) return fail(res, 404, "Contato não encontrado", "not_found");
+    const messages = await listMessagesForContact(id, { limit, since });
+    return res.json({ data: { contactId: id, phone: contact.externalPhone, count: messages.length, messages } });
+  } catch (error) {
+    return fail(res, 500, error instanceof Error ? error.message : "Falha ao consultar histórico", "internal_error");
   }
 });
 

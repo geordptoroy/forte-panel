@@ -96,6 +96,24 @@ N8N_DEBOUNCE_MS=1500
 
 Mensagens recebidas dentro da mesma janela são entregues juntas em `payload.messages`, enquanto `payload.content` contém o texto combinado. O intervalo máximo aceito é de 30 segundos.
 
+## Histórico e mensagens enviadas pelo celular
+
+O histórico consolidado de um contato pode ser consultado por:
+
+```text
+GET /api/v1/contacts/:id/messages?limit=200&since=2026-09-25T00:00:00.000Z
+```
+
+O webhook PAPI deve estar configurado com `sendFromMe: true`. Mensagens enviadas pelo celular entram no mesmo histórico com `direction: outbound`, `senderType: human` e `metadata.fromMe: true`; elas não são enviadas ao AI Agent e ativam o controle humano do contato.
+
+Na configuração da instância PAPI, mantenha também:
+
+```json
+{
+  "sendFromMe": true
+}
+```
+
 1. Importe `infra/n8n/forte-panel-workflow.json` (gerado a partir do export original já fornecido).
 2. Crie a credencial **Forte Panel API** para o node AI Tool, com Base URL `http://forte-panel:3000/api/v1` e a mesma chave configurada em `FORTE_API_KEY` no servidor.
 3. Nos cinco nodes **HTTP Request** adicionados/substituídos para a API, associe uma credencial **HTTP Bearer Auth** com o mesmo valor de `FORTE_API_KEY`.

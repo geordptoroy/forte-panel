@@ -12,6 +12,8 @@ Provedor WhatsApp → Forte Panel → n8n → Forte Panel → Provedor WhatsApp
 
 O Forte Panel será responsável por contato, conversa, histórico, idempotência, controle humano e envio. O n8n continuará, inicialmente, com interpretação da mensagem, IA e montagem da resposta.
 
+O histórico local consolidado está disponível em `GET /api/v1/contacts/:id/messages`, com `limit` e `since` para paginação e sincronização incremental. Eventos PAPI `fromMe` são gravados como mensagens humanas e pausam a IA.
+
 ## O que foi feito nesta etapa
 
 ### Atendimento e interface
