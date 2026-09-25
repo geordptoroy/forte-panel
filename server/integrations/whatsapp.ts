@@ -53,21 +53,22 @@ function normalizeMetaInbound(event: any): InboundMessageEvent {
 
 export function createPapiAdapter(): PapiAdapter {
   const baseUrl = ENV.papiDeployment === "cloud" ? ENV.papiCloudApiUrl : process.env.PAPI_BASE_URL;
-  const apiKey = process.env.PAPI_API_KEY;
+  const fallbackApiKey = process.env.PAPI_API_KEY;
   const sendPath = process.env.PAPI_SEND_MESSAGE_PATH ?? "/messages";
   return {
     provider: "papi",
     async health() {
-      if (!baseUrl) return nowHealth("papi", false, "PAPI_BASE_URL não configurada");
+      if (!baseUrl) return nowHealth("papi", false, "PAPI base URL não configurada");
       const started = Date.now();
       try {
-        const response = await fetch(`${baseUrl.replace(/\/$/, "")}/health`, { headers: apiKey ? { "x-api-key": apiKey } : undefined });
+        const response = await fetch(`${baseUrl.replace(/\/$/, "")}/health`, { headers: fallbackApiKey ? { "x-api-key": fallbackApiKey } : undefined });
         return nowHealth("papi", response.ok, response.ok ? "PAPI disponível" : `PAPI respondeu ${response.status}`, Date.now() - started);
       } catch (error) {
         return nowHealth("papi", false, error instanceof Error ? error.message : "Falha de conexão", Date.now() - started);
       }
     },
     async sendMessage(command: OutboundMessageCommand) {
+      const apiKey = command.apiKey ?? fallbackApiKey;
       if (!baseUrl || !apiKey) throw new Error("PAPI não configurado");
       const resolvedInstanceId = command.instanceId ?? process.env.PAPI_INSTANCE_ID;
       if (!resolvedInstanceId) throw new Error("PAPI instanceId não informado (envie instanceId ou configure PAPI_INSTANCE_ID)");

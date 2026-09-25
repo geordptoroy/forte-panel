@@ -27,6 +27,8 @@ import {
   deletePapiWebhook,
   getPapiIntegrationConfig,
   listWhatsappChannels,
+  listPapiInstances,
+  setDefaultPapiInstance,
   setDefaultPapiWebhook,
   setDefaultWhatsappProvider,
   getAuditLogForContact,
@@ -439,6 +441,7 @@ export const appRouter = router({
     }),
     defaultChannel: protectedProcedure.query(() => getDefaultWhatsappProvider()),
     papiConfig: protectedProcedure.query(() => getPapiIntegrationConfig()),
+    papiInstances: requireActiveMember.query(() => listPapiInstances()),
     createPapiWebhook: requireAdministrator.input(z.object({
       name: z.string().trim().min(1, "Informe um nome para o webhook").max(120),
       instanceId: z.string().trim().min(1, "Informe o instanceId da PAPI").max(160),
@@ -448,6 +451,7 @@ export const appRouter = router({
       return webhook;
     }),
     setDefaultPapiWebhook: requireAdministrator.input(z.object({ id: z.string().min(1).max(100) })).mutation(({ input }) => setDefaultPapiWebhook(input.id)),
+    setDefaultPapiInstance: requireAdministrator.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => setDefaultPapiInstance(input.id)),
     deletePapiWebhook: requireAdministrator.input(z.object({ id: z.string().min(1).max(100) })).mutation(async ({ input, ctx }) => {
       await deletePapiWebhook(input.id);
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_webhook_deleted", summary: `Webhook PAPI ${input.id} removido` });

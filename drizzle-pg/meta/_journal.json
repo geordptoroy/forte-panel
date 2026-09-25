@@ -85,6 +85,13 @@
       "when": 1790373410000,
       "tag": "0011_session_version",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790375340000,
+      "tag": "0012_whatsapp_instances",
+      "breakpoints": true
     }
   ]
 }

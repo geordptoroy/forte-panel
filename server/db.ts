@@ -20,6 +20,7 @@ import {
   users,
   webhookEvents,
   whatsappChannels,
+  whatsappInstances,
   workspaceMembers,
   workspaceSettings,
   workspaces,
@@ -30,7 +31,7 @@ import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
 import { assertWithinWorkingHours, getLocalDayBounds, ScheduleError } from "./schedule";
 import { dailySummaryEventKey, dailySummaryFor, notificationForEvent, notificationPreferenceForEvent, parseNotificationPreferences, type NotificationEvent } from "./notification-contract";
-import { defaultAgentProviderSettings, encryptProviderSecret, maskProviderSecret, mergeAgentProviderSettings, type AgentProviderSettings } from "./llm-providers";
+import { defaultAgentProviderSettings, decryptProviderSecret, encryptProviderSecret, maskProviderSecret, mergeAgentProviderSettings, type AgentProviderSettings } from "./llm-providers";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -486,6 +487,107 @@ export async function listWhatsappChannels() {
   return db.select().from(whatsappChannels).where(and(eq(whatsappChannels.workspaceId, workspace.id), eq(whatsappChannels.active, 1)));
 }
 
+export type PapiInstanceSummary = {
+  id: number;
+  workspaceId: number;
+  instanceId: string;
+  name: string;
+  deployment: string;
+  status: string;
+  active: boolean;
+  isDefault: boolean;
+  apiKeyMasked: string;
+  webhookId: string | null;
+  lastHealthError: string | null;
+  lastSeenAt: Date | null;
+};
+
+function summarizePapiInstance(instance: typeof whatsappInstances.$inferSelect): PapiInstanceSummary {
+  return {
+    id: instance.id,
+    workspaceId: instance.workspaceId,
+    instanceId: instance.instanceId,
+    name: instance.name,
+    deployment: instance.deployment,
+    status: instance.status,
+    active: instance.active === 1,
+    isDefault: instance.isDefault === 1,
+    apiKeyMasked: maskProviderSecret(instance.encryptedApiKey ?? ""),
+    webhookId: instance.webhookId,
+    lastHealthError: instance.lastHealthError,
+    lastSeenAt: instance.lastSeenAt,
+  };
+}
+
+export async function listPapiInstances() {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) return [];
+  const rows = await db.select().from(whatsappInstances)
+    .where(eq(whatsappInstances.workspaceId, workspace.id))
+    .orderBy(asc(whatsappInstances.id));
+  return rows.map(summarizePapiInstance);
+}
+
+export async function upsertPapiInstance(input: {
+  instanceId: string;
+  name: string;
+  deployment?: "self_hosted" | "cloud";
+  apiKey?: string | null;
+  webhookId?: string | null;
+  webhookSecret?: string | null;
+  status?: string;
+  active?: boolean;
+}) {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) throw new Error("Workspace unavailable");
+  const instanceId = input.instanceId.trim();
+  if (!instanceId) throw new Error("instanceId é obrigatório");
+  const existing = await db.select().from(whatsappInstances)
+    .where(and(eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.instanceId, instanceId))).limit(1);
+  const values = {
+    workspaceId: workspace.id,
+    provider: "papi" as const,
+    deployment: input.deployment ?? "self_hosted",
+    instanceId,
+    name: input.name.trim() || instanceId,
+    ...(input.apiKey !== undefined ? { encryptedApiKey: input.apiKey ? encryptProviderSecret(input.apiKey) : null } : {}),
+    ...(input.webhookId !== undefined ? { webhookId: input.webhookId } : {}),
+    ...(input.webhookSecret !== undefined ? { encryptedWebhookSecret: input.webhookSecret ? encryptProviderSecret(input.webhookSecret) : null } : {}),
+    ...(input.status ? { status: input.status } : {}),
+    ...(input.active !== undefined ? { active: input.active ? 1 : 0 } : {}),
+    updatedAt: new Date(),
+  };
+  if (existing[0]) {
+    const updated = await db.update(whatsappInstances).set(values).where(eq(whatsappInstances.id, existing[0].id)).returning();
+    return summarizePapiInstance(updated[0]);
+  }
+  const created = await db.insert(whatsappInstances).values({ ...values, isDefault: 0 }).returning();
+  return summarizePapiInstance(created[0]);
+}
+
+export async function getPapiInstanceSecret(instanceId: string) {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) return "";
+  const row = await db.select({ encryptedApiKey: whatsappInstances.encryptedApiKey }).from(whatsappInstances)
+    .where(and(eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.instanceId, instanceId), eq(whatsappInstances.active, 1))).limit(1);
+  return decryptProviderSecret(row[0]?.encryptedApiKey ?? "");
+}
+
+export async function setDefaultPapiInstance(id: number) {
+  const db = await getDb();
+  const workspace = await ensureDemoWorkspace();
+  if (!db || !workspace) throw new Error("Workspace unavailable");
+  return db.transaction(async (tx) => {
+    await tx.update(whatsappInstances).set({ isDefault: 0, updatedAt: new Date() }).where(eq(whatsappInstances.workspaceId, workspace.id));
+    const selected = await tx.update(whatsappInstances).set({ isDefault: 1, updatedAt: new Date() }).where(and(eq(whatsappInstances.id, id), eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.active, 1))).returning();
+    if (!selected[0]) throw new Error("Instância PAPI não encontrada ou inativa");
+    return summarizePapiInstance(selected[0]);
+  });
+}
+
 export async function getDefaultWhatsappProvider(): Promise<WhatsappProvider> {
   const db = await getDb();
   if (!db) return "papi";
@@ -582,6 +684,15 @@ export async function createPapiWebhook(input: { name: string; instanceId: strin
   const webhook: PapiWebhookConfig = { id: crypto.randomUUID(), name: input.name.trim(), instanceId: input.instanceId.trim(), secret: crypto.randomBytes(24).toString("hex"), createdAt: new Date().toISOString() };
   await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify([...webhooks.filter((item) => !item.legacy), webhook]));
   if (webhooks.length === 0 || webhooks.every((item) => item.legacy)) await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, webhook.id);
+  await upsertPapiInstance({
+    instanceId: webhook.instanceId,
+    name: webhook.name,
+    deployment: ENV.papiDeployment as "self_hosted" | "cloud",
+    apiKey: ENV.papiDeployment === "self_hosted" ? process.env.PAPI_API_KEY ?? null : undefined,
+    webhookId: webhook.id,
+    webhookSecret: webhook.secret,
+    status: "configured",
+  });
   return withPapiWebhookUrl(webhook, true);
 }
 
@@ -1482,13 +1593,15 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
     if (claimed.length === 0) continue;
     try {
       const adapter = getWhatsappAdapter(item.message.provider);
+      const instanceId = typeof item.message.metadata?.instanceId === "string" ? item.message.metadata.instanceId : undefined;
       const result = await adapter.sendMessage({
         idempotencyKey: `forte-message-${item.message.id}`,
         phone: item.phone,
         content: item.message.content,
         messageType: item.message.messageType,
         metadata: item.message.metadata ?? undefined,
-        instanceId: typeof item.message.metadata?.instanceId === "string" ? item.message.metadata.instanceId : undefined,
+        instanceId,
+        apiKey: item.message.provider === "papi" && instanceId ? await getPapiInstanceSecret(instanceId) || undefined : undefined,
         provider: item.message.provider,
       });
       await db.update(messages).set({ status: "sent", externalId: result.externalId, sentAt: new Date(), lastError: null }).where(eq(messages.id, item.message.id));

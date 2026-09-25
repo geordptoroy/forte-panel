@@ -83,6 +83,29 @@ export const whatsappChannels = pgTable("whatsappChannels", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
+export const whatsappInstances = pgTable("whatsappInstances", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspaceId").notNull(),
+  channelId: integer("channelId"),
+  provider: whatsappProviderEnum("provider").default("papi").notNull(),
+  deployment: varchar("deployment", { length: 32 }).default("self_hosted").notNull(),
+  instanceId: varchar("instanceId", { length: 160 }).notNull(),
+  name: varchar("name", { length: 120 }).notNull(),
+  encryptedApiKey: text("encryptedApiKey"),
+  webhookId: varchar("webhookId", { length: 120 }),
+  encryptedWebhookSecret: text("encryptedWebhookSecret"),
+  status: varchar("status", { length: 40 }).default("unknown").notNull(),
+  active: integer("active").default(1).notNull(),
+  isDefault: integer("isDefault").default(0).notNull(),
+  lastHealthError: text("lastHealthError"),
+  lastSeenAt: timestamp("lastSeenAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("whatsapp_instances_workspace_instance_unique_idx").on(table.workspaceId, table.instanceId),
+  index("whatsapp_instances_workspace_idx").on(table.workspaceId, table.active, table.isDefault),
+]);
+
 export const apiIdempotency = pgTable("apiIdempotency", {
   id: serial("id").primaryKey(),
   workspaceId: integer("workspaceId"),

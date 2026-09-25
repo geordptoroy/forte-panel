@@ -27,6 +27,8 @@ export type OutboundMessageCommand = {
   messageType?: "text" | "image" | "audio" | "video" | "document" | "button";
   metadata?: Record<string, unknown>;
   instanceId?: string;
+  /** Internal backend-only credential; never serialize to the client. */
+  apiKey?: string;
   provider?: WhatsappProvider;
 };
 
