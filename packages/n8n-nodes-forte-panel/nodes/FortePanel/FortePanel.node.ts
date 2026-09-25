@@ -139,6 +139,19 @@ const properties: INodeProperties[] = [
   },
 ];
 
+const fixedOperations: Record<string, string> = {
+  'n8n-nodes-forte-panel.fortePanelBuscarLead': 'buscar_lead',
+  'n8n-nodes-forte-panel.fortePanelCriarLead': 'criar_lead',
+  'n8n-nodes-forte-panel.fortePanelAtualizarLead': 'atualizar_lead',
+  'n8n-nodes-forte-panel.fortePanelRegistrarNota': 'registrar_nota',
+  'n8n-nodes-forte-panel.fortePanelAvailability': 'availability',
+  'n8n-nodes-forte-panel.fortePanelCreateAppointment': 'create_appointment',
+  'n8n-nodes-forte-panel.fortePanelCancelAppointment': 'cancel_appointment',
+  'n8n-nodes-forte-panel.fortePanelRescheduleAppointment': 'reschedule_appointment',
+  'n8n-nodes-forte-panel.fortePanelPublishedPrompt': 'published_prompt',
+  'n8n-nodes-forte-panel.fortePanelQueueMessage': 'queue_message',
+};
+
 export class FortePanel implements INodeType {
   description: INodeTypeDescription = {
     displayName: 'Forte Panel',
@@ -164,7 +177,7 @@ export class FortePanel implements INodeType {
 
     for (let index = 0; index < items.length; index += 1) {
       try {
-        const operation = String(this.getNodeParameter('operation', index));
+        const operation = fixedOperations[this.getNode().type] ?? String(this.getNodeParameter('operation', index));
         const phone = String(this.getNodeParameter('phone', index, '')).replace(/\D/g, '');
         const name = String(this.getNodeParameter('name', index, ''));
         const note = String(this.getNodeParameter('note', index, ''));

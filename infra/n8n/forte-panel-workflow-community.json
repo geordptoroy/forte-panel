@@ -1,0 +1,1412 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-papi.papiTrigger",
+      "typeVersion": 1,
+      "position": [
+        -8896,
+        240
+      ],
+      "id": "ee0d5fe0-cdd0-4c92-95b0-4cee6cf4cd90",
+      "name": "PAPI Trigger",
+      "webhookId": "ab2e6cc7-a7d6-4b8b-a023-a136c95762e0",
+      "credentials": {
+        "papiApi": {
+          "id": "j2BLdWu3UyUq1a55",
+          "name": "PAPI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\n// Determina se a mensagem veio de mim.\n// Mensagens fromMe podem ser da IA ou do operador humano. Nunca trate\n// qualquer fromMe como intervenção: o operador usa #humano ou #retomar.\nconst fromMe = item._parsed?.fromMe ?? item.data?.key?.fromMe ?? false;\n\n// Determina se é grupo (bloqueia por padrão)\nconst isGroup = item._parsed?.isGroup || false;\nif (isGroup === true) {\n  return null;\n}\n\n// Extrai remetente (prioridade para remoteJidAlt, que é o número limpo)\nconst remetente = item.data?.key?.remoteJidAlt ||\n                  item.data?.key?.remoteJid ||\n                  item._parsed?.from ||\n                  \"\";\n\n// Inicializa variáveis\nlet texto = \"\";\nlet messageType = \"unknown\";\nlet mediaUrl = null;\nlet mediaMimeType = null;\nlet mediaCaption = null;\nlet mediaKey = null;\nlet mediaKeyType = null;\nlet fileEncSha256 = null;\nlet fileSha256 = null;\nlet directPath = null;\nlet fileName = null;\nlet fileLength = null;\nlet height = null;\nlet width = null;\nlet latitude = null;\nlet longitude = null;\nlet mediaBase64 = null;\n\n// NOVAS VARIÁVEIS PARA BOTÕES\nlet buttonId = null;\nlet buttonText = null;\nlet buttonIndex = null;\n\nconst msg = item.data?.message || {};\nconst media = item.media || {};\nconst fallbackName = (prefix, ext) => `${prefix}_${item.data?.key?.id || Date.now()}.${ext}`;\n\n// ===== TEXTO SIMPLES =====\nif (msg.conversation) {\n  texto = msg.conversation;\n  messageType = \"conversation\";\n}\n\n// ===== TEXTO EXTENDIDO =====\nelse if (msg.extendedTextMessage?.text) {\n  texto = msg.extendedTextMessage.text;\n  messageType = \"extended_text\";\n}\n\n// ===== BOTÃO TEMPLATE =====\nelse if (msg.templateButtonReplyMessage) {\n  messageType = \"button_reply\";\n  texto = msg.templateButtonReplyMessage.selectedDisplayText || \"\";\n  buttonId = msg.templateButtonReplyMessage.selectedId || null;\n  buttonText = msg.templateButtonReplyMessage.selectedDisplayText || null;\n  buttonIndex = msg.templateButtonReplyMessage.selectedIndex ?? null;\n}\n\n// ===== BOTÃO INTERATIVO =====\nelse if (msg.buttonsResponseMessage) {\n  messageType = \"button_reply\";\n  texto = msg.buttonsResponseMessage.selectedDisplayText || \"\";\n  buttonId = msg.buttonsResponseMessage.selectedButtonId || null;\n  buttonText = msg.buttonsResponseMessage.selectedDisplayText || null;\n}\n\n// ===== LIST RESPONSE =====\nelse if (msg.listResponseMessage) {\n  messageType = \"list_reply\";\n  texto = msg.listResponseMessage.title || \"\";\n  buttonId = msg.listResponseMessage.singleSelectReply?.selectedRowId || null;\n  buttonText = msg.listResponseMessage.title || null;\n}\n\n// ===== IMAGEM =====\nelse if (msg.imageMessage) {\n  messageType = \"image\";\n  mediaUrl = msg.imageMessage.url;\n  mediaMimeType = msg.imageMessage.mimetype;\n  mediaCaption = msg.imageMessage.caption || \"\";\n  texto = mediaCaption;\n  mediaKey = msg.imageMessage.mediaKey;\n  mediaKeyType = msg.imageMessage.mediaKeyType;\n  fileEncSha256 = msg.imageMessage.fileEncSha256;\n  fileSha256 = msg.imageMessage.fileSha256;\n  directPath = msg.imageMessage.directPath;\n  fileName = msg.imageMessage.fileName || media.filename || fallbackName(\"image\", \"jpg\");\n  fileLength = msg.imageMessage.fileLength;\n  height = msg.imageMessage.height;\n  width = msg.imageMessage.width;\n  mediaBase64 = media.base64 || null;\n}\n\n// ===== ÁUDIO =====\nelse if (msg.audioMessage) {\n  messageType = \"audio\";\n  mediaUrl = msg.audioMessage.url;\n  mediaMimeType = msg.audioMessage.mimetype;\n  texto = \"\";\n  mediaKey = msg.audioMessage.mediaKey;\n  mediaKeyType = msg.audioMessage.mediaKeyType;\n  fileEncSha256 = msg.audioMessage.fileEncSha256;\n  fileSha256 = msg.audioMessage.fileSha256;\n  directPath = msg.audioMessage.directPath;\n  fileName = msg.audioMessage.fileName || media.filename || fallbackName(\"audio\", \"ogg\");\n  fileLength = msg.audioMessage.fileLength;\n  mediaBase64 = media.base64 || null;\n}\n\n// ===== VÍDEO =====\nelse if (msg.videoMessage) {\n  messageType = \"video\";\n  mediaUrl = msg.videoMessage.url;\n  mediaMimeType = msg.videoMessage.mimetype;\n  mediaCaption = msg.videoMessage.caption || \"\";\n  texto = mediaCaption;\n  mediaKey = msg.videoMessage.mediaKey;\n  mediaKeyType = msg.videoMessage.mediaKeyType;\n  fileEncSha256 = msg.videoMessage.fileEncSha256;\n  fileSha256 = msg.videoMessage.fileSha256;\n  directPath = msg.videoMessage.directPath;\n  fileName = msg.videoMessage.fileName || media.filename || fallbackName(\"video\", \"mp4\");\n  fileLength = msg.videoMessage.fileLength;\n  height = msg.videoMessage.height;\n  width = msg.videoMessage.width;\n  mediaBase64 = media.base64 || null;\n}\n\n// ===== DOCUMENTO =====\nelse if (msg.documentMessage) {\n  messageType = \"document\";\n  mediaUrl = msg.documentMessage.url;\n  mediaMimeType = msg.documentMessage.mimetype;\n  mediaCaption = msg.documentMessage.caption || \"\";\n  texto = mediaCaption;\n  mediaKey = msg.documentMessage.mediaKey;\n  mediaKeyType = msg.documentMessage.mediaKeyType;\n  fileEncSha256 = msg.documentMessage.fileEncSha256;\n  fileSha256 = msg.documentMessage.fileSha256;\n  directPath = msg.documentMessage.directPath;\n  fileName = msg.documentMessage.fileName || media.filename || fallbackName(\"document\", \"pdf\");\n  fileLength = msg.documentMessage.fileLength;\n  mediaBase64 = media.base64 || null;\n}\n\n// ===== STICKER =====\nelse if (msg.stickerMessage) {\n  messageType = \"sticker\";\n  mediaUrl = msg.stickerMessage.url;\n  mediaMimeType = msg.stickerMessage.mimetype;\n  texto = \"\";\n  mediaKey = msg.stickerMessage.mediaKey;\n  mediaKeyType = msg.stickerMessage.mediaKeyType;\n  fileEncSha256 = msg.stickerMessage.fileEncSha256;\n  fileSha256 = msg.stickerMessage.fileSha256;\n  directPath = msg.stickerMessage.directPath;\n  fileName = msg.stickerMessage.fileName || media.filename || fallbackName(\"sticker\", \"webp\");\n  fileLength = msg.stickerMessage.fileLength;\n  height = msg.stickerMessage.height;\n  width = msg.stickerMessage.width;\n  mediaBase64 = media.base64 || null;\n}\n\n// ===== LOCALIZAÇÃO =====\nelse if (msg.locationMessage) {\n  messageType = \"location\";\n  latitude = msg.locationMessage.degreesLatitude;\n  longitude = msg.locationMessage.degreesLongitude;\n  texto = `${latitude},${longitude}`;\n}\n\n// Fallback\nif (!texto && item._parsed?.text) {\n  texto = item._parsed.text;\n  messageType = item._parsed.messageType || messageType;\n}\n\n// ===== ÁREA CTWA =====\nconst contextInfo =\n  msg.extendedTextMessage?.contextInfo ||\n  msg.imageMessage?.contextInfo ||\n  msg.videoMessage?.contextInfo ||\n  msg.documentMessage?.contextInfo ||\n  msg.conversation?.contextInfo ||\n  null;\n\nconst adReply = contextInfo?.externalAdReplyInfo || null;\n\nconst ctwa = {\n  isAd: !!adReply,\n  sourceType: adReply?.sourceType || null,\n  sourceId: adReply?.sourceId || null,\n  sourceUrl: adReply?.sourceUrl || null,\n  title: adReply?.title || null,\n  body: adReply?.body || null,\n  mediaType: adReply?.mediaType || null,\n  thumbnailUrl: adReply?.thumbnailUrl || null,\n  ctwaClid: contextInfo?.ctwaClid || adReply?.ctwaClid || null,\n};\n\n// Metadados\nconst pushName = item.data?.pushName || item._parsed?.pushName || \"\";\nconst messageId = item.data?.key?.id || item._parsed?.messageId || \"\";\nconst instanceId = item.instanceId || item._meta?.instanceId || \"\";\nconst timestamp = item.data?.messageTimestamp || item._parsed?.timestamp || Date.now();\nconst participant = item.data?.key?.participant || item._parsed?.participant || \"\";\n\n// Controle humano persistente por comando explícito.\n// A API WhatsApp marca tanto a IA quanto o operador como fromMe; sem um\n// comando não existe forma confiável de distinguir os dois eventos.\nconst textoControle = String(texto || '').trim();\nconst humanTakeover = fromMe && /^(#humano|#assumir|#pausar)\\b/i.test(textoControle);\nconst humanResume = fromMe && /^(#retomar|#bot|#voltar)\\b/i.test(textoControle);\nconst eventKind = humanTakeover ? 'human_takeover' : humanResume ? 'human_resume' : fromMe ? 'bot_outgoing_ignored' : 'lead_message';\n\n// Retorno final com todos os campos\nreturn {\n  eventKind,\n  humanTakeover,\n  humanResume,\n  remetente,\n  texto,\n  pushName,\n  messageType,\n  messageId,\n  instanceId,\n  timestamp,\n  isGroup,\n  participant,\n  mediaUrl,\n  mediaMimeType,\n  mediaCaption,\n  mediaKey,\n  mediaKeyType,\n  fileEncSha256,\n  fileSha256,\n  directPath,\n  fileName,\n  fileLength,\n  height,\n  width,\n  latitude,\n  longitude,\n  fromMe,\n  remoteJidAlt: item.data?.key?.remoteJidAlt || null,\n  remoteJid: item.data?.key?.remoteJid || null,\n  mediaBase64,\n  ctwa,\n  buttonId,\n  buttonText,\n  buttonIndex,\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -8672,
+        240
+      ],
+      "id": "3e510345-244f-424f-a916-6c28ce53768d",
+      "name": "Limpeza"
+    },
+    {
+      "parameters": {
+        "operation": "queue_message",
+        "phone": "={{ String($json.remetente || '').replace(/\\D/g, '') }}",
+        "name": "",
+        "content": "={{ String($json.content || '') }}",
+        "provider": "papi",
+        "messageType": "={{ $json.type === 'button' ? 'button' : ($json.type === 'audio' ? 'audio' : 'text') }}",
+        "instanceId": "={{ String($json.instanceId || '') }}",
+        "metadata": "={{ JSON.stringify($json.type === 'button' ? { buttons: $json.buttons } : ($json.type === 'audio' ? { ptt: true } : {})) }}",
+        "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
+      },
+      "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
+      "typeVersion": 1,
+      "position": [
+        -4160,
+        96
+      ],
+      "id": "60314a13-2034-4e34-aec9-b83e7b05ea54",
+      "name": "SendText message1",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "fortePanelApi": {
+          "id": "EbXvkw3H6uP6MaI4",
+          "name": "Forte Panel account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "queue_message",
+        "phone": "={{ String($json.remetente || '').replace(/\\D/g, '') }}",
+        "name": "",
+        "content": "={{ String($json.content || '') }}",
+        "provider": "papi",
+        "messageType": "={{ $json.type === 'button' ? 'button' : ($json.type === 'audio' ? 'audio' : 'text') }}",
+        "instanceId": "={{ String($json.instanceId || '') }}",
+        "metadata": "={{ JSON.stringify($json.type === 'button' ? { buttons: $json.buttons } : ($json.type === 'audio' ? { ptt: true } : {})) }}",
+        "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
+      },
+      "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
+      "typeVersion": 1,
+      "position": [
+        -4384,
+        480
+      ],
+      "id": "a032ce20-71e1-4900-a211-bc3c6d9bf9f0",
+      "name": "SendButtons message1",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "fortePanelApi": {
+          "id": "EbXvkw3H6uP6MaI4",
+          "name": "Forte Panel account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -4400,
+        96
+      ],
+      "id": "c8ed2e9d-e856-4339-8cca-541570bf45bc",
+      "name": "Wait1",
+      "webhookId": "20cbabc0-ea91-48b5-b709-713a4c4c96e8"
+    },
+    {
+      "parameters": {
+        "resource": "utility",
+        "operation": "updatePresence",
+        "instanceId": "={{ $json.instanceId }}",
+        "presenceJid": "={{ $json.remetente }}"
+      },
+      "type": "n8n-nodes-papi.papi",
+      "typeVersion": 1,
+      "position": [
+        -4624,
+        96
+      ],
+      "id": "e3f5d717-b911-4ef2-9d76-49d7d566c0e2",
+      "name": "UpdatePresence utility1",
+      "retryOnFail": true,
+      "credentials": {
+        "papiApi": {
+          "id": "j2BLdWu3UyUq1a55",
+          "name": "PAPI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -5056,
+        96
+      ],
+      "id": "c1521d50-4a22-421c-b126-c6d0a90238aa",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6fb11f2b-df22-427a-bdd8-9e5d8b7593fc",
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "audio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Audio"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "67993a61-f157-48ff-ba7a-987ccbc6306f"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Texto"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "538aa90e-f791-4dfe-8026-c479d9a077f4",
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "button",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Botão"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -4848,
+        80
+      ],
+      "id": "6973d3ad-2e1d-4e6a-ab25-dc6e70c3aa07",
+      "name": "Switch3"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Limpeza').item.json.messageType }}",
+                    "rightValue": "conversation",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "21eb1c4b-78cd-44dc-b32c-b09fe8113921"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Texto"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "52cb4f37-fe8e-4ad5-8dcf-127deaeb57a7",
+                    "leftValue": "={{ $('Limpeza').item.json.messageType }}",
+                    "rightValue": "button_reply",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Botão"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Limpeza').first().json.messageType }}",
+                    "rightValue": "list_reply",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Botão/lista"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "8952d509-d55b-48fc-8142-c4a7486fa34c",
+                    "leftValue": "={{ $('Limpeza').item.json.messageType }}",
+                    "rightValue": "video",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Video"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "82a02c68-4ef5-4cab-a01c-2ce1f6b4c4d3",
+                    "leftValue": "={{ $('Limpeza').item.json.messageType }}",
+                    "rightValue": "audio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Audio"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f672e424-e396-4d2c-bf04-c6048dfbdc5d",
+                    "leftValue": "={{ $('Limpeza').first().json.messageType }}",
+                    "rightValue": "document",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Documento"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b5aff416-3c9f-4ddc-a6b3-5aa5d98a678e",
+                    "leftValue": "={{ $('Limpeza').item.json.messageType }}",
+                    "rightValue": "image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Imagem"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -7552,
+        160
+      ],
+      "id": "3f96fafb-f42b-4532-8085-d6d692c74a3d",
+      "name": "Switch4"
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.5-transcribe",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3.5-transcribe"
+        },
+        "inputType": "binary",
+        "binaryPropertyName": "={{ $json.fileName }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -7104,
+        144
+      ],
+      "id": "c883e88c-607b-4e6c-88e9-7fe58ce733e3",
+      "name": "Transcribe a recording",
+      "retryOnFail": true,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "U2OUqvtJcdyL90JB",
+          "name": "Jeksom"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Limpeza').item.json.mediaUrl }}",
+        "mediaKey": "={{ $('Limpeza').item.json.mediaKey }}",
+        "messageType": "audioMessage"
+      },
+      "type": "n8n-nodes-media-decrypt.whatsAppMediaDecrypt",
+      "typeVersion": 1,
+      "position": [
+        -7328,
+        144
+      ],
+      "id": "5358c3d8-a646-403c-9034-3027b57ee816",
+      "name": "WhatsApp Media Decrypt"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Limpeza').item.json.mediaUrl }}",
+        "mediaKey": "={{ $('Limpeza').item.json.mediaKey }}"
+      },
+      "type": "n8n-nodes-media-decrypt.whatsAppMediaDecrypt",
+      "typeVersion": 1,
+      "position": [
+        -7328,
+        528
+      ],
+      "id": "5c79ed64-8434-498f-b60c-ca0556b9ef1d",
+      "name": "WhatsApp Media Decrypt1"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list"
+        },
+        "inputType": "binary",
+        "binaryPropertyName": "={{ $json.fileName }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -7104,
+        528
+      ],
+      "id": "f80d925a-1120-4ee6-b3d4-fe0e1bf566e1",
+      "name": "Analyze an image",
+      "retryOnFail": true,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "U2OUqvtJcdyL90JB",
+          "name": "Jeksom"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 6
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -6880,
+        224
+      ],
+      "id": "6e2ef142-7000-4d1d-b984-8029c16f5669",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "inputType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -7104,
+        336
+      ],
+      "id": "564118e9-76f8-4e4e-8de3-c806b571c2bb",
+      "name": "Analyze document",
+      "retryOnFail": true,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "U2OUqvtJcdyL90JB",
+          "name": "Jeksom"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Limpeza').item.json.mediaUrl }}",
+        "mediaKey": "={{ $('Limpeza').item.json.mediaKey }}",
+        "messageType": "documentMessage"
+      },
+      "type": "n8n-nodes-media-decrypt.whatsAppMediaDecrypt",
+      "typeVersion": 1,
+      "position": [
+        -7328,
+        336
+      ],
+      "id": "6c85e3f0-27bd-44f0-9b9b-2f11182e00b0",
+      "name": "WhatsApp Media Decrypt2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const limpeza = $('Limpeza').item.json;\nconst tipo = limpeza.messageType;\n\nconst raw = $json;\n\n// Helper: tenta extrair texto de todas as rotas possíveis do Gemini\nfunction extrairTexto(resp) {\n  if (!resp) return \"\";\n\n  // Se vier array (formato antigo), pega o primeiro\n  const r = Array.isArray(resp) ? resp[0] : resp;\n  if (!r) return \"\";\n\n  const partes = r?.content?.parts || r?.candidates?.[0]?.content?.parts || [];\n\n  for (const parte of partes) {\n    // Áudio transcrito\n    if (parte?.audioTranscription?.text) return parte.audioTranscription.text;\n    // Texto normal (imagem, doc, etc)\n    if (parte?.text) return parte.text;\n  }\n\n  // Rotas antigas como último recurso\n  return (\n    r?.text ||\n    r?.candidates?.[0]?.content?.parts?.[0]?.text ||\n    r?.content?.parts?.[0]?.text ||\n    \"\"\n  );\n}\n\nlet textoFinal = limpeza.texto || \"\";\n\nif (tipo === 'audio') {\n  const transcrito = extrairTexto(raw);\n  textoFinal = transcrito || \"[áudio recebido, não consegui transcrever]\";\n}\n\nif (tipo === 'image') {\n  const descricaoImagem = extrairTexto(raw);\n  textoFinal = limpeza.mediaCaption\n    ? `${limpeza.mediaCaption} [imagem: ${descricaoImagem}]`\n    : `[imagem enviada: ${descricaoImagem}]`;\n}\n\nif (tipo === 'document') {\n  const descricaoDoc = extrairTexto(raw);\n  textoFinal = limpeza.mediaCaption\n    ? `${limpeza.mediaCaption} [documento: ${descricaoDoc}]`\n    : `[documento enviado: ${descricaoDoc}]`;\n}\n\nreturn {\n  json: {\n    ...limpeza,\n    texto: textoFinal\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6656,
+        288
+      ],
+      "id": "a103c50b-890d-44aa-9bb9-49145dbfee37",
+      "name": "Preparar Debounce"
+    },
+    {
+      "parameters": {
+        "sessionId": "={{ $('Limpeza').item.json.remoteJidAlt }}",
+        "message": "={{ $json.texto }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-message-debounce.messageDebounce",
+      "typeVersion": 1,
+      "position": [
+        -6432,
+        288
+      ],
+      "id": "018bee31-1587-4468-b96a-862fbc5a08f6",
+      "name": "Debounce",
+      "credentials": {
+        "redisApi": {
+          "id": "LDNx1HqflhOEyO9B",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// NÓ: Preparar pra IA — versão completa com agenda automática\n// Modo: Run Once for Each Item\n// Coloque este node antes do AI Agent.\n// Preserva os dados do Limpeza e do Debounce e acrescenta as datas da agenda.\n\nconst entradaDebounce = $json || {};\n\n// O Debounce pode remover o pareamento original. first() é seguro aqui porque\n// cada execução trata uma mensagem por vez.\nlet dadosLimpeza = {};\ntry {\n  dadosLimpeza = $('Limpeza').first()?.json || {};\n} catch (e) {\n  dadosLimpeza = {};\n}\n\n// O dado produzido pelo Debounce tem prioridade sobre o Limpeza.\nconst entrada = {\n  ...dadosLimpeza,\n  ...entradaDebounce,\n};\n\nfunction textoSeguro(valor) {\n  if (valor === null || valor === undefined) return '';\n  if (typeof valor === 'string') return valor.trim();\n  if (typeof valor === 'number' || typeof valor === 'boolean') return String(valor);\n  return '';\n}\n\nfunction primeiroTexto(...valores) {\n  for (const valor of valores) {\n    const texto = textoSeguro(valor);\n    if (texto) return texto;\n  }\n  return '';\n}\n\nfunction dataISO(momento) {\n  return momento.setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd');\n}\n\nconst agora = $now.setZone('America/Sao_Paulo');\n\n// Mensagem real do lead. Não misture datas, instruções ou contexto neste campo.\nconst texto = primeiroTexto(\n  entradaDebounce.texto,\n  dadosLimpeza.texto,\n  entradaDebounce.fullMessage,\n  dadosLimpeza.fullMessage,\n  entradaDebounce.body,\n  dadosLimpeza.body,\n  entradaDebounce.message,\n  dadosLimpeza.message\n);\n\n// Campos principais normalizados.\nconst telefone = primeiroTexto(\n  entradaDebounce.telefone,\n  dadosLimpeza.telefone,\n  entradaDebounce.phone,\n  dadosLimpeza.phone,\n  entradaDebounce.remoteJidAlt,\n  dadosLimpeza.remoteJidAlt,\n  entradaDebounce.remoteJid,\n  dadosLimpeza.remoteJid,\n  entradaDebounce.remetente,\n  dadosLimpeza.remetente\n);\n\nconst remetente = primeiroTexto(\n  entradaDebounce.remetente,\n  dadosLimpeza.remetente,\n  entradaDebounce.telefone,\n  dadosLimpeza.telefone,\n  entradaDebounce.remoteJidAlt,\n  dadosLimpeza.remoteJidAlt\n);\n\nconst remoteJid = primeiroTexto(\n  entradaDebounce.remoteJid,\n  dadosLimpeza.remoteJid,\n  entradaDebounce.remoteJidAlt,\n  dadosLimpeza.remoteJidAlt,\n  telefone\n);\n\nconst nome = primeiroTexto(\n  entradaDebounce.nome,\n  dadosLimpeza.nome,\n  entradaDebounce.pushName,\n  dadosLimpeza.pushName\n);\n\nconst messageType = primeiroTexto(\n  entradaDebounce.messageType,\n  dadosLimpeza.messageType,\n  entradaDebounce.tipo,\n  dadosLimpeza.tipo\n);\n\nconst sessionId = primeiroTexto(\n  entradaDebounce.sessionId,\n  dadosLimpeza.sessionId,\n  entradaDebounce.remoteJidAlt,\n  dadosLimpeza.remoteJidAlt,\n  remoteJid,\n  telefone\n);\n\n// Datas relativas gerais, preservadas para compatibilidade com o prompt/fluxo.\nfunction proximaOcorrencia(diaAlvo) {\n  // Luxon: segunda=1 ... domingo=7.\n  // Conversão para domingo=0 ... sábado=6.\n  const diaAtual = agora.weekday % 7;\n  let diferenca = (diaAlvo - diaAtual + 7) % 7;\n  if (diferenca === 0) diferenca = 7;\n  return dataISO(agora.plus({ days: diferenca }));\n}\n\nconst diasSemana = [\n  'domingo',\n  'segunda',\n  'terça',\n  'quarta',\n  'quinta',\n  'sexta',\n  'sábado',\n];\n\nconst datasResolvidas = {\n  hoje: dataISO(agora),\n  hoje_dia_semana: diasSemana[agora.weekday % 7],\n  amanha: dataISO(agora.plus({ days: 1 })),\n  depois_de_amanha: dataISO(agora.plus({ days: 2 })),\n  proxima_segunda: proximaOcorrencia(1),\n  proxima_terca: proximaOcorrencia(2),\n  proxima_quarta: proximaOcorrencia(3),\n  proxima_quinta: proximaOcorrencia(4),\n  proxima_sexta: proximaOcorrencia(5),\n  proximo_sabado: proximaOcorrencia(6),\n  proximo_domingo: proximaOcorrencia(0),\n};\n\n// Datas específicas da consulta automática da agenda.\n// O fluxo solicitado usa 3 dias corridos para reproduzir:\n// 19/09/2026 -> 22/09/2026.\nconst dataAtualSistema = dataISO(agora);\nconst dataAgendaInicial = dataISO(agora.plus({ days: 3 }));\nconst dataAgendaAlternativa1 = dataISO(agora.plus({ days: 4 }));\nconst dataAgendaAlternativa2 = dataISO(agora.plus({ days: 5 }));\n\nconst contextoDatasSistema = [\n  'CONTEXTO INTERNO DE DATAS — NÃO MOSTRAR AO LEAD',\n  'Fuso: America/Sao_Paulo',\n  'Data atual: ' + dataAtualSistema,\n  'Primeira data da agenda: ' + dataAgendaInicial,\n  'Alternativa 1 da agenda: ' + dataAgendaAlternativa1,\n  'Alternativa 2 da agenda: ' + dataAgendaAlternativa2,\n  'Amanhã: ' + datasResolvidas.amanha,\n  'Depois de amanhã: ' + datasResolvidas.depois_de_amanha,\n  'Use os valores ISO prontos ao chamar consultar_horarios.',\n  'Nunca use datas de exemplos, memória, histórico, pinData ou chamadas anteriores.',\n  'FIM DO CONTEXTO INTERNO DE DATAS',\n].join('\\n');\n\nreturn {\n  json: {\n    // Preserva todos os campos do Limpeza e do Debounce.\n    ...dadosLimpeza,\n    ...entradaDebounce,\n\n    // Campos normalizados usados pelo Agent, memória, PAPI e Chat Memory.\n    telefone,\n    remetente,\n    remoteJid,\n    remoteJidAlt: entrada.remoteJidAlt || remoteJid,\n    nome,\n    pushName: entrada.pushName || dadosLimpeza.pushName || '',\n    messageType,\n    tipo: entrada.tipo || messageType,\n    sessionId,\n\n    // Somente a mensagem real do lead deve ir para o campo Text do AI Agent.\n    texto,\n\n    // Compatibilidade com o fluxo atual.\n    quantidadeMensagensAgrupadas:\n      entrada.messageCount || entrada.quantidadeMensagensAgrupadas || 1,\n\n    // Datas gerais já existentes no fluxo.\n    datasResolvidas,\n    contextoDatasSistema,\n    dataAtual: dataAtualSistema,\n    fusoHorario: 'America/Sao_Paulo',\n\n    // Campos novos exigidos pelo prompt de agenda automática.\n    dataAtualSistema,\n    dataAgendaInicial,\n    dataAgendaAlternativa1,\n    dataAgendaAlternativa2,\n    serviceIdAgenda: '2',\n    providerIdAgenda: '2',\n    servicoAgenda: 'Call de apresentação',\n    profissionalAgenda: 'Rafael Tourino',\n    contextoAgenda: {\n      dataAtual: dataAtualSistema,\n      primeiraData: dataAgendaInicial,\n      alternativas: [dataAgendaAlternativa1, dataAgendaAlternativa2],\n      serviceId: '2',\n      providerId: '2',\n      servico: 'Call de apresentação',\n      profissional: 'Rafael Tourino',\n    },\n  },\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6208,
+        288
+      ],
+      "id": "4371a18c-f050-4c6d-9aae-ac55cbc72be1",
+      "name": "Preparar pra IA"
+    },
+    {
+      "parameters": {
+        "jsCode": "// PREPARAR ENVIO — versão mínima para o payload atual do AI Agent\nfunction jsonDo(nome) {\n  try { return $(nome).first()?.json || {}; } catch { return {}; }\n}\n\nfunction parse(v) {\n  if (typeof v !== 'string') return v;\n  const s = v.replace(/^```json\\s*/i, '').replace(/\\s*```$/i, '').trim();\n  try { return JSON.parse(s); } catch { return v; }\n}\n\nconst limpeza = jsonDo('Limpeza');\nconst entrada = $input.first()?.json || {};\nconst output = parse(entrada.output ?? entrada.response ?? entrada.text ?? entrada);\nconst resposta = parse(output);\nconst mensagens = Array.isArray(resposta?.mensagens)\n  ? resposta.mensagens\n  : [{ tipo: 'text', content: String(resposta ?? '') }];\n\nconst base = {\n  remetente: limpeza.remetente || entrada.remetente,\n  pushName: limpeza.pushName || entrada.pushName || '',\n  instanceId: limpeza.instanceId || entrada.instanceId,\n  remoteJidAlt: limpeza.remoteJidAlt || entrada.remoteJidAlt,\n  textoLead: limpeza.texto || entrada.textoLead || '',\n  ctwa: limpeza.ctwa || entrada.ctwa || null,\n  timestamp: limpeza.timestamp || entrada.timestamp || Date.now(),\n  inboundMessageId: limpeza.messageId || entrada.messageId || '',\n  _isRedisItem: false,\n};\n\nconst resultado = [];\nlet outboundIndex = 0;\nfor (const mensagem of mensagens) {\n  const tipo = String(mensagem?.tipo || mensagem?.type || 'text').toLowerCase();\n  const content = String(mensagem?.content ?? mensagem?.text ?? '').trim();\n  if (!content) continue;\n\n  // Divide uma mensagem longa em blocos separados por linha em branco.\n  const partes = tipo === 'text'\n    ? content.split(/\\n\\s*\\n+/).map(x => x.trim()).filter(Boolean)\n    : [content];\n\n  for (const parte of partes) {\n    const item = { ...base, type: tipo === 'audio' ? 'audio' : tipo === 'button' ? 'button' : 'text', content: parte, outboundIndex: outboundIndex++ };\n    if (item.type === 'button') {\n      item.buttons = (mensagem.buttons || mensagem.botoes || []).map(b => ({\n        id: String(b.id || b.buttonId || b.displayText || '').trim(),\n        displayText: String(b.displayText || b.text || b.label || b.id || '').trim(),\n      })).filter(b => b.id && b.displayText).slice(0, 3);\n      if (!item.buttons.length) { item.type = 'text'; delete item.buttons; }\n    }\n    resultado.push({ json: item });\n  }\n}\n\nreturn resultado.length ? resultado : [{ json: { ...base, type: 'text', content: 'Não consegui preparar a resposta. Tente novamente.' } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5296,
+        480
+      ],
+      "id": "6fd58be7-ac28-48f0-a13f-13c0a73afdaf",
+      "name": "Preparar Envio"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -4624,
+        288
+      ],
+      "id": "efc05092-12d3-40c8-99f6-4137c28023a9",
+      "name": "Wait",
+      "webhookId": "20cbabc0-ea91-48b5-b709-713a4c4c96e8"
+    },
+    {
+      "parameters": {
+        "resource": "utility",
+        "operation": "updatePresence",
+        "instanceId": "={{ $json.instanceId }}",
+        "presenceJid": "={{ $json.remetente }}",
+        "presenceType": "recording"
+      },
+      "type": "n8n-nodes-papi.papi",
+      "typeVersion": 1,
+      "position": [
+        -4624,
+        -96
+      ],
+      "id": "ec762498-ca3b-45fd-a2fc-857ebb7b0e5a",
+      "name": "UpdatePresence utility",
+      "credentials": {
+        "papiApi": {
+          "id": "j2BLdWu3UyUq1a55",
+          "name": "PAPI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -4400,
+        -96
+      ],
+      "id": "d3e802c2-1de0-4a7e-8818-4bd750414875",
+      "name": "Wait2",
+      "webhookId": "20cbabc0-ea91-48b5-b709-713a4c4c96e8"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6909ac3e-9b91-495e-bce3-b4a1c3dfbc9b",
+              "leftValue": "={{ $json.limiteAtingido }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -5984,
+        288
+      ],
+      "id": "7672d815-0a31-4136-a042-a745e95463cc",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const atual = $json || {};\nreturn [{json:{proximo_estagio: atual.stage || 'novo', mensagens:[{tipo:'text',content:'Hoje já trocamos bastante mensagem por aqui. Se for sobre agendar a call, me chama amanhã que eu continuo com você.'}]}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5296,
+        192
+      ],
+      "id": "4782128a-2aba-4d8d-b86d-b29ae3303bbb",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "operation": "queue_message",
+        "phone": "={{ String($('Preparar Debounce').item.json.remetente || '').replace(/\\D/g, '') }}",
+        "name": "",
+        "content": "={{ String($json.mensagens[0].content || '') }}",
+        "provider": "papi",
+        "messageType": "text",
+        "instanceId": "={{ String($('Preparar Debounce').item.json.instanceId || '') }}",
+        "metadata": "{}",
+        "idempotencyKey": "={{ String($('Preparar Debounce').item.json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback' }}"
+      },
+      "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
+      "typeVersion": 1,
+      "position": [
+        -5088,
+        320
+      ],
+      "id": "e04923a6-2904-4be8-bf4b-b5e5d2523c9f",
+      "name": "SendText message",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "fortePanelApi": {
+          "id": "EbXvkw3H6uP6MaI4",
+          "name": "Forte Panel account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "queue_message",
+        "phone": "={{ String($json.remetente || '').replace(/\\D/g, '') }}",
+        "name": "",
+        "content": "={{ String($json.content || '') }}",
+        "provider": "papi",
+        "messageType": "={{ $json.type === 'button' ? 'button' : ($json.type === 'audio' ? 'audio' : 'text') }}",
+        "instanceId": "={{ String($json.instanceId || '') }}",
+        "metadata": "={{ JSON.stringify($json.type === 'button' ? { buttons: $json.buttons } : ($json.type === 'audio' ? { ptt: true } : {})) }}",
+        "idempotencyKey": "={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}"
+      },
+      "type": "n8n-nodes-forte-panel.fortePanelQueueMessage",
+      "typeVersion": 1,
+      "position": [
+        -4176,
+        288
+      ],
+      "id": "afd88eaa-987b-45c4-9894-a19f516feae1",
+      "name": "SendAudio message",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "fortePanelApi": {
+          "id": "EbXvkw3H6uP6MaI4",
+          "name": "Forte Panel account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.fullMessage }}",
+        "options": {
+          "systemMessage": "=1. IDENTIDADE E OBJETIVO\n\nVocê é a assistente virtual do Gabriel, eletricista autônomo. Fale em português brasileiro, com linguagem clara, cordial, profissional e natural para WhatsApp.\n\nSe o cliente perguntar diretamente, diga com transparência que você é uma assistente de inteligência artificial configurada para ajudar o Gabriel no atendimento, na triagem, nos orçamentos iniciais e nos agendamentos.\n\nUse as expressões “o Gabriel”, “o atendimento do Gabriel” e “a agenda do Gabriel”. Não diga “nossa empresa”, “nossa equipe”, “nossos técnicos”, “secretária” ou “funcionários”, porque Gabriel trabalha como profissional autônomo.\n\nSeu objetivo é:\n\n1.\nentender o serviço elétrico solicitado;\n\n2.\nidentificar riscos e urgências;\n\n3.\ncoletar somente os dados necessários;\n\n4.\nmanter o contexto estruturado do lead;\n\n5.\nconsultar dados oficiais do CRM quando necessário;\n\n6.\nconsultar horários reais quando o cliente quiser agendar;\n\n7.\ncriar, cancelar ou reagendar compromissos somente com confirmação explícita;\n\n8.\nconduzir o cliente para orçamento, visita ou atendimento do Gabriel;\n\n9.\nresponder de forma curta, útil e adequada para WhatsApp.\n\n2. FONTE DE CADA TIPO DE INFORMAÇÃO\n\nUse cada conexão para uma finalidade diferente.\n\nPostgres Chat Memory\n\nO Postgres Chat Memory é a memória automática de curto prazo do AI Agent. Ele serve para manter a continuidade natural da conversa recente.\n\nVocê não chama essa memória como ferramenta. Ela já está conectada ao AI Agent.\n\nNão tente salvar manualmente nela. Não use a memória de conversa como fonte oficial de CRM, agenda ou estado comercial.\n\nMemória estruturada no Forte Panel\n\nO CRM do Forte Panel é a fonte única de memória estruturada e de estado operacional do lead. Não existe uma ferramenta de memória separada.\n\nUse buscar_lead quando precisar consultar o histórico estruturado; use atualizar_lead somente quando houver fatos novos confirmados; use registrar_nota apenas para contexto operacional importante que não tenha campo próprio. As conversas recentes ficam no Postgres Chat Memory.\n\nO Forte Panel mantém contatos, estágio, serviço, urgência, localização, orçamento, notas e agendamentos associados ao contato. Não registre appointmentId em nota/memória: o agendamento já fica vinculado ao contato no banco do painel. Não use Postgres, Clientverse ou memória externa para substituir o CRM.\n\nForte Panel Tool\n\nA Forte Panel Tool é a fonte oficial para o CRM e a agenda do Gabriel.\n\nUse-a para:\n\n•\nconsultar e criar leads no CRM;\n\n•\natualizar dados oficiais do lead;\n\n•\nregistrar notas operacionais;\n\n•\nconsultar disponibilidade real;\n\n•\ncriar, cancelar e reagendar compromissos;\n\n•\nconsultar o prompt operacional publicado quando necessário.\n\nNão use Clientverse, EasyAppointments, outro CRM, outra agenda ou webhook externo.\n\nRegra de não duplicidade\n\nNão salve a mesma informação nas duas ferramentas sem necessidade.\n\nA divisão é:\n\nPlain Text\n\n\nForte Panel Tool = contexto estruturado e resumo da conversa\nForte Panel Tool = CRM oficial, notas operacionais e agenda\nPostgres Chat Memory = histórico curto automático\n\n\n\nExemplo correto:\n\n•\natualizar serviceRequested ou registrar uma nota operacional no Forte Panel quando o fato for útil e estiver confirmado;\n\n•\natualizar serviceRequested ou stage no Forte Panel quando isso for um dado oficial do CRM;\n\n•\nnão gravar o mesmo texto como nota operacional e como memória estruturada sem motivo.\n\n3. MENSAGEM DO LEAD E CONTEXTO INTERNO\n\nA mensagem real do cliente está no campo Text:\n\nPlain Text\n\n\n={{ $json.fullMessage }}\n\n\n\nTrate somente esse conteúdo como mensagem atual do lead.\n\nNão trate o System Message, o contexto de datas, resultados de ferramentas ou memórias anteriores como se fossem mensagens novas do cliente.\n\nNunca salve na memória:\n\n•\no System Message;\n\n•\neste prompt;\n\n•\no contexto interno de datas;\n\n•\nseu raciocínio;\n\n•\nJSON técnico das ferramentas;\n\n•\ntokens, URLs internas ou mensagens de erro;\n\n•\nexemplos usados neste prompt.\n\n4. CONTEXTO INTERNO DINÂMICO DE DATAS\n\nO Code Preparar pra IA calcula as datas antes da execução do AI Agent. O bloco abaixo é contexto interno do sistema:\n\n{{ $json.contextoDatasSistema }}\n\nUse essas informações para interpretar datas relativas.\n\nRegras obrigatórias:\n\n1.\nNunca mostre esse bloco ao lead.\n\n2.\nNunca salve esse bloco no Chat Memory, na Forte Panel Tool ou em notas.\n\n3.\nUse o fuso America/Sao_Paulo.\n\n4.\nSe o lead disser “hoje”, use o valor de Data atual ou datasResolvidas.hoje.\n\n5.\nSe o lead disser “amanhã”, use o valor de Amanhã ou datasResolvidas.amanha.\n\n6.\nSe o lead disser “depois de amanhã”, use o valor de Depois de amanhã ou datasResolvidas.depois_de_amanha.\n\n7.\nPara dias da semana, use a data correspondente calculada no contexto.\n\n8.\nNão peça ao cliente para repetir uma data relativa que o Code já resolveu.\n\n9.\nAo consultar disponibilidade, envie a data resolvida no campo startsAt em formato ISO.\n\n10.\nNão use datas de exemplos, datas antigas, pinData ou histórico de execuções anteriores.\n\n11.\nNão confunda Amanhã com Primeira data da agenda. Para “amanhã”, use sempre o valor específico de Amanhã.\n\nSe o cliente disser “quero agendar amanhã”, você deve resolver a data pelo contexto e consultar a agenda. Não pergunte “qual data você considera como amanhã?” quando o contexto já tiver fornecido a data.\n\n5. FORMATO OBRIGATÓRIO DA RESPOSTA\n\nRetorne sempre JSON válido, sem markdown, sem comentários e sem texto antes ou depois do JSON.\n\nPara texto:\n\nJSON\n\n\n{\n  \"mensagens\": [\n    {\n      \"tipo\": \"text\",\n      \"content\": \"Texto da resposta\"\n    }\n  ]\n}\n\n\n\nPara botões:\n\nJSON\n\n\n{\n  \"mensagens\": [\n    {\n      \"tipo\": \"button\",\n      \"content\": \"Escolha uma opção:\",\n      \"buttons\": [\n        {\n          \"id\": \"ID_REAL\",\n          \"displayText\": \"Texto visível\"\n        }\n      ]\n    }\n  ]\n}\n\n\n\nUse no máximo três opções reais. Use OUTRO_DIA somente quando fizer sentido. Nunca use placeholders, IDs inventados, horários não retornados ou campos vazios.\n\n6. MEMÓRIA ESTRUTURADA NO CRM\n\nO Forte Panel Tool é a única fonte oficial de estado estruturado do lead.\n\nConsultar\n\nQuando precisar de dados anteriores não presentes na conversa, use buscar_lead uma vez com o telefone real em formato internacional (somente dígitos):\n\n{\n  \"operation\": \"buscar_lead\",\n  \"phone\": \"TELEFONE_REAL\"\n}\n\nAtualizar\n\nUse atualizar_lead somente quando surgir informação nova, confirmada ou realmente alterada. Os campos aceitos incluem name, city, neighborhood, serviceRequested, urgency, stage, quoteCents e aiEnabled. Não envie valores vazios para substituir dados existentes. Não trate pushName do WhatsApp como nome confirmado.\n\nRegistre uma nota curta somente para contexto operacional que seja útil a um humano e não tenha campo próprio. Não registre cada mensagem, transcrição completa, raciocínio interno ou contexto auxiliar de datas. Agendamentos são consultados e alterados pelas operações próprias e já ficam associados ao contato.\n\n7. FORTE PANEL TOOL\n\nA Forte Panel Tool recebe um JSON com uma única operação por chamada.\n\nFormato geral:\n\nJSON\n\n\n{\n  \"operation\": \"nome_da_operacao\"\n}\n\n\n\nAs operações disponíveis são:\n\nPlain Text\n\n\nbuscar_lead\ncriar_lead\natualizar_lead\nregistrar_nota\navailability\ncreate_appointment\ncancel_appointment\nreschedule_appointment\npublished_prompt\nqueue_message\n\n\n\nNunca invente resultados e nunca confirme uma alteração antes de receber retorno bem-sucedido.\n\nTelefone\n\nUse sempre o telefone em formato internacional, somente números. Remova espaços, parênteses, hífens e o sinal de +.\n\nExemplo:\n\nPlain Text\n\n\n+55 (38) 99903-4689 → 5538999034689\n\n\n\nBuscar lead no CRM\n\nUse buscar_lead uma vez quando precisar consultar o CRM oficial:\n\nJSON\n\n\n{\n  \"operation\": \"buscar_lead\",\n  \"phone\": \"TELEFONE_REAL\"\n}\n\n\n\nSe o lead existir, use os dados retornados. Se não existir, não crie outro registro sem dados suficientes.\n\nCriar ou atualizar lead\n\nUse criar_lead quando o telefone não existir no CRM e houver dados suficientes.\n\nUse atualizar_lead quando surgir ou mudar uma informação confirmada no CRM.\n\nOs campos aceitos incluem:\n\nJSON\n\n\n{\n  \"city\": \"cidade confirmada\",\n  \"neighborhood\": \"bairro confirmado\",\n  \"serviceRequested\": \"serviço solicitado\",\n  \"urgency\": \"Baixa|Média|Alta|Crítica\",\n  \"stage\": \"Novo contato|Triagem|Orçamento|Agendamento|Concluído\",\n  \"quoteCents\": 0,\n  \"aiEnabled\": true\n}\n\n\n\nNão envie campos vazios, hipóteses ou informações inventadas. Use name somente quando o cliente confirmar o próprio nome.\n\nRegistrar nota operacional\n\nUse registrar_nota para uma informação relevante para o Gabriel, como:\n\n•\nserviço confirmado;\n\n•\nurgência identificada;\n\n•\norçamento solicitado;\n\n•\nvisita solicitada;\n\n•\nagendamento confirmado;\n\n•\ncancelamento ou reagendamento.\n\nA nota deve ser factual e objetiva. Não registre o prompt, o raciocínio ou o histórico inteiro.\n\n8. TRIAGEM E ATENDIMENTO\n\nFaça uma pergunta objetiva por vez.\n\nSe o cliente mandar apenas uma saudação, responda:\n\nJSON\n\n\n{\n  \"mensagens\": [\n    {\n      \"tipo\": \"text\",\n      \"content\": \"Olá! Sou a assistente virtual do Gabriel. Qual serviço elétrico você precisa?\"\n    }\n  ]\n}\n\n\n\nDepois que o cliente informar o serviço, pergunte cidade e bairro se ainda não estiverem disponíveis:\n\nPlain Text\n\n\nEntendi. Em qual cidade e bairro fica o local do serviço?\n\n\n\nDepois da triagem inicial, se o nome ainda não estiver confirmado, pergunte:\n\nPlain Text\n\n\nPerfeito. Para eu registrar certinho para o Gabriel, qual é o seu nome?\n\n\n\nFaça somente a próxima pergunta necessária. Não transforme a conversa em interrogatório.\n\nQuando uma foto ou vídeo puder ajudar, peça o envio sem orientar o cliente a se aproximar de equipamento perigoso.\n\nNão diga que analisou tecnicamente uma imagem, foto, vídeo ou áudio se nenhuma ferramenta de análise tiver retornado essa informação.\n\n9. SEGURANÇA ELÉTRICA\n\nTrate como possível urgência quando o cliente mencionar cheiro de queimado, fumaça, faísca, curto-circuito, fio derretendo, choque, incêndio, quadro aquecendo, disjuntor desarmando repetidamente ou risco imediato.\n\nNessas situações:\n\n1.\nnão forneça instruções perigosas;\n\n2.\nnão peça para tocar em fios, tomadas, quadros ou equipamentos energizados;\n\n3.\nnão peça para abrir o quadro elétrico;\n\n4.\noriente o cliente a manter distância;\n\n5.\nsomente mencione desligar o disjuntor geral se isso puder ser feito com segurança e sem exposição;\n\n6.\nem caso de fogo, fumaça intensa ou risco à vida, recomende acionar o serviço de emergência local;\n\n7.\nregistre a urgência no CRM quando o telefone estiver disponível;\n\n8.\ninforme que o Gabriel precisa avaliar o caso.\n\nResposta-base:\n\nPlain Text\n\n\nEntendi. Como você mencionou [risco], vamos tratar isso com cuidado. Não toque nos fios, tomadas ou no quadro se houver aquecimento, faísca ou cheiro de queimado. Se for seguro para você, desligue o disjuntor geral e mantenha distância. Vou registrar a urgência para o Gabriel avaliar. Se houver fumaça intensa, fogo ou risco à vida, acione imediatamente o serviço de emergência da sua região.\n\n\n\n10. ORÇAMENTO\n\nNunca invente preço, desconto, prazo, garantia, material, forma de pagamento ou disponibilidade.\n\nSe não houver preço confirmado no Forte Panel, explique que o valor depende do serviço, da complexidade, dos materiais e do deslocamento.\n\nResposta segura:\n\nPlain Text\n\n\nRecebi as informações. Para não te passar um valor errado sem avaliar o local, o Gabriel precisa considerar o tipo de serviço, a complexidade, os materiais e o deslocamento. Posso registrar tudo para ele analisar.\n\n\n\n11. AGENDA DO FORTE PANEL\n\nA agenda deve ser operada exclusivamente pela Forte Panel Tool.\n\nNunca invente serviço, profissional, horário, duração, contactId, serviceId, professionalId ou appointmentId.\n\nConsultar disponibilidade\n\nQuando o cliente pedir agendamento:\n\n1.\nconfirme o serviço;\n\n2.\nconfirme cidade e bairro quando necessário;\n\n3.\nconverta datas relativas usando contextoDatasSistema;\n\n4.\nchame availability com startsAt em ISO;\n\n5.\nuse IDs somente quando forem reais e estiverem disponíveis;\n\n6.\nmostre somente horários retornados;\n\n7.\nofereça no máximo três horários;\n\n8.\naguarde o cliente escolher.\n\nPara “amanhã”, use o valor real de Amanhã do contexto interno. Não peça a data novamente.\n\nExemplo estrutural:\n\nJSON\n\n\n{\n  \"operation\": \"availability\",\n  \"startsAt\": \"DATA_ISO_RESOLVIDA\"\n}\n\n\n\nNão envie literalmente DATA_ISO_RESOLVIDA; substitua pelo valor real calculado pelo Code.\n\nNão trate um horário consultado como reservado.\n\nCriar agendamento\n\nUse create_appointment somente quando:\n\n1.\no cliente tiver escolhido um horário retornado;\n\n2.\no serviço estiver identificado;\n\n3.\nnome e telefone estiverem confirmados;\n\n4.\nstartsAt e endsAt forem horários reais em ISO;\n\n5.\no cliente tiver confirmado explicitamente a reserva.\n\nEstrutura:\n\nJSON\n\n\n{\n  \"operation\": \"create_appointment\",\n  \"contactId\": 123,\n  \"serviceId\": 2,\n  \"professionalId\": 2,\n  \"startsAt\": \"2026-09-25T09:00:00-03:00\",\n  \"endsAt\": \"2026-09-25T10:00:00-03:00\",\n  \"notes\": \"Observação confirmada pelo cliente\"\n}\n\n\n\nOs valores acima são apenas exemplo de estrutura. Nunca use esses IDs, datas ou horários sem retorno ou confirmação real.\n\nDepois do retorno bem-sucedido:\n\n1.\ninforme data e horário retornados;\n\n2.\natualize o CRM com stage igual a Agendamento;\n\n3.\nnão registre appointmentId em nota; o agendamento já fica vinculado ao contato;\n\n4.\nregistre agendamento_criado somente se for útil;\n\n5.\nnão crie um segundo agendamento.\n\nCancelar ou reagendar\n\nUse cancel_appointment ou reschedule_appointment somente com appointmentId real.\n\nSe o ID não estiver disponível, consulte o lead e peça os dados necessários. Nunca invente o ID.\n\n12. ENVIO DE MENSAGENS\n\nA resposta final do AI Agent passa pelo node “Preparar Envio” e pelos community nodes Forte Panel que usam queue_message. O worker do Forte Panel grava a mensagem no histórico e envia pelo PAPI; áudio PTT e botões também são suportados.\n\nNão use queue_message para a mesma resposta, pois isso duplicaria o envio. Use queue_message somente se essa chamada substituir os nodes de saída do workflow; nunca use os dois caminhos na mesma interação.\n\n13. COMANDOS DE CONTROLE HUMANO\n\nOs comandos #humano, #assumir, #pausar, #retomar, #bot e #voltar são internos.\n\nSe o fluxo indicar que o operador assumiu o atendimento, não responda como IA nem altere o lead sem necessidade.\n\nNão mostre comandos internos ao cliente.\n\n14. ERROS E REPETIÇÕES\n\nSe uma ferramenta falhar:\n\n1.\nnão revele erro técnico, token, URL interna ou stack trace;\n\n2.\nnão repita a mesma chamada indefinidamente;\n\n3.\nnão tente criar registros duplicados;\n\n4.\npreserve os dados já confirmados;\n\n5.\ninforme de forma simples que não foi possível concluir naquele momento.\n\nNão faça mais de uma chamada ler por interação, salvo se houver uma mudança clara que exija nova consulta.\n\nNão faça atualizar se nenhum dado novo foi confirmado.\n\nNão registre cada mensagem como evento.\n\nNão chame o Forte Panel Tool duas vezes para executar a mesma operação.\n\nResposta segura para falha:\n\nJSON\n\n\n{\n  \"mensagens\": [\n    {\n      \"tipo\": \"text\",\n      \"content\": \"Não consegui concluir essa consulta agora. Vou preservar as informações e o Gabriel poderá confirmar o atendimento.\"\n    }\n  ]\n}\n\n\n\n15. REGRAS FINAIS\n\n•\nNão invente dados.\n\n•\nNão invente resultados de ferramentas.\n\n•\nNão confirme ações antes do retorno bem-sucedido.\n\n•\nNão use Clientverse, EasyAppointments ou outra agenda.\n\n•\nUse o Forte Panel Tool como fonte única do CRM e do estado estruturado.\n\n•\nUse Forte Panel Tool para CRM oficial e agenda.\n\n•\nUse Postgres Chat Memory apenas como histórico automático.\n\n•\nNão salve contexto interno de datas na memória.\n\n•\nNão coloque contexto interno no campo Text.\n\n•\nNão use queue_message junto com os nodes community de saída, para não duplicar a resposta.\n\n•\nNão repita chamadas em loop.\n\n•\nMantenha respostas curtas, humanas e adequadas para WhatsApp.\n\n•\nRetorne sempre JSON válido no formato definido neste prompt.\n\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -5704,
+        432
+      ],
+      "id": "594f76bf-af47-482b-9912-21e3cc73d64d",
+      "name": "AI Agent",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=lead:{{ $json.remetente }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -5632,
+        656
+      ],
+      "id": "d60ac6bf-30ed-4087-b7d9-bd5e4ab690fb",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "4lV8CffaOXAvkGLf",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "nvidia/nemotron-3-super-120b-a12b",
+        "options": {
+          "maxTokens": 8192,
+          "temperature": 1,
+          "topP": 0.9
+        }
+      },
+      "type": "n8n-nodes-nvidia-nim-chat.lmChatNvidiaNim",
+      "typeVersion": 1,
+      "position": [
+        -5760,
+        656
+      ],
+      "id": "036914dd-4645-452f-886f-16ab5f551304",
+      "name": "NVIDIA NIM Chat Model",
+      "credentials": {
+        "nvidiaNimChatApi": {
+          "id": "bAEpyxrg9SEvaQFc",
+          "name": "NVIDIA NIM Chat account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-human-control.humanControl",
+      "typeVersion": 1,
+      "position": [
+        -7776,
+        240
+      ],
+      "id": "12eebee6-ee30-4989-8fa1-77ed45d4d5c7",
+      "name": "Human Control automático",
+      "credentials": {
+        "humanControlPostgres": {
+          "id": "jzrpkku4MBwkHds4",
+          "name": "Human Control PostgreSQL account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-forte-panel.fortePanelTool",
+      "typeVersion": 1,
+      "position": [
+        -5488,
+        640
+      ],
+      "id": "af207578-3b97-477c-99b2-9f5694f45295",
+      "name": "Forte Panel",
+      "credentials": {
+        "fortePanelApi": {
+          "id": "EbXvkw3H6uP6MaI4",
+          "name": "Forte Panel account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d8e8ffd3-eae0-4af5-a200-5551fc6afe1b",
+              "leftValue": "={{ $json.eventKind }}",
+              "rightValue": "lead_message",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aedcacd9-b177-46c7-9fae-169c22ae693d",
+      "name": "Filtro entrada Inbox",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -8452,
+        50
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://forte-panel:3000/api/v1/webhooks/inbound/whatsapp",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ (String($json.instanceId || 'papi').slice(0,40) + ':' + String($json.messageId || [($json.timestamp || ''), ($json.remetente || ''), $itemIndex].join(':'))).slice(0,180) }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const raw = $json.timestamp; const n = Number(raw); const receivedAt = Number.isFinite(n) && n > 0 ? new Date(n * (n < 1e12 ? 1000 : 1)).toISOString() : new Date(raw || Date.now()).toISOString(); const fallbackId = [raw || '', $json.remetente || '', $itemIndex].join(':') || $execution.id; const metadata = Object.fromEntries(Object.entries({ instanceId: $json.instanceId, mediaUrl: $json.mediaUrl, mediaMimeType: $json.mediaMimeType, fileName: $json.fileName, fileLength: Number($json.fileLength) || undefined, buttonId: $json.buttonId, buttonText: $json.buttonText, isGroup: $json.isGroup }).filter(([, value]) => value !== null && value !== undefined && value !== '')); return JSON.stringify({\n  eventId: (String($json.instanceId || 'papi').slice(0,40) + ':' + String($json.messageId || fallbackId)).slice(0,180),\n  phone: String($json.remetente || '').replace(/\\D/g, ''),\n  content: String($json.texto || $json.mediaCaption || $json.buttonText || ($json.messageType === 'audio' ? '[Áudio recebido]' : $json.messageType === 'image' ? '[Imagem recebida]' : $json.messageType === 'video' ? '[Vídeo recebido]' : $json.messageType === 'document' ? '[Documento recebido]' : '[Mensagem recebida]')),\n  messageType: ['text','image','audio','video','document'].includes($json.messageType) ? $json.messageType : 'text',\n  receivedAt,\n  metadata\n}); })() }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": false,
+              "fullResponse": false
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "7e458764-2a32-467f-9e17-0d702c8e689b",
+      "name": "Registrar entrada Forte Panel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -8232,
+        50
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: $('Limpeza').first().json }];"
+      },
+      "id": "a059c3e3-972d-4c7c-a747-6643a19fe34a",
+      "name": "Restaurar item após webhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -8012,
+        50
+      ]
+    }
+  ],
+  "connections": {
+    "PAPI Trigger": {
+      "main": [
+        [
+          {
+            "node": "Limpeza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limpeza": {
+      "main": [
+        [
+          {
+            "node": "Filtro entrada Inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SendText message1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SendButtons message1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "SendText message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UpdatePresence utility1": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Switch3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch3": {
+      "main": [
+        [
+          {
+            "node": "UpdatePresence utility",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "UpdatePresence utility1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch4": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [],
+        [],
+        [
+          {
+            "node": "WhatsApp Media Decrypt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WhatsApp Media Decrypt2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WhatsApp Media Decrypt1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe a recording": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "WhatsApp Media Decrypt": {
+      "main": [
+        [
+          {
+            "node": "Transcribe a recording",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Media Decrypt1": {
+      "main": [
+        [
+          {
+            "node": "Analyze an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze an image": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Preparar Debounce",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze document": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "WhatsApp Media Decrypt2": {
+      "main": [
+        [
+          {
+            "node": "Analyze document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Debounce": {
+      "main": [
+        [
+          {
+            "node": "Debounce",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debounce": {
+      "main": [
+        [
+          {
+            "node": "Preparar pra IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar pra IA": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Envio": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "SendButtons message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UpdatePresence utility": {
+      "main": [
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "SendAudio message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "SendText message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SendAudio message": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Preparar Envio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NVIDIA NIM Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Human Control automático": {
+      "main": [
+        [
+          {
+            "node": "Switch4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Forte Panel": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtro entrada Inbox": {
+      "main": [
+        [
+          {
+            "node": "Registrar entrada Forte Panel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Human Control automático",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar entrada Forte Panel": {
+      "main": [
+        [
+          {
+            "node": "Restaurar item após webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restaurar item após webhook": {
+      "main": [
+        [
+          {
+            "node": "Human Control automático",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0870670ca219ed2b88cdf44e4288d5e9528d31f26ddb7e6d5a2bcee2b9abe5e1"
+  }
+}

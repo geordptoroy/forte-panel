@@ -8,38 +8,31 @@ const outputPath = process.argv[3] ?? path.resolve('infra/n8n/forte-panel-workfl
 const workflow = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
 const findNode = (name) => workflow.nodes.find((node) => node.name === name);
 const id = () => crypto.randomUUID();
-const toHttpNode = (node, { bodyExpression, idemExpression }) => {
-  node.type = 'n8n-nodes-base.httpRequest';
-  node.typeVersion = 4.2;
+const toCommunityQueueNode = (node, { phoneExpression, contentExpression, messageTypeExpression, instanceIdExpression, metadataExpression, idemExpression, credentials }) => {
+  node.type = 'n8n-nodes-forte-panel.fortePanelQueueMessage';
+  node.typeVersion = 1;
   node.parameters = {
-    method: 'POST',
-    url: 'http://forte-panel:3000/api/v1/messages',
-    authentication: 'genericCredentialType',
-    genericAuthType: 'httpBearerAuth',
-    sendHeaders: true,
-    headerParameters: {
-      parameters: [{ name: 'Idempotency-Key', value: idemExpression }],
-    },
-    sendBody: true,
-    contentType: 'json',
-    specifyBody: 'json',
-    jsonBody: bodyExpression,
-    options: {
-      response: { response: { responseFormat: 'json', neverError: false, fullResponse: false } },
-      timeout: 15000,
-    },
+    operation: 'queue_message',
+    phone: phoneExpression,
+    name: '',
+    content: contentExpression,
+    provider: 'papi',
+    messageType: messageTypeExpression,
+    instanceId: instanceIdExpression,
+    metadata: metadataExpression,
+    idempotencyKey: idemExpression,
   };
   node.retryOnFail = true;
   node.maxTries = 3;
   node.waitBetweenTries = 1000;
-  delete node.credentials;
+  node.credentials = credentials;
 };
 
 const legacyMemory = findNode('Lead Memory Tool');
-if (!legacyMemory) throw new Error('Node Lead Memory Tool não encontrado; cópia do workflow inesperada.');
 const panelTool = findNode('Forte Panel');
 if (!panelTool) throw new Error('Node Forte Panel não encontrado no workflow exportado.');
 
+if (legacyMemory) {
 // The old memory tool had its own private Postgres subworkflow. The Panel is now the single source of CRM state.
 workflow.nodes = workflow.nodes.filter((node) => node.name !== 'Lead Memory Tool');
 delete workflow.connections['Lead Memory Tool'];
@@ -71,6 +64,13 @@ prompt = prompt.replace(/salvar “o cliente informou que precisa trocar uma tom
 prompt = prompt.replace(/Lead Memory Tool/g, 'Forte Panel Tool');
 if (/Lead Memory Tool/.test(prompt)) throw new Error('Ainda restaram referências à Lead Memory Tool no prompt.');
 agent.parameters.options.systemMessage = prompt;
+}
+
+const agentNode = findNode('AI Agent');
+if (!agentNode) throw new Error('Node AI Agent não encontrado no workflow exportado.');
+agentNode.parameters.options.systemMessage = agentNode.parameters.options.systemMessage
+  .replace(/nodes HTTP que chamam POST \/api\/v1\/messages/g, 'community nodes Forte Panel que usam queue_message')
+  .replace(/nodes HTTP de saída/g, 'nodes community de saída');
 
 const cleanup = findNode('Limpeza');
 const sendPreparation = findNode('Preparar Envio');
@@ -142,6 +142,9 @@ const restoreNode = {
   typeVersion: 2,
   position: [cleanupPosition[0] + 660, cleanupPosition[1] - 190],
 };
+const generatedNames = [filterNode.name, inboundNode.name, restoreNode.name];
+workflow.nodes = workflow.nodes.filter((node) => !generatedNames.includes(node.name));
+for (const generatedName of generatedNames) delete workflow.connections[generatedName];
 workflow.nodes.push(filterNode, inboundNode, restoreNode);
 const humanControl = 'Human Control automático';
 if (!findNode(humanControl)) throw new Error('Node Human Control automático não encontrado.');
@@ -152,12 +155,20 @@ workflow.connections[filterNode.name] = {
 workflow.connections[inboundNode.name] = { main: [[{ node: restoreNode.name, type: 'main', index: 0 }]] };
 workflow.connections[restoreNode.name] = { main: [[{ node: humanControl, type: 'main', index: 0 }]] };
 
-const outgoingExpression = `={{ JSON.stringify({\n  phone: String($json.remetente || '').replace(/\\D/g, ''),\n  content: String($json.content || ''),\n  provider: 'papi',\n  senderType: 'ai',\n  messageType: $json.type === 'button' ? 'button' : ($json.type === 'audio' ? 'audio' : 'text'),\n  instanceId: String($json.instanceId || ''),\n  metadata: $json.type === 'button' ? { buttons: $json.buttons } : ($json.type === 'audio' ? { ptt: true } : {})\n}) }}`;
+const panelCredentials = panelTool.credentials;
+const outgoingNodeConfig = {
+  phoneExpression: `={{ String($json.remetente || '').replace(/\\D/g, '') }}`,
+  contentExpression: `={{ String($json.content || '') }}`,
+  messageTypeExpression: `={{ $json.type === 'button' ? 'button' : ($json.type === 'audio' ? 'audio' : 'text') }}`,
+  instanceIdExpression: `={{ String($json.instanceId || '') }}`,
+  metadataExpression: `={{ JSON.stringify($json.type === 'button' ? { buttons: $json.buttons } : ($json.type === 'audio' ? { ptt: true } : {})) }}`,
+  credentials: panelCredentials,
+};
 const loopKey = `={{ String($json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':out:' + String($json.outboundIndex || 0) }}`;
 for (const name of ['SendText message1', 'SendAudio message', 'SendButtons message1']) {
   const node = findNode(name);
   if (!node) throw new Error(`Node ${name} não encontrado.`);
-  toHttpNode(node, { bodyExpression: outgoingExpression, idemExpression: loopKey });
+  toCommunityQueueNode(node, { ...outgoingNodeConfig, idemExpression: loopKey });
 }
 const prepareCode = sendPreparation.parameters.jsCode;
 if (!prepareCode.includes('const resultado = [];')) throw new Error('Código Preparar Envio mudou; adaptação cancelada.');
@@ -165,17 +176,26 @@ sendPreparation.parameters.jsCode = prepareCode
   .replace('slice(0, 4)', 'slice(0, 3)')
   .replace("  timestamp: limpeza.timestamp || entrada.timestamp || Date.now(),", "  timestamp: limpeza.timestamp || entrada.timestamp || Date.now(),\n  inboundMessageId: limpeza.messageId || entrada.messageId || '',")
   .replace("const resultado = [];", "const resultado = [];\nlet outboundIndex = 0;")
-  .replace("const item = { ...base, type: tipo === 'audio' ? 'audio' : tipo === 'button' ? 'button' : 'text', content: parte };", "const item = { ...base, type: tipo === 'audio' ? 'audio' : tipo === 'button' ? 'button' : 'text', content: parte, outboundIndex: outboundIndex++ };");
+  .replace("const item = { ...base, type: tipo === 'audio' ? 'audio' : tipo === 'button' ? 'button' : 'text', content: parte };", "const item = { ...base, type: tipo === 'audio' ? 'audio' : tipo === 'button' ? 'button' : 'text', content: parte, outboundIndex: outboundIndex++ };")
+  .replace(/\n\s*inboundMessageId: limpeza\.messageId \|\| entrada\.messageId \|\| '',\n\s*inboundMessageId: limpeza\.messageId \|\| entrada\.messageId \|\| '',/g, "\n  inboundMessageId: limpeza.messageId || entrada.messageId || '',")
+  .replace(/\nlet outboundIndex = 0;\nlet outboundIndex = 0;/g, '\nlet outboundIndex = 0;');
 
 const fallback = findNode('SendText message');
 if (!fallback) throw new Error('Node SendText message (fallback) não encontrado.');
-const fallbackBody = `={{ JSON.stringify({\n  phone: String($('Preparar Debounce').item.json.remetente || '').replace(/\\D/g, ''),\n  content: String($json.mensagens[0].content || ''),\n  provider: 'papi',\n  senderType: 'ai',\n  messageType: 'text',\n  instanceId: String($('Preparar Debounce').item.json.instanceId || '')\n}) }}`;
 const fallbackKey = `={{ String($('Preparar Debounce').item.json.instanceId || 'papi').slice(0,40) + ':' + String($('Limpeza').first().json.messageId || $execution.id).slice(0,100) + ':fallback' }}`;
-toHttpNode(fallback, { bodyExpression: fallbackBody, idemExpression: fallbackKey });
+toCommunityQueueNode(fallback, {
+  phoneExpression: `={{ String($('Preparar Debounce').item.json.remetente || '').replace(/\\D/g, '') }}`,
+  contentExpression: `={{ String($json.mensagens[0].content || '') }}`,
+  messageTypeExpression: 'text',
+  instanceIdExpression: `={{ String($('Preparar Debounce').item.json.instanceId || '') }}`,
+  metadataExpression: '{}',
+  idemExpression: fallbackKey,
+  credentials: panelCredentials,
+});
 
 // The existing Forte Panel source node remains connected to the AI Agent; only the legacy tool link is removed above.
 
 const dir = path.dirname(outputPath);
 fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(outputPath, `${JSON.stringify(workflow, null, 2)}\n`);
-console.log(JSON.stringify({ outputPath, nodeCount: workflow.nodes.length, legacyMemoryRemoved: true, fortePanelToolKept: true, inboundApiAdded: true, outboundPapiNodesRoutedThroughPanel: ['SendText message', 'SendText message1', 'SendAudio message', 'SendButtons message1'] }, null, 2));
+console.log(JSON.stringify({ outputPath, nodeCount: workflow.nodes.length, legacyMemoryRemoved: true, fortePanelToolKept: true, inboundApiAdded: true, outboundCommunityNodes: ['SendText message', 'SendText message1', 'SendAudio message', 'SendButtons message1'] }, null, 2));

@@ -21,6 +21,25 @@ A tool oferece estas ações:
 
 O node está marcado com `usableAsTool: true`, portanto aparece entre as ferramentas disponíveis do AI Agent quando instalado.
 
+## Nodes determinísticos por função
+
+Além do **Forte Panel Tool**, o pacote registra um node separado para cada operação. Eles recebem valores fixos ou expressões n8n e são destinados a fluxos determinísticos que não usam um AI Agent:
+
+| Node | Operação |
+|---|---|
+| Forte Panel - Buscar Lead | `buscar_lead` |
+| Forte Panel - Criar Lead | `criar_lead` |
+| Forte Panel - Atualizar Lead | `atualizar_lead` |
+| Forte Panel - Registrar Nota | `registrar_nota` |
+| Forte Panel - Consultar Disponibilidade | `availability` |
+| Forte Panel - Criar Agendamento | `create_appointment` |
+| Forte Panel - Cancelar Agendamento | `cancel_appointment` |
+| Forte Panel - Reagendar | `reschedule_appointment` |
+| Forte Panel - Prompt Publicado | `published_prompt` |
+| Forte Panel - Enfileirar Mensagem | `queue_message` |
+
+O node **Forte Panel Tool** continua sendo o node próprio para conectar ao conector `Tools` do AI Agent. Os nodes determinísticos não usam `$fromAI()` e não substituem nem duplicam o Tool no agente.
+
 ## Instalação local
 
 Dentro do pacote:
