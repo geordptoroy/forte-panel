@@ -27,6 +27,8 @@ import {
   getAuditLogForContact,
   getDashboardSnapshot,
   getOnboardingProfile,
+  getNativeAgentConfig,
+  saveNativeAgentConfig,
   listContactNotes,
   addContactNote,
   getContactById,
@@ -70,6 +72,7 @@ import {
   type WorkspaceMemberRole,
 } from "./workspace";
 import { getProfessionalPortalSnapshot, transitionAppointment, professionalCanExecuteService } from "./agenda";
+import { listLLMModels } from "./_core/llm";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
 
@@ -467,6 +470,40 @@ export const appRouter = router({
       }),
       publish: z.boolean().default(false),
     })).mutation(({ input }) => saveOnboardingProfile(input.profile, input.publish)),
+  }),
+
+  agent: router({
+    config: protectedProcedure.query(async () => {
+      const config = await getNativeAgentConfig();
+      return {
+        ...config,
+        credentials: {
+          llmConfigured: Boolean(ENV.forgeApiKey),
+          llmSource: "Variáveis do ambiente do servidor",
+          papiConfigured: Boolean(process.env.PAPI_BASE_URL && process.env.PAPI_API_KEY),
+          papiSource: "Variáveis do ambiente do servidor",
+        },
+      };
+    }),
+    save: requireAdministrator.input(z.object({
+      enabled: z.boolean(),
+      model: z.string().trim().min(1).max(120),
+      systemPrompt: z.string().max(30000),
+      maxSteps: z.number().int().min(1).max(8),
+    })).mutation(async ({ input, ctx }) => {
+      const result = await saveNativeAgentConfig(input);
+      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "native_agent_config_updated", summary: `Agente nativo ${result.enabled ? "ativado" : "pausado"}; modelo ${result.model}` });
+      return result;
+    }),
+    models: protectedProcedure.query(async () => {
+      if (!ENV.forgeApiKey) return { data: [], configured: false };
+      try {
+        const response = await listLLMModels();
+        return { data: response.data, configured: true };
+      } catch {
+        return { data: [], configured: false };
+      }
+    }),
   }),
 
   billing: router({

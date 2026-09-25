@@ -30,6 +30,7 @@ export type Message = {
   content: MessageContent | MessageContent[];
   name?: string;
   tool_call_id?: string;
+  tool_calls?: ToolCall[];
 };
 
 export type Tool = {
@@ -140,7 +141,7 @@ const normalizeContentPart = (
 };
 
 const normalizeMessage = (message: Message) => {
-  const { role, name, tool_call_id } = message;
+  const { role, name, tool_call_id, tool_calls } = message;
 
   if (role === "tool" || role === "function") {
     const content = ensureArray(message.content)
@@ -151,6 +152,7 @@ const normalizeMessage = (message: Message) => {
       role,
       name,
       tool_call_id,
+      tool_calls,
       content,
     };
   }
@@ -162,6 +164,7 @@ const normalizeMessage = (message: Message) => {
     return {
       role,
       name,
+      tool_calls,
       content: contentParts[0].text,
     };
   }
@@ -169,6 +172,7 @@ const normalizeMessage = (message: Message) => {
   return {
     role,
     name,
+    tool_calls,
     content: contentParts,
   };
 };

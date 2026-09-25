@@ -220,7 +220,7 @@ export const events = [
 
 export const integrations: Array<{ name: string; key: string; description: string; status: "connected" | "pending" | "disconnected"; detail: string }> = [
   { name: "PAPI / Evolution", key: "papi", description: "Mensagens de WhatsApp e mídia", status: "disconnected", detail: "Configure PAPI_BASE_URL e o segredo do webhook." },
-  { name: "n8n Agent", key: "n8n", description: "Automação e resposta da IA", status: "connected", detail: "Workflow de atendimento disponível para eventos demo." },
+  { name: "Agente nativo Forte Panel", key: "agent", description: "Resposta, agenda e controle do atendimento", status: "connected", detail: "Executa ferramentas do CRM e envia pelo provedor WhatsApp configurado." },
   { name: "CRM Forte Panel", key: "crm", description: "Contatos, clientes, notas e funil próprios", status: "connected", detail: "Fonte de verdade nativa do produto." },
   { name: "Agenda Forte Panel", key: "agenda", description: "Disponibilidade e agendamentos próprios", status: "connected", detail: "Módulo nativo em construção." },
 ] as const;

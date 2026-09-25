@@ -35,7 +35,10 @@ const emptyProfile: Profile = {
 
 export default function OnboardingPage() {
   const profileQuery = trpc.onboarding.profile.useQuery();
+  const agentQuery = trpc.agent.config.useQuery();
+  const modelsQuery = trpc.agent.models.useQuery();
   const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [agentConfig, setAgentConfig] = useState({ enabled: true, model: "gpt-5-mini", systemPrompt: "", maxSteps: 6 });
   const [published, setPublished] = useState(false);
   const [savedVersion, setSavedVersion] = useState(0);
   const saveMutation = trpc.onboarding.save.useMutation({
@@ -44,6 +47,7 @@ export default function OnboardingPage() {
       setSavedVersion(result.version);
     },
   });
+  const saveAgentMutation = trpc.agent.save.useMutation();
 
   useEffect(() => {
     if (profileQuery.data) {
@@ -53,6 +57,10 @@ export default function OnboardingPage() {
     }
   }, [profileQuery.data]);
 
+  useEffect(() => {
+    if (agentQuery.data) setAgentConfig({ enabled: agentQuery.data.enabled, model: agentQuery.data.model, systemPrompt: agentQuery.data.systemPrompt, maxSteps: agentQuery.data.maxSteps });
+  }, [agentQuery.data]);
+
   const update = (key: keyof Profile, value: string) => setProfile((current) => ({ ...current, [key]: value }));
   const field = (key: keyof Profile, label: string, placeholder: string, multiline = false) => (
     <div className={`form-field ${multiline ? "full" : ""}`}>
@@ -61,7 +69,21 @@ export default function OnboardingPage() {
     </div>
   );
 
-  return <PanelLayout eyebrow="Sistema / Configuração" title="Onboarding da empresa" description="Cadastre as regras reais do negócio. O n8n usará somente o prompt publicado pelo administrador.">
+  const saveAgent = () => saveAgentMutation.mutate(agentConfig);
+  return <PanelLayout eyebrow="Sistema / Configuração" title="Agente e configuração da empresa" description="O agente nativo do Forte Panel atende, agenda, registra dados e envia pelo WhatsApp sem depender do n8n.">
+    <section className="surface" style={{ padding: 22, marginBottom: 18 }}>
+      <SectionTitle eyebrow="Agente nativo" title="Modelo, prompt e credenciais" />
+      <div className="demo-banner" style={{ marginBottom: 16 }}><Info size={14} /><span>As chaves de API continuam protegidas no ambiente do servidor. Esta tela altera o comportamento do agente, não expõe segredos.</span></div>
+      <div className="form-grid">
+        <div className="form-field"><label>Agente ativo</label><select className="select-control" value={agentConfig.enabled ? "true" : "false"} onChange={(event) => setAgentConfig({ ...agentConfig, enabled: event.target.value === "true" })}><option value="true">Ativo</option><option value="false">Pausado</option></select></div>
+        <div className="form-field"><label>Modelo de IA</label><select className="select-control" value={agentConfig.model} onChange={(event) => setAgentConfig({ ...agentConfig, model: event.target.value })}><option value={agentConfig.model}>{agentConfig.model}</option>{(modelsQuery.data?.data ?? []).filter((model) => model.id !== agentConfig.model).map((model) => <option key={model.id} value={model.id}>{model.id}</option>)}</select></div>
+        <div className="form-field"><label>Máximo de etapas por resposta</label><input className="input-control" type="number" min={1} max={8} value={agentConfig.maxSteps} onChange={(event) => setAgentConfig({ ...agentConfig, maxSteps: Math.max(1, Math.min(8, Number(event.target.value) || 1)) })} /></div>
+        <div className="form-field"><label>Credencial de IA</label><input className="input-control" value={agentQuery.data?.credentials.llmConfigured ? "Configurada no ambiente do servidor" : "Não configurada"} readOnly /></div>
+        <div className="form-field"><label>Credencial PAPI</label><input className="input-control" value={agentQuery.data?.credentials.papiConfigured ? "Configurada no ambiente do servidor" : "Não configurada"} readOnly /></div>
+        <div className="form-field full"><label>System prompt próprio do agente</label><textarea className="textarea-control" rows={8} value={agentConfig.systemPrompt} onChange={(event) => setAgentConfig({ ...agentConfig, systemPrompt: event.target.value })} placeholder="Opcional. Se vazio, o agente usa o prompt operacional publicado abaixo." /></div>
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 16 }}><button className="btn-primary" disabled={saveAgentMutation.isPending} onClick={saveAgent}>{saveAgentMutation.isPending ? "Salvando..." : "Salvar configuração do agente"}</button>{saveAgentMutation.isSuccess && <span className="green"><CheckCircle2 size={14} style={{ verticalAlign: "middle", marginRight: 5 }} />Configuração salva</span>}{saveAgentMutation.error && <span className="form-error">{saveAgentMutation.error.message}</span>}</div>
+    </section>
     <div className="surface" style={{ padding: 18, marginBottom: 18 }}><div className="demo-banner" style={{ margin: 0 }}><Info size={15} /><span>O perfil estruturado é a fonte de verdade. Salvar rascunho não altera o agente; publicar cria uma nova versão operacional.</span></div></div>
     <section className="surface" style={{ padding: 22 }}>
       <SectionTitle eyebrow="Identidade do negócio" title="Sobre a empresa" />

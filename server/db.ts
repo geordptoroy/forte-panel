@@ -26,7 +26,6 @@ import {
   type InsertUser,
 } from "../drizzle/schema";
 import type { WhatsappProvider } from "./integrations/contracts";
-import { createN8nAdapter } from "./integrations/n8n";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
 import { assertWithinWorkingHours, getLocalDayBounds, ScheduleError } from "./schedule";
@@ -567,6 +566,46 @@ export async function saveOnboardingProfile(input: OnboardingProfile, publish: b
 export async function getPublishedAiPrompt() {
   const onboarding = await getOnboardingProfile();
   return { version: onboarding.version, prompt: onboarding.prompt, published: onboarding.published };
+}
+
+export type NativeAgentConfig = {
+  enabled: boolean;
+  model: string;
+  systemPrompt: string;
+  maxSteps: number;
+  apiSource: "environment";
+};
+
+export async function getNativeAgentConfig(): Promise<NativeAgentConfig> {
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) return { enabled: true, model: process.env.AGENT_MODEL ?? "gpt-5-mini", systemPrompt: "", maxSteps: 6, apiSource: "environment" };
+  const setting = await getWorkspaceSetting(workspace.id, "native_agent_config");
+  let stored: Partial<NativeAgentConfig> = {};
+  if (setting?.value) {
+    try { stored = JSON.parse(setting.value) as Partial<NativeAgentConfig>; } catch { stored = {}; }
+  }
+  return {
+    enabled: stored.enabled !== false,
+    model: stored.model?.trim() || process.env.AGENT_MODEL || "gpt-5-mini",
+    systemPrompt: stored.systemPrompt ?? "",
+    maxSteps: Math.max(1, Math.min(8, Number(stored.maxSteps ?? 6))),
+    apiSource: "environment",
+  };
+}
+
+export async function saveNativeAgentConfig(input: Partial<NativeAgentConfig>) {
+  const workspace = await ensureDemoWorkspace();
+  if (!workspace) throw new Error("Workspace unavailable");
+  const current = await getNativeAgentConfig();
+  const next: NativeAgentConfig = {
+    enabled: input.enabled ?? current.enabled,
+    model: input.model?.trim() || current.model,
+    systemPrompt: input.systemPrompt ?? current.systemPrompt,
+    maxSteps: Math.max(1, Math.min(8, Number(input.maxSteps ?? current.maxSteps))),
+    apiSource: "environment",
+  };
+  await upsertWorkspaceSetting(workspace.id, "native_agent_config", JSON.stringify(next));
+  return next;
 }
 
 export async function getWorkspaceBySlug(slug: string) {
@@ -1432,7 +1471,7 @@ export async function recoverProcessingDomainEvents() {
 
 export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
   const db = await getDb();
-  if (!db || !process.env.N8N_EVENTS_WEBHOOK_URL) return { processed: 0, delivered: 0, failed: 0, skipped: true };
+  if (!db) return { processed: 0, delivered: 0, failed: 0, skipped: true };
   const now = new Date();
   const pending = await db.select().from(domainEvents)
     .where(and(eq(domainEvents.status, "pending"), lte(domainEvents.availableAt, now)))
@@ -1441,8 +1480,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
 
   let delivered = 0;
   let failed = 0;
-  const adapter = createN8nAdapter();
-  const debounceMsRaw = Number(process.env.N8N_DEBOUNCE_MS ?? 1500);
+  const debounceMsRaw = Number(process.env.AGENT_DEBOUNCE_MS ?? process.env.N8N_DEBOUNCE_MS ?? 1500);
   const debounceMs = Number.isFinite(debounceMsRaw) && debounceMsRaw >= 0 ? Math.min(debounceMsRaw, 30_000) : 1500;
   for (const item of pending) {
     const claimed = await db.update(domainEvents).set({
@@ -1499,16 +1537,24 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
           eventPayload.debounceMs = debounceMs;
         }
       }
-      const result = await adapter.dispatchEvent({
-        eventId: item.eventKey,
-        event: item.eventType,
-        workspaceId: item.workspaceId,
-        aggregateType: item.aggregateType,
-        aggregateId: item.aggregateId ?? undefined,
-        payload: eventPayload,
-        occurredAt: item.createdAt,
-      });
-      if (!result.accepted) throw new Error("n8n não aceitou o evento");
+      if (item.eventType === "message.received") {
+        const config = await getNativeAgentConfig();
+        if (!config.enabled) {
+          await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: "native_agent_disabled", updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
+          delivered += 1;
+          continue;
+        }
+        const { runNativeAgent } = await import("./native-agent");
+        await runNativeAgent({
+          eventId: item.eventKey,
+          workspaceId: item.workspaceId,
+          contactId: Number(eventPayload.contactId ?? 0),
+          conversationId: Number(eventPayload.conversationId ?? 0),
+          content: String(eventPayload.content ?? ""),
+          messageType: String(eventPayload.messageType ?? "text"),
+          messages: Array.isArray(eventPayload.messages) ? eventPayload.messages as Array<{ content: string; messageType: string; receivedAt: Date }> : undefined,
+        }, config);
+      }
       await db.update(domainEvents).set({ status: "delivered", deliveredAt: new Date(), lastError: null, updatedAt: new Date() }).where(eq(domainEvents.id, item.id));
       delivered += 1;
     } catch (error) {
