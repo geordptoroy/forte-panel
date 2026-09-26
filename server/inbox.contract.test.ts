@@ -5,6 +5,7 @@ import type { TrpcContext } from "./_core/context";
 function createContext(): TrpcContext {
   return {
     user: { id: 1, openId: "test-user", role: "admin" } as TrpcContext["user"],
+    workspace: { workspaceId: 1, workspaceName: "Test Workspace", workspaceSlug: "test", segment: "test", plan: "starter", timezone: "America/Sao_Paulo", memberId: 1, role: "owner", professionalId: null, operationalRole: null },
     req: { protocol: "https", headers: {} } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
   };

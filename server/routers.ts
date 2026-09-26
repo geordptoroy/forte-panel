@@ -19,6 +19,7 @@ import {
   getAgendaSnapshot,
   getUserByEmail,
   getUserById,
+  getWorkspaceMembershipContext,
   revokeUserSessions,
   setLocalPassword,
   touchLastSignedIn,
@@ -133,7 +134,7 @@ const withAccess = (
   requirement: (access: WorkspaceAccess) => boolean,
   message: string,
 ) => protectedProcedure.use(async ({ ctx, next }) => {
-  const access = await resolveWorkspaceAccess(ctx.user);
+  const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
   if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
   if (!requirement(access)) throw new TRPCError({ code: "FORBIDDEN", message });
   return next({ ctx: { access } });
@@ -148,9 +149,10 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     access: protectedProcedure.query(async ({ ctx }) => {
-      const access = await resolveWorkspaceAccess(ctx.user);
+      const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       return {
         userId: access.userId,
+        workspaceId: access.workspaceId,
         role: access.role,
         operationalRole: access.operationalRole,
         professionalId: access.professionalId,
@@ -202,10 +204,11 @@ export const appRouter = router({
           throw new TRPCError({ code: "UNAUTHORIZED", message: "E-mail ou senha inválidos" });
         }
         if (!account) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Conta local não pôde ser carregada" });
-        const access = await resolveWorkspaceAccess(account);
-        if (!access.memberActive) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado. Fale com o administrador." });
+        const membership = await getWorkspaceMembershipContext(account.id);
+        if (!membership) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta não possui exatamente um workspace ativo" });
         }
+        const access = await resolveWorkspaceAccess(account, membership);
         const token = await sdk.signSession({ openId: account.openId, appId: "local", name: account.name ?? email, sessionVersion: account.sessionVersion });
         ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: SESSION_TTL_MS });
         await touchLastSignedIn(account.id);
@@ -220,13 +223,12 @@ export const appRouter = router({
   }),
 
   workspace: router({
-    current: protectedProcedure.query(async () => {
-      const workspace = await ensureDemoWorkspace();
-      if (!workspace) return null;
+    current: protectedProcedure.query(async ({ ctx }) => {
+      const workspace = ctx.workspace;
       return {
-        id: workspace.id,
-        name: workspace.name,
-        slug: workspace.slug,
+        id: workspace.workspaceId,
+        name: workspace.workspaceName,
+        slug: workspace.workspaceSlug,
         segment: workspace.segment,
         plan: workspace.plan,
         timezone: workspace.timezone,
@@ -270,28 +272,20 @@ export const appRouter = router({
       return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
     }),
     inAppNotifications: requireActiveMember.query(async ({ ctx }) => {
-      const workspace = await ensureDemoWorkspace();
-      if (!workspace) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Workspace indisponível" });
-      const result = await listInAppNotifications(workspace.id, ctx.user.id, 30);
+      const result = await listInAppNotifications(ctx.workspace.workspaceId, ctx.user.id, 30);
       return {
         unreadCount: result.unreadCount,
         items: result.items.map((item) => ({ ...item, createdAt: item.createdAt.toISOString(), readAt: item.readAt?.toISOString() ?? null })),
       };
     }),
     markNotificationRead: requireActiveMember.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
-      const workspace = await ensureDemoWorkspace();
-      if (!workspace) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Workspace indisponível" });
-      return { updated: await markInAppNotificationRead(workspace.id, ctx.user.id, input.id) };
+      return { updated: await markInAppNotificationRead(ctx.workspace.workspaceId, ctx.user.id, input.id) };
     }),
     markAllNotificationsRead: requireActiveMember.mutation(async ({ ctx }) => {
-      const workspace = await ensureDemoWorkspace();
-      if (!workspace) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Workspace indisponível" });
-      return { markedRead: await markAllInAppNotificationsRead(workspace.id, ctx.user.id) };
+      return { markedRead: await markAllInAppNotificationsRead(ctx.workspace.workspaceId, ctx.user.id) };
     }),
-    notifyPreferences: requireManager.query(async () => {
-      const workspace = await ensureDemoWorkspace();
-      if (!workspace) return null;
-      return getNotificationPreferences(workspace.id);
+    notifyPreferences: requireManager.query(async ({ ctx }) => {
+      return getNotificationPreferences(ctx.workspace.workspaceId);
     }),
     saveNotifyPreferences: requireManager.input(z.object({
       newLead: z.boolean(),
@@ -299,9 +293,7 @@ export const appRouter = router({
       appointmentConfirmed: z.boolean(),
       dailySummary: z.boolean(),
     })).mutation(async ({ input, ctx }) => {
-      const workspace = await ensureDemoWorkspace();
-      if (!workspace) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Workspace indisponível" });
-      const saved = await saveNotificationPreferences(workspace.id, input);
+      const saved = await saveNotificationPreferences(ctx.workspace.workspaceId, input);
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "notifications_updated", summary: "Preferências de notificação atualizadas" });
       return saved;
     }),
@@ -615,7 +607,7 @@ export const appRouter = router({
 
   agenda: router({
     snapshot: protectedProcedure.query(async ({ ctx }) => {
-      const access = await resolveWorkspaceAccess(ctx.user);
+      const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
       const professionalId = access.canSeeFullAgenda ? undefined : access.professionalId ?? undefined;
       const snapshot = await getAgendaSnapshot(professionalId);
@@ -636,7 +628,7 @@ export const appRouter = router({
       endsAt: z.coerce.date(),
       notes: z.string().max(500).optional(),
     })).mutation(async ({ input, ctx }) => {
-      const access = await resolveWorkspaceAccess(ctx.user);
+      const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
       if (!access.canSeeFullAgenda && input.professionalId !== access.professionalId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode agendar atendimentos vinculados a você" });
@@ -658,7 +650,7 @@ export const appRouter = router({
       id: z.number().int().positive(),
       status: z.enum(["confirmed", "in_progress", "completed", "no_show"]),
     })).mutation(async ({ input, ctx }) => {
-      const access = await resolveWorkspaceAccess(ctx.user);
+      const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
       const restriction = access.canSeeFullAgenda ? undefined : access.professionalId ?? -1;
       const updated = await transitionAppointment({ appointmentId: input.id, status: input.status, actorUserId: ctx.user.id, restrictToProfessionalId: restriction });
@@ -667,7 +659,7 @@ export const appRouter = router({
       return { id: updated.id, status: updated.status };
     }),
     cancel: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
-      const access = await resolveWorkspaceAccess(ctx.user);
+      const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
       if (access.canSeeFullAgenda) {
         const updated = await cancelAgendaAppointment(input.id);
@@ -684,7 +676,7 @@ export const appRouter = router({
       id: z.number().int().positive(),
       status: z.enum(["confirmed", "in_progress", "completed", "no_show"]),
     })).mutation(async ({ input, ctx }) => {
-      const access = await resolveWorkspaceAccess(ctx.user);
+      const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
       if (!access.professionalId) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não está vinculado a um profissional" });
       const updated = await transitionAppointment({ appointmentId: input.id, status: input.status, actorUserId: ctx.user.id, restrictToProfessionalId: access.professionalId });
@@ -696,11 +688,11 @@ export const appRouter = router({
 
   professional: router({
     myAgenda: protectedProcedure.query(async ({ ctx }) => {
-      const access = await resolveWorkspaceAccess(ctx.user);
+      const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.professionalId) {
         return {
           linked: false as const,
-          timezone: (await ensureDemoWorkspace())?.timezone ?? "America/Sao_Paulo",
+          timezone: ctx.workspace.timezone,
           professionalId: null,
           professionalName: null,
           professionalSpecialty: null,
@@ -722,7 +714,7 @@ export const appRouter = router({
       };
     }),
     myAvailability: protectedProcedure.query(async ({ ctx }) => {
-      const access = await resolveWorkspaceAccess(ctx.user);
+      const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.professionalId) return { linked: false as const, entries: [] };
       const professionalsList = await listProfessionalsDetailed({ includeInactive: true });
       const professional = professionalsList.find((item) => item.id === access.professionalId);
@@ -741,7 +733,7 @@ export const appRouter = router({
         endMinute: z.number().int().min(1).max(1440),
       })).max(50),
     })).mutation(async ({ input, ctx }) => {
-      const access = await resolveWorkspaceAccess(ctx.user);
+      const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.professionalId) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não está vinculado a um profissional" });
       const invalid = input.entries.find((entry) => entry.endMinute <= entry.startMinute);
       if (invalid) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser maior que o inicial" });

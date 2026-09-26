@@ -10,7 +10,7 @@ import {
   workspaceSettings,
   type User,
 } from "../drizzle/schema";
-import { ensureDemoWorkspace, getDb } from "./db";
+import { ensureDemoWorkspace, getDb, type WorkspaceMembershipContext } from "./db";
 import { defaultNotificationPreferences, parseNotificationPreferences, type NotificationPreferences } from "./notification-contract";
 
 export type WorkspaceMemberRole = "owner" | "admin" | "manager" | "agent";
@@ -18,6 +18,7 @@ export type OperationalRole = "human_attendant" | "ai_attendant" | "professional
 
 export type WorkspaceAccess = {
   userId: number;
+  workspaceId: number;
   memberId: number | null;
   role: WorkspaceMemberRole;
   operationalRole: OperationalRole;
@@ -39,10 +40,13 @@ export function isAdministratorRole(role: WorkspaceMemberRole) {
   return role === "owner" || role === "admin";
 }
 
-async function getActiveProfessionalName(professionalId: number | null) {
+async function getActiveProfessionalName(workspaceId: number, professionalId: number | null) {
   const db = await getDb();
   if (!db || !professionalId) return null;
-  const rows = await db.select({ name: professionals.name }).from(professionals).where(eq(professionals.id, professionalId)).limit(1);
+  const rows = await db.select({ name: professionals.name }).from(professionals).where(and(
+    eq(professionals.id, professionalId),
+    eq(professionals.workspaceId, workspaceId),
+  )).limit(1);
   return rows[0]?.name ?? null;
 }
 
@@ -55,31 +59,26 @@ async function getActiveProfessionalName(professionalId: number | null) {
  */
 export async function resolveWorkspaceAccess(
   user: { id: number; role: User["role"]; operationalRole: User["operationalRole"] },
+  membership: WorkspaceMembershipContext,
   options: { professionalName?: string | null } = {},
 ): Promise<WorkspaceAccess> {
-  const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  const member = db && workspace
-    ? (await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, user.id))).limit(1))[0]
-    : undefined;
-
-  const bootstrapOwner = !member && user.role === "admin";
-  const role: WorkspaceMemberRole = (member?.role as WorkspaceMemberRole | undefined) ?? (bootstrapOwner ? "owner" : "agent");
-  const operationalRole: OperationalRole = (user.operationalRole as OperationalRole | null) ?? "human_attendant";
-  const professionalId = member?.professionalId ?? null;
-  const memberActive = member ? member.active === 1 : bootstrapOwner;
+  const role = membership.role;
+  const operationalRole: OperationalRole = membership.operationalRole ?? "human_attendant";
+  const professionalId = membership.professionalId;
+  const memberActive = true;
   const manager = isManagerRole(role) && memberActive;
-  const professionalName = options.professionalName ?? (await getActiveProfessionalName(professionalId));
+  const professionalName = options.professionalName ?? (await getActiveProfessionalName(membership.workspaceId, professionalId));
 
   return {
     userId: user.id,
-    memberId: member?.id ?? null,
+    workspaceId: membership.workspaceId,
+    memberId: membership.memberId,
     role,
     operationalRole,
     professionalId,
     professionalName,
     memberActive,
-    bootstrapOwner,
+    bootstrapOwner: false,
     canManageTeam: isAdministratorRole(role) && memberActive,
     canManageCatalog: manager,
     canSeeFullAgenda: manager,

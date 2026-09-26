@@ -16,6 +16,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL && /^postgres(ql)?:\/\//i.t
 function createContext(user: TrpcContext["user"]): TrpcContext {
   return {
     user,
+    workspace: null,
     req: { protocol: "https", headers: {} } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
   };

@@ -155,10 +155,11 @@ Requisitos mínimos antes de produção:
 2. Desativar bootstrap global do primeiro admin para cadastro público; criar fluxo controlado de primeiro master.
 3. [x] Corrigir o JWT para realmente incluir `sessionVersion`; a claim assinada é comparada ao banco, e troca de senha/desativação incrementa a versão. Testes de regressão locais cobrem a inclusão e o valor padrão.
 4. [x] Remover concessão automática de membership `owner` a usuários OAuth comuns; só o bootstrap configurado/admin pode reivindicar a instalação vazia.
-5. Introduzir contexto de workspace validado a partir da membership e passar o `workspaceId` explicitamente para toda operação.
-6. Auditar tRPC, REST, worker, webhooks, storage, auditoria, settings, contactos, mensagens, agenda, integrações e agente para não ler/escrever fora do tenant.
-7. Criar testes de banco real com duas empresas e atores de papéis diferentes; tentar cruzar IDs manualmente e provar isolamento.
-8. Migrations reversíveis, índices/unique/FKs após validar os dados existentes.
+5. [x] Introduzir resolução de workspace único a partir de membership ativa no middleware tRPC; usuário sem ou com múltiplos workspaces ativos falha fechado. Login local, `workspace.current` e notificações iniciais consomem o contexto validado.
+6. Migrar cada query/mutação de negócio para aceitar `workspaceId` explícito; há 59 chamadas restantes a `ensureDemoWorkspace` no servidor, então ainda não criar/publicar acesso a novos tenants.
+7. Auditar tRPC, REST, worker, webhooks, storage, auditoria, settings, contactos, mensagens, agenda, integrações e agente para não ler/escrever fora do tenant.
+8. Criar testes de banco real com duas empresas e atores de papéis diferentes; tentar cruzar IDs manualmente e provar isolamento.
+9. Migrations reversíveis, índices/unique/FKs após validar os dados existentes.
 
 **Aceite:** duas empresas no mesmo banco não veem nem alteram nada uma da outra; owner e membro desativado têm o comportamento esperado; suites críticas executam em CI com PostgreSQL.
 

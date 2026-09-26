@@ -148,12 +148,57 @@ export async function getUserById(userId: number) {
 }
 
 export async function isWorkspaceMemberActive(userId: number) {
+  if (userId < 0) return false;
+  return Boolean(await getWorkspaceMembershipContext(userId));
+}
+
+export type WorkspaceMembershipContext = {
+  workspaceId: number;
+  workspaceName: string;
+  workspaceSlug: string;
+  segment: string;
+  plan: "starter" | "pro" | "business";
+  timezone: string;
+  memberId: number;
+  role: "owner" | "admin" | "manager" | "agent";
+  professionalId: number | null;
+  operationalRole: "human_attendant" | "ai_attendant" | "professional" | null;
+};
+
+/**
+ * Resolve the only active workspace for a user. This intentionally fails
+ * closed for zero or multiple active memberships; callers must not guess a
+ * tenant from a global role, URL input, or the demo workspace.
+ */
+export async function getWorkspaceMembershipContext(userId: number): Promise<WorkspaceMembershipContext | null> {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace || userId < 0) return true;
-  const member = await db.select({ active: workspaceMembers.active }).from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId))).limit(1);
-  return member[0]?.active === 1;
+  if (!db || userId < 1) return null;
+  const rows = await db.select({
+    workspaceId: workspaces.id,
+    workspaceName: workspaces.name,
+    workspaceSlug: workspaces.slug,
+    segment: workspaces.segment,
+    plan: workspaces.plan,
+    timezone: workspaces.timezone,
+    memberId: workspaceMembers.id,
+    role: workspaceMembers.role,
+    professionalId: workspaceMembers.professionalId,
+    operationalRole: users.operationalRole,
+  }).from(workspaceMembers)
+    .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+    .innerJoin(users, eq(users.id, workspaceMembers.userId))
+    .where(and(
+      eq(workspaceMembers.userId, userId),
+      eq(workspaceMembers.active, 1),
+      eq(workspaces.active, 1),
+    ))
+    .orderBy(asc(workspaceMembers.id))
+    .limit(2);
+  return selectSingleWorkspaceMembership(rows) as WorkspaceMembershipContext | null;
+}
+
+export function selectSingleWorkspaceMembership<T>(memberships: readonly T[]): T | null {
+  return memberships.length === 1 ? memberships[0]! : null;
 }
 
 export async function setLocalPassword(userId: number, password: string) {

@@ -629,9 +629,13 @@ O usuário pediu construir o app completo para o público final:
 - conexão/instância WhatsApp é diferente do login e do workspace;
 - primeiro marco público: uma conexão WhatsApp por empresa e UX sem configuração manual de secrets.
 
-O repositório já tem login local, hash de senha, memberships e papéis internos que devem ser avaliados/reutilizados. Porém bootstrap global, senha master de ambiente e dependências de workspace demo/global significam que o SaaS multi-tenant ainda não está pronto.
+O repositório já tem login local, hash de senha, memberships e papéis internos que devem ser avaliados/reutilizados. O middleware tRPC agora resolve uma única membership/workspace ativo; mesmo usuários com papel global `admin` são negados sem essa membership. O login local e `workspace.current` usam esse contexto e parte das rotas de notificação já recebe o `workspaceId` correto.
 
-**Implementação nesta retomada (commit `db54e6e`, publicado):** `sessionVersion` passou a ser incluída no JWT assinado; a autenticação já compara a versão da sessão com a versão atual do banco. O primeiro login OAuth deixou de conceder automaticamente membership `owner` a qualquer usuário: somente o bootstrap explicitamente configurado ou um admin existente pode reivindicar a instalação vazia. Foram adicionados testes de regressão para as duas regras.
+**Implementação nesta retomada (em validação para publicação):** `sessionVersion` passou a ser incluída no JWT assinado; a autenticação já compara a versão da sessão com a versão atual do banco. O primeiro login OAuth deixou de conceder automaticamente membership `owner` a qualquer usuário: somente o bootstrap explicitamente configurado ou um admin existente pode reivindicar a instalação vazia. O middleware tRPC usa membership ativa, falha fechado para ausência/ambiguidade e nega usuários sem tenant mesmo se o papel global for `admin`. Login local, `workspace.current` e notificações/preferências iniciais usam esse contexto.
+
+**Validação desta etapa:** typecheck e build passaram; 42 testes passaram e 13 foram ignorados por dependências de infraestrutura externa. Nenhuma migration ou dado do banco foi alterado. Ainda restam 59 chamadas de `ensureDemoWorkspace` no servidor, muitas em CRM, agenda e helpers; portanto o isolamento multi-tenant não está completo.
+
+**Próximo passo:** migrar os helpers e rotas restantes domínio por domínio para receber `ctx.workspace.workspaceId`, começando por leituras e depois mutações/eventos/workers. Criar testes PostgreSQL com dois workspaces e tentativas de cruzar IDs. **Não habilitar cadastro público nem criar tenants operacionais adicionais antes da prova end-to-end de isolamento.**
 
 
 ### PAPI/Baileys: proposta para fase futura
