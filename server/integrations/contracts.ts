@@ -1,5 +1,10 @@
-export type IntegrationName = "papi" | "meta_cloud_api" | "qdrant" | "localai";
-export type WhatsappProvider = "papi" | "meta_cloud_api";
+export type IntegrationName =
+  | "papi"
+  | "baileys"
+  | "meta_cloud_api"
+  | "qdrant"
+  | "localai";
+export type WhatsappProvider = "papi" | "baileys" | "meta_cloud_api";
 
 export type IntegrationHealth = {
   name: IntegrationName;
@@ -44,12 +49,18 @@ export type AppointmentSlot = {
 export interface WhatsappAdapter {
   provider: WhatsappProvider;
   health(): Promise<IntegrationHealth>;
-  sendMessage(command: OutboundMessageCommand): Promise<{ externalId: string; status: "queued" | "sent" }>;
+  sendMessage(
+    command: OutboundMessageCommand
+  ): Promise<{ externalId: string; status: "queued" | "sent" }>;
   normalizeInbound(event: unknown): InboundMessageEvent;
 }
 
 export interface PapiAdapter extends WhatsappAdapter {
   provider: "papi";
+}
+
+export interface BaileysAdapter extends WhatsappAdapter {
+  provider: "baileys";
 }
 
 export interface MetaCloudApiAdapter extends WhatsappAdapter {
@@ -58,12 +69,25 @@ export interface MetaCloudApiAdapter extends WhatsappAdapter {
 
 export interface VectorMemoryAdapter {
   health(): Promise<IntegrationHealth>;
-  search(input: { workspaceId: number; contactId: number; query: string; limit: number }): Promise<Array<{ id: string; score: number; text: string }>>;
+  search(input: {
+    workspaceId: number;
+    contactId: number;
+    query: string;
+    limit: number;
+  }): Promise<Array<{ id: string; score: number; text: string }>>;
 }
 
 export interface LocalAiAdapter {
   health(): Promise<IntegrationHealth>;
-  classify(input: { workspaceId: number; text: string }): Promise<{ urgency: string; intent: string; confidence: number }>;
+  classify(input: {
+    workspaceId: number;
+    text: string;
+  }): Promise<{ urgency: string; intent: string; confidence: number }>;
 }
 
-export type NativeCrmModule = "contacts" | "pipeline" | "calendar" | "tasks" | "billing";
+export type NativeCrmModule =
+  | "contacts"
+  | "pipeline"
+  | "calendar"
+  | "tasks"
+  | "billing";

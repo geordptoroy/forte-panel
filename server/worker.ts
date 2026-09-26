@@ -1,4 +1,5 @@
 import { cleanupWorkspaceUsageBuckets, processDailySummaryNotificationsOnce, processDomainEventsOnce, processQueuedMessagesOnce, processWorkspaceQuotaAlertsOnce, recoverProcessingDomainEvents, recoverProcessingMessages } from "./db";
+import { recordWorkerHeartbeat } from "./platform-admin";
 
 const intervalMs = Number(process.env.WORKER_INTERVAL_MS ?? 1500);
 const batchSize = Number(process.env.WORKER_BATCH_SIZE ?? 10);
@@ -43,6 +44,7 @@ async function tick() {
     }
     if (Date.now() >= nextHeartbeatAt) {
       nextHeartbeatAt = Date.now() + heartbeatMs;
+      await recordWorkerHeartbeat({ service: "forte-panel-worker", ticks: tickCount, intervalMs, lastError });
       console.log(JSON.stringify({ event: "worker_heartbeat", service: "forte-panel-worker", ticks: tickCount, intervalMs, lastError, timestamp: new Date().toISOString() }));
       lastError = null;
     }

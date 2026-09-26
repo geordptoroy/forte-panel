@@ -1037,3 +1037,42 @@ O console será separado dos papéis `owner/admin/manager/agent` de cada workspa
 A especificação funcional e técnica completa está em `STATUS-COMPLETO-E-PLANO-BETA.md`. O módulo deve ser implementado antes de convidar os 10 testers, pois editar banco ou secrets manualmente não é uma operação segura de beta.
 
 Estruturas previstas: `platformAdmins`, `supportSessions`, versões/rascunhos do agente, execuções de simulação e auditoria de plataforma. O suporte é read-only por padrão, com expiração, revogação e step-up para ações mutáveis.
+
+
+---
+
+## Atualização do handoff — 2026-09-26 16:23
+
+### Nova decisão de produto: WhatsApp próprio sobre Baileys
+
+O usuário decidiu substituir gradualmente a dependência da PAPI por um gateway próprio, mantendo a PAPI como provider legado durante a transição. A decisão veio após o bloqueio local por `Machine ID`/`machine mismatch` e a falta de suporte adequado para desenvolvimento e testes locais.
+
+O gateway provisório chama-se **forte-whatsapp** e ficará no mesmo repositório/Compose, porém como serviço separado do processo do CRM. Isso mantém o produto unificado para o cliente, mas evita que uma falha de conexão WhatsApp derrube o Forte Panel.
+
+#### Limites legais e técnicos
+
+- Não copiar código proprietário da PAPI.
+- Não remover/burlar a validação de licença da PAPI.
+- Usar código original sobre Baileys, observando a licença MIT, seus avisos e os termos do WhatsApp.
+- Não prometer estabilidade de produção antes de testar reconexão, logout, mídia, rate limits e mudanças do protocolo.
+- Nenhuma credencial real, sessão ou segredo deve entrar no Git.
+
+#### Primeiro bloco de implementação
+
+```text
+forte-whatsapp/
+├── src/config.ts
+├── src/index.ts
+├── src/http/{server,auth,health,instances,messages,webhooks}.ts
+├── src/baileys/{client,auth-state,events,message-parser}.ts
+├── src/instances/{instance-manager,instance-store,instance-types}.ts
+├── src/messages/{send-text,send-audio,send-buttons,normalize-phone}.ts
+├── src/webhooks/{forte-webhook,normalize-inbound,signature}.ts
+├── Dockerfile
+├── package.json
+└── README.md
+```
+
+O MVP inicial terá uma instância, QR/status, sessão persistente em volume Docker, envio/recebimento de texto, webhook assinado, API interna autenticada e health/readiness. Depois o provider `baileys` será adicionado ao `WhatsappAdapter` do Panel, sem reescrever Inbox, CRM, IA, agenda, quotas ou auditoria.
+
+A PAPI Cloud não deve ser ativada nem receber token durante essa fase. A migração precisa ser reversível: PAPI e Meta Cloud permanecem disponíveis até o gateway próprio passar pelos testes de integração.

@@ -937,8 +937,7 @@ export type NativeAgentConfig = {
   llm: AgentProviderSettings;
 };
 
-export async function getNativeAgentConfig(workspaceId: number): Promise<NativeAgentConfig> {
-  const workspace = await getActiveWorkspaceById(workspaceId);
+async function readNativeAgentConfig(workspace: { id: number } | undefined): Promise<NativeAgentConfig> {
   if (!workspace) return { enabled: true, model: process.env.AGENT_MODEL ?? "gpt-5-mini", systemPrompt: "", maxSteps: 6, apiSource: "environment", llm: defaultAgentProviderSettings() };
   const setting = await getWorkspaceSetting(workspace.id, "native_agent_config");
   let stored: Partial<NativeAgentConfig> = {};
@@ -955,6 +954,16 @@ export async function getNativeAgentConfig(workspaceId: number): Promise<NativeA
     apiSource: "environment",
     llm,
   };
+}
+
+export async function getNativeAgentConfig(workspaceId: number): Promise<NativeAgentConfig> {
+  return readNativeAgentConfig(await getActiveWorkspaceById(workspaceId));
+}
+
+export async function getPlatformNativeAgentConfig(workspaceId: number): Promise<NativeAgentConfig> {
+  const db = await getDb();
+  const workspace = db ? (await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1))[0] : undefined;
+  return readNativeAgentConfig(workspace);
 }
 
 export async function getNativeAgentRuntimeConfig(workspaceId: number): Promise<NativeAgentConfig> {

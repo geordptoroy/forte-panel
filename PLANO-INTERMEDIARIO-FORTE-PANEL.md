@@ -302,3 +302,47 @@ Próximo passo: instalar esses sinais no staging real e confirmar que o monitora
 Foi documentado e priorizado como P0 o Console Administrativo da Plataforma. Ele deve entrar antes do beta real e inclui gestão de contas, suporte escopado, observabilidade por workspace e configuração versionada do agente.
 
 O documento consolidado é `STATUS-COMPLETO-E-PLANO-BETA.md`. O próximo bloco de implementação deve criar as permissões de plataforma, as sessões de suporte e o CRUD de rascunho/publicação/rollback do agente.
+
+
+---
+
+## Atualização de execução — 2026-09-26 16:23
+
+### Decisão P0 — Gateway WhatsApp próprio sobre Baileys
+
+A PAPI self-hosted/Cloud deixa de ser o caminho principal para o produto. A operação local revelou uma limitação estrutural: a licença da PAPI vincula o `Machine ID` ao servidor e o serviço pode bloquear uma reinstalação Docker com `machine mismatch`, além de o suporte não oferecer o nível necessário para o desenvolvimento.
+
+Foi decidido construir um gateway próprio, chamado provisoriamente **forte-whatsapp**, no mesmo repositório e no mesmo Compose do Forte Panel, mas como serviço isolado. O código será original e usará Baileys conforme sua licença MIT; não será feito fork, engenharia reversa ou remoção de validação da imagem proprietária da PAPI.
+
+### Escopo inicial
+
+1. Uma instância WhatsApp por vez no MVP.
+2. Sessão Baileys persistente em volume Docker.
+3. QR Code/status de conexão.
+4. Envio e recebimento de texto.
+5. Webhook assinado para o Forte Panel.
+6. API interna autenticada por chave do ambiente.
+7. Isolamento por `workspaceId + instanceId`.
+8. Health/readiness, reconexão e logs sem segredos.
+
+### Estratégia de transição
+
+- PAPI continua como provider legado durante a transição.
+- Meta Cloud API continua como alternativa oficial.
+- O Forte Panel mantém `WhatsappAdapter`; o novo provider será `baileys`.
+- Inbox, CRM, IA, agenda, quotas, auditoria e worker permanecem no Forte Panel.
+- O gateway não mantém uma segunda base de CRM; apenas sessão e metadados de conexão.
+
+### Ordem ativa
+
+```text
+registrar contrato e scaffold
+→ serviço Baileys com uma instância e texto
+→ webhook inbound no Panel
+→ adapter outbound no worker
+→ UI de QR/status por workspace
+→ mídia/botões/múltiplas instâncias
+→ backup, reconciliação e operação de produção
+```
+
+Critério de aceite do primeiro bloco: `forte-whatsapp` sobe sem PAPI, responde health/readiness, mantém a estrutura de sessão em volume e oferece contratos internos testáveis; nenhuma credencial real deve entrar no Git ou nos exemplos.

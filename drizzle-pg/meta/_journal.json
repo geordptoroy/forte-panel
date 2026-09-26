@@ -134,6 +134,20 @@
       "when": 1790382000000,
       "tag": "0018_workspace_user_usage_buckets",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790412000000,
+      "tag": "0019_platform_admin_console",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790439780000,
+      "tag": "0020_baileys_provider",
+      "breakpoints": true
     }
   ]
 }

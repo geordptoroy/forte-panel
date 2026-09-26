@@ -13,7 +13,7 @@ export default function LoginPage() {
     onSuccess: async (result) => {
       await utils.auth.me.invalidate();
       await utils.auth.access.invalidate();
-      navigate(result.operationalRole === "professional" && result.role === "agent" ? "/my-work" : "/dashboard");
+      navigate(result.platform ? "/platform-admin" : result.operationalRole === "professional" && result.role === "agent" ? "/my-work" : "/dashboard");
     },
     onError: (error) => toast.error(error.message),
   });

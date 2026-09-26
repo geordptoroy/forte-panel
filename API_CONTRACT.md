@@ -105,3 +105,19 @@ As cotas são persistidas em `workspaceUsageBuckets` e `workspaceUserUsageBucket
 `GET /api/v1/health` é liveness: responde `200` quando o processo HTTP está executando e não depende do banco. `GET /api/v1/ready` é readiness: executa `select 1` no PostgreSQL e responde `200` com `status: "ready"` somente quando a conexão está funcional. Sem banco configurado ou com falha de conexão, responde `503` com `status: "not_ready"` e apenas o estado agregado da checagem; detalhes de conexão não são expostos.
 
 O worker registra um heartbeat JSON periódico, controlado por `WORKER_HEARTBEAT_MS` (padrão de 60 segundos), com `event`, `service`, quantidade de ciclos, intervalo, último tipo de erro e timestamp. Os eventos de operação continuam usando os campos `processadas`, `limitadas`, `alertasCota` e `bucketsRemovidos`.
+
+
+## Provider Baileys próprio — em implementação
+
+O Forte Panel terá um provider interno `baileys`, servido pelo gateway `forte-whatsapp`. Ele preserva o contrato `WhatsappAdapter` e não altera a fonte de verdade do CRM.
+
+No primeiro MVP, o gateway suportará:
+
+- `GET /health` e `GET /ready`;
+- status/QR de uma instância;
+- `POST /api/instances/:instanceId/send-text`;
+- recebimento de texto via webhook assinado no Panel;
+- sessão persistente em volume Docker;
+- chave interna de servidor, nunca exposta ao browser.
+
+A PAPI continua como provider legado e a Meta Cloud API continua como alternativa oficial durante a migração. O gateway próprio não deve copiar código da PAPI nem tentar remover sua validação de licença.

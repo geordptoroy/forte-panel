@@ -22,6 +22,7 @@ import AccessGuard from "./components/AccessGuard";
 import OnboardingPage from "./pages/OnboardingPage";
 import BillingPage from "./pages/BillingPage";
 import LoginPage from "./pages/LoginPage";
+import { PlatformAdminHome, PlatformWorkspacePage } from "./pages/PlatformAdminPage";
 
 function Router() {
   return (
@@ -29,7 +30,10 @@ function Router() {
       <Route path="/"><Redirect to="/dashboard" /></Route>
       <Route path="/dashboard" component={DashboardPage} />
       <Route path="/inbox" component={InboxPage} />
-      <Route path="/kanban" component={KanbanPage} />
+      <Route path="/login" component={LoginPage} />
+      <Route path="/platform-admin" component={PlatformAdminHome} />
+      <Route path="/platform-admin/workspaces" component={PlatformAdminHome} />
+      <Route path="/platform-admin/workspaces/:id" component={PlatformWorkspacePage} />
       <Route path="/agenda">{() => <AccessGuard requirement="fullAgenda" title="Agenda completa"><AgendaPage /></AccessGuard>}</Route>
       <Route path="/contacts" component={ContactsPage} />
       <Route path="/contacts/:id" component={ContactDetailPage} />
