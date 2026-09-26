@@ -1,28 +1,7 @@
 services:
-  # ============================================================================
-  # BANCOS DE DADOS E ARMAZENAMENTO
-  # ============================================================================
-  postgres_papi:
-    image: postgres:13-alpine
-    container_name: postgres_papi
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "postgres123"
-      POSTGRES_DB: pastorini
-    volumes:
-      - postgres_papi_data:/var/lib/postgresql/data
-    networks:
-      - pastorini-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   postgres_panel:
     image: postgres:16-alpine
-    container_name: postgres_panel
+    container_name: forte_media_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: forte_panel
@@ -31,92 +10,31 @@ services:
     volumes:
       - postgres_panel_data:/var/lib/postgresql/data
     networks:
-      - pastorini-network
+      - forte-media-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U forte_panel -d forte_panel"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  redis_papi:
-    image: redis:7-alpine
-    container_name: redis_papi
-    restart: unless-stopped
-    volumes:
-      - redis_papi_data:/data
-    networks:
-      - pastorini-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis_panel:
     image: redis:7-alpine
-    container_name: redis_panel
+    container_name: forte_media_redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_panel_data:/data
     networks:
-      - pastorini-network
+      - forte-media-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  # ============================================================================
-  # ============================================================================
-  # ============================================================================
-  # CANAL DE COMUNICAÇÃO (WHATSAPP)
-  # ============================================================================
-  pastorini_api:
-    image: intrategica/papi-free:1.5.2
-    container_name: pastorini_api
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      PANEL_API_KEY: "teste123"
-      STORAGE_TYPE: postgres+redis
-      POSTGRES_HOST: postgres_papi
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: pastorini
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "postgres123"
-      POSTGRES_SSL: "false"
-      REDIS_HOST: redis_papi
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ""
-      REDIS_DB: 0
-      LICENSE_KEY: "93FCC67B-950C58A6-3A68BCEF-C77B80F0"
-    volumes:
-      - pastorini_sessions:/app/sessions
-      - pastorini_media:/app/Media
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    depends_on:
-      postgres_papi:
-        condition: service_healthy
-      redis_papi:
-        condition: service_healthy
-    networks:
-      - pastorini-network
-
-  # ============================================================================
-  # CRM FORTE PANEL - SERVIDOR WEB
-  # ============================================================================
   forte-panel:
     image: ghcr.io/geordptoroy/forte-panel:latest
-    container_name: forte_panel
+    container_name: forte_media_panel
     restart: unless-stopped
     ports:
       - "3002:3000"
@@ -125,41 +43,33 @@ services:
       PORT: 3000
       DEMO_MODE: "false"
       LOCAL_AUTH_ENABLED: "true"
-      LOCAL_ADMIN_EMAIL: admin@fortepanel.local
-      LOCAL_ADMIN_PASSWORD: trocar-esta-senha
-      JWT_SECRET: troque-por-uma-chave-jwt-com-mais-de-32-caracteres
-      FORTE_API_KEY: "teste-panel-local"
-      WEBHOOK_SIGNING_SECRET: "teste-webhook-local"
+      LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:-admin@fortepanel.local}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:-trocar-esta-senha}
+      JWT_SECRET: ${JWT_SECRET:-troque-por-uma-chave-jwt-com-mais-de-32-caracteres}
+      FORTE_API_KEY: ${FORTE_API_KEY:-troque-esta-chave-do-painel}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:-troque-este-segredo-do-painel}
       DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
       REDIS_URL: redis://redis_panel:6379/0
       RUN_MIGRATIONS: "true"
       FORTE_API_WORKSPACE_ID: ${FORTE_API_WORKSPACE_ID:-1}
-      PAPI_BASE_URL: http://pastorini_api:3000
-      PAPI_API_KEY: "teste123"
-      PAPI_SEND_MESSAGE_PATH: /messages
       BAILEYS_BASE_URL: http://forte-whatsapp:3010
-      BAILEYS_API_KEY: ${BAILEYS_API_KEY:-troque-esta-chave-interna}
-      BAILEYS_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:-troque-este-segredo-interno}
+      BAILEYS_API_KEY: ${BAILEYS_API_KEY:?BAILEYS_API_KEY is required}
+      BAILEYS_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:?BAILEYS_WEBHOOK_SECRET is required}
       BAILEYS_INSTANCE_ID: ${BAILEYS_INSTANCE_ID:-default}
-      META_GRAPH_API_VERSION: v23.0
-      META_WHATSAPP_ACCESS_TOKEN: ""
-      META_WHATSAPP_PHONE_NUMBER_ID: ""
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
+      META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
+      META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
     depends_on:
       postgres_panel:
         condition: service_healthy
       redis_panel:
         condition: service_healthy
-      pastorini_api:
-        condition: service_started
     networks:
-      - pastorini-network
+      - forte-media-network
 
-  # ============================================================================
-  # CRM FORTE PANEL - WORKER DE ENVIO WHATSAPP
-  # ============================================================================
   forte-panel-worker:
     image: ghcr.io/geordptoroy/forte-panel:latest
-    container_name: forte_panel_worker
+    container_name: forte_media_worker
     restart: unless-stopped
     command: ["./docker-entrypoint.sh", "worker"]
     environment:
@@ -167,25 +77,22 @@ services:
       PORT: 3000
       DEMO_MODE: "false"
       LOCAL_AUTH_ENABLED: "true"
-      LOCAL_ADMIN_EMAIL: admin@fortepanel.local
-      LOCAL_ADMIN_PASSWORD: trocar-esta-senha
-      JWT_SECRET: troque-por-uma-chave-jwt-com-mais-de-32-caracteres
-      FORTE_API_KEY: "teste-panel-local"
-      WEBHOOK_SIGNING_SECRET: "teste-webhook-local"
+      LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:-admin@fortepanel.local}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:-trocar-esta-senha}
+      JWT_SECRET: ${JWT_SECRET:-troque-por-uma-chave-jwt-com-mais-de-32-caracteres}
+      FORTE_API_KEY: ${FORTE_API_KEY:-troque-esta-chave-do-painel}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:-troque-este-segredo-do-painel}
       DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
       REDIS_URL: redis://redis_panel:6379/0
       RUN_MIGRATIONS: "false"
       FORTE_API_WORKSPACE_ID: ${FORTE_API_WORKSPACE_ID:-1}
-      PAPI_BASE_URL: http://pastorini_api:3000
-      PAPI_API_KEY: "teste123"
-      PAPI_SEND_MESSAGE_PATH: /messages
       BAILEYS_BASE_URL: http://forte-whatsapp:3010
-      BAILEYS_API_KEY: ${BAILEYS_API_KEY:-troque-esta-chave-interna}
-      BAILEYS_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:-troque-este-segredo-interno}
+      BAILEYS_API_KEY: ${BAILEYS_API_KEY:?BAILEYS_API_KEY is required}
+      BAILEYS_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:?BAILEYS_WEBHOOK_SECRET is required}
       BAILEYS_INSTANCE_ID: ${BAILEYS_INSTANCE_ID:-default}
-      META_GRAPH_API_VERSION: v23.0
-      META_WHATSAPP_ACCESS_TOKEN: ""
-      META_WHATSAPP_PHONE_NUMBER_ID: ""
+      META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
+      META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
+      META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
       WORKER_INTERVAL_MS: "1500"
       WORKER_BATCH_SIZE: "10"
       WORKER_MAX_ATTEMPTS: "3"
@@ -196,27 +103,23 @@ services:
         condition: service_healthy
       redis_panel:
         condition: service_healthy
-      pastorini_api:
-        condition: service_started
       forte-panel:
         condition: service_started
     networks:
-      - pastorini-network
+      - forte-media-network
 
-  # ============================================================================
-  # GATEWAY WHATSAPP PRÓPRIO — BAILEYS
-  # ============================================================================
   forte-whatsapp:
     image: ghcr.io/geordptoroy/forte-whatsapp:latest
-    container_name: forte_whatsapp
+    container_name: forte_media_whatsapp
     restart: unless-stopped
     environment:
+      NODE_ENV: production
       PORT: 3010
-      WHATSAPP_API_KEY: ${BAILEYS_API_KEY:-troque-esta-chave-interna}
+      WHATSAPP_API_KEY: ${BAILEYS_API_KEY:?BAILEYS_API_KEY is required}
       WHATSAPP_SESSION_DIR: /app/sessions
       WHATSAPP_INSTANCE_ID: ${BAILEYS_INSTANCE_ID:-default}
       WHATSAPP_WEBHOOK_URL: http://forte-panel:3000/api/v1/webhooks/providers/baileys
-      WHATSAPP_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:-troque-este-segredo-interno}
+      WHATSAPP_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:?BAILEYS_WEBHOOK_SECRET is required}
     ports:
       - "127.0.0.1:${BAILEYS_PORT_PUBLIC:-3010}:3010"
     volumes:
@@ -225,17 +128,13 @@ services:
       forte-panel:
         condition: service_started
     networks:
-      - pastorini-network
+      - forte-media-network
 
 networks:
-  pastorini-network:
+  forte-media-network:
     driver: bridge
 
 volumes:
-  postgres_papi_data:
-  redis_papi_data:
-  pastorini_sessions:
-  pastorini_media:
   postgres_panel_data:
   redis_panel_data:
   forte_whatsapp_sessions:
