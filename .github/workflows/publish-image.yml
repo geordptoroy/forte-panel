@@ -11,6 +11,7 @@ permissions:
 
 env:
   IMAGE_NAME: ghcr.io/geordptoroy/forte-panel
+  WHATSAPP_IMAGE_NAME: ghcr.io/geordptoroy/forte-whatsapp
 
 jobs:
   verify:
@@ -71,3 +72,21 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: WhatsApp image metadata
+        id: whatsapp-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.WHATSAPP_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+
+      - name: Build and push WhatsApp gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: ./forte-whatsapp
+          file: ./forte-whatsapp/Dockerfile
+          push: true
+          tags: ${{ steps.whatsapp-meta.outputs.tags }}
+          labels: ${{ steps.whatsapp-meta.outputs.labels }}
