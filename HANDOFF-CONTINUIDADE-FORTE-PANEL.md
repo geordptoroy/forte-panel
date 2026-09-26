@@ -3,7 +3,7 @@
 **Data do handoff:** 2026-09-25 21:02 (America/Sao_Paulo)
 **Repositório:** `geordptoroy/forte-panel`
 **Branch:** `main`
-**HEAD verificado antes desta alteração:** `23ebd08`; conferir novamente após publicar esta revisão.
+**HEAD de referência desta revisão:** `07ceefa` (remoção dos componentes antigos; consulte `git log -1` para o commit mais recente).
 **Remote:** `https://github.com/geordptoroy/forte-panel.git`
 **Usuário precisa poder entregar esta conversa a outra IA sem repetir contexto.**
 
@@ -61,6 +61,7 @@ dd34c28 feat(agent): add idempotent tool effect ledger
 d026f05 docs: preserve full handoff history
 0d66201 docs: add branded interface improvement roadmap
 23ebd08 docs: plan public multi-account product
+07ceefa chore: remove automation integration
 ```
 
 No momento do handoff:
