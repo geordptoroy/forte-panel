@@ -580,3 +580,32 @@ Não salvar simplesmente texto livre produzido pela IA. Criar perfil estruturado
 A feature é uma fase de produto comercial posterior às correções de segurança/tenancy/confiabilidade, mas o MVP pode funcionar localmente usando o agente nativo atual, sem depender da PAPI Cloud.
 
 Se “Jev” for uma ferramenta específica, confirmar qual produto/serviço o usuário quis dizer antes de criar dependência; o roadmap permanece vendor-neutral por enquanto.
+
+---
+
+## Nova decisão de produto — Roadmap de interface sem redesign
+
+O usuário aprovou adicionar ao roadmap as melhorias de interface mantendo o branding atual. Não fazer uma troca radical de identidade. Preservar fundo escuro, superfícies/cards, paleta atual, badges, verde/âmbar/vermelho de status, tipografia e ícones lineares.
+
+Frentes aprovadas:
+
+1. **Clareza operacional:** navegação agrupada, dashboard orientado a ações, cards clicáveis, checklist inicial e estados de loading/erro/retry/empty consistentes.
+2. **Inbox:** destacar IA ativa/humano assumiu/IA pausada, ações `Assumir conversa` e `Devolver para IA`, instância de entrada visível, timeline operacional do agente sem raciocínio privado e composer mobile acessível.
+3. **Configuração comercial:** tela `Configuração Inteligente` integrada ao Onboarding Conversacional Assistido por IA, com progresso, perfil estruturado, revisão, simulação, aprovação, versões e rollback.
+4. **Canais:** visão simples por padrão e detalhes avançados sob expansão; IDs, headers e detalhes técnicos não devem dominar a primeira camada.
+5. **Qualidade:** componentes reutilizáveis, menos estilos inline, foco visível, `aria-label`, contraste, responsividade e code splitting.
+
+Ordem recomendada:
+
+```text
+estados/loading/erro/vazio
+→ dashboard orientado a ações
+→ Inbox IA/humano
+→ mobile/responsividade
+→ Canais em duas camadas
+→ checklist inicial
+→ Configuração Inteligente conversacional
+→ simulador/versionamento do agente
+```
+
+A futura implementação deve ser incremental e compatível com o branding, sem alterar o login proprietário único.

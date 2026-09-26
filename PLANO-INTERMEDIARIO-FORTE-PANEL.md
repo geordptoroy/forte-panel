@@ -95,3 +95,72 @@ Se “Jev” for o nome de uma ferramenta/produto específico que o usuário tem
 ### Fase planejada
 
 Esta é uma fase de **produto comercial**, depois da contenção de segurança, tenancy, confiabilidade do worker e ledger/handoff do agente. O primeiro MVP pode ser implementado sem provisionamento Cloud: usar o agente nativo existente, salvar o perfil estruturado e gerar uma versão revisável do prompt.
+
+## Roadmap de interface — evolução sem alterar o branding
+
+A interface deve evoluir por refinamento, não por redesign. Manter a identidade atual: fundo escuro, superfícies/cards, paleta existente, badges de status, verde para confirmação, âmbar para atenção, vermelho para falha, tipografia, ícones lineares e linguagem visual do Forte Panel.
+
+### Prioridade 1 — Clareza operacional
+
+- reorganizar navegação em Operação, Automação, Configuração e Sistema;
+- transformar o dashboard em painel orientado a ações;
+- tornar cards do dashboard clicáveis e ligados à ação correspondente;
+- criar checklist de configuração inicial;
+- substituir estados técnicos por mensagens operacionais traduzidas;
+- padronizar loading, erro, retry e empty states;
+- impedir que erros apareçam como listas vazias ou números zero.
+
+### Prioridade 2 — Operação diária
+
+- destacar claramente `IA ativa`, `Humano assumiu` e `IA pausada` na Inbox;
+- criar ações visíveis `Assumir conversa` e `Devolver para IA`;
+- mostrar a instância PAPI que recebeu a mensagem;
+- mostrar timeline operacional do agente sem expor raciocínio privado do modelo;
+- manter composer e ações essenciais acessíveis no mobile;
+- corrigir `.page-actions` e grids rígidos para responsividade.
+
+### Prioridade 3 — Configuração comercial
+
+- criar a tela **Configuração Inteligente**;
+- integrar o Onboarding Conversacional Assistido por IA;
+- exibir chat de descoberta com progresso;
+- mostrar na lateral o perfil estruturado da empresa sendo preenchido;
+- separar fatos informados de sugestões da IA;
+- permitir revisão, simulação e publicação pelo proprietário;
+- criar versionamento e rollback do perfil/prompt.
+
+### Prioridade 4 — Integrações sem complexidade desnecessária
+
+A tela Canais conectados deve ter duas camadas:
+
+1. visão simples: nome, provider, status e uso atual;
+2. detalhes avançados: `instanceId`, deployment, webhook, API key mascarada, último erro e sincronização.
+
+IDs, headers e detalhes técnicos não devem dominar a primeira experiência do cliente.
+
+### Prioridade 5 — Qualidade visual e acessibilidade
+
+- consolidar botões, badges, cards e estados em componentes reutilizáveis;
+- remover excesso de estilos inline;
+- melhorar hierarquia tipográfica e espaçamento;
+- adicionar `:focus-visible`;
+- adicionar `aria-label` em botões somente com ícone;
+- revisar contraste;
+- usar animações discretas apenas para transições e feedback;
+- fazer code splitting por rota;
+- separar `PanelPages.tsx` por domínio.
+
+### Ordem recomendada de implementação
+
+```text
+estados/loading/erro/vazio
+→ dashboard orientado a ações
+→ Inbox IA/humano
+→ mobile/responsividade
+→ Canais em duas camadas
+→ checklist inicial
+→ Configuração Inteligente conversacional
+→ simulador/versionamento do agente
+```
+
+Toda melhoria deve preservar o branding atual e ser validada em desktop e mobile.
