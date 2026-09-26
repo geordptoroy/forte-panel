@@ -23,6 +23,7 @@ import {
   moveContactStage,
   queueOutboundMessage,
   registerWebhookEvent,
+  consumeWorkspaceUsage,
   rescheduleAgendaAppointment,
   upsertApiContact,
 } from "./db";
@@ -140,6 +141,14 @@ async function requireApiWorkspaceId(res: Response): Promise<number | undefined>
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) {
     fail(res, 503, "FORTE_API_WORKSPACE_ID não corresponde a um workspace ativo", "api_workspace_not_configured");
+    return undefined;
+  }
+  const usage = await consumeWorkspaceUsage(workspaceId, "apiRequests");
+  res.setHeader("X-RateLimit-Limit", String(usage.limit));
+  res.setHeader("X-RateLimit-Remaining", String(usage.remaining));
+  if (!usage.allowed) {
+    res.setHeader("Retry-After", String(Math.ceil(usage.retryAfterMs / 1000)));
+    fail(res, 429, "Limite de requisições do workspace atingido", "workspace_rate_limited");
     return undefined;
   }
   return workspaceId;

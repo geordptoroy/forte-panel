@@ -70,6 +70,20 @@ export const workspaceSettings = pgTable("workspaceSettings", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
+export const workspaceUsageBuckets = pgTable("workspaceUsageBuckets", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspaceId").notNull(),
+  bucketStart: timestamp("bucketStart").notNull(),
+  apiRequests: integer("apiRequests").default(0).notNull(),
+  aiRequests: integer("aiRequests").default(0).notNull(),
+  outboundMessages: integer("outboundMessages").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("workspace_usage_buckets_unique_idx").on(table.workspaceId, table.bucketStart),
+  index("workspace_usage_buckets_created_idx").on(table.createdAt),
+]);
+
 export const whatsappChannels = pgTable("whatsappChannels", {
   id: serial("id").primaryKey(),
   workspaceId: integer("workspaceId").notNull(),

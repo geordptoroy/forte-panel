@@ -24,6 +24,7 @@ import {
   whatsappInstances,
   workspaceMembers,
   workspaceSettings,
+  workspaceUsageBuckets,
   workspaces,
   type InsertUser,
 } from "../drizzle/schema";
@@ -954,6 +955,50 @@ export async function getActiveWorkspaceById(workspaceId: number) {
   return result[0];
 }
 
+export type WorkspaceUsageMetric = "apiRequests" | "aiRequests" | "outboundMessages";
+
+export type WorkspaceUsageDecision = {
+  allowed: boolean;
+  limit: number;
+  remaining: number;
+  retryAfterMs: number;
+};
+
+function workspaceUsageLimit(metric: WorkspaceUsageMetric) {
+  const envKey = metric === "apiRequests"
+    ? "FORTE_WORKSPACE_API_REQUESTS_PER_MINUTE"
+    : metric === "aiRequests"
+      ? "FORTE_WORKSPACE_AI_REQUESTS_PER_MINUTE"
+      : "FORTE_WORKSPACE_OUTBOUND_MESSAGES_PER_MINUTE";
+  const fallback = metric === "aiRequests" ? 60 : 120;
+  const parsed = Number(process.env[envKey] ?? fallback);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(Math.floor(parsed), 10_000)) : fallback;
+}
+
+export async function consumeWorkspaceUsage(workspaceId: number, metric: WorkspaceUsageMetric): Promise<WorkspaceUsageDecision> {
+  const limit = workspaceUsageLimit(metric);
+  const now = new Date();
+  const bucketStart = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
+  const retryAfterMs = Math.max(1_000, bucketStart.getTime() + 60_000 - now.getTime());
+  const db = await getDb();
+  if (!db) return { allowed: true, limit, remaining: limit, retryAfterMs };
+  const column = metric === "apiRequests"
+    ? workspaceUsageBuckets.apiRequests
+    : metric === "aiRequests"
+      ? workspaceUsageBuckets.aiRequests
+      : workspaceUsageBuckets.outboundMessages;
+  return db.transaction(async (tx) => {
+    await tx.insert(workspaceUsageBuckets).values({ workspaceId, bucketStart }).onConflictDoNothing({ target: [workspaceUsageBuckets.workspaceId, workspaceUsageBuckets.bucketStart] });
+    const updated = await tx.update(workspaceUsageBuckets)
+      .set({ [metric]: sql`${column} + 1`, updatedAt: new Date() })
+      .where(and(eq(workspaceUsageBuckets.workspaceId, workspaceId), eq(workspaceUsageBuckets.bucketStart, bucketStart), lt(column, limit)))
+      .returning({ count: column });
+    const count = Number(updated[0]?.count ?? limit);
+    if (!updated[0]) return { allowed: false, limit, remaining: 0, retryAfterMs };
+    return { allowed: true, limit, remaining: Math.max(0, limit - count), retryAfterMs };
+  });
+}
+
 export async function resetWorkspaceDevelopmentData() {
   const db = await getDb();
   const workspace = await ensureDemoWorkspace();
@@ -976,6 +1021,7 @@ export async function resetWorkspaceDevelopmentData() {
     await tx.delete(services).where(eq(services.workspaceId, workspace.id));
     await tx.delete(professionals).where(eq(professionals.workspaceId, workspace.id));
     await tx.delete(whatsappChannels).where(eq(whatsappChannels.workspaceId, workspace.id));
+    await tx.delete(workspaceUsageBuckets).where(eq(workspaceUsageBuckets.workspaceId, workspace.id));
     await tx.delete(workspaceSettings).where(eq(workspaceSettings.workspaceId, workspace.id));
     return { workspaceId: workspace.id, reset: true };
   });
@@ -1960,6 +2006,11 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
         }
       }
       if (item.eventType === "message.received") {
+        const aiUsage = await consumeWorkspaceUsage(item.workspaceId, "aiRequests");
+        if (!aiUsage.allowed) {
+          await db.update(domainEvents).set({ status: "pending", workerId: null, claimedAt: null, leaseUntil: null, availableAt: new Date(Date.now() + aiUsage.retryAfterMs), lastError: "workspace_ai_rate_limited", updatedAt: new Date() }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)));
+          continue;
+        }
         const config = await getNativeAgentRuntimeConfig(item.workspaceId);
         if (!config.enabled) {
           await db.update(domainEvents).set({ status: "delivered", workerId: null, claimedAt: null, leaseUntil: null, deliveredAt: new Date(), lastError: "native_agent_disabled", updatedAt: new Date() }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)));

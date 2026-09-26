@@ -721,3 +721,37 @@ git diff --check ✅
 Usar uma chave de provedor de IA no backend pode atender várias conversas simultâneas. Cada request é associado ao workspace/usuário no Forte Panel, e não a uma chave individual do provedor. O backend deve controlar rate limit por workspace, limite global, timeout, retries, custo/tokens e logs sem conteúdo sensível. Chaves separadas por empresa só serão necessárias quando houver cobrança direta por cliente, BYOK (bring your own key) ou isolamento financeiro/regulatório mais forte.
 
 Antes de convidar os betas, ainda falta adicionar limites/cotas persistidos por workspace e provar isolamento em PostgreSQL real. Não expor `OPENAI_API_KEY`, `BUILT_IN_FORGE_API_KEY`, tokens PAPI ou tokens Meta no frontend.
+
+---
+
+## Atualização do handoff — 2026-09-26 10:03
+
+Foi implementada a primeira camada de proteção operacional para o beta.
+
+### Rate limit por workspace
+
+- Nova tabela `workspaceUsageBuckets`, com buckets de 1 minuto por workspace.
+- Métricas persistidas: `apiRequests`, `aiRequests` e `outboundMessages`.
+- Contador usa update atômico condicionado ao limite, evitando que requisições concorrentes ultrapassem a cota.
+- API REST vinculada a workspace aplica `FORTE_WORKSPACE_API_REQUESTS_PER_MINUTE` e responde `429 workspace_rate_limited` com `X-RateLimit-Limit`, `X-RateLimit-Remaining` e `Retry-After`.
+- Worker aplica `FORTE_WORKSPACE_AI_REQUESTS_PER_MINUTE` antes de executar o agente. Ao atingir o limite, o evento retorna para `pending` com `availableAt` no próximo intervalo, sem ser descartado.
+- Defaults atuais: 120 requisições REST/minuto por workspace e 60 execuções de IA/minuto por workspace. Valores são configuráveis no ambiente do servidor.
+- Reset de desenvolvimento também remove os buckets do workspace demo.
+
+Migration criada:
+
+```text
+0016_workspace_usage_buckets.sql
+```
+
+Teste criado: `server/workspace-usage.test.ts`. Ele exige PostgreSQL e valida que o limite de um workspace não consome a cota de outro.
+
+Validação local:
+
+```text
+pnpm check       ✅
+pnpm test        ✅ 43 aprovados; 20 ignorados, incluindo o teste PostgreSQL de uso
+pnpm build       ✅
+```
+
+Antes de convidar os betas, definir valores de produção no ambiente e aplicar a migration. Para 10 pessoas usando uma mesma empresa, o limite é compartilhado pelo workspace, o que evita que um usuário consuma toda a capacidade sem controle individual.

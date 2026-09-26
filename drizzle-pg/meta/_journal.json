@@ -113,6 +113,13 @@
       "when": 1790379000000,
       "tag": "0015_agent_effects",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790380000000,
+      "tag": "0016_workspace_usage_buckets",
+      "breakpoints": true
     }
   ]
 }

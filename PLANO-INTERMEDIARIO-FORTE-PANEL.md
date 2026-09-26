@@ -214,3 +214,11 @@ Próxima sequência: migrar onboarding/configuração e gestão histórica de in
 Onboarding, prompt publicado, configuração/runtime do agente e gestão de instâncias/webhooks PAPI foram migrados para `workspaceId` explícito. O armazenamento PAPI não aceita mais chamadas sem tenant e o fallback global de `PAPI_INSTANCE_ID` foi removido do caminho tenant-aware.
 
 Decisão operacional para beta: uma chave de provedor mantida no backend pode servir várias empresas/conversas; a separação deve ser feita por autenticação, membership, workspace, rate limit, quota e observabilidade do Forte Panel. Não distribuir a chave do provedor aos testadores. Próximo bloco: migration de auditoria/idempotência/eventos composta por workspace, limites por tenant e teste PostgreSQL de isolamento.
+
+---
+
+## Atualização de execução — 2026-09-26 10:03
+
+Foi adicionada a proteção operacional inicial do beta: buckets persistidos por minuto e workspace, limites REST e de execução da IA, headers de rate limit e reentrega adiada de eventos quando a cota da IA é atingida. A migration é `0016_workspace_usage_buckets.sql` e o teste de isolamento está em `server/workspace-usage.test.ts`.
+
+Defaults: 120 requests REST/minuto e 60 execuções de IA/minuto por workspace, configuráveis por `FORTE_WORKSPACE_API_REQUESTS_PER_MINUTE` e `FORTE_WORKSPACE_AI_REQUESTS_PER_MINUTE`. Próximo bloco: aplicar migration em PostgreSQL real, verificar concorrência, adicionar limites por plano/usuário e fechar escopos compostos de auditoria/idempotência/webhooks.
