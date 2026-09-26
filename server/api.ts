@@ -1284,6 +1284,11 @@ async function handleBaileysWebhook(req: Request, res: Response) {
       data: result,
     });
   } catch (error) {
+    console.error("[Baileys webhook] inbound processing failed", {
+      workspaceId,
+      eventId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     await markWebhookEvent(workspaceId, eventId, "failed");
     return fail(
       res,
