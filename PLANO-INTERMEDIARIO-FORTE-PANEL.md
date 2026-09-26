@@ -164,3 +164,35 @@ estados/loading/erro/vazio
 ```
 
 Toda melhoria deve preservar o branding atual e ser validada em desktop e mobile.
+
+
+---
+
+## Nova direção principal — SaaS público multi-conta e logins de funcionários (2026-09-25)
+
+Esta decisão do usuário **substitui prioridades anteriores de produto que pressupunham uma instalação por empresa com um único login proprietário**. O Forte Panel passa a ser planejado como app público: uma conta master cria uma empresa/workspace e pode criar acessos individuais para funcionários com nome, identificador e senha inicial; cada membro tem papel/permissões e a sessão deve ser revogável.
+
+Não confundir:
+
+- conta master/funcionário = identidade de login;
+- empresa/workspace = tenant e fronteira dos dados;
+- instância/conexão WhatsApp = canal vinculado ao tenant.
+
+A estratégia detalhada, definições, critérios de aceite e fases está em `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`. O primeiro bloco de código passa a ser **tenancy real, contexto de workspace validado por membership, revogação de sessão e testes PostgreSQL de isolamento**; em seguida, cadastro/login master e gestão de funcionários. O projeto já tem hashes, memberships e papéis internos reutilizáveis, mas ainda precisa remover o bootstrap global e dependências do workspace demo/global.
+
+### WhatsApp próprio — fase futura, condicionada
+
+O usuário informou que a PAPI usada já é construída sobre Baileys e propôs usar Baileys ou o repositório `intrategica/papi-free:1.5.1` como base para construir uma API REST própria. O repositório usa `intrategica/papi-free:1.5.2` nos Compose mais atuais; a tag 1.5.1 está publicada, porém anterior. O Docker Hub consultado não mostra source repo nem licença da imagem. Portanto, **não fazer fork nem distribuir/modificar a imagem até confirmar código-fonte, licença e autorização com o mantenedor**. O MIT do projeto Baileys não cobre a PAPI.
+
+O futuro gateway REST pode ser um fork autorizado da PAPI (preferível se houver fonte/licença adequadas) ou serviço próprio sobre Baileys. Deve permanecer um serviço/adapter isolado, com storage de autenticação em banco durável e criptografado, QR protegido, reconexão/locks, callbacks assinados, idempotência, monitoramento e migração reversível. A PAPI atual permanece como provider de transição e Meta Cloud API como alternativa oficial. Revisar termos e riscos do provider não oficial antes de beta comercial. Não implementar Baileys nesta fase.
+
+### Sequência ativa
+
+1. Preparar mapa de tabelas/rotas/queries que exigem tenant e plano de backfill sem perda dos dados demo existentes.
+2. Corrigir contexto de usuário/master e workspace/membership.
+3. Fazer teste com dois tenants e provar isolamento de rotas, workers, storage, webhooks e mensagens.
+4. Implementar onboarding público/master e gestão de logins/papéis.
+5. Validar o provider WhatsApp atual por workspace.
+6. Só depois avaliar o fork/API própria PAPI/Baileys e o lançamento gradual.
+
+A tarefa de fencing/ledger PostgreSQL continua válida como requisito de confiabilidade antes do uso comercial do agente, mas deixa de ser o próximo bloco isolado: deve ser encaixada após a fronteira de tenancy e login estar segura.

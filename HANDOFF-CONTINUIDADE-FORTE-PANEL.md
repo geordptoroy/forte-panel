@@ -3,7 +3,7 @@
 **Data do handoff:** 2026-09-25 21:02 (America/Sao_Paulo)
 **Repositório:** `geordptoroy/forte-panel`
 **Branch:** `main`
-**HEAD atual:** `d026f05`
+**HEAD no handoff original:** `d026f05`; HEAD verificado nesta revisão: `0d66201`.
 **Remote:** `https://github.com/geordptoroy/forte-panel.git`
 **Usuário precisa poder entregar esta conversa a outra IA sem repetir contexto.**
 
@@ -22,11 +22,11 @@ O Forte Panel é um CRM/atendimento WhatsApp com:
 - integração PAPI WhatsApp self-hosted hoje;
 - integração futura PAPI Cloud;
 - integração n8n e Meta prevista;
-- login administrativo/proprietário único que deve ser preservado.
+- a decisão histórica de login administrativo/proprietário único foi substituída em 2026-09-25 pela estratégia de produto público multi-conta, master + funcionários, registrada em `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
 
-Decisão do usuário: continuar desenvolvendo localmente no Docker/WSL, mas estruturar o código para virar produto comercial hospedado posteriormente, inicialmente com Oracle Cloud Free Tier. PostgreSQL continua sendo o banco principal. PAPI Cloud será provider futuro reversível; self-hosted continua como padrão local.
+Decisão histórica: desenvolvimento local no Docker/WSL, pensando em produto comercial hospedado. A decisão vigente é construir o app completo para público final e começar por tenancy/login seguro; opções de hospedagem e cobrança são decisões posteriores. PostgreSQL continua como banco de negócio.
 
-**Não alterar o login administrativo/proprietário único sem pedido explícito.**
+**A instrução antiga de não alterar o login proprietário único está revogada pelo pedido explícito de 2026-09-25.** Não iniciar alterações destrutivas nem apagar dados: planejar migrations e backfill compatíveis.
 
 ---
 
@@ -60,6 +60,7 @@ c8f3111 feat(papi): persist instances per workspace
 b2fbd76 fix(api): claim idempotency keys atomically
 dd34c28 feat(agent): add idempotent tool effect ledger
 d026f05 docs: preserve full handoff history
+0d66201 docs: add branded interface improvement roadmap
 ```
 
 No momento do handoff:
@@ -72,6 +73,7 @@ No momento do handoff:
 
 ## 4. Arquivos de documentação importantes
 
+- `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md` — estratégia vigente de produto público, master/funcionários, tenancy, fases e PAPI/Baileys futuro.
 - `AUDITORIA-TECNICA-E-ROADMAP.md` — auditoria completa, riscos P1/P2 e critério comercial.
 - `PLANO-INTERMEDIARIO-FORTE-PANEL.md` — plano vivo, já unificado com PAPI Cloud e etapas concluídas.
 - `FASE-1-SEGURANCA-CONTENCAO.md` — reforços da Fase 1 de segurança.
@@ -80,7 +82,7 @@ No momento do handoff:
 - `docker-compose.yaml` — Compose principal.
 - `docker-compose.forte-panel-papi.yaml` — Compose alternativo Panel + PAPI.
 
-Este documento é o handoff operacional. Ler primeiro este arquivo, depois o plano e a auditoria.
+Este documento é o handoff operacional. Ler primeiro este arquivo, depois `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`, `todo.md`, o plano intermediário e a auditoria.
 
 ---
 
@@ -455,7 +457,7 @@ A auditoria completa está em `AUDITORIA-TECNICA-E-ROADMAP.md`. Não marcar como
 
 ## 11. Próximo passo recomendado para a IA que continuar
 
-O próximo bloco de código recomendado é o **ledger idempotente do agente nativo**:
+**Esta seção descreve a recomendação histórica na data do handoff e foi supersedida pela nova estratégia multi-conta no final deste documento.** O ledger idempotente do agente nativo foi implementado posteriormente e não é o próximo bloco isolado.
 
 1. criar tabela `agentEffects` ou equivalente;
 2. chave única `(eventId, toolCallId)`;
@@ -468,7 +470,7 @@ O próximo bloco de código recomendado é o **ledger idempotente do agente nati
 9. revalidar `humanControlled` imediatamente antes do outbound;
 10. escrever testes unitários do ledger e integração futura PostgreSQL.
 
-Depois disso:
+Depois disso, na ordem histórica:
 
 - parser de comandos de controle humano;
 - tenancy real por membership;
@@ -485,7 +487,7 @@ Depois disso:
 - Não exigir que o usuário programe.
 - Fazer alterações diretamente no repositório e publicar commits.
 - Não expor, imprimir ou pedir credenciais no chat.
-- Não alterar/remover o login proprietário único.
+- Construir o produto público multi-conta conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`; não preservar a limitação de login único.
 - Não apagar volumes Docker.
 - Validar `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check` após cada etapa.
 - Atualizar este handoff e `PLANO-INTERMEDIARIO-FORTE-PANEL.md` depois de cada bloco relevante.
@@ -553,7 +555,7 @@ Validação: `pnpm check`, `pnpm test` (39 passaram; 13 ignorados), `pnpm build`
 
 Próximo bloco recomendado: teste PostgreSQL real de concorrência, estado `unknown` para crash após mutação, fencing de conversa contra handoff humano e parser dos comandos de controle humano.
 
-A regra continua: não executar smoke test PAPI Cloud nem pedir token neste momento; o usuário adiou essa operação. Não alterar login proprietário único e não remover volumes Docker.
+A regra histórica continua: não executar smoke test PAPI Cloud nem pedir token sem autorização; o usuário adiou essa operação. A proibição de alterar o login proprietário único foi revogada pela decisão multi-conta ao final deste handoff. Não remover volumes Docker.
 
 ---
 
@@ -608,4 +610,42 @@ estados/loading/erro/vazio
 → simulador/versionamento do agente
 ```
 
-A futura implementação deve ser incremental e compatível com o branding, sem alterar o login proprietário único.
+A futura implementação da interface deve ser incremental e compatível com o branding, agora dentro do modelo multi-conta master + funcionários descrito abaixo.
+
+
+---
+
+## Decisão vigente do produto — SaaS público multi-conta (2026-09-25)
+
+Este registro é a orientação mais atual e prevalece sobre qualquer instrução anterior de login único/instalação única neste handoff, no plano e no escopo.
+
+O usuário pediu construir o app completo para o público final:
+
+- conta master cria uma empresa/workspace;
+- master cria acessos individuais para funcionários com nome, identificador e senha inicial;
+- papéis e permissões isolam as ações da equipe;
+- conexão/instância WhatsApp é diferente do login e do workspace;
+- primeiro marco público: uma conexão WhatsApp por empresa e UX sem configuração manual de secrets.
+
+O repositório já tem login local, hash de senha, memberships e papéis internos que devem ser avaliados/reutilizados. Porém bootstrap global, senha master de ambiente e dependências de workspace demo/global significam que o SaaS multi-tenant ainda não está pronto.
+
+**Próximo bloco de implementação:** matriz de tabelas/rotas/queries e plano de backfill; tenant/owner derivado de membership ativa; revogação de sessão; teste PostgreSQL com pelo menos dois workspaces e tentativa de acesso cruzado. Em seguida, cadastro/login do master e UI/fluxo de criar, alterar, resetar e desativar funcionários. Não começar por Baileys nem fazer mudança destrutiva no banco.
+
+### PAPI/Baileys: proposta para fase futura
+
+O usuário informou que a PAPI em uso se apoia em Baileys e sugeriu usar a imagem/repositório `intrategica/papi-free:1.5.1` como base para construir uma API REST própria.
+
+**Achado da revisão atual:** Compose atuais do Forte Panel já referenciam `intrategica/papi-free:1.5.2`; a tag 1.5.1 está publicada, mas é mais antiga. O Docker Hub lista a imagem, porém não expõe source repository nem licença em seus metadados públicos; busca por repo GitHub correspondente não localizou a fonte. Não concluir que inexista: pedir/obter do mantenedor o source, licença e permissão antes de fork, modificar ou redistribuir.
+
+Alternativas futuras: fork da PAPI se a fonte e os direitos estiverem confirmados; caso contrário, continuar temporariamente com provider atual ou avaliar serviço REST separado escrito diretamente sobre Baileys. Baileys declara MIT para o projeto próprio, mas é independente/não oficial para WhatsApp Web; essa licença não cobre código, imagem ou direitos da PAPI. Manter adapter provider-neutro, PAPI como transição e Meta Cloud API como alternativa oficial.
+
+O protótipo, se aprovado depois, exige storage durável e criptografado de credentials/Signal keys, QR efêmero e não logado, um socket ativo por sessão, lease/lock, callbacks assinados, idempotência, reconexão, health/alertas, rate limits, backup/restore e opção de rollback. A documentação oficial Baileys desaconselha `useMultiFileAuthState` em produção. Avaliar termos/risco de suspensão e deixar claro ao cliente que WhatsApp Web/Baileys não é a Business API oficial.
+
+### Documentos canônicos atualizados
+
+1. `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md` — estratégia, decisões, fases, critérios de aceite e fontes.
+2. `todo.md` — checklist vivo com tenancy e login como próxima fase.
+3. `PRODUCT_SCOPE.md` — escopo comercial e arquitetura.
+4. `PLANO-INTERMEDIARIO-FORTE-PANEL.md` — decisões e histórico de etapas.
+
+A seção antiga do próximo passo técnico deve ser lida como histórico. Para validações, executar as suites no commit vigente; as contagens de testes registradas em handoffs antigos são históricas.
