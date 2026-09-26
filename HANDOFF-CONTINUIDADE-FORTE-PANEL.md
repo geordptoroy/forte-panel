@@ -962,3 +962,26 @@ Foi criado `server/workspace-quota-alerts.test.ts`. O teste confirmou que:
 3. outro workspace sem consumo não recebe a notificação.
 
 Essa validação comprova o isolamento e as constraints no banco efêmero. Ainda é necessário repetir o procedimento no PostgreSQL de staging antes de convidar os beta testers.
+
+---
+
+## Atualização do handoff — 2026-09-26 11:24
+
+Foi implementada a retenção dos buckets de consumo para evitar crescimento indefinido das tabelas.
+
+- `cleanupWorkspaceUsageBuckets` remove buckets antigos de workspace e usuário.
+- O padrão é 30 dias.
+- O valor pode ser alterado com `FORTE_USAGE_RETENTION_DAYS`, limitado entre 1 e 365 dias.
+- O worker executa a limpeza uma vez por dia e registra `bucketsRemovidos workspace=N usuarios=N` quando remove dados.
+- A limpeza usa `bucketStart` como critério e preserva a janela atual e todo o período dentro da retenção.
+- O teste PostgreSQL confirma que um bucket com 10 dias é removido usando retenção de 7 dias, enquanto o bucket atual permanece.
+
+Validação desta etapa:
+
+```text
+21 test files passed
+73 tests passed
+pnpm check ✅
+```
+
+Próximo passo: repetir a política no staging real e avaliar retenção/alertas externos com dados do beta.

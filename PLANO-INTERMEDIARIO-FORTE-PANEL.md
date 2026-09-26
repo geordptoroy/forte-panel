@@ -278,3 +278,11 @@ Próximo passo: executar build final, publicar este bloco e realizar a validaç�
 A validação PostgreSQL que estava pendente foi executada localmente. Migrations, constraints de tenancy, isolamento entre dois workspaces, quotas e alertas foram exercitados; 72 testes passaram sem skips.
 
 Próximo passo: repetir migrations e a mesma suíte no staging real, sem apagar volumes, antes de convidar os 10 beta testers.
+
+---
+
+## Atualização de execução — 2026-09-26 11:24
+
+Foi adicionada retenção diária dos buckets de consumo, configurável por `FORTE_USAGE_RETENTION_DAYS` e protegida por teste PostgreSQL. O padrão de 30 dias evita crescimento indefinido antes do beta.
+
+Próximo passo: validar no staging e observar o custo/volume real.

@@ -1133,6 +1133,18 @@ export async function getWorkspaceUsageSnapshot(workspaceId: number): Promise<Wo
   };
 }
 
+export async function cleanupWorkspaceUsageBuckets(retentionDays = Number(process.env.FORTE_USAGE_RETENTION_DAYS ?? 30)) {
+  const db = await getDb();
+  if (!db) return { workspaceBuckets: 0, userBuckets: 0, skipped: true };
+  const days = Number.isFinite(retentionDays) ? Math.max(1, Math.min(Math.floor(retentionDays), 365)) : 30;
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const [workspaceRows, userRows] = await Promise.all([
+    db.delete(workspaceUsageBuckets).where(lt(workspaceUsageBuckets.bucketStart, cutoff)).returning({ id: workspaceUsageBuckets.id }),
+    db.delete(workspaceUserUsageBuckets).where(lt(workspaceUserUsageBuckets.bucketStart, cutoff)).returning({ id: workspaceUserUsageBuckets.id }),
+  ]);
+  return { workspaceBuckets: workspaceRows.length, userBuckets: userRows.length, skipped: false, retentionDays: days };
+}
+
 export async function resetWorkspaceDevelopmentData() {
   const db = await getDb();
   const workspace = await ensureDemoWorkspace();

@@ -139,3 +139,7 @@ No estado atual, os comandos passam no sandbox. Parte dos testes de isolamento �
 Em 26/09/2026 foi criada uma instância PostgreSQL 16 local efêmera. As migrations versionadas foram aplicadas com `pnpm exec drizzle-kit migrate`. O banco confirmou as tabelas e índices compostos de tenancy. A suíte passou com 20 arquivos e 72 testes, sem testes ignorados. O teste adicional de alertas confirmou criação em 70%, deduplicação e isolamento entre workspaces.
 
 Esse resultado valida o código contra PostgreSQL local, mas não substitui a execução no PostgreSQL de staging com as credenciais e configurações reais do deployment.
+
+## 11. Retenção de consumo
+
+Os buckets de uso não são mantidos indefinidamente. O worker executa uma limpeza diária através de `cleanupWorkspaceUsageBuckets`. O padrão é 30 dias e pode ser alterado por `FORTE_USAGE_RETENTION_DAYS`, entre 1 e 365 dias. A limpeza remove tanto `workspaceUsageBuckets` quanto `workspaceUserUsageBuckets` e preserva a janela dentro do período configurado.

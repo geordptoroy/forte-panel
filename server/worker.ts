@@ -1,4 +1,4 @@
-import { processDailySummaryNotificationsOnce, processDomainEventsOnce, processQueuedMessagesOnce, processWorkspaceQuotaAlertsOnce, recoverProcessingDomainEvents, recoverProcessingMessages } from "./db";
+import { cleanupWorkspaceUsageBuckets, processDailySummaryNotificationsOnce, processDomainEventsOnce, processQueuedMessagesOnce, processWorkspaceQuotaAlertsOnce, recoverProcessingDomainEvents, recoverProcessingMessages } from "./db";
 
 const intervalMs = Number(process.env.WORKER_INTERVAL_MS ?? 1500);
 const batchSize = Number(process.env.WORKER_BATCH_SIZE ?? 10);
@@ -8,6 +8,7 @@ const eventMaxAttempts = Number(process.env.EVENT_WORKER_MAX_ATTEMPTS ?? 5);
 let stopping = false;
 let nextDailySummarySweepAt = 0;
 let nextQuotaAlertSweepAt = 0;
+let nextUsageCleanupAt = 0;
 
 async function tick() {
   try {
@@ -28,6 +29,13 @@ async function tick() {
       nextQuotaAlertSweepAt = Date.now() + 60_000;
       const quotaAlerts = await processWorkspaceQuotaAlertsOnce();
       if (quotaAlerts.processed > 0) console.log(`[forte-worker] alertasCota=${quotaAlerts.processed}`);
+    }
+    if (Date.now() >= nextUsageCleanupAt) {
+      nextUsageCleanupAt = Date.now() + 24 * 60 * 60_000;
+      const cleanup = await cleanupWorkspaceUsageBuckets();
+      if (cleanup.workspaceBuckets > 0 || cleanup.userBuckets > 0) {
+        console.log(`[forte-worker] bucketsRemovidos workspace=${cleanup.workspaceBuckets} usuarios=${cleanup.userBuckets}`);
+      }
     }
   } catch (error) {
     console.error("[forte-worker] erro no ciclo", error);
