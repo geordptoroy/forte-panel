@@ -1760,7 +1760,7 @@ export async function ingestInboundWhatsApp(workspaceId: number, input: { eventI
       unreadCount: fromMe ? 0 : 1,
       lastMessagePreview: input.content.slice(0, 500),
       lastMessageAt: receivedAt,
-    }).onConflictDoNothing({ target: [contacts.workspaceId, contacts.externalPhone] });
+    }).onConflictDoNothing();
     contact = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, input.phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
     if (contact) {
       await enqueueDomainEvent({
