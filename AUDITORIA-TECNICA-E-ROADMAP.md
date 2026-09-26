@@ -313,6 +313,21 @@ A mensagem atual já está no histórico e é acrescentada novamente como `Nova 
 7. Consolidar Compose/migrations/documentação.
 8. Fazer teste de carga do worker, PAPI e LLM.
 
+## Fase 2.5 — painel administrativo interno para o beta
+
+Esta fase deve ser implementada **antes de convidar os beta testers**. O produto precisa de um console separado para o operador da plataforma administrar contas e prestar suporte sem editar banco, variáveis ou secrets manualmente.
+
+1. Criar identidade/permissão de `platform_admin`, separada do papel `admin` de um workspace.
+2. Criar listagem e detalhe de workspaces, owners, membros, plano, quotas, canal, IA, worker e últimos erros.
+3. Criar sessão de suporte escopada, read-only por padrão, com expiração, revogação, motivo e auditoria.
+4. Criar configuração de agente por workspace com rascunho, simulação, publicação, versão e rollback.
+5. Criar notas internas, checklist de onboarding e histórico de suporte.
+6. Permitir suspensão/reativação com confirmação e auditoria; nunca exibir senha ou segredo bruto.
+7. Criar endpoints internos separados da API pública e testes de autorização para impedir acesso de owner/member ao console.
+8. Adicionar monitoramento do estado de readiness, heartbeat, quotas, canal e fila outbound na conta.
+
+As estruturas esperadas são `platformAdmins`, `supportSessions`, versões/rascunhos do prompt, execuções de simulação e auditoria de plataforma. O detalhamento funcional está em `STATUS-COMPLETO-E-PLANO-BETA.md`.
+
 # Critério para considerar pronto para produção
 
 A recomendação é só marcar o sistema como pronto quando todos os pontos abaixo forem demonstrados em ambiente de staging:
@@ -329,6 +344,7 @@ A recomendação é só marcar o sistema como pronto quando todos os pontos abai
 - Migrations, backup, restore e rollback foram testados.
 - CI executa typecheck, lint, testes unitários, integração, E2E, scan e smoke test.
 - Health/readiness, logs, métricas e alertas estão operacionais.
+- O operador da plataforma consegue administrar contas e configurar/retornar o agente por workspace sem editar banco ou secrets manualmente.
 
 ## Conclusão
 

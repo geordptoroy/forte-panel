@@ -96,6 +96,9 @@ Depois da aplicação, verificar que as três tabelas/constraints existem e exec
 - [ ] Executar migrations 0016–0018.
 - [ ] Criar dois workspaces de teste e confirmar que nenhum contato/mensagem/configuração cruza tenant.
 - [ ] Criar até 10 memberships beta, com roles mínimas necessárias.
+- [ ] Implementar e testar o console interno `platform_admin` antes de criar os testers.
+- [ ] Configurar cada agente beta por workspace usando rascunho, simulação, publicação e rollback; não editar secrets manualmente.
+- [ ] Confirmar que suporte read-only não permite acesso cruzado e que toda ação mutável exige motivo/auditoria.
 - [ ] Confirmar que apenas manager/admin/owner vê o painel de consumo e os alertas operacionais.
 - [ ] Testar inbound, resposta de IA, envio manual e outbound automático.
 - [ ] Forçar limite baixo em ambiente de teste e confirmar que mensagens ficam `queued`.
@@ -106,8 +109,8 @@ Depois da aplicação, verificar que as três tabelas/constraints existem e exec
 
 ## 7. Riscos ainda abertos
 
-1. Os testes que exigem PostgreSQL aparecem ignorados neste sandbox; a validação concorrente real ainda precisa ser feita no ambiente com banco.
-2. O bucket de consumo cresce com o tempo; adicionar retenção/limpeza periódica após observar o volume do beta.
+1. A validação PostgreSQL local passou, mas deve ser repetida no staging real.
+2. O console interno `platform_admin` e a configuração versionada do agente ainda precisam ser implementados antes dos convites.
 3. A cota individual atual é derivada da cota do plano, não de uma tabela de planos comercial.
 4. Ainda não há alerta externo por e-mail/WhatsApp; neste momento o alerta é in-app.
 5. A API REST usa chave da aplicação; se clientes externos receberem acesso individual no futuro, criar tokens por workspace com rotação e revogação.
@@ -133,6 +136,7 @@ No estado atual, os comandos passam no sandbox. Parte dos testes de isolamento �
 - Painel operacional de consumo em Integrações.
 - Limite outbound no worker.
 - Alertas in-app de 70% e 90% para gestores.
+- Health/readiness, heartbeat e retenção dos buckets.
 
 ## 10. Validação PostgreSQL executada
 

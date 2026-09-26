@@ -14,7 +14,7 @@
 - Multiusuário interno com hash de senha, memberships e papéis base; telas iniciais de Equipe/Configurações e notificações internas.
 - Ledger idempotente das tools de agente e melhorias de leases do worker.
 - Compose, migrations, documentação local e infraestrutura registrados nos docs existentes.
-- Última validação (2026-09-26): sandbox sem banco: 49 testes passaram e 21 foram ignorados; PostgreSQL local efêmero: **72 testes passaram, 0 ignorados**, incluindo isolamento, deduplicação, quotas e alertas.
+- Última validação (2026-09-26): sandbox sem banco: 50 testes passaram e 24 foram ignorados; PostgreSQL local efêmero: **74 testes passaram, 0 ignorados**, incluindo isolamento, deduplicação, quotas, retenção, alertas e readiness.
 
 ## Direção de produto aprovada
 
@@ -54,6 +54,10 @@
 - [ ] Repetir a mesma validação no PostgreSQL do ambiente de staging/produção antes do beta.
 - **Atenção:** ainda não abrir cadastro público de empresa; o banco local foi efêmero e serve apenas para validação automatizada.
 - Próxima fatia: repetir migrations/testes no staging real e conectar os sinais de readiness/heartbeat ao monitoramento; depois revisar planos comerciais a partir do consumo observado.
+- [ ] **P0 antes dos convites beta:** implementar console interno `platform_admin` para listar contas/workspaces, consultar saúde/uso, prestar suporte read-only e registrar auditoria.
+- [ ] **P0 antes dos convites beta:** implementar configuração versionada do agente por workspace: rascunho, simulação sem envio externo, publicação, histórico e rollback.
+- [ ] **P0 antes dos convites beta:** permitir pausar/reativar IA, suspender/reativar conta e adicionar notas de suporte com motivo, sem revelar senha ou segredo bruto.
+- [ ] **P0 antes dos convites beta:** criar testes de autorização que provem que owner/member não acessa o console da plataforma e que uma sessão de suporte não cruza workspace.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.

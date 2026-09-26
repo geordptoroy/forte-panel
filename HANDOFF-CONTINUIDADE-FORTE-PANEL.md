@@ -1017,3 +1017,23 @@ pnpm check ✅
 A primeira tentativa de teste com PostgreSQL falhou porque o banco havia sido encerrado antes da execução paralela; a repetição iniciou o PostgreSQL no mesmo comando e passou integralmente. O banco efêmero foi encerrado após a validação.
 
 Próximo passo: configurar monitoramento no staging real para `/api/v1/ready` e para o heartbeat do worker.
+
+---
+
+## Atualização do handoff — 2026-09-26 11:31
+
+O produto ganhou uma nova decisão P0 antes dos convites beta: implementar o **Console Administrativo da Plataforma**.
+
+O console será separado dos papéis `owner/admin/manager/agent` de cada workspace. Seu objetivo é permitir que o operador do Forte Panel:
+
+- liste e consulte contas/workspaces;
+- acompanhe onboarding, canal, IA, quotas, fila e heartbeat;
+- preste suporte read-only por sessão escopada;
+- configure o agente individualmente por workspace;
+- simule, publique, versiona e faça rollback de prompts;
+- pause/reative IA ou suspenda/reative conta com motivo;
+- registre notas e auditoria sem ver senhas ou segredos crus.
+
+A especificação funcional e técnica completa está em `STATUS-COMPLETO-E-PLANO-BETA.md`. O módulo deve ser implementado antes de convidar os 10 testers, pois editar banco ou secrets manualmente não é uma operação segura de beta.
+
+Estruturas previstas: `platformAdmins`, `supportSessions`, versões/rascunhos do agente, execuções de simulação e auditoria de plataforma. O suporte é read-only por padrão, com expiração, revogação e step-up para ações mutáveis.

@@ -22,6 +22,8 @@ Na primeira versão comercial: uma conta master cria uma empresa e administra lo
 - **Agent:** atendimento com acesso limitado.
 - **Perfil operacional:** atendente, agente de IA ou profissional executor, separado do papel de autorização.
 
+Além dos papéis de uma empresa, existe um papel de **plataforma** separado: `platform_admin`/suporte interno. Ele administra workspaces do Forte Panel e não deve ser modelado como um admin global capaz de ignorar a membership. O suporte usa sessão escopada, read-only por padrão, expiração, motivo e auditoria.
+
 Funcionários terão nome, identificador de login e senha inicial temporária; cada funcionário possui credencial individual. Senhas nunca ficam em texto puro e desativar ou redefinir credenciais invalida as sessões existentes. Login sem e-mail pode ser suportado inicialmente via username, mas cadastro público do master requer verificação de e-mail antes de abertura ampla.
 
 ## Segurança e multi-tenancy
@@ -61,6 +63,7 @@ Baileys é uma biblioteca independente sobre WhatsApp Web/Linked Devices, não a
 | API e webhooks | API por tenant para sites e integrações autorizadas | P1 |
 | Relatórios | Conversão, resposta, ocupação, receita e equipe | P1 |
 | Planos/limites/cobrança | Limites de empresas, funcionários, conversas, automações e canais | P2, decisão posterior |
+| Console interno da plataforma | Contas beta, suporte, saúde, quotas e configuração versionada do agente por workspace | P0 — antes do beta |
 | Gateway REST próprio | Fork PAPI autorizado ou serviço próprio Baileys | Futuro condicionado |
 
 ## Fluxo principal
@@ -87,7 +90,8 @@ A interface REST interna do futuro gateway WhatsApp deve ficar separada da API p
 2. **Multi-login:** cadastro master e criação de logins de funcionários com papéis, senha temporária e reset/revogação.
 3. **Autoatendimento:** onboarding de empresa, checklist, UI sem configuração técnica e perfil IA revisável.
 4. **Canal:** uma conexão WhatsApp por tenant no provider aprovado; staging com E2E, idempotência e takeover humano.
-5. **Lançamento:** backup/restore, observabilidade, rate limits, privacidade, suporte, beta e operação.
-6. **Depois:** avaliar source/license e prototipar fork PAPI ou gateway Baileys; planos/cobrança e múltiplos canais entram após validação de produto.
+5. **Operação do beta:** console interno de contas/suporte, configuração versionada do agente, backup/restore, observabilidade, rate limits, privacidade e operação.
+6. **Lançamento:** cadastro público, autosserviço do owner, suporte delegado, planos/cobrança e critérios de produção.
+7. **Depois:** avaliar source/license e prototipar fork PAPI ou gateway Baileys; múltiplos canais entram após validação de produto.
 
 Detalhamento, testes de aceite e fontes estão em `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`. As tarefas vigentes estão em `todo.md`; recomendações antigas para iniciar pelo ledger/fencing não substituem a nova prioridade de tenancy e login master.

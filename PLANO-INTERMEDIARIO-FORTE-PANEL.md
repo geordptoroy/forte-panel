@@ -294,3 +294,11 @@ Próximo passo: validar no staging e observar o custo/volume real.
 Foi adicionado healthcheck/readiness para a API e heartbeat periódico do worker. A suíte PostgreSQL passou com 74 testes e o typecheck passou.
 
 Próximo passo: instalar esses sinais no staging real e confirmar que o monitoramento diferencia processo vivo de serviço pronto.
+
+---
+
+## Atualização de execução — 2026-09-26 11:31
+
+Foi documentado e priorizado como P0 o Console Administrativo da Plataforma. Ele deve entrar antes do beta real e inclui gestão de contas, suporte escopado, observabilidade por workspace e configuração versionada do agente.
+
+O documento consolidado é `STATUS-COMPLETO-E-PLANO-BETA.md`. O próximo bloco de implementação deve criar as permissões de plataforma, as sessões de suporte e o CRUD de rascunho/publicação/rollback do agente.

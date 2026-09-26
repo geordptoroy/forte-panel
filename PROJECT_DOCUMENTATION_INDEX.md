@@ -8,6 +8,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 2. [`todo.md`](./todo.md) — checklist vivo da implementação.
 3. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
 4. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual consolidado de operação do beta, migrations, quotas e segurança.
+5. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão completa do que funciona, como funciona, plano do console admin e pendências antes do beta.
 
 ## Produto e tenancy
 
@@ -53,4 +54,6 @@ Ao concluir um bloco técnico:
 - Painel de consumo em Integrações.
 - Worker protegido para IA e outbound.
 - Alertas in-app de 70% e 90% para gestores.
-- Validação sandbox aprovada; validação concorrente com PostgreSQL real ainda pendente.
+- Retenção de buckets, readiness `/api/v1/ready` e heartbeat JSON do worker.
+- Validação PostgreSQL local aprovada: 21 arquivos e 74 testes passaram; staging real ainda pendente.
+- Console interno de plataforma e configuração versionada do agente por workspace ainda não implementados; são P0 antes dos convites beta.
