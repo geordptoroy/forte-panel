@@ -55,7 +55,7 @@ export class InstanceManager {
 
   async sendText(phone: string, text: string): Promise<string> {
     if (!this.socket || this.snapshot.status !== "connected") throw new Error("WhatsApp instance is not connected");
-    const jid = phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
+    const jid = phone.includes("@") ? phone : phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
     const result = await this.socket.sendMessage(jid, { text });
     return result?.key?.id ?? crypto.randomUUID();
   }
@@ -83,7 +83,7 @@ export class InstanceManager {
       const content = message.message?.conversation ?? message.message?.extendedTextMessage?.text;
       if (!content) continue;
       const timestamp = Number(message.messageTimestamp ?? Math.floor(Date.now() / 1000));
-      await postWebhook({ eventId: message.key.id ?? crypto.randomUUID(), instanceId: config.instanceId, phone: message.key.remoteJid.replace(/@s\.whatsapp\.net$/, ""), name: message.pushName, content, messageType: "text", receivedAt: new Date(timestamp * 1000).toISOString(), metadata: { provider: "baileys", messageId: message.key.id } });
+      await postWebhook({ eventId: message.key.id ?? crypto.randomUUID(), instanceId: config.instanceId, phone: message.key.remoteJid.replace(/@s\.whatsapp\.net$/, ""), name: message.pushName, content, messageType: "text", receivedAt: new Date(timestamp * 1000).toISOString(), metadata: { provider: "baileys", messageId: message.key.id, jid: message.key.remoteJid } });
     }
   }
 }

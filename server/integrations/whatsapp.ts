@@ -381,7 +381,9 @@ export function createBaileysAdapter(): BaileysAdapter {
             "Idempotency-Key": command.idempotencyKey,
           },
           body: JSON.stringify({
-            phone: normalizePhone(command.phone),
+            phone: typeof command.metadata?.jid === "string"
+              ? command.metadata.jid
+              : normalizePhone(command.phone),
             text: command.content,
           }),
         }
