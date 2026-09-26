@@ -64,6 +64,7 @@ d026f05 docs: preserve full handoff history
 07ceefa chore: remove automation integration
 36a83ad docs: refresh handoff after integration removal
 db54e6e fix(auth): secure workspace owner bootstrap and sessions
+9a7c5c0 feat(auth): resolve active workspace in protected context
 ```
 
 No momento do handoff:
@@ -631,7 +632,7 @@ O usuário pediu construir o app completo para o público final:
 
 O repositório já tem login local, hash de senha, memberships e papéis internos que devem ser avaliados/reutilizados. O middleware tRPC agora resolve uma única membership/workspace ativo; mesmo usuários com papel global `admin` são negados sem essa membership. O login local e `workspace.current` usam esse contexto e parte das rotas de notificação já recebe o `workspaceId` correto.
 
-**Implementação nesta retomada (em validação para publicação):** `sessionVersion` passou a ser incluída no JWT assinado; a autenticação já compara a versão da sessão com a versão atual do banco. O primeiro login OAuth deixou de conceder automaticamente membership `owner` a qualquer usuário: somente o bootstrap explicitamente configurado ou um admin existente pode reivindicar a instalação vazia. O middleware tRPC usa membership ativa, falha fechado para ausência/ambiguidade e nega usuários sem tenant mesmo se o papel global for `admin`. Login local, `workspace.current` e notificações/preferências iniciais usam esse contexto.
+**Implementação nesta retomada (commits `db54e6e` e `9a7c5c0`, publicados):** `sessionVersion` passou a ser incluída no JWT assinado; a autenticação já compara a versão da sessão com a versão atual do banco. O primeiro login OAuth deixou de conceder automaticamente membership `owner` a qualquer usuário: somente o bootstrap explicitamente configurado ou um admin existente pode reivindicar a instalação vazia. O middleware tRPC usa membership ativa, falha fechado para ausência/ambiguidade e nega usuários sem tenant mesmo se o papel global for `admin`. Login local, `workspace.current` e notificações/preferências iniciais usam esse contexto.
 
 **Validação desta etapa:** typecheck e build passaram; 42 testes passaram e 13 foram ignorados por dependências de infraestrutura externa. Nenhuma migration ou dado do banco foi alterado. Ainda restam 59 chamadas de `ensureDemoWorkspace` no servidor, muitas em CRM, agenda e helpers; portanto o isolamento multi-tenant não está completo.
 
