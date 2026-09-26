@@ -1040,6 +1040,56 @@ export async function consumeWorkspaceUserUsage(workspaceId: number, userId: num
   });
 }
 
+export type WorkspaceUsageSnapshot = {
+  plan: "starter" | "pro" | "business";
+  bucketStart: Date;
+  resetsAt: Date;
+  workspace: Record<WorkspaceUsageMetric, { used: number; limit: number; remaining: number }>;
+  users: Array<{ userId: number; name: string | null; email: string | null; active: boolean; usage: Record<WorkspaceUsageMetric, { used: number; limit: number; remaining: number }> }>;
+};
+
+export async function getWorkspaceUsageSnapshot(workspaceId: number): Promise<WorkspaceUsageSnapshot> {
+  const now = new Date();
+  const bucketStart = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
+  const resetsAt = new Date(bucketStart.getTime() + 60_000);
+  const workspace = await getActiveWorkspaceById(workspaceId);
+  const plan = workspace?.plan ?? "starter";
+  const metrics: WorkspaceUsageMetric[] = ["apiRequests", "aiRequests", "outboundMessages"];
+  const emptyUsage = (scope: "workspace" | "user") => Object.fromEntries(metrics.map((metric) => {
+    const limits = workspaceUsageLimitsForPlan(plan, metric);
+    const limit = scope === "workspace" ? limits.workspaceLimit : limits.userLimit;
+    return [metric, { used: 0, limit, remaining: limit }];
+  })) as WorkspaceUsageSnapshot["workspace"];
+  const db = await getDb();
+  if (!db || !workspace) return { plan, bucketStart, resetsAt, workspace: emptyUsage("workspace"), users: [] };
+  const workspaceRow = (await db.select().from(workspaceUsageBuckets).where(and(eq(workspaceUsageBuckets.workspaceId, workspaceId), eq(workspaceUsageBuckets.bucketStart, bucketStart))).limit(1))[0];
+  const userRows = await db.select({
+    userId: workspaceUserUsageBuckets.userId,
+    name: users.name,
+    email: users.email,
+    active: workspaceMembers.active,
+    apiRequests: workspaceUserUsageBuckets.apiRequests,
+    aiRequests: workspaceUserUsageBuckets.aiRequests,
+    outboundMessages: workspaceUserUsageBuckets.outboundMessages,
+  }).from(workspaceUserUsageBuckets)
+    .leftJoin(users, eq(users.id, workspaceUserUsageBuckets.userId))
+    .leftJoin(workspaceMembers, and(eq(workspaceMembers.userId, workspaceUserUsageBuckets.userId), eq(workspaceMembers.workspaceId, workspaceId)))
+    .where(and(eq(workspaceUserUsageBuckets.workspaceId, workspaceId), eq(workspaceUserUsageBuckets.bucketStart, bucketStart)));
+  const makeUsage = (scope: "workspace" | "user", row?: Partial<Record<WorkspaceUsageMetric, number>>) => Object.fromEntries(metrics.map((metric) => {
+    const limits = workspaceUsageLimitsForPlan(plan, metric);
+    const limit = scope === "workspace" ? limits.workspaceLimit : limits.userLimit;
+    const used = Math.max(0, Number(row?.[metric] ?? 0));
+    return [metric, { used, limit, remaining: Math.max(0, limit - used) }];
+  })) as WorkspaceUsageSnapshot["workspace"];
+  return {
+    plan,
+    bucketStart,
+    resetsAt,
+    workspace: makeUsage("workspace", workspaceRow),
+    users: userRows.map((row) => ({ userId: row.userId, name: row.name, email: row.email, active: row.active === 1, usage: makeUsage("user", row) })),
+  };
+}
+
 export async function resetWorkspaceDevelopmentData() {
   const db = await getDb();
   const workspace = await ensureDemoWorkspace();

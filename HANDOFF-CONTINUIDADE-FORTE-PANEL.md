@@ -844,3 +844,29 @@ pnpm test  ✅ 48 aprovados; 21 ignorados por dependência de PostgreSQL
 ```
 
 A aplicação das migrations 0016, 0017 e 0018 e o teste concorrente ainda precisam ocorrer no PostgreSQL real. O próximo trabalho será expor consumo/limites no painel e aplicar cota também ao outbound automático do worker.
+
+---
+
+## Atualização do handoff — 2026-09-26 10:22
+
+O painel operacional de consumo foi implementado na tela **Integrações**, protegido pela procedure administrativa de manager.
+
+### Entregas
+
+- Consulta `workspace.usage` tenant-aware.
+- Resumo da janela atual para API, execuções de IA e mensagens outbound.
+- Limites exibidos conforme o plano do workspace.
+- Percentual usado, saldo restante e horário de renovação da janela.
+- Lista dos operadores que tiveram consumo individual na janela, ordenada por mensagens outbound.
+- Atualização automática da tela a cada 30 segundos.
+- Nenhum segredo de integração é incluído no payload do painel.
+
+Validação:
+
+```text
+pnpm check ✅
+pnpm test  ✅ 48 aprovados; 21 ignorados
+pnpm build  ✅
+```
+
+Próximo bloco: aplicar as migrations 0016/0017/0018 em PostgreSQL real, validar a consulta com dois workspaces e adicionar a mesma proteção de cota ao outbound automático do worker.

@@ -37,6 +37,7 @@ import {
   setDefaultWhatsappProvider,
   getAuditLogForContact,
   getDashboardSnapshot,
+  getWorkspaceUsageSnapshot,
   getOnboardingProfile,
   getNativeAgentConfig,
   saveNativeAgentConfig,
@@ -302,6 +303,14 @@ export const appRouter = router({
     summary: protectedProcedure.query(async ({ ctx }) => ({
       membersActive: await countWorkspaceMembers(ctx.workspace.workspaceId),
     })),
+    usage: requireManager.query(async ({ ctx }) => {
+      const snapshot = await getWorkspaceUsageSnapshot(ctx.workspace.workspaceId);
+      return {
+        ...snapshot,
+        bucketStart: snapshot.bucketStart.toISOString(),
+        resetsAt: snapshot.resetsAt.toISOString(),
+      };
+    }),
     professionals: protectedProcedure.query(async ({ ctx }) => (await listProfessionals(ctx.workspace.workspaceId)).map((professional) => ({
       id: professional.id,
       name: professional.name,

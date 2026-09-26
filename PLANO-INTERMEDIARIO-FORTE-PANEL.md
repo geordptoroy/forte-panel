@@ -246,3 +246,11 @@ Antes do beta, configurar `JWT_SECRET` forte e persistente no servidor, aplicar 
 Foi adicionada política de limites por plano e bucket individual por operador. O endpoint manual do Inbox já impede que um único usuário consuma toda a capacidade do workspace. A migration 0018 cria a persistência do bucket individual.
 
 Próximo passo: executar as três migrations em PostgreSQL real, validar concorrência entre usuários e criar uma visão operacional de consumo antes de abrir o beta.
+
+---
+
+## Atualização de execução — 2026-09-26 10:22
+
+A tela de Integrações passou a exibir o consumo do workspace e dos operadores, com limites derivados do plano e atualização automática. O endpoint usa `requireManager`, mantendo a visibilidade operacional restrita a gestores.
+
+Próximo passo: validar as migrations em PostgreSQL real e fechar o limite do worker outbound.
