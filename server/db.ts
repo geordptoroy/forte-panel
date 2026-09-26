@@ -219,7 +219,7 @@ export async function touchLastSignedIn(userId: number) {
   await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, userId));
 }
 
-export async function createLocalWorkspaceMember(input: {
+export async function createLocalWorkspaceMember(workspaceId: number, input: {
   name: string;
   email: string;
   password: string;
@@ -229,8 +229,6 @@ export async function createLocalWorkspaceMember(input: {
 }, actorUserId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const workspace = await ensureDemoWorkspace();
-  if (!workspace) throw new Error("Workspace unavailable");
   const email = input.email.trim().toLowerCase();
   const existing = await getUserByEmail(email);
   if (existing) throw new Error("Já existe uma conta com este e-mail");
@@ -238,7 +236,7 @@ export async function createLocalWorkspaceMember(input: {
     throw new Error("Profissional executor precisa estar vinculado a um profissional cadastrado");
   }
   if (input.professionalId) {
-    const professional = (await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.id, input.professionalId), eq(professionals.workspaceId, workspace.id))).limit(1))[0];
+    const professional = (await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.id, input.professionalId), eq(professionals.workspaceId, workspaceId))).limit(1))[0];
     if (!professional) throw new Error("Profissional não pertence a este workspace");
   }
   const [user] = await db.insert(users).values({
@@ -246,13 +244,15 @@ export async function createLocalWorkspaceMember(input: {
     name: input.name.trim(),
     email,
     loginMethod: "local",
-    role: input.role === "admin" ? "admin" : "user",
+    // Workspace roles are stored only on workspaceMembers. Never promote a
+    // customer employee to the installation-wide platform administrator.
+    role: "user",
     passwordHash: hashLocalPassword(input.password),
     operationalRole: input.operationalRole,
   }).returning();
   if (!user) throw new Error("Não foi possível criar a conta");
   await db.insert(workspaceMembers).values({
-    workspaceId: workspace.id,
+    workspaceId: workspaceId,
     userId: user.id,
     role: input.role,
     professionalId: input.operationalRole === "professional" ? input.professionalId ?? null : null,
@@ -265,35 +265,30 @@ export async function createLocalWorkspaceMember(input: {
   return user;
 }
 
-export async function getWorkspaceMemberForUser(userId: number) {
+export async function getWorkspaceMemberForUser(workspaceId: number, userId: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const workspace = await ensureDemoWorkspace();
-  if (!workspace) return undefined;
-  const result = await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, userId), eq(workspaceMembers.active, 1))).limit(1);
+  const result = await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId), eq(workspaceMembers.active, 1))).limit(1);
   return result[0];
 }
 
-export async function listProfessionals() {
+export async function listProfessionals(workspaceId: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return [];
-  return db.select().from(professionals).where(and(eq(professionals.workspaceId, workspace.id), eq(professionals.active, 1))).orderBy(asc(professionals.name));
+  if (!db) return [];
+  return db.select().from(professionals).where(and(eq(professionals.workspaceId, workspaceId), eq(professionals.active, 1))).orderBy(asc(professionals.name));
 }
 
-export async function createProfessional(input: { name: string; specialty?: string; color?: string }) {
+export async function createProfessional(workspaceId: number, input: { name: string; specialty?: string; color?: string }) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Workspace unavailable");
-  const [professional] = await db.insert(professionals).values({ workspaceId: workspace.id, name: input.name.trim(), specialty: input.specialty?.trim() || null, color: input.color ?? "#56d68a" }).returning();
+  if (!db) throw new Error("Workspace unavailable");
+  const [professional] = await db.insert(professionals).values({ workspaceId: workspaceId, name: input.name.trim(), specialty: input.specialty?.trim() || null, color: input.color ?? "#56d68a" }).returning();
   return professional;
 }
 
-export async function linkProfessionalService(professionalId: number, serviceId: number) {
+export async function linkProfessionalService(workspaceId: number, professionalId: number, serviceId: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Workspace unavailable");
-  await db.insert(professionalServices).values({ workspaceId: workspace.id, professionalId, serviceId, active: 1 }).onConflictDoUpdate({ target: [professionalServices.workspaceId, professionalServices.professionalId, professionalServices.serviceId], set: { active: 1 } });
+  if (!db) throw new Error("Workspace unavailable");
+  await db.insert(professionalServices).values({ workspaceId: workspaceId, professionalId, serviceId, active: 1 }).onConflictDoUpdate({ target: [professionalServices.workspaceId, professionalServices.professionalId, professionalServices.serviceId], set: { active: 1 } });
 }
 
 export const DEMO_WORKSPACE_SLUG = "forte-demo";

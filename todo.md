@@ -14,7 +14,7 @@
 - Multiusuário interno com hash de senha, memberships e papéis base; telas iniciais de Equipe/Configurações e notificações internas.
 - Ledger idempotente das tools de agente e melhorias de leases do worker.
 - Compose, migrations, documentação local e infraestrutura registrados nos docs existentes.
-- Última validação local: typecheck/build passaram; 42 testes passaram e 13 foram ignorados por dependências externas. Isso não prova cobertura de isolamento com PostgreSQL real.
+- Última validação local: typecheck/build passaram; 42 testes passaram e 16 foram ignorados, incluindo os testes que exigem PostgreSQL real. Isso não prova isolamento em banco neste sandbox.
 
 ## Direção de produto aprovada
 
@@ -32,7 +32,10 @@
 - [x] Login OAuth comum não recebe automaticamente membership `owner`; somente o bootstrap configurado ou admin preexistente pode reivindicar a instalação vazia.
 - [x] Contexto tRPC e middleware agora exigem uma única membership ativa; usuário sem tenant é negado mesmo se `users.role` for `admin`.
 - [x] Login local e `workspace.current` usam o tenant resolvido; notificações e preferências usam o `workspaceId` desse contexto.
-- [x] Mapeamento atualizado: restam 59 chamadas servidor-side a `ensureDemoWorkspace` para remover/migrar por domínio.
+- [x] Equipe, catálogo, profissionais, vínculos e disponibilidade semanal recebem `workspaceId` explícito vindo do contexto autenticado; papéis de funcionário não promovem admin global.
+- [x] Mapeamento atualizado: restam 42 chamadas servidor-side a `ensureDemoWorkspace` para remover/migrar por domínio.
+- [ ] Executar `workspace-domain-isolation.test.ts` numa instância PostgreSQL; foi criada nesta etapa, mas está ignorada neste ambiente sem `DATABASE_URL`.
+- A UI da auditoria está temporariamente sem resultados porque a tabela `auditLogs` não tem `workspaceId`; adicionar coluna e backfill seguro antes de reativá-la.
 - **Atenção:** ainda não abrir cadastro de empresa nem criar outro workspace para operação real. Outras consultas/mutações ainda usam o workspace global/demo e precisam receber `ctx.workspace.workspaceId` antes de permitir tenants ativos.
 - Mapear todas as rotas, queries e jobs que precisam de `workspaceId`.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.

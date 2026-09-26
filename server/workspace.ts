@@ -10,7 +10,7 @@ import {
   workspaceSettings,
   type User,
 } from "../drizzle/schema";
-import { ensureDemoWorkspace, getDb, type WorkspaceMembershipContext } from "./db";
+import { getDb, type WorkspaceMembershipContext } from "./db";
 import { defaultNotificationPreferences, parseNotificationPreferences, type NotificationPreferences } from "./notification-contract";
 
 export type WorkspaceMemberRole = "owner" | "admin" | "manager" | "agent";
@@ -101,26 +101,24 @@ export async function logWorkspaceAction(input: { actorUserId?: number; contactI
 /* Serviços e profissionais                                            */
 /* ------------------------------------------------------------------ */
 
-export async function listServices(options: { includeInactive?: boolean } = {}) {
+export async function listServices(workspaceId: number, options: { includeInactive?: boolean } = {}) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return [];
+  if (!db) return [];
   const rows = await db.select().from(services)
-    .where(options.includeInactive ? eq(services.workspaceId, workspace.id) : and(eq(services.workspaceId, workspace.id), eq(services.active, 1)))
+    .where(options.includeInactive ? eq(services.workspaceId, workspaceId) : and(eq(services.workspaceId, workspaceId), eq(services.active, 1)))
     .orderBy(asc(services.name), asc(services.id));
-  const links = await db.select().from(professionalServices).where(eq(professionalServices.workspaceId, workspace.id));
+  const links = await db.select().from(professionalServices).where(eq(professionalServices.workspaceId, workspaceId));
   return rows.map((service) => ({
     ...service,
     professionalIds: links.filter((link) => link.serviceId === service.id && link.active === 1).map((link) => link.professionalId),
   }));
 }
 
-export async function createService(input: { name: string; description?: string; durationMinutes?: number; priceCents?: number }) {
+export async function createService(workspaceId: number, input: { name: string; description?: string; durationMinutes?: number; priceCents?: number }) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Workspace indisponível");
+  if (!db) throw new Error("Workspace indisponível");
   const created = await db.insert(services).values({
-    workspaceId: workspace.id,
+    workspaceId: workspaceId,
     name: input.name.trim(),
     description: input.description?.trim() || null,
     durationMinutes: input.durationMinutes ?? 60,
@@ -129,11 +127,10 @@ export async function createService(input: { name: string; description?: string;
   return created[0];
 }
 
-export async function updateService(id: number, input: { name?: string; description?: string | null; durationMinutes?: number; priceCents?: number; active?: boolean }) {
+export async function updateService(workspaceId: number, id: number, input: { name?: string; description?: string | null; durationMinutes?: number; priceCents?: number; active?: boolean }) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Workspace indisponível");
-  const existing = (await db.select().from(services).where(and(eq(services.id, id), eq(services.workspaceId, workspace.id))).limit(1))[0];
+  if (!db) throw new Error("Workspace indisponível");
+  const existing = (await db.select().from(services).where(and(eq(services.id, id), eq(services.workspaceId, workspaceId))).limit(1))[0];
   if (!existing) return undefined;
   const updated = await db.update(services).set({
     name: input.name?.trim() ?? existing.name,
@@ -142,35 +139,33 @@ export async function updateService(id: number, input: { name?: string; descript
     priceCents: input.priceCents ?? existing.priceCents,
     active: input.active === undefined ? existing.active : input.active ? 1 : 0,
     updatedAt: new Date(),
-  }).where(eq(services.id, id)).returning();
+  }).where(and(eq(services.id, id), eq(services.workspaceId, workspaceId))).returning();
   return updated[0];
 }
 
-export async function setServiceProfessionals(serviceId: number, professionalIds: number[]) {
+export async function setServiceProfessionals(workspaceId: number, serviceId: number, professionalIds: number[]) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Workspace indisponível");
-  const service = (await db.select().from(services).where(and(eq(services.id, serviceId), eq(services.workspaceId, workspace.id))).limit(1))[0];
+  if (!db) throw new Error("Workspace indisponível");
+  const service = (await db.select().from(services).where(and(eq(services.id, serviceId), eq(services.workspaceId, workspaceId))).limit(1))[0];
   if (!service) throw new Error("Serviço não encontrado neste workspace");
-  const validProfessionals = professionalIds.length === 0 ? [] : await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.workspaceId, workspace.id), inArray(professionals.id, professionalIds)));
+  const validProfessionals = professionalIds.length === 0 ? [] : await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.workspaceId, workspaceId), inArray(professionals.id, professionalIds)));
   const validIds = validProfessionals.map((row) => row.id);
-  await db.delete(professionalServices).where(and(eq(professionalServices.workspaceId, workspace.id), eq(professionalServices.serviceId, serviceId)));
+  await db.delete(professionalServices).where(and(eq(professionalServices.workspaceId, workspaceId), eq(professionalServices.serviceId, serviceId)));
   if (validIds.length > 0) {
-    await db.insert(professionalServices).values(validIds.map((professionalId) => ({ workspaceId: workspace.id, professionalId, serviceId, active: 1 })));
+    await db.insert(professionalServices).values(validIds.map((professionalId) => ({ workspaceId: workspaceId, professionalId, serviceId, active: 1 })));
   }
   return validIds;
 }
 
-export async function listProfessionalsDetailed(options: { includeInactive?: boolean } = {}) {
+export async function listProfessionalsDetailed(workspaceId: number, options: { includeInactive?: boolean } = {}) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return [];
+  if (!db) return [];
   const rows = await db.select().from(professionals)
-    .where(options.includeInactive ? eq(professionals.workspaceId, workspace.id) : and(eq(professionals.workspaceId, workspace.id), eq(professionals.active, 1)))
+    .where(options.includeInactive ? eq(professionals.workspaceId, workspaceId) : and(eq(professionals.workspaceId, workspaceId), eq(professionals.active, 1)))
     .orderBy(asc(professionals.name), asc(professionals.id));
-  const links = await db.select().from(professionalServices).where(eq(professionalServices.workspaceId, workspace.id));
-  const availabilityRows = await db.select().from(availability).where(eq(availability.workspaceId, workspace.id));
-  const memberRows = await db.select().from(workspaceMembers).where(eq(workspaceMembers.workspaceId, workspace.id));
+  const links = await db.select().from(professionalServices).where(eq(professionalServices.workspaceId, workspaceId));
+  const availabilityRows = await db.select().from(availability).where(eq(availability.workspaceId, workspaceId));
+  const memberRows = await db.select().from(workspaceMembers).where(eq(workspaceMembers.workspaceId, workspaceId));
   return rows.map((professional) => ({
     ...professional,
     serviceIds: links.filter((link) => link.professionalId === professional.id && link.active === 1).map((link) => link.serviceId),
@@ -182,18 +177,16 @@ export async function listProfessionalsDetailed(options: { includeInactive?: boo
   }));
 }
 
-export async function getProfessionalInWorkspace(professionalId: number) {
+export async function getProfessionalInWorkspace(workspaceId: number, professionalId: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return undefined;
-  return (await db.select().from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.workspaceId, workspace.id))).limit(1))[0];
+  if (!db) return undefined;
+  return (await db.select().from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.workspaceId, workspaceId))).limit(1))[0];
 }
 
-export async function updateProfessional(id: number, input: { name?: string; specialty?: string | null; color?: string; active?: boolean }) {
+export async function updateProfessional(workspaceId: number, id: number, input: { name?: string; specialty?: string | null; color?: string; active?: boolean }) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Workspace indisponível");
-  const existing = await getProfessionalInWorkspace(id);
+  if (!db) throw new Error("Workspace indisponível");
+  const existing = await getProfessionalInWorkspace(workspaceId, id);
   if (!existing) return undefined;
   const updated = await db.update(professionals).set({
     name: input.name?.trim() ?? existing.name,
@@ -201,39 +194,37 @@ export async function updateProfessional(id: number, input: { name?: string; spe
     color: input.color ?? existing.color,
     active: input.active === undefined ? existing.active : input.active ? 1 : 0,
     updatedAt: new Date(),
-  }).where(eq(professionals.id, id)).returning();
+  }).where(and(eq(professionals.id, id), eq(professionals.workspaceId, workspaceId))).returning();
   return updated[0];
 }
 
-export async function setProfessionalServices(professionalId: number, serviceIds: number[]) {
+export async function setProfessionalServices(workspaceId: number, professionalId: number, serviceIds: number[]) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Workspace indisponível");
-  const professional = await getProfessionalInWorkspace(professionalId);
+  if (!db) throw new Error("Workspace indisponível");
+  const professional = await getProfessionalInWorkspace(workspaceId, professionalId);
   if (!professional) throw new Error("Profissional não encontrado neste workspace");
-  const validServices = serviceIds.length === 0 ? [] : await db.select({ id: services.id }).from(services).where(and(eq(services.workspaceId, workspace.id), inArray(services.id, serviceIds)));
+  const validServices = serviceIds.length === 0 ? [] : await db.select({ id: services.id }).from(services).where(and(eq(services.workspaceId, workspaceId), inArray(services.id, serviceIds)));
   const validIds = validServices.map((row) => row.id);
-  await db.delete(professionalServices).where(and(eq(professionalServices.workspaceId, workspace.id), eq(professionalServices.professionalId, professionalId)));
+  await db.delete(professionalServices).where(and(eq(professionalServices.workspaceId, workspaceId), eq(professionalServices.professionalId, professionalId)));
   if (validIds.length > 0) {
-    await db.insert(professionalServices).values(validIds.map((serviceId) => ({ workspaceId: workspace.id, professionalId, serviceId, active: 1 })));
+    await db.insert(professionalServices).values(validIds.map((serviceId) => ({ workspaceId: workspaceId, professionalId, serviceId, active: 1 })));
   }
   return validIds;
 }
 
-export async function replaceAvailability(professionalId: number, entries: { weekday: number; startMinute: number; endMinute: number }[]) {
+export async function replaceAvailability(workspaceId: number, professionalId: number, entries: { weekday: number; startMinute: number; endMinute: number }[]) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Workspace indisponível");
-  const professional = await getProfessionalInWorkspace(professionalId);
+  if (!db) throw new Error("Workspace indisponível");
+  const professional = await getProfessionalInWorkspace(workspaceId, professionalId);
   if (!professional) throw new Error("Profissional não encontrado neste workspace");
   await db.transaction(async (tx) => {
     // Use the same per-professional lock as reservation checks, so changing
     // weekly hours cannot race with a booking using the previous schedule.
-    await tx.execute(sql`SELECT "id" FROM "professionals" WHERE "id" = ${professionalId} AND "workspaceId" = ${workspace.id} FOR UPDATE`);
-    await tx.delete(availability).where(and(eq(availability.workspaceId, workspace.id), eq(availability.professionalId, professionalId)));
+    await tx.execute(sql`SELECT "id" FROM "professionals" WHERE "id" = ${professionalId} AND "workspaceId" = ${workspaceId} FOR UPDATE`);
+    await tx.delete(availability).where(and(eq(availability.workspaceId, workspaceId), eq(availability.professionalId, professionalId)));
     if (entries.length > 0) {
       await tx.insert(availability).values(entries.map((entry) => ({
-        workspaceId: workspace.id,
+        workspaceId: workspaceId,
         professionalId,
         weekday: entry.weekday,
         startMinute: entry.startMinute,
@@ -249,10 +240,9 @@ export async function replaceAvailability(professionalId: number, entries: { wee
 /* Membros, contas e auditoria                                         */
 /* ------------------------------------------------------------------ */
 
-export async function listWorkspaceMembersDetailed() {
+export async function listWorkspaceMembersDetailed(workspaceId: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return [];
+  if (!db) return [];
   const rows = await db.select({
     id: workspaceMembers.id,
     userId: workspaceMembers.userId,
@@ -265,29 +255,28 @@ export async function listWorkspaceMembersDetailed() {
     lastSignedIn: users.lastSignedIn,
   }).from(workspaceMembers)
     .leftJoin(users, eq(users.id, workspaceMembers.userId))
-    .where(eq(workspaceMembers.workspaceId, workspace.id))
+    .where(eq(workspaceMembers.workspaceId, workspaceId))
     .orderBy(asc(workspaceMembers.id));
-  const professionalRows = await db.select({ id: professionals.id, name: professionals.name }).from(professionals).where(eq(professionals.workspaceId, workspace.id));
+  const professionalRows = await db.select({ id: professionals.id, name: professionals.name }).from(professionals).where(eq(professionals.workspaceId, workspaceId));
   return rows.map((row) => ({
     ...row,
     professionalName: row.professionalId ? professionalRows.find((item) => item.id === row.professionalId)?.name ?? null : null,
   }));
 }
 
-export async function setMemberProfile(memberId: number, input: { role?: WorkspaceMemberRole; operationalRole?: OperationalRole; professionalId?: number | null; active?: boolean }) {
+export async function setMemberProfile(workspaceId: number, memberId: number, input: { role?: WorkspaceMemberRole; operationalRole?: OperationalRole; professionalId?: number | null; active?: boolean }) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Workspace indisponível");
-  const member = (await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.id, memberId), eq(workspaceMembers.workspaceId, workspace.id))).limit(1))[0];
+  if (!db) throw new Error("Workspace indisponível");
+  const member = (await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.id, memberId), eq(workspaceMembers.workspaceId, workspaceId))).limit(1))[0];
   if (!member) throw new Error("Membro não encontrado neste workspace");
   if (input.professionalId) {
-    const professional = await getProfessionalInWorkspace(input.professionalId);
+    const professional = await getProfessionalInWorkspace(workspaceId, input.professionalId);
     if (!professional) throw new Error("Profissional não pertence a este workspace");
   }
   const nextRole = input.role ?? (member.role as WorkspaceMemberRole);
   const nextProfessionalId = input.professionalId === undefined ? member.professionalId : input.professionalId;
   if (member.role === "owner" && nextRole !== "owner") {
-    const owners = await db.select({ id: workspaceMembers.id }).from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.role, "owner"), eq(workspaceMembers.active, 1)));
+    const owners = await db.select({ id: workspaceMembers.id }).from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.role, "owner"), eq(workspaceMembers.active, 1)));
     if (owners.length <= 1) throw new Error("A instalação precisa manter pelo menos um proprietário ativo");
   }
   const updated = await db.update(workspaceMembers).set({
@@ -295,7 +284,7 @@ export async function setMemberProfile(memberId: number, input: { role?: Workspa
     professionalId: nextProfessionalId ?? null,
     active: input.active === undefined ? member.active : input.active ? 1 : 0,
     updatedAt: new Date(),
-  }).where(eq(workspaceMembers.id, memberId)).returning();
+  }).where(and(eq(workspaceMembers.id, memberId), eq(workspaceMembers.workspaceId, workspaceId))).returning();
   if (input.operationalRole) {
     await db.update(users).set({ operationalRole: input.operationalRole, updatedAt: new Date() }).where(eq(users.id, member.userId));
   }
@@ -332,34 +321,36 @@ export async function saveNotificationPreferences(workspaceId: number, preferenc
   if (!db) throw new Error("Banco indisponível");
   const existing = (await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "notification_preferences"))).orderBy(desc(workspaceSettings.id)).limit(1))[0];
   if (existing) {
-    await db.update(workspaceSettings).set({ value: JSON.stringify(preferences), updatedAt: new Date() }).where(eq(workspaceSettings.id, existing.id));
+    await db.update(workspaceSettings).set({ value: JSON.stringify(preferences), updatedAt: new Date() }).where(and(eq(workspaceSettings.id, existing.id), eq(workspaceSettings.workspaceId, workspaceId)));
   } else {
     await db.insert(workspaceSettings).values({ workspaceId, key: "notification_preferences", value: JSON.stringify(preferences) });
   }
   return preferences;
 }
 
-export async function listWorkspaceAudit(limit = 60) {
+export type WorkspaceAuditEntry = {
+  id: number;
+  action: string;
+  summary: string;
+  createdAt: Date;
+  actorUserId: number | null;
+  actorName: string | null;
+  contactId: number | null;
+};
+
+export async function listWorkspaceAudit(workspaceId: number, limit = 60): Promise<WorkspaceAuditEntry[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
-    id: auditLogs.id,
-    action: auditLogs.action,
-    summary: auditLogs.summary,
-    createdAt: auditLogs.createdAt,
-    actorUserId: auditLogs.actorUserId,
-    actorName: users.name,
-    contactId: auditLogs.contactId,
-  }).from(auditLogs)
-    .leftJoin(users, eq(users.id, auditLogs.actorUserId))
-    .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
-    .limit(limit);
+  // auditLogs predates tenancy and has no workspaceId; actor-based filtering
+  // cannot prove tenant ownership. Keep the data hidden until it is migrated.
+  void workspaceId;
+  void limit;
+  return [];
 }
 
-export async function countWorkspaceMembers() {
+export async function countWorkspaceMembers(workspaceId: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return 0;
-  const result = await db.select({ count: sql<number>`count(*)` }).from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.active, 1)));
+  if (!db) return 0;
+  const result = await db.select({ count: sql<number>`count(*)` }).from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.active, 1)));
   return Number(result[0]?.count ?? 0);
 }

@@ -156,10 +156,11 @@ Requisitos mínimos antes de produção:
 3. [x] Corrigir o JWT para realmente incluir `sessionVersion`; a claim assinada é comparada ao banco, e troca de senha/desativação incrementa a versão. Testes de regressão locais cobrem a inclusão e o valor padrão.
 4. [x] Remover concessão automática de membership `owner` a usuários OAuth comuns; só o bootstrap configurado/admin pode reivindicar a instalação vazia.
 5. [x] Introduzir resolução de workspace único a partir de membership ativa no middleware tRPC; usuário sem ou com múltiplos workspaces ativos falha fechado. Login local, `workspace.current` e notificações iniciais consomem o contexto validado.
-6. Migrar cada query/mutação de negócio para aceitar `workspaceId` explícito; há 59 chamadas restantes a `ensureDemoWorkspace` no servidor, então ainda não criar/publicar acesso a novos tenants.
-7. Auditar tRPC, REST, worker, webhooks, storage, auditoria, settings, contactos, mensagens, agenda, integrações e agente para não ler/escrever fora do tenant.
-8. Criar testes de banco real com duas empresas e atores de papéis diferentes; tentar cruzar IDs manualmente e provar isolamento.
-9. Migrations reversíveis, índices/unique/FKs após validar os dados existentes.
+6. [x] Migrar o domínio de equipe, catálogo, profissionais e disponibilidade para receber `workspaceId` explícito dos procedimentos autenticados; criação de funcionário não promove papel global de admin. O teste multiworkspace foi criado, mas foi ignorado neste ambiente sem `DATABASE_URL`.
+7. Migrar as demais queries/mutações por domínio: restam 42 referências a `ensureDemoWorkspace` no servidor. A auditoria legada, sem `workspaceId` na tabela, fica temporariamente sem leitura pela UI até receber migration/backfill seguro. Não criar/publicar acesso a novos tenants.
+8. Auditar tRPC, REST, worker, webhooks, storage, auditoria, settings, contactos, mensagens, agenda, integrações e agente para não ler/escrever fora do tenant.
+9. Executar em PostgreSQL real o teste de duas empresas e acrescentar tentativas de cruzar IDs manualmente em cada domínio migrado.
+10. Migrations reversíveis, índices/unique/FKs após validar os dados existentes.
 
 **Aceite:** duas empresas no mesmo banco não veem nem alteram nada uma da outra; owner e membro desativado têm o comportamento esperado; suites críticas executam em CI com PostgreSQL.
 
