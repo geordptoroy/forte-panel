@@ -148,6 +148,13 @@
       "when": 1790439780000,
       "tag": "0020_baileys_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790446260000,
+      "tag": "0021_contacts_workspace_phone_unique",
+      "breakpoints": true
     }
   ]
 }

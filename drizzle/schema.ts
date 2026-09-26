@@ -631,9 +631,10 @@ export const contacts = pgTable(
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
   table => [
-    uniqueIndex("contacts_workspace_phone_unique_idx")
-      .on(table.workspaceId, table.externalPhone)
-      .where(sql`${table.workspaceId} IS NOT NULL`),
+    uniqueIndex("contacts_workspace_phone_unique_idx").on(
+      table.workspaceId,
+      table.externalPhone
+    ),
   ]
 );
 
