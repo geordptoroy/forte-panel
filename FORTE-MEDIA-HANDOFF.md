@@ -3,7 +3,7 @@
 **Data:** 2026-09-26  
 **Repositório:** `geordptoroy/forte-panel`  
 **Branch:** `main`  
-**Último commit:** `7444316`
+**Último commit:** `5a965a2`
 
 ## Objetivo do projeto
 
@@ -137,9 +137,17 @@ Esses números confirmam processamento interno, mas ainda não confirmam entrega
 - Adapter outbound usa `metadata.jid` quando disponível.
 - CI passou e publicou as imagens do Panel e do gateway.
 
+### `5a965a2`
+
+- Normalizador inbound preserva o JID completo em `metadata.jid`, incluindo endereços `@lid`.
+- Respostas manuais do Inbox recuperam o JID da última mensagem inbound da conversa.
+- Respostas da IA também recuperam esse JID quando não existe override explícito.
+- Foram adicionados testes de regressão para normalização e envio Baileys.
+- Validação local: `pnpm check`, 56 testes aprovados, `pnpm build` e `git diff --check`.
+
 ## Problema restante
 
-O envio pelo Inbox ainda não apareceu no celular.
+O envio pelo Inbox ainda precisa ser confirmado no Docker pareado do usuário. O sandbox de desenvolvimento não possui Docker nem a sessão WhatsApp para confirmar a entrega física.
 
 Logs observados:
 
@@ -154,7 +162,7 @@ No gateway:
 USync fetch yielded no results for pending PNs
 ```
 
-Interpretação provável: a mensagem outbound foi processada e marcada como enviada internamente, mas o destinatário não foi resolvido pelo WhatsApp. A conversa usada provavelmente foi criada antes da correção do JID, ou o novo inbound ainda não foi registrado com `metadata.jid`.
+Antes da correção, a mensagem outbound era processada e marcada como enviada internamente, mas o destinatário podia não ser resolvido pelo WhatsApp porque o JID era descartado ou porque a conversa antiga não tinha `metadata.jid`. O próximo teste deve usar uma mensagem inbound nova.
 
 O usuário informou que o último teste não gerou nova mensagem no PostgreSQL nem no Redis. Portanto, antes de outro teste outbound, verificar se uma mensagem inbound nova realmente chegou ao gateway e foi persistida.
 
