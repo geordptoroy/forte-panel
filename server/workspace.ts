@@ -86,10 +86,11 @@ export async function resolveWorkspaceAccess(
   };
 }
 
-export async function logWorkspaceAction(input: { actorUserId?: number; contactId?: number; action: string; summary: string }) {
+export async function logWorkspaceAction(input: { workspaceId: number; actorUserId?: number; contactId?: number; action: string; summary: string }) {
   const db = await getDb();
   if (!db) return;
   await db.insert(auditLogs).values({
+    workspaceId: input.workspaceId,
     actorUserId: input.actorUserId,
     contactId: input.contactId,
     action: input.action,
@@ -341,11 +342,20 @@ export type WorkspaceAuditEntry = {
 export async function listWorkspaceAudit(workspaceId: number, limit = 60): Promise<WorkspaceAuditEntry[]> {
   const db = await getDb();
   if (!db) return [];
-  // auditLogs predates tenancy and has no workspaceId; actor-based filtering
-  // cannot prove tenant ownership. Keep the data hidden until it is migrated.
-  void workspaceId;
-  void limit;
-  return [];
+  const rows = await db.select({
+    id: auditLogs.id,
+    action: auditLogs.action,
+    summary: auditLogs.summary,
+    createdAt: auditLogs.createdAt,
+    actorUserId: auditLogs.actorUserId,
+    actorName: users.name,
+    contactId: auditLogs.contactId,
+  }).from(auditLogs)
+    .leftJoin(users, eq(users.id, auditLogs.actorUserId))
+    .where(eq(auditLogs.workspaceId, workspaceId))
+    .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
+    .limit(Math.min(Math.max(limit, 1), 200));
+  return rows;
 }
 
 export async function countWorkspaceMembers(workspaceId: number) {

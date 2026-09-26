@@ -755,3 +755,37 @@ pnpm build       ✅
 ```
 
 Antes de convidar os betas, definir valores de produção no ambiente e aplicar a migration. Para 10 pessoas usando uma mesma empresa, o limite é compartilhado pelo workspace, o que evita que um usuário consuma toda a capacidade sem controle individual.
+
+---
+
+## Atualização do handoff — 2026-09-26 10:11
+
+A etapa seguinte de isolamento foi concluída no código: chaves de idempotência, webhooks e eventos de domínio agora são compostas por `workspaceId` + chave; auditoria passou a ter `workspaceId` obrigatório e voltou a ser listável somente no workspace atual.
+
+### Alterações
+
+- `apiIdempotency`: removeu unicidade global de `key`; reservas, recuperação, conclusão e falha filtram pelo workspace.
+- `webhookEvents`: removeu unicidade global de `eventId`; registro e processamento filtram pelo workspace.
+- `domainEvents`: removeu unicidade global de `eventKey`; enqueue e deduplicação usam `(workspaceId, eventKey)`.
+- `auditLogs`: adicionou `workspaceId`, todos os writes de CRM/worker/agenda/rotas administrativas passaram a gravá-lo e as leituras usam o filtro tenant-aware.
+- A migration faz backfill de auditoria por contato, depois membership única, e por último `forte-demo` para registros históricos sem vínculo determinístico. Idempotência/webhooks históricos sem workspace também são atribuídos ao workspace demo legado antes de `NOT NULL`.
+- O teste PostgreSQL `server/workspace-key-isolation.test.ts` valida que duas empresas podem usar a mesma chave textual sem colisão.
+
+Migration:
+
+```text
+0017_tenant_scoped_deduplication.sql
+```
+
+Aplicação em ambiente com PostgreSQL real: verificar primeiro que o workspace `forte-demo` existe; depois executar `pnpm exec drizzle-kit migrate` com `DATABASE_URL` configurado. Não executar `db:push` para substituir esta migration manual.
+
+Validação local:
+
+```text
+pnpm check       ✅
+pnpm test        ✅ 43 aprovados; 21 ignorados, incluindo testes que exigem PostgreSQL
+pnpm build       ✅
+git diff --check ✅
+```
+
+Limitação conhecida: o sandbox atual não possui `DATABASE_URL`, então backfill, constraints e testes de concorrência ainda precisam ser executados no PostgreSQL de desenvolvimento antes do beta.

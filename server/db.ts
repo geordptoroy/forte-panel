@@ -259,6 +259,7 @@ export async function createLocalWorkspaceMember(workspaceId: number, input: {
     professionalId: input.operationalRole === "professional" ? input.professionalId ?? null : null,
   });
   await db.insert(auditLogs).values({
+    workspaceId,
     actorUserId,
     action: "member_created",
     summary: `Conta ${email} criada com papel ${input.role} e perfil ${input.operationalRole}`,
@@ -323,9 +324,9 @@ export async function enqueueDomainEvent(input: {
       aggregateType: input.aggregateType,
       aggregateId: input.aggregateId,
       payload: JSON.stringify(input.payload),
-    }).onConflictDoNothing({ target: domainEvents.eventKey }).returning();
+    }).onConflictDoNothing({ target: [domainEvents.workspaceId, domainEvents.eventKey] }).returning();
     if (!created[0]) {
-      const existing = await tx.select().from(domainEvents).where(eq(domainEvents.eventKey, eventKey)).limit(1);
+      const existing = await tx.select().from(domainEvents).where(and(eq(domainEvents.workspaceId, input.workspaceId), eq(domainEvents.eventKey, eventKey))).limit(1);
       return existing[0];
     }
 
@@ -1005,7 +1006,7 @@ export async function resetWorkspaceDevelopmentData() {
   if (!db || !workspace) throw new Error("Workspace unavailable");
   return db.transaction(async (tx) => {
     await tx.delete(notifications).where(eq(notifications.workspaceId, workspace.id));
-    await tx.delete(auditLogs).where(inArray(auditLogs.contactId, sql`(SELECT "id" FROM "contacts" WHERE "workspaceId" = ${workspace.id})`));
+    await tx.delete(auditLogs).where(eq(auditLogs.workspaceId, workspace.id));
     await tx.delete(contactNotes).where(eq(contactNotes.workspaceId, workspace.id));
     await tx.delete(messages).where(inArray(messages.conversationId, sql`(SELECT "id" FROM "conversations" WHERE "contactId" IN (SELECT "id" FROM "contacts" WHERE "workspaceId" = ${workspace.id}))`));
     await tx.delete(domainEvents).where(eq(domainEvents.workspaceId, workspace.id));
@@ -1322,7 +1323,7 @@ export async function setContactAi(workspaceId: number, contactId: number, enabl
   if (conversation) {
     await db.update(conversations).set({ humanControlled: enabled ? 0 : 1, updatedAt: new Date() }).where(eq(conversations.id, conversation.id));
   }
-  await db.insert(auditLogs).values({ actorUserId, contactId, action: enabled ? "ai_enabled" : "ai_paused", summary: enabled ? "IA reativada pelo operador" : "IA pausada pelo operador" });
+  await db.insert(auditLogs).values({ workspaceId, actorUserId, contactId, action: enabled ? "ai_enabled" : "ai_paused", summary: enabled ? "IA reativada pelo operador" : "IA pausada pelo operador" });
 }
 
 export async function sendManualMessage(workspaceId: number, contactId: number, content: string, actorUserId?: number) {
@@ -1340,7 +1341,7 @@ export async function sendManualMessage(workspaceId: number, contactId: number, 
   await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, metadata: manualInstanceId ? { instanceId: manualInstanceId } : undefined, status: "queued", provider, createdAt });
   await db.update(contacts).set({ aiEnabled: 0, unreadCount: 0, lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
   await db.update(conversations).set({ humanControlled: 1, unreadCount: 0, lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
-  await db.insert(auditLogs).values({ actorUserId, contactId, action: "manual_message_queued", summary: `Mensagem manual enfileirada para ${provider}` });
+  await db.insert(auditLogs).values({ workspaceId, actorUserId, contactId, action: "manual_message_queued", summary: `Mensagem manual enfileirada para ${provider}` });
   const result = await db.select().from(messages).where(and(eq(messages.conversationId, conversation.id), eq(messages.createdAt, createdAt))).orderBy(desc(messages.id)).limit(1);
   return result[0];
 }
@@ -1350,7 +1351,7 @@ export async function moveContactStage(workspaceId: number, contactId: number, s
   if (!db) throw new Error("Database unavailable");
   const updatedAt = new Date();
   await db.update(contacts).set({ stage, updatedAt }).where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId)));
-  await db.insert(auditLogs).values({ actorUserId, contactId, action: "stage_changed", summary: `Lead movido para ${stage}` });
+  await db.insert(auditLogs).values({ workspaceId, actorUserId, contactId, action: "stage_changed", summary: `Lead movido para ${stage}` });
   const contact = await getContactById(workspaceId, contactId);
   if (contact?.workspaceId) {
     await enqueueDomainEvent({
@@ -1385,7 +1386,7 @@ export async function addContactNote(workspaceId: number, contactId: number, con
   const contact = await getContactById(workspaceId, contactId);
   if (!contact || !contact.workspaceId) throw new Error("Contact not found");
   const created = await db.insert(contactNotes).values({ workspaceId: contact.workspaceId, contactId, content: content.trim(), authorType: "human" }).returning();
-  await db.insert(auditLogs).values({ actorUserId, contactId, action: "note_created", summary: "Nota interna adicionada à ficha" });
+  await db.insert(auditLogs).values({ workspaceId, actorUserId, contactId, action: "note_created", summary: "Nota interna adicionada à ficha" });
   return created[0];
 }
 
@@ -1394,7 +1395,7 @@ export async function getAuditLogForContact(workspaceId: number, contactId: numb
   if (!db) return [];
   const contact = await getContactById(workspaceId, contactId);
   if (!contact) return [];
-  return db.select().from(auditLogs).where(eq(auditLogs.contactId, contactId)).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(20);
+  return db.select().from(auditLogs).where(and(eq(auditLogs.workspaceId, workspaceId), eq(auditLogs.contactId, contactId))).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(20);
 }
 
 export async function countContacts() {
@@ -1411,7 +1412,7 @@ export async function getDashboardSnapshot(workspaceId: number) {
   const workspaceContacts = await db.select().from(contacts).where(eq(contacts.workspaceId, workspace.id));
   const workspaceAppointments = await db.select().from(appointmentsTable).where(eq(appointmentsTable.workspaceId, workspaceId)).orderBy(asc(appointmentsTable.startsAt));
   const contactIds = workspaceContacts.map((contact) => contact.id);
-  const recentEvents = contactIds.length === 0 ? [] : await db.select().from(auditLogs).where(sql`${auditLogs.contactId} IN (${sql.join(contactIds.map((id) => sql`${id}`), sql`, `)})`).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(8);
+  const recentEvents = contactIds.length === 0 ? [] : await db.select().from(auditLogs).where(and(eq(auditLogs.workspaceId, workspaceId), sql`${auditLogs.contactId} IN (${sql.join(contactIds.map((id) => sql`${id}`), sql`, `)})`)).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(8);
   const now = new Date();
   const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
   const activeAppointments = workspaceAppointments.filter((appointment) => appointment.status !== "cancelled");
@@ -1448,7 +1449,7 @@ export async function createQuote(input: { contactId: number; serviceName: strin
   const now = new Date();
   const inserted = await db.insert(quotes).values({ workspaceId: workspace.id, contactId: input.contactId, serviceName: input.serviceName, description: input.description, quotedCents: input.quotedCents, receivedCents: input.receivedCents ?? 0, status: input.status ?? "orcamento", dueDate: input.dueDate, notes: input.notes, createdAt: now, updatedAt: now }).returning();
   await db.update(contacts).set({ quoteCents: input.quotedCents, updatedAt: now }).where(eq(contacts.id, input.contactId));
-  await db.insert(auditLogs).values({ actorUserId, contactId: input.contactId, action: "quote_created", summary: `Orçamento criado: ${input.serviceName}` });
+  await db.insert(auditLogs).values({ workspaceId: workspace.id, actorUserId, contactId: input.contactId, action: "quote_created", summary: `Orçamento criado: ${input.serviceName}` });
   return inserted[0];
 }
 
@@ -1459,18 +1460,18 @@ export async function updateQuotePayment(id: number, receivedCents: number, stat
   const existing = await db.select().from(quotes).where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspace.id))).limit(1);
   if (!existing[0]) throw new Error("Quote not found");
   const updated = await db.update(quotes).set({ receivedCents, status, updatedAt: new Date() }).where(eq(quotes.id, id)).returning();
-  await db.insert(auditLogs).values({ actorUserId, contactId: existing[0].contactId, action: "quote_updated", summary: `Recebimento do orçamento atualizado para ${receivedCents} centavos` });
+  await db.insert(auditLogs).values({ workspaceId: workspace.id, actorUserId, contactId: existing[0].contactId, action: "quote_updated", summary: `Recebimento do orçamento atualizado para ${receivedCents} centavos` });
   return updated[0];
 }
 
-export async function getApiIdempotency(key: string) {
+export async function getApiIdempotency(workspaceId: number, key: string) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(apiIdempotency).where(eq(apiIdempotency.key, key)).limit(1);
+  const result = await db.select().from(apiIdempotency).where(and(eq(apiIdempotency.workspaceId, workspaceId), eq(apiIdempotency.key, key))).limit(1);
   return result[0];
 }
 
-export async function claimApiIdempotency(input: { key: string; fingerprint: string; workspaceId?: number; leaseMs?: number }) {
+export async function claimApiIdempotency(input: { key: string; fingerprint: string; workspaceId: number; leaseMs?: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const leaseUntil = new Date(Date.now() + Math.max(10_000, Math.min(input.leaseMs ?? 120_000, 900_000)));
@@ -1481,28 +1482,28 @@ export async function claimApiIdempotency(input: { key: string; fingerprint: str
     workspaceId: input.workspaceId,
     leaseUntil,
     updatedAt: new Date(),
-  }).onConflictDoNothing({ target: apiIdempotency.key }).returning();
+  }).onConflictDoNothing({ target: [apiIdempotency.workspaceId, apiIdempotency.key] }).returning();
   if (inserted[0]) return { claimed: true, record: inserted[0] };
-  const existing = await getApiIdempotency(input.key);
+  const existing = await getApiIdempotency(input.workspaceId, input.key);
   if (!existing) return { claimed: false, retry: true };
   if (existing.fingerprint !== input.fingerprint) return { claimed: false, conflict: true, record: existing };
   if (existing.status === "completed") return { claimed: false, completed: true, record: existing };
   const reclaimed = await db.update(apiIdempotency).set({ status: "processing", leaseUntil, updatedAt: new Date() })
-    .where(and(eq(apiIdempotency.key, input.key), eq(apiIdempotency.fingerprint, input.fingerprint), or(eq(apiIdempotency.status, "failed"), and(eq(apiIdempotency.status, "processing"), or(isNull(apiIdempotency.leaseUntil), lt(apiIdempotency.leaseUntil, new Date())))))).returning();
+    .where(and(eq(apiIdempotency.workspaceId, input.workspaceId), eq(apiIdempotency.key, input.key), eq(apiIdempotency.fingerprint, input.fingerprint), or(eq(apiIdempotency.status, "failed"), and(eq(apiIdempotency.status, "processing"), or(isNull(apiIdempotency.leaseUntil), lt(apiIdempotency.leaseUntil, new Date())))))).returning();
   if (reclaimed[0]) return { claimed: true, record: reclaimed[0] };
   return { claimed: false, inProgress: true, record: existing };
 }
 
-export async function completeApiIdempotency(input: { key: string; statusCode: number; responseBody: unknown }) {
+export async function completeApiIdempotency(input: { workspaceId: number; key: string; statusCode: number; responseBody: unknown }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.update(apiIdempotency).set({ status: "completed", statusCode: input.statusCode, responseBody: JSON.stringify(input.responseBody), leaseUntil: null, updatedAt: new Date() }).where(eq(apiIdempotency.key, input.key));
+  await db.update(apiIdempotency).set({ status: "completed", statusCode: input.statusCode, responseBody: JSON.stringify(input.responseBody), leaseUntil: null, updatedAt: new Date() }).where(and(eq(apiIdempotency.workspaceId, input.workspaceId), eq(apiIdempotency.key, input.key)));
 }
 
-export async function failApiIdempotency(key: string) {
+export async function failApiIdempotency(workspaceId: number, key: string) {
   const db = await getDb();
   if (!db) return;
-  await db.update(apiIdempotency).set({ status: "failed", leaseUntil: null, updatedAt: new Date() }).where(eq(apiIdempotency.key, key));
+  await db.update(apiIdempotency).set({ status: "failed", leaseUntil: null, updatedAt: new Date() }).where(and(eq(apiIdempotency.workspaceId, workspaceId), eq(apiIdempotency.key, key)));
 }
 
 export async function claimAgentEffect(input: { workspaceId: number; eventId: string; toolCallId: string; toolName: string; fingerprint: string; leaseMs?: number }) {
@@ -1533,7 +1534,7 @@ export async function failAgentEffect(input: { workspaceId: number; eventId: str
   await db.update(agentEffects).set({ status: "failed", result: input.result === undefined ? undefined : JSON.stringify(input.result), leaseUntil: null, updatedAt: new Date() }).where(and(eq(agentEffects.workspaceId, input.workspaceId), eq(agentEffects.eventId, input.eventId), eq(agentEffects.toolCallId, input.toolCallId)));
 }
 
-export async function registerWebhookEvent(input: { eventId: string; provider: string; payload: unknown; workspaceId?: number }) {
+export async function registerWebhookEvent(input: { eventId: string; provider: string; payload: unknown; workspaceId: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const payload = JSON.stringify(input.payload);
@@ -1543,9 +1544,9 @@ export async function registerWebhookEvent(input: { eventId: string; provider: s
     payload,
     workspaceId: input.workspaceId,
     status: "received",
-  }).onConflictDoNothing({ target: webhookEvents.eventId }).returning();
+  }).onConflictDoNothing({ target: [webhookEvents.workspaceId, webhookEvents.eventId] }).returning();
   if (inserted[0]) return { duplicate: false, conflict: false, event: inserted[0] };
-  const existing = await db.select().from(webhookEvents).where(eq(webhookEvents.eventId, input.eventId)).limit(1);
+  const existing = await db.select().from(webhookEvents).where(and(eq(webhookEvents.workspaceId, input.workspaceId), eq(webhookEvents.eventId, input.eventId))).limit(1);
   if (existing[0]) {
     if (existing[0].payload !== payload) return { duplicate: true, conflict: true, event: existing[0] };
     if (existing[0].status === "failed") {
@@ -1560,10 +1561,10 @@ export async function registerWebhookEvent(input: { eventId: string; provider: s
   throw new Error("Webhook event could not be registered");
 }
 
-export async function markWebhookEvent(eventId: string, status: "processed" | "failed") {
+export async function markWebhookEvent(workspaceId: number, eventId: string, status: "processed" | "failed") {
   const db = await getDb();
   if (!db) return;
-  await db.update(webhookEvents).set({ status, processedAt: new Date() }).where(and(eq(webhookEvents.eventId, eventId), eq(webhookEvents.status, "received")));
+  await db.update(webhookEvents).set({ status, processedAt: new Date() }).where(and(eq(webhookEvents.workspaceId, workspaceId), eq(webhookEvents.eventId, eventId), eq(webhookEvents.status, "received")));
 }
 
 export async function ingestInboundWhatsApp(workspaceId: number, input: { eventId: string; phone: string; name?: string; content: string; messageType?: "text" | "image" | "audio" | "video" | "document"; metadata?: Record<string, unknown>; fromMe?: boolean; receivedAt?: Date }) {
@@ -1726,7 +1727,7 @@ export async function queueOutboundMessage(workspaceId: number, contactId: numbe
   const created = await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType, messageType, content, metadata: Object.keys(resolvedMetadata).length ? resolvedMetadata : undefined, status: "queued", provider: selectedProvider, createdAt }).returning();
   await db.update(contacts).set({ ...(senderType === "human" ? { aiEnabled: 0, unreadCount: 0 } : {}), lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
   await db.update(conversations).set({ ...(senderType === "human" ? { humanControlled: 1, unreadCount: 0 } : {}), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
-  await db.insert(auditLogs).values({ contactId, action: "api_message_queued", summary: `${senderType === "ai" ? "Mensagem da IA" : "Mensagem humana"} enfileirada para o worker de WhatsApp` });
+  await db.insert(auditLogs).values({ workspaceId, contactId, action: "api_message_queued", summary: `${senderType === "ai" ? "Mensagem da IA" : "Mensagem humana"} enfileirada para o worker de WhatsApp` });
   return created[0];
 }
 
@@ -1774,7 +1775,7 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
         provider: item.message.provider,
       });
       await db.update(messages).set({ status: "sent", externalId: result.externalId, sentAt: new Date(), lastError: null }).where(eq(messages.id, item.message.id));
-      await db.insert(auditLogs).values({ contactId: item.contactId, action: "message_sent", summary: `Mensagem enviada pelo provedor ${item.message.provider}` });
+      await db.insert(auditLogs).values({ workspaceId: item.workspaceId!, contactId: item.contactId, action: "message_sent", summary: `Mensagem enviada pelo provedor ${item.message.provider}` });
       sent += 1;
       if (item.workspaceId) {
         try {
@@ -1828,7 +1829,7 @@ export async function updateAgendaStatus(workspaceId: number, appointmentId: num
   const appointment = (await db.select().from(appointmentsTable).where(and(eq(appointmentsTable.id, appointmentId), eq(appointmentsTable.workspaceId, workspaceId))).limit(1))[0];
   if (!appointment) return undefined;
   const updated = await db.update(appointmentsTable).set({ status, updatedAt: new Date() }).where(and(eq(appointmentsTable.id, appointmentId), eq(appointmentsTable.workspaceId, workspaceId))).returning();
-  if (appointment.contactId) await db.insert(auditLogs).values({ contactId: appointment.contactId, action: `appointment_${status}`, summary: `Agendamento ${appointmentId} atualizado para ${status}` });
+  if (appointment.contactId) await db.insert(auditLogs).values({ workspaceId, contactId: appointment.contactId, action: `appointment_${status}`, summary: `Agendamento ${appointmentId} atualizado para ${status}` });
   return updated[0];
 }
 
@@ -1888,7 +1889,7 @@ export async function leadMemoryOperation(workspaceId: number, input: {
   if (input.action === "buscar_lead") {
     if (!contact) return { exists: false, lead: null, notes: [] };
     const notes = await db.select().from(contactNotes).where(eq(contactNotes.contactId, contact.id)).orderBy(desc(contactNotes.createdAt), desc(contactNotes.id)).limit(20);
-    const audit = await db.select().from(auditLogs).where(eq(auditLogs.contactId, contact.id)).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(20);
+    const audit = await db.select().from(auditLogs).where(and(eq(auditLogs.workspaceId, workspaceId), eq(auditLogs.contactId, contact.id))).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(20);
     return { exists: true, lead: contact, notes, audit };
   }
 
@@ -1909,7 +1910,7 @@ export async function leadMemoryOperation(workspaceId: number, input: {
   const note = input.note?.trim();
   if (!note) throw new Error("Note is required");
   await db.insert(contactNotes).values({ workspaceId: workspace.id, contactId: contact.id, content: note, authorType: "ai" });
-  await db.insert(auditLogs).values({ contactId: contact.id, action: "lead_note_created", summary: note.slice(0, 500) });
+  await db.insert(auditLogs).values({ workspaceId, contactId: contact.id, action: "lead_note_created", summary: note.slice(0, 500) });
   const created = await db.select().from(contactNotes).where(and(eq(contactNotes.contactId, contact.id), eq(contactNotes.content, note))).orderBy(desc(contactNotes.id)).limit(1);
   return { exists: true, noteCreated: true, lead: contact, note: created[0] };
 }

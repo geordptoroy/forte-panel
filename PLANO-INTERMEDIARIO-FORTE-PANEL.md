@@ -222,3 +222,11 @@ Decisão operacional para beta: uma chave de provedor mantida no backend pode se
 Foi adicionada a proteção operacional inicial do beta: buckets persistidos por minuto e workspace, limites REST e de execução da IA, headers de rate limit e reentrega adiada de eventos quando a cota da IA é atingida. A migration é `0016_workspace_usage_buckets.sql` e o teste de isolamento está em `server/workspace-usage.test.ts`.
 
 Defaults: 120 requests REST/minuto e 60 execuções de IA/minuto por workspace, configuráveis por `FORTE_WORKSPACE_API_REQUESTS_PER_MINUTE` e `FORTE_WORKSPACE_AI_REQUESTS_PER_MINUTE`. Próximo bloco: aplicar migration em PostgreSQL real, verificar concorrência, adicionar limites por plano/usuário e fechar escopos compostos de auditoria/idempotência/webhooks.
+
+---
+
+## Atualização de execução — 2026-09-26 10:11
+
+Foi concluída a migração do núcleo de deduplicação para escopo composto por workspace. Idempotência REST, eventos de webhook, domain events e auditoria não dependem mais de chaves globais; a auditoria voltou a ser exibida apenas ao workspace atual.
+
+A migration `0017_tenant_scoped_deduplication.sql` contém backfill seguro com fallback explícito para `forte-demo`. Próximo passo operacional: aplicar em PostgreSQL real, validar o backfill e a concorrência dos índices compostos; depois revisar isolamento de tokens/segredos e implementar limites por plano/usuário.

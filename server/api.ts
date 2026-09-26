@@ -162,11 +162,11 @@ function hasValidWebhookSignature(req: Request) {
   return provided.length === expected.length && crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
 }
 
-async function idempotent(req: Request, res: Response, handler: () => Promise<ApiResult>) {
+async function idempotent(req: Request, res: Response, workspaceId: number, handler: () => Promise<ApiResult>) {
   const key = req.header("Idempotency-Key");
   if (!key || key.length < 8 || key.length > 180) return fail(res, 400, "Idempotency-Key é obrigatório", "idempotency_key_required");
   const hash = fingerprint(req.body);
-  const claim = await claimApiIdempotency({ key, fingerprint: hash });
+  const claim = await claimApiIdempotency({ workspaceId, key, fingerprint: hash });
   if (claim.conflict) return fail(res, 409, "A chave já foi usada com outro payload", "idempotency_conflict");
   if (claim.completed) return res.status(claim.record.statusCode).json(claim.record.responseBody ? JSON.parse(claim.record.responseBody) : { ok: true });
   if (claim.inProgress) {
@@ -176,10 +176,10 @@ async function idempotent(req: Request, res: Response, handler: () => Promise<Ap
   if (!claim.claimed) return fail(res, 503, "Não foi possível reservar a chave de idempotência", "idempotency_unavailable");
   try {
     const result = await handler();
-    await completeApiIdempotency({ key, statusCode: result.statusCode, responseBody: result.body });
+    await completeApiIdempotency({ workspaceId, key, statusCode: result.statusCode, responseBody: result.body });
     return res.status(result.statusCode).json(result.body);
   } catch (error) {
-    await failApiIdempotency(key);
+    await failApiIdempotency(workspaceId, key);
     throw error;
   }
 }
@@ -223,7 +223,7 @@ api.post("/lead-memory", async (req, res) => {
       return { statusCode: 200, body: { success: true, acao: parsed.data.action, telefone: parsed.data.phone.replace(/[^0-9]/g, ""), resultado: result, mensagem: responseMessage } };
     };
     if (parsed.data.action === "buscar_lead") return res.json((await run()).body);
-    return idempotent(req, res, run);
+    return idempotent(req, res, workspaceId, run);
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha na memória do lead", "internal_error");
   }
@@ -236,7 +236,7 @@ api.post("/contacts/upsert", async (req, res) => {
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
   try {
-    return idempotent(req, res, async () => {
+    return idempotent(req, res, workspaceId, async () => {
       const contact = await upsertApiContact(workspaceId, parsed.data);
       return { statusCode: 200, body: { data: { id: contact?.id, phone: contact?.externalPhone, name: contact?.name, stage: contact?.stage }, created: !contact?.createdAt || contact.createdAt.getTime() === contact.updatedAt.getTime() } };
     });
@@ -354,7 +354,7 @@ api.post("/appointments", async (req, res) => {
   if (!parsed.success) return fail(res, 400, "Payload de agendamento inválido", "invalid_payload");
   if (parsed.data.endsAt <= parsed.data.startsAt) return fail(res, 400, "O horário final precisa ser maior que o inicial", "invalid_period");
   try {
-    return await idempotent(req, res, async () => {
+    return await idempotent(req, res, workspaceId, async () => {
       const allowed = await professionalCanExecuteService(workspaceId, parsed.data.professionalId, parsed.data.serviceId);
       if (!allowed) return { statusCode: 409, body: { error: "service_not_linked", message: "Este profissional não executa o serviço informado" } };
       const appointment = await createAgendaAppointment(workspaceId, parsed.data);
@@ -378,7 +378,7 @@ api.post("/messages", async (req, res) => {
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
   try {
-    return idempotent(req, res, async () => {
+    return idempotent(req, res, workspaceId, async () => {
       const contact = parsed.data.contactId
         ? await getContactById(workspaceId, parsed.data.contactId)
         : await upsertApiContact(workspaceId, { phone: String(parsed.data.phone).replace(/[^0-9]/g, ""), name: parsed.data.name });
@@ -406,7 +406,7 @@ api.post("/messages/batch", async (req, res) => {
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
   try {
-    return idempotent(req, res, async () => {
+    return idempotent(req, res, workspaceId, async () => {
       const results: Array<Record<string, unknown>> = [];
       for (let index = 0; index < parsed.data.messages.length; index += 1) {
         const item = parsed.data.messages[index];
@@ -441,7 +441,7 @@ api.patch("/contacts/:id/stage", async (req, res) => {
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
   try {
-    return idempotent(req, res, async () => {
+    return idempotent(req, res, workspaceId, async () => {
       const contact = await getContactById(workspaceId, id);
       if (!contact) return { statusCode: 404, body: { error: "not_found", message: "Contato não encontrado" } };
       await moveContactStage(workspaceId, id, parsed.data.stage);
@@ -459,7 +459,7 @@ api.post("/appointments/:id/cancel", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de agendamento inválido", "invalid_id");
   try {
-    return idempotent(req, res, async () => {
+    return idempotent(req, res, workspaceId, async () => {
       const appointment = await cancelAgendaAppointment(workspaceId, id);
       if (!appointment) return { statusCode: 404, body: { error: "not_found", message: "Agendamento não encontrado" } };
       return { statusCode: 200, body: { data: { id, status: "cancelled" } } };
@@ -478,7 +478,7 @@ api.post("/appointments/:id/reschedule", async (req, res) => {
   if (!workspaceId) return;
   if (!parsed.success) return fail(res, 400, "Payload de reagendamento inválido", "invalid_payload");
   try {
-    return await idempotent(req, res, async () => {
+    return await idempotent(req, res, workspaceId, async () => {
       const appointment = await rescheduleAgendaAppointment(workspaceId, id, parsed.data.startsAt, parsed.data.endsAt);
       if (!appointment) return { statusCode: 404, body: { error: "not_found", message: "Agendamento não encontrado" } };
       return { statusCode: 200, body: { data: { id, status: appointment.status, startsAt: appointment.startsAt, endsAt: appointment.endsAt } } };
@@ -506,10 +506,10 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
     if (registered.conflict) return fail(res, 409, "O eventId já foi usado com outro payload", "idempotency_conflict");
     if (registered.duplicate) return res.status(200).json({ accepted: true, duplicate: true, eventId: parsed.data.eventId });
     const result = await ingestInboundWhatsApp(workspaceId, parsed.data);
-    await markWebhookEvent(parsed.data.eventId, "processed");
+    await markWebhookEvent(workspaceId, parsed.data.eventId, "processed");
     return res.status(202).json({ accepted: true, duplicate: result.duplicate === true, eventId: parsed.data.eventId, data: result });
   } catch (error) {
-    await markWebhookEvent(parsed.data.eventId, "failed");
+    await markWebhookEvent(workspaceId, parsed.data.eventId, "failed");
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao processar webhook", "internal_error");
   }
 });
@@ -539,10 +539,10 @@ async function handlePapiWebhook(req: Request, res: Response, webhookId?: string
     if (registered.conflict) return fail(res, 409, "O evento PAPI já foi usado com outro payload", "idempotency_conflict");
     if (registered.duplicate) return res.status(200).json({ accepted: true, duplicate: true, eventId: normalized.eventId });
     const result = await ingestInboundWhatsApp(workspaceId, { ...normalized, metadata: { ...(normalized.metadata ?? {}), ...(instanceId ? { instanceId } : {}), fromMe: normalized.fromMe === true } });
-    await markWebhookEvent(normalized.eventId, "processed");
+    await markWebhookEvent(workspaceId, normalized.eventId, "processed");
     return res.status(202).json({ accepted: true, duplicate: result.duplicate === true, eventId: normalized.eventId, instanceId, data: result });
   } catch (error) {
-    await markWebhookEvent(eventId, "failed");
+    await markWebhookEvent(workspaceId, eventId, "failed");
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao processar webhook PAPI", "internal_error");
   }
 }

@@ -122,8 +122,8 @@ export const whatsappInstances = pgTable("whatsappInstances", {
 
 export const apiIdempotency = pgTable("apiIdempotency", {
   id: serial("id").primaryKey(),
-  workspaceId: integer("workspaceId"),
-  key: varchar("key", { length: 180 }).notNull().unique(),
+  workspaceId: integer("workspaceId").notNull(),
+  key: varchar("key", { length: 180 }).notNull(),
   fingerprint: varchar("fingerprint", { length: 128 }).notNull(),
   status: varchar("status", { length: 20 }).default("completed").notNull(),
   statusCode: integer("statusCode").default(200).notNull(),
@@ -131,7 +131,9 @@ export const apiIdempotency = pgTable("apiIdempotency", {
   leaseUntil: timestamp("leaseUntil"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("api_idempotency_workspace_key_unique_idx").on(table.workspaceId, table.key),
+]);
 
 export const agentEffects = pgTable("agentEffects", {
   id: serial("id").primaryKey(),
@@ -152,19 +154,21 @@ export const agentEffects = pgTable("agentEffects", {
 
 export const webhookEvents = pgTable("webhookEvents", {
   id: serial("id").primaryKey(),
-  workspaceId: integer("workspaceId"),
-  eventId: varchar("eventId", { length: 180 }).notNull().unique(),
+  workspaceId: integer("workspaceId").notNull(),
+  eventId: varchar("eventId", { length: 180 }).notNull(),
   provider: varchar("provider", { length: 60 }).default("whatsapp").notNull(),
   payload: text("payload").notNull(),
   status: webhookStatusEnum("status").default("received").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   processedAt: timestamp("processedAt"),
-});
+}, (table) => [
+  uniqueIndex("webhook_events_workspace_event_unique_idx").on(table.workspaceId, table.eventId),
+]);
 
 export const domainEvents = pgTable("domainEvents", {
   id: serial("id").primaryKey(),
   workspaceId: integer("workspaceId").notNull(),
-  eventKey: varchar("eventKey", { length: 180 }).notNull().unique(),
+  eventKey: varchar("eventKey", { length: 180 }).notNull(),
   eventType: varchar("eventType", { length: 80 }).notNull(),
   aggregateType: varchar("aggregateType", { length: 80 }).notNull(),
   aggregateId: integer("aggregateId"),
@@ -180,6 +184,7 @@ export const domainEvents = pgTable("domainEvents", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, (table) => [
+  uniqueIndex("domain_events_workspace_key_unique_idx").on(table.workspaceId, table.eventKey),
   index("domain_events_pending_idx").on(table.status, table.availableAt, table.id),
   index("domain_events_lease_idx").on(table.status, table.leaseUntil, table.id),
   index("domain_events_workspace_idx").on(table.workspaceId, table.createdAt),
@@ -332,6 +337,7 @@ export const quotes = pgTable("quotes", {
 
 export const auditLogs = pgTable("auditLogs", {
   id: serial("id").primaryKey(),
+  workspaceId: integer("workspaceId").notNull(),
   actorUserId: integer("actorUserId"),
   contactId: integer("contactId"),
   action: varchar("action", { length: 100 }).notNull(),

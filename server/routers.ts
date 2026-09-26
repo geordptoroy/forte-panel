@@ -171,7 +171,7 @@ export const appRouter = router({
     })).mutation(async ({ input, ctx }) => {
       const updated = await updateOwnProfile(ctx.user.id, input);
       if (!updated) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível atualizar o perfil" });
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "profile_updated", summary: "Perfil do operador atualizado" });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "profile_updated", summary: "Perfil do operador atualizado" });
       return { id: updated.id, name: updated.name, email: updated.email, phone: updated.phone };
     }),
     changePassword: protectedProcedure.input(z.object({
@@ -185,7 +185,7 @@ export const appRouter = router({
       }
       await setLocalPassword(ctx.user.id, input.newPassword);
       await revokeUserSessions(ctx.user.id);
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "password_changed", summary: "Senha do operador atualizada" });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "password_changed", summary: "Senha do operador atualizada" });
       return { success: true } as const;
     }),
     localLogin: publicProcedure
@@ -212,7 +212,7 @@ export const appRouter = router({
         const token = await sdk.signSession({ openId: account.openId, appId: "local", name: account.name ?? email, sessionVersion: account.sessionVersion });
         ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: SESSION_TTL_MS });
         await touchLastSignedIn(account.id);
-        await logWorkspaceAction({ actorUserId: account.id, action: "login_success", summary: `Login local de ${email}` });
+        await logWorkspaceAction({ workspaceId: membership.workspaceId, actorUserId: account.id, action: "login_success", summary: `Login local de ${email}` });
         return { success: true, role: access.role, operationalRole: access.operationalRole } as const;
       }),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -261,6 +261,7 @@ export const appRouter = router({
       const member = await setMemberProfile(ctx.workspace.workspaceId, input.memberId, input);
       if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "Membro não encontrado" });
       await logWorkspaceAction({
+        workspaceId: ctx.workspace.workspaceId,
         actorUserId: ctx.user.id,
         action: "member_updated",
         summary: `Membro ${input.memberId} atualizado (papel ${member.role}, ativo ${member.active === 1})`,
@@ -294,7 +295,7 @@ export const appRouter = router({
       dailySummary: z.boolean(),
     })).mutation(async ({ input, ctx }) => {
       const saved = await saveNotificationPreferences(ctx.workspace.workspaceId, input);
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "notifications_updated", summary: "Preferências de notificação atualizadas" });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "notifications_updated", summary: "Preferências de notificação atualizadas" });
       return saved;
     }),
     summary: protectedProcedure.query(async ({ ctx }) => ({
@@ -326,7 +327,7 @@ export const appRouter = router({
     })).mutation(async ({ input, ctx }) => {
       const professional = await createProfessional(ctx.workspace.workspaceId, input);
       if (!professional) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível cadastrar o profissional" });
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "professional_created", summary: `Profissional ${professional.name} cadastrado` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "professional_created", summary: `Profissional ${professional.name} cadastrado` });
       return { id: professional.id, name: professional.name, specialty: professional.specialty, color: professional.color, active: true };
     }),
     updateProfessional: requireManager.input(z.object({
@@ -339,7 +340,7 @@ export const appRouter = router({
       const { professionalId, ...changes } = input;
       const professional = await updateProfessional(ctx.workspace.workspaceId, professionalId, changes);
       if (!professional) throw new TRPCError({ code: "NOT_FOUND", message: "Profissional não encontrado neste workspace" });
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "professional_updated", summary: `Profissional ${professional.name} atualizado` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "professional_updated", summary: `Profissional ${professional.name} atualizado` });
       return { id: professional.id, name: professional.name, specialty: professional.specialty, color: professional.color, active: professional.active === 1 };
     }),
     setProfessionalServices: requireManager.input(z.object({
@@ -347,7 +348,7 @@ export const appRouter = router({
       serviceIds: z.array(z.number().int().positive()).max(200),
     })).mutation(async ({ input, ctx }) => {
       const serviceIds = await setProfessionalServices(ctx.workspace.workspaceId, input.professionalId, input.serviceIds);
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "professional_services_updated", summary: `Serviços do profissional ${input.professionalId} atualizados (${serviceIds.length})` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "professional_services_updated", summary: `Serviços do profissional ${input.professionalId} atualizados (${serviceIds.length})` });
       return { professionalId: input.professionalId, serviceIds };
     }),
     setProfessionalAvailability: requireManager.input(z.object({
@@ -361,7 +362,7 @@ export const appRouter = router({
       const invalid = input.entries.find((entry) => entry.endMinute <= entry.startMinute);
       if (invalid) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser maior que o inicial" });
       const entries = await replaceAvailability(ctx.workspace.workspaceId, input.professionalId, input.entries);
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "professional_availability_updated", summary: `Agenda semanal do profissional ${input.professionalId} atualizada (${entries.length} faixas)` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "professional_availability_updated", summary: `Agenda semanal do profissional ${input.professionalId} atualizada (${entries.length} faixas)` });
       return { professionalId: input.professionalId, entries };
     }),
     services: protectedProcedure.query(async ({ ctx }) => (await listServices(ctx.workspace.workspaceId, { includeInactive: true })).map((service) => ({
@@ -381,7 +382,7 @@ export const appRouter = router({
     })).mutation(async ({ input, ctx }) => {
       const service = await createService(ctx.workspace.workspaceId, input);
       if (!service) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível criar o serviço" });
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "service_created", summary: `Serviço ${service.name} criado` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "service_created", summary: `Serviço ${service.name} criado` });
       return { id: service.id, name: service.name, active: service.active === 1 };
     }),
     updateService: requireManager.input(z.object({
@@ -395,7 +396,7 @@ export const appRouter = router({
       const { serviceId, ...changes } = input;
       const service = await updateService(ctx.workspace.workspaceId, serviceId, changes);
       if (!service) throw new TRPCError({ code: "NOT_FOUND", message: "Serviço não encontrado neste workspace" });
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "service_updated", summary: `Serviço ${service.name} atualizado` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "service_updated", summary: `Serviço ${service.name} atualizado` });
       return { id: service.id, name: service.name, active: service.active === 1 };
     }),
     setServiceProfessionals: requireManager.input(z.object({
@@ -403,7 +404,7 @@ export const appRouter = router({
       professionalIds: z.array(z.number().int().positive()).max(200),
     })).mutation(async ({ input, ctx }) => {
       const professionalIds = await setServiceProfessionals(ctx.workspace.workspaceId, input.serviceId, input.professionalIds);
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "service_professionals_updated", summary: `Profissionais do serviço ${input.serviceId} atualizados (${professionalIds.length})` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "service_professionals_updated", summary: `Profissionais do serviço ${input.serviceId} atualizados (${professionalIds.length})` });
       return { serviceId: input.serviceId, professionalIds };
     }),
     createMember: requireAdministrator.input(z.object({
@@ -461,14 +462,14 @@ export const appRouter = router({
         try { await deletePapiCloudInstance(created.id); } catch { /* provider cleanup is best effort */ }
         throw new TRPCError({ code: "BAD_GATEWAY", message: error instanceof Error ? error.message : "Não foi possível configurar o webhook Cloud" });
       }
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_cloud_instance_created", summary: `Instância PAPI Cloud ${created.id} provisionada` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "papi_cloud_instance_created", summary: `Instância PAPI Cloud ${created.id} provisionada` });
       return { instanceId: created.id, name: input.name, webhookUrl: webhook.webhookUrl, webhookSecret: webhook.secret };
     }),
     rotatePapiCloudApiKey: requireAdministrator.input(z.object({ instanceId: z.string().trim().min(1).max(160) })).mutation(async ({ input, ctx }) => {
       if (!ENV.papiCloudProvisioningEnabled || !isPapiCloudConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Provisionamento PAPI Cloud não está configurado." });
       const apiKey = await rotatePapiCloudInstanceApiKey(input.instanceId);
       const instance = await updatePapiInstanceApiKey(ctx.workspace.workspaceId, input.instanceId, apiKey);
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_cloud_api_key_rotated", summary: `API key da instância PAPI Cloud ${input.instanceId} rotacionada` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "papi_cloud_api_key_rotated", summary: `API key da instância PAPI Cloud ${input.instanceId} rotacionada` });
       return instance;
     }),
     createPapiWebhook: requireAdministrator.input(z.object({
@@ -476,14 +477,14 @@ export const appRouter = router({
       instanceId: z.string().trim().min(1, "Informe o instanceId da PAPI").max(160),
     })).mutation(async ({ input, ctx }) => {
       const webhook = await createPapiWebhook(ctx.workspace.workspaceId, input);
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_webhook_created", summary: `Webhook PAPI criado para a instância ${input.instanceId}` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "papi_webhook_created", summary: `Webhook PAPI criado para a instância ${input.instanceId}` });
       return webhook;
     }),
     setDefaultPapiWebhook: requireAdministrator.input(z.object({ id: z.string().min(1).max(100) })).mutation(({ input, ctx }) => setDefaultPapiWebhook(ctx.workspace.workspaceId, input.id)),
     setDefaultPapiInstance: requireAdministrator.input(z.object({ id: z.number().int().positive() })).mutation(({ input, ctx }) => setDefaultPapiInstance(ctx.workspace.workspaceId, input.id)),
     deletePapiWebhook: requireAdministrator.input(z.object({ id: z.string().min(1).max(100) })).mutation(async ({ input, ctx }) => {
       await deletePapiWebhook(ctx.workspace.workspaceId, input.id);
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_webhook_deleted", summary: `Webhook PAPI ${input.id} removido` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "papi_webhook_deleted", summary: `Webhook PAPI ${input.id} removido` });
       return { ok: true };
     }),
     setDefaultChannel: protectedProcedure.input(z.object({ provider: z.enum(["papi", "meta_cloud_api"]) })).mutation(({ input, ctx }) => {
@@ -561,7 +562,7 @@ export const appRouter = router({
       }),
     })).mutation(async ({ input, ctx }) => {
       const result = await saveNativeAgentConfig(ctx.workspace.workspaceId, input);
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "native_agent_config_updated", summary: `Agente nativo ${result.enabled ? "ativado" : "pausado"}; modelo ${result.model}` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "native_agent_config_updated", summary: `Agente nativo ${result.enabled ? "ativado" : "pausado"}; modelo ${result.model}` });
       return result;
     }),
     models: protectedProcedure.query(async () => {
@@ -578,7 +579,7 @@ export const appRouter = router({
   development: router({
     resetWorkspace: requireAdministrator.input(z.object({ confirmation: z.literal("APAGAR DADOS DO FORTE PANEL") })).mutation(async ({ ctx }) => {
       const result = await resetWorkspaceDevelopmentData();
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "development_workspace_reset", summary: "Dados operacionais do Forte Panel apagados pelo administrador" });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "development_workspace_reset", summary: "Dados operacionais do Forte Panel apagados pelo administrador" });
       return result;
     }),
   }),
@@ -643,7 +644,7 @@ export const appRouter = router({
         throwScheduleTrpcError(error);
       }
       if (!appointment) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível criar o agendamento" });
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "appointment_created", summary: `Agendamento ${appointment.id} criado para ${input.startsAt.toISOString()}` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "appointment_created", summary: `Agendamento ${appointment.id} criado para ${input.startsAt.toISOString()}` });
       return { id: appointment.id, status: appointment.status };
     }),
     updateStatus: protectedProcedure.input(z.object({
@@ -655,7 +656,7 @@ export const appRouter = router({
       const restriction = access.canSeeFullAgenda ? undefined : access.professionalId ?? -1;
       const updated = await transitionAppointment({ workspaceId: ctx.workspace.workspaceId, appointmentId: input.id, status: input.status, actorUserId: ctx.user.id, restrictToProfessionalId: restriction });
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado para o seu acesso" });
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: `appointment_${input.status}`, summary: `Agendamento ${input.id} atualizado para ${input.status}` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: `appointment_${input.status}`, summary: `Agendamento ${input.id} atualizado para ${input.status}` });
       return { id: updated.id, status: updated.status };
     }),
     cancel: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
@@ -664,12 +665,12 @@ export const appRouter = router({
       if (access.canSeeFullAgenda) {
         const updated = await cancelAgendaAppointment(ctx.workspace.workspaceId, input.id);
         if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado" });
-        await logWorkspaceAction({ actorUserId: ctx.user.id, action: "appointment_cancelled", summary: `Agendamento ${input.id} cancelado` });
+        await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "appointment_cancelled", summary: `Agendamento ${input.id} cancelado` });
         return { id: updated.id, status: updated.status };
       }
       const updated = await transitionAppointment({ workspaceId: ctx.workspace.workspaceId, appointmentId: input.id, status: "cancelled", actorUserId: ctx.user.id, restrictToProfessionalId: access.professionalId ?? -1 });
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado para o seu acesso" });
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "appointment_cancelled", summary: `Agendamento ${input.id} cancelado pelo profissional` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "appointment_cancelled", summary: `Agendamento ${input.id} cancelado pelo profissional` });
       return { id: updated.id, status: updated.status };
     }),
     updateMyStatus: protectedProcedure.input(z.object({
@@ -681,7 +682,7 @@ export const appRouter = router({
       if (!access.professionalId) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não está vinculado a um profissional" });
       const updated = await transitionAppointment({ workspaceId: ctx.workspace.workspaceId, appointmentId: input.id, status: input.status, actorUserId: ctx.user.id, restrictToProfessionalId: access.professionalId });
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Este atendimento não pertence à sua agenda" });
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: `appointment_${input.status}`, summary: `Profissional atualizou o atendimento ${input.id} para ${input.status}` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: `appointment_${input.status}`, summary: `Profissional atualizou o atendimento ${input.id} para ${input.status}` });
       return { id: updated.id, status: updated.status };
     }),
   }),
@@ -738,7 +739,7 @@ export const appRouter = router({
       const invalid = input.entries.find((entry) => entry.endMinute <= entry.startMinute);
       if (invalid) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser maior que o inicial" });
       const entries = await replaceAvailability(ctx.workspace.workspaceId, access.professionalId, input.entries);
-      await logWorkspaceAction({ actorUserId: ctx.user.id, action: "own_availability_updated", summary: `Profissional atualizou a própria disponibilidade (${entries.length} faixas)` });
+      await logWorkspaceAction({ workspaceId: ctx.workspace.workspaceId, actorUserId: ctx.user.id, action: "own_availability_updated", summary: `Profissional atualizou a própria disponibilidade (${entries.length} faixas)` });
       return { entries };
     }),
   }),

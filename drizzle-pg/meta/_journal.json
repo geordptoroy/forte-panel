@@ -120,6 +120,13 @@
       "when": 1790380000000,
       "tag": "0016_workspace_usage_buckets",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790381000000,
+      "tag": "0017_tenant_scoped_deduplication",
+      "breakpoints": true
     }
   ]
 }
