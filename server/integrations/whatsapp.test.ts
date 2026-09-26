@@ -119,6 +119,18 @@ describe("Baileys adapter JID routing", () => {
     expect(normalized.metadata).toMatchObject({ provider: "baileys", jid: "1234567890@lid" });
   });
 
+  it("accepts a top-level JID from the gateway webhook contract", () => {
+    const normalized = createBaileysAdapter().normalizeInbound({
+      eventId: "baileys-inbound-2",
+      instanceId: "default",
+      phone: "1234567890@lid",
+      jid: "1234567890@lid",
+      content: "Mensagem nova",
+      metadata: { provider: "baileys", messageId: "msg-2" },
+    });
+    expect(normalized.metadata).toMatchObject({ jid: "1234567890@lid", messageId: "msg-2" });
+  });
+
   it("sends through the gateway using the preserved JID instead of rebuilding a phone JID", async () => {
     process.env.BAILEYS_BASE_URL = "http://baileys.test";
     process.env.BAILEYS_API_KEY = "secret";

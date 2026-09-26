@@ -83,7 +83,7 @@ export class InstanceManager {
       const content = message.message?.conversation ?? message.message?.extendedTextMessage?.text;
       if (!content) continue;
       const timestamp = Number(message.messageTimestamp ?? Math.floor(Date.now() / 1000));
-      await postWebhook({ eventId: message.key.id ?? crypto.randomUUID(), instanceId: config.instanceId, phone: message.key.remoteJid.replace(/@s\.whatsapp\.net$/, ""), name: message.pushName, content, messageType: "text", receivedAt: new Date(timestamp * 1000).toISOString(), metadata: { provider: "baileys", messageId: message.key.id, jid: message.key.remoteJid } });
+      await postWebhook({ eventId: message.key.id ?? crypto.randomUUID(), instanceId: config.instanceId, phone: message.key.remoteJid.replace(/@s\.whatsapp\.net$/, ""), name: message.pushName, content, messageType: "text", receivedAt: new Date(timestamp * 1000).toISOString(), jid: message.key.remoteJid, metadata: { provider: "baileys", messageId: message.key.id, jid: message.key.remoteJid } });
     }
   }
 }

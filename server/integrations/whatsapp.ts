@@ -32,7 +32,10 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
     message?.jid ??
       message?.metadata?.jid ??
       data?.metadata?.jid ??
+      data?.jid ??
       message?.remoteJid ??
+      data?.remoteJid ??
+      message?.key?.remoteJid ??
       key?.remoteJid ??
       ""
   );
@@ -93,6 +96,16 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
       event?.eventId ??
       crypto.randomUUID()
   );
+  const messageId = String(
+    message?.messageId ??
+      message?.id ??
+      key?.id ??
+      data?.messageId ??
+      data?.metadata?.messageId ??
+      data?.eventId ??
+      event?.eventId ??
+      eventId
+  );
   const instanceId =
     message?.instanceId ??
     data?.instanceId ??
@@ -118,7 +131,7 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
       ...(isGroup ? { isGroup: true } : {}),
       ...(jid ? { jid } : {}),
       rawType,
-      messageId: eventId,
+      messageId,
     },
     receivedAt: message?.timestamp
       ? new Date(Number(message.timestamp) * 1000)
