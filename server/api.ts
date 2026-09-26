@@ -12,8 +12,6 @@ import {
   getContactById,
   getActiveWorkspaceById,
   getDefaultWhatsappProvider,
-  getDefaultPapiWebhook,
-  getPapiWebhookById,
   getPublishedAiPrompt,
   findQueuedBatchMessage,
   ingestInboundWhatsApp,
@@ -76,9 +74,11 @@ const messageSchema = z
     phone: z.string().min(8).max(32).optional(),
     name: z.string().max(160).optional(),
     content: z.string().min(1).max(10000),
-    provider: z.enum(["papi", "meta_cloud_api"]).optional(),
+    provider: z.enum(["baileys", "meta_cloud_api"]).optional(),
     senderType: z.enum(["ai", "human"]).optional(),
-    messageType: z.enum(["text", "audio", "button"]).optional(),
+    messageType: z
+      .enum(["text", "image", "audio", "video", "document", "button"])
+      .optional(),
     instanceId: z
       .string()
       .trim()
@@ -102,6 +102,10 @@ const messageSchema = z
         footer: z.string().max(180).optional(),
         headerType: z.enum(["none", "text", "image", "video"]).optional(),
         ptt: z.boolean().optional(),
+        mimetype: z.string().max(180).optional(),
+        caption: z.string().max(4000).optional(),
+        fileName: z.string().max(255).optional(),
+        ptv: z.boolean().optional(),
       })
       .optional(),
   })
@@ -751,23 +755,6 @@ api.post("/messages", async (req, res) => {
               "Este tipo de mensagem ainda não é suportado pela Meta Cloud API neste worker",
           },
         };
-      const defaultPapiWebhook =
-        provider === "papi"
-          ? await getDefaultPapiWebhook(workspaceId)
-          : undefined;
-      if (
-        provider === "papi" &&
-        !parsed.data.instanceId &&
-        !defaultPapiWebhook?.instanceId
-      )
-        return {
-          statusCode: 422,
-          body: {
-            error: "papi_instance_required",
-            message:
-              "Informe instanceId do PAPI ou associe uma instância em Canais conectados",
-          },
-        };
       const message = await queueOutboundMessage(
         workspaceId,
         contact.id,
@@ -859,22 +846,6 @@ api.post("/messages/batch", async (req, res) => {
             body: {
               error: "unsupported_message_type",
               message: `Tipo não suportado no item ${index + 1}`,
-            },
-          };
-        const defaultPapiWebhook =
-          provider === "papi"
-            ? await getDefaultPapiWebhook(workspaceId)
-            : undefined;
-        if (
-          provider === "papi" &&
-          !item.instanceId &&
-          !defaultPapiWebhook?.instanceId
-        )
-          return {
-            statusCode: 422,
-            body: {
-              error: "papi_instance_required",
-              message: `Informe instanceId no item ${index + 1} ou associe uma instância em Canais conectados`,
             },
           };
         const batchId =
@@ -1116,109 +1087,6 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
   }
 });
 
-async function handlePapiWebhook(
-  req: Request,
-  res: Response,
-  webhookId?: string
-) {
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  const webhook = webhookId
-    ? await getPapiWebhookById(webhookId, workspaceId)
-    : undefined;
-  if (webhookId && !webhook)
-    return fail(
-      res,
-      404,
-      "Webhook PAPI não encontrado",
-      "papi_webhook_not_found"
-    );
-  const configuredSecret =
-    webhook?.secret?.trim() || process.env.PAPI_WEBHOOK_SECRET?.trim();
-  const providedSecret =
-    req.header("X-PAPI-Webhook-Secret") ?? req.header("X-Webhook-Secret") ?? "";
-  const secretAccepted = Boolean(
-    configuredSecret &&
-      providedSecret &&
-      configuredSecret.length === providedSecret.length &&
-      crypto.timingSafeEqual(
-        Buffer.from(configuredSecret),
-        Buffer.from(providedSecret)
-      )
-  );
-  if (
-    !secretAccepted &&
-    !hasValidWebhookSignature(req) &&
-    !requireApiKey(req, res)
-  )
-    return;
-  let eventId = "papi-unknown-event";
-  try {
-    const normalized = getWhatsappAdapter("papi").normalizeInbound(req.body);
-    const instanceId =
-      webhook?.instanceId ||
-      (normalized.metadata?.instanceId as string | undefined);
-    eventId = normalized.eventId;
-    if (normalized.metadata?.isGroup === true)
-      return res.status(202).json({
-        accepted: true,
-        ignored: true,
-        reason: "group_message",
-        eventId: normalized.eventId,
-      });
-    if (normalized.phone.length < 8 || !normalized.content.trim())
-      return fail(
-        res,
-        400,
-        "Evento PAPI sem telefone ou conteúdo",
-        "invalid_payload"
-      );
-    const registered = await registerWebhookEvent({
-      eventId: normalized.eventId,
-      provider: "papi",
-      payload: req.body,
-      workspaceId,
-    });
-    if (registered.conflict)
-      return fail(
-        res,
-        409,
-        "O evento PAPI já foi usado com outro payload",
-        "idempotency_conflict"
-      );
-    if (registered.duplicate)
-      return res
-        .status(200)
-        .json({ accepted: true, duplicate: true, eventId: normalized.eventId });
-    const result = await ingestInboundWhatsApp(workspaceId, {
-      ...normalized,
-      metadata: {
-        ...(normalized.metadata ?? {}),
-        ...(instanceId ? { instanceId } : {}),
-        fromMe: normalized.fromMe === true,
-      },
-    });
-    await markWebhookEvent(workspaceId, normalized.eventId, "processed");
-    return res.status(202).json({
-      accepted: true,
-      duplicate: result.duplicate === true,
-      eventId: normalized.eventId,
-      instanceId,
-      data: result,
-    });
-  } catch (error) {
-    await markWebhookEvent(workspaceId, eventId, "failed");
-    return fail(
-      res,
-      500,
-      error instanceof Error
-        ? error.message
-        : "Falha ao processar webhook PAPI",
-      "internal_error"
-    );
-  }
-}
-
 async function handleBaileysWebhook(req: Request, res: Response) {
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
@@ -1301,12 +1169,6 @@ async function handleBaileysWebhook(req: Request, res: Response) {
   }
 }
 
-api.post("/webhooks/providers/papi/:webhookId", async (req, res) =>
-  handlePapiWebhook(req, res, req.params.webhookId)
-);
-api.post("/webhooks/providers/papi", async (req, res) =>
-  handlePapiWebhook(req, res)
-);
 api.post("/webhooks/providers/baileys", async (req, res) =>
   handleBaileysWebhook(req, res)
 );

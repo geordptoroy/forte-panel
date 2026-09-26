@@ -593,7 +593,7 @@ export async function ensureDemoWhatsappChannels() {
   const existing = await db.select().from(whatsappChannels).where(eq(whatsappChannels.workspaceId, workspace.id));
   if (existing.length === 0) {
     await db.insert(whatsappChannels).values([
-      { workspaceId: workspace.id, provider: "papi", name: "PAPI · WhatsApp conectado", credentialsRef: "PAPI_API_KEY", active: 1 },
+      { workspaceId: workspace.id, provider: "baileys", name: "Baileys · WhatsApp conectado", credentialsRef: "BAILEYS_API_KEY", active: 1 },
       { workspaceId: workspace.id, provider: "meta_cloud_api", name: "WhatsApp Cloud API oficial", credentialsRef: "META_WHATSAPP_ACCESS_TOKEN", active: 1 },
     ]);
   }
@@ -727,11 +727,11 @@ export async function getDefaultWhatsappProvider(workspaceId: number): Promise<W
   const baileysConfigured = Boolean(
     process.env.BAILEYS_BASE_URL?.trim() && process.env.BAILEYS_API_KEY?.trim()
   );
-  if (!db) return baileysConfigured ? "baileys" : "papi";
+  if (!db) return "baileys";
   const setting = await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "default_whatsapp_provider"))).limit(1);
   if (setting[0]?.value === "meta_cloud_api") return "meta_cloud_api";
   if (setting[0]?.value === "baileys") return "baileys";
-  return baileysConfigured ? "baileys" : "papi";
+  return "baileys";
 }
 
 export async function setDefaultWhatsappProvider(workspaceId: number, provider: WhatsappProvider) {
@@ -1887,7 +1887,7 @@ export async function findQueuedBatchMessage(workspaceId: number, contactId: num
   return found[0];
 }
 
-export async function queueOutboundMessage(workspaceId: number, contactId: number, content: string, provider?: WhatsappProvider, senderType: "ai" | "human" = "human", messageType: "text" | "audio" | "button" = "text", metadata?: Record<string, unknown>) {
+export async function queueOutboundMessage(workspaceId: number, contactId: number, content: string, provider?: WhatsappProvider, senderType: "ai" | "human" = "human", messageType: "text" | "image" | "audio" | "video" | "document" | "button" = "text", metadata?: Record<string, unknown>) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const selectedProvider = provider ?? await getDefaultWhatsappProvider(workspaceId);

@@ -24,16 +24,8 @@ import {
   setLocalPassword,
   touchLastSignedIn,
   getDefaultWhatsappProvider,
-  createPapiWebhook,
   consumeWorkspaceUserUsage,
-  deletePapiWebhook,
-  getPapiIntegrationConfig,
   listWhatsappChannels,
-  listPapiInstances,
-  upsertPapiInstance,
-  setDefaultPapiInstance,
-  updatePapiInstanceApiKey,
-  setDefaultPapiWebhook,
   setDefaultWhatsappProvider,
   getAuditLogForContact,
   getDashboardSnapshot,
@@ -62,14 +54,6 @@ import {
   verifyLocalPassword,
   updateQuotePayment,
 } from "./db";
-import {
-  configurePapiCloudWebhook,
-  createPapiCloudInstance,
-  deletePapiCloudInstance,
-  getPapiCloudInstanceApiKey,
-  isPapiCloudConfigured,
-  rotatePapiCloudInstanceApiKey,
-} from "./integrations/papi-cloud";
 import {
   countWorkspaceMembers,
   createService,
@@ -811,199 +795,32 @@ export const appRouter = router({
         name: channel.name,
         phoneNumber: channel.phoneNumber,
         configured:
-          channel.provider === "papi"
-            ? Boolean(process.env.PAPI_BASE_URL && process.env.PAPI_API_KEY)
-            : channel.provider === "baileys"
-              ? Boolean(
-                  process.env.BAILEYS_BASE_URL && process.env.BAILEYS_API_KEY
-                )
-              : Boolean(
-                  process.env.META_WHATSAPP_ACCESS_TOKEN &&
-                    process.env.META_WHATSAPP_PHONE_NUMBER_ID
-                ),
+          channel.provider === "baileys"
+            ? Boolean(
+                process.env.BAILEYS_BASE_URL && process.env.BAILEYS_API_KEY
+              )
+            : Boolean(
+                process.env.META_WHATSAPP_ACCESS_TOKEN &&
+                  process.env.META_WHATSAPP_PHONE_NUMBER_ID
+              ),
         active: channel.active === 1,
       }));
     }),
     defaultChannel: protectedProcedure.query(({ ctx }) =>
       getDefaultWhatsappProvider(ctx.workspace.workspaceId)
     ),
-    papiConfig: protectedProcedure.query(({ ctx }) =>
-      getPapiIntegrationConfig(ctx.workspace.workspaceId)
-    ),
-    papiInstances: requireActiveMember.query(({ ctx }) =>
-      listPapiInstances(ctx.workspace.workspaceId)
-    ),
-    papiCloudStatus: protectedProcedure.query(() => ({
-      provisioningEnabled: ENV.papiCloudProvisioningEnabled,
-      tokenConfigured: isPapiCloudConfigured(),
-      deployment: ENV.papiDeployment,
-    })),
-    createPapiCloudInstance: requireAdministrator
-      .input(
-        z.object({
-          name: z
-            .string()
-            .trim()
-            .min(1, "Informe o nome da instância")
-            .max(120),
-        })
-      )
-      .mutation(async ({ input, ctx }) => {
-        if (!ENV.papiCloudProvisioningEnabled)
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message:
-              "Provisionamento PAPI Cloud está desativado. Defina PAPI_CLOUD_PROVISIONING_ENABLED=true no backend.",
-          });
-        if (!isPapiCloudConfigured())
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message:
-              "Configure PAPI_CLOUD_PANEL_TOKEN no backend antes de provisionar.",
-          });
-        const created = await createPapiCloudInstance(input.name);
-        const apiKey = await getPapiCloudInstanceApiKey(created.id);
-        let webhook: Awaited<ReturnType<typeof createPapiWebhook>> | undefined;
-        try {
-          webhook = await createPapiWebhook(ctx.workspace.workspaceId, {
-            name: input.name,
-            instanceId: created.id,
-          });
-          await configurePapiCloudWebhook(created.id, apiKey, {
-            url: webhook.webhookUrl,
-            events: ["messages", "status"],
-          });
-          await upsertPapiInstance(ctx.workspace.workspaceId, {
-            instanceId: created.id,
-            name: input.name,
-            deployment: "cloud",
-            apiKey,
-            webhookId: webhook.id,
-            webhookSecret: webhook.secret,
-            status: "provisioned",
-          });
-        } catch (error) {
-          if (webhook) {
-            try {
-              await deletePapiWebhook(ctx.workspace.workspaceId, webhook.id);
-            } catch {
-              /* preserve original provisioning error */
-            }
-          }
-          try {
-            await deletePapiCloudInstance(created.id);
-          } catch {
-            /* provider cleanup is best effort */
-          }
-          throw new TRPCError({
-            code: "BAD_GATEWAY",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Não foi possível configurar o webhook Cloud",
-          });
-        }
-        await logWorkspaceAction({
-          workspaceId: ctx.workspace.workspaceId,
-          actorUserId: ctx.user.id,
-          action: "papi_cloud_instance_created",
-          summary: `Instância PAPI Cloud ${created.id} provisionada`,
-        });
-        return {
-          instanceId: created.id,
-          name: input.name,
-          webhookUrl: webhook.webhookUrl,
-          webhookSecret: webhook.secret,
-        };
-      }),
-    rotatePapiCloudApiKey: requireAdministrator
-      .input(z.object({ instanceId: z.string().trim().min(1).max(160) }))
-      .mutation(async ({ input, ctx }) => {
-        if (!ENV.papiCloudProvisioningEnabled || !isPapiCloudConfigured())
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "Provisionamento PAPI Cloud não está configurado.",
-          });
-        const apiKey = await rotatePapiCloudInstanceApiKey(input.instanceId);
-        const instance = await updatePapiInstanceApiKey(
-          ctx.workspace.workspaceId,
-          input.instanceId,
-          apiKey
-        );
-        await logWorkspaceAction({
-          workspaceId: ctx.workspace.workspaceId,
-          actorUserId: ctx.user.id,
-          action: "papi_cloud_api_key_rotated",
-          summary: `API key da instância PAPI Cloud ${input.instanceId} rotacionada`,
-        });
-        return instance;
-      }),
-    createPapiWebhook: requireAdministrator
-      .input(
-        z.object({
-          name: z
-            .string()
-            .trim()
-            .min(1, "Informe um nome para o webhook")
-            .max(120),
-          instanceId: z
-            .string()
-            .trim()
-            .min(1, "Informe o instanceId da PAPI")
-            .max(160),
-        })
-      )
-      .mutation(async ({ input, ctx }) => {
-        const webhook = await createPapiWebhook(
-          ctx.workspace.workspaceId,
-          input
-        );
-        await logWorkspaceAction({
-          workspaceId: ctx.workspace.workspaceId,
-          actorUserId: ctx.user.id,
-          action: "papi_webhook_created",
-          summary: `Webhook PAPI criado para a instância ${input.instanceId}`,
-        });
-        return webhook;
-      }),
-    setDefaultPapiWebhook: requireAdministrator
-      .input(z.object({ id: z.string().min(1).max(100) }))
-      .mutation(({ input, ctx }) =>
-        setDefaultPapiWebhook(ctx.workspace.workspaceId, input.id)
-      ),
-    setDefaultPapiInstance: requireAdministrator
-      .input(z.object({ id: z.number().int().positive() }))
-      .mutation(({ input, ctx }) =>
-        setDefaultPapiInstance(ctx.workspace.workspaceId, input.id)
-      ),
-    deletePapiWebhook: requireAdministrator
-      .input(z.object({ id: z.string().min(1).max(100) }))
-      .mutation(async ({ input, ctx }) => {
-        await deletePapiWebhook(ctx.workspace.workspaceId, input.id);
-        await logWorkspaceAction({
-          workspaceId: ctx.workspace.workspaceId,
-          actorUserId: ctx.user.id,
-          action: "papi_webhook_deleted",
-          summary: `Webhook PAPI ${input.id} removido`,
-        });
-        return { ok: true };
-      }),
     setDefaultChannel: protectedProcedure
-      .input(
-        z.object({ provider: z.enum(["papi", "baileys", "meta_cloud_api"]) })
-      )
+      .input(z.object({ provider: z.enum(["baileys", "meta_cloud_api"]) }))
       .mutation(({ input, ctx }) => {
         const configured =
-          input.provider === "papi"
-            ? Boolean(process.env.PAPI_BASE_URL && process.env.PAPI_API_KEY)
-            : input.provider === "baileys"
-              ? Boolean(
-                  process.env.BAILEYS_BASE_URL && process.env.BAILEYS_API_KEY
-                )
-              : Boolean(
-                  process.env.META_WHATSAPP_ACCESS_TOKEN &&
-                    process.env.META_WHATSAPP_PHONE_NUMBER_ID
-                );
+          input.provider === "baileys"
+            ? Boolean(
+                process.env.BAILEYS_BASE_URL && process.env.BAILEYS_API_KEY
+              )
+            : Boolean(
+                process.env.META_WHATSAPP_ACCESS_TOKEN &&
+                  process.env.META_WHATSAPP_PHONE_NUMBER_ID
+              );
         if (!configured)
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
@@ -1074,10 +891,6 @@ export const appRouter = router({
         credentials: {
           llmConfigured: Boolean(ENV.forgeApiKey),
           llmSource: "Variáveis do ambiente do servidor",
-          papiConfigured: Boolean(
-            process.env.PAPI_BASE_URL && process.env.PAPI_API_KEY
-          ),
-          papiSource: "Variáveis do ambiente do servidor",
         },
         providers: Object.fromEntries(
           Object.entries(config.llm.providers).map(([id, provider]) => [

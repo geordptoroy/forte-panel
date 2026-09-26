@@ -24,8 +24,18 @@ export function createServer(manager: InstanceManager) {
       const phone = String(body.phone ?? body.jid ?? "");
       const text = String(body.text ?? body.message ?? "");
       if (!phone || !text) return json(res, 400, { error: "phone_and_text_required" });
-      const externalId = await manager.sendText(phone, text);
+      const externalId = await manager.sendMessage(phone, "text", text);
       return json(res, 200, { success: true, externalId, status: "sent" });
+    }
+    if (req.method === "POST" && url.pathname === `/api/instances/${config.instanceId}/send`) {
+      const body = await readJson(req);
+      const phone = String(body.phone ?? body.jid ?? "");
+      const messageType = String(body.messageType ?? body.type ?? "text");
+      const content = String(body.content ?? body.url ?? body.text ?? "");
+      const metadata = body.metadata && typeof body.metadata === "object" ? body.metadata as Record<string, unknown> : body;
+      if (!phone || !content) return json(res, 400, { error: "phone_and_content_required" });
+      const externalId = await manager.sendMessage(phone, messageType, content, metadata);
+      return json(res, 200, { success: true, externalId, status: "sent", messageType });
     }
     return json(res, 404, { error: "not_found" });
   });

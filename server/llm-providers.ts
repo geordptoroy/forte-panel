@@ -64,11 +64,23 @@ export function encryptProviderSecret(value: string) {
 export function decryptProviderSecret(value: string) {
   if (!value) return "";
   if (!value.startsWith("v1:")) return value;
-  const [, ivRaw, tagRaw, encryptedRaw] = value.split(":");
+  const parts = value.split(":");
+  if (parts.length !== 4) return "";
+  const [, ivRaw, tagRaw, encryptedRaw] = parts;
+  const decodeCanonical = (raw: string) => {
+    if (!raw || !/^[A-Za-z0-9_-]+$/.test(raw)) throw new Error("invalid base64url");
+    const decoded = Buffer.from(raw, "base64url");
+    if (decoded.toString("base64url") !== raw) throw new Error("non-canonical base64url");
+    return decoded;
+  };
   try {
-    const decipher = crypto.createDecipheriv("aes-256-gcm", secretKey(), Buffer.from(ivRaw, "base64url"));
-    decipher.setAuthTag(Buffer.from(tagRaw, "base64url"));
-    return Buffer.concat([decipher.update(Buffer.from(encryptedRaw, "base64url")), decipher.final()]).toString("utf8");
+    const iv = decodeCanonical(ivRaw);
+    const tag = decodeCanonical(tagRaw);
+    const encrypted = decodeCanonical(encryptedRaw);
+    if (iv.length !== 12 || tag.length !== 16 || encrypted.length === 0) return "";
+    const decipher = crypto.createDecipheriv("aes-256-gcm", secretKey(), iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
   } catch {
     return "";
   }

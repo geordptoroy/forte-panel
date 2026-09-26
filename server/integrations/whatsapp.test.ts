@@ -143,8 +143,8 @@ describe("Baileys adapter JID routing", () => {
       messageType: "text",
       metadata: { jid: "1234567890@lid" },
     })).resolves.toMatchObject({ externalId: "baileys-msg-1", status: "sent" });
-    expect(fetchMock).toHaveBeenCalledWith("http://baileys.test/api/instances/default/send-text", expect.objectContaining({
-      body: JSON.stringify({ phone: "1234567890@lid", text: "Resposta" }),
+    expect(fetchMock).toHaveBeenCalledWith("http://baileys.test/api/instances/default/send", expect.objectContaining({
+      body: JSON.stringify({ phone: "1234567890@lid", messageType: "text", content: "Resposta", metadata: { jid: "1234567890@lid" } }),
     }));
   });
 });

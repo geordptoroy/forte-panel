@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, type WAMessage, type WASocket } from "baileys";
+import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, type AnyMessageContent, type WAMessage, type WASocket } from "baileys";
 import pino from "pino";
 import { config } from "./config.js";
 
@@ -53,10 +53,28 @@ export class InstanceManager {
     this.set({ status: logout ? "logged_out" : "disconnected", qr: undefined });
   }
 
-  async sendText(phone: string, text: string): Promise<string> {
+  async sendMessage(phone: string, messageType: string, content: string, metadata: Record<string, unknown> = {}): Promise<string> {
     if (!this.socket || this.snapshot.status !== "connected") throw new Error("WhatsApp instance is not connected");
     const jid = phone.includes("@") ? phone : phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
-    const result = await this.socket.sendMessage(jid, { text });
+    let message: AnyMessageContent;
+    if (messageType === "text") {
+      message = { text: content };
+    } else if (messageType === "audio") {
+      message = { audio: { url: content }, mimetype: typeof metadata.mimetype === "string" ? metadata.mimetype : "audio/ogg; codecs=opus", ptt: metadata.ptt !== false };
+    } else if (messageType === "image") {
+      message = { image: { url: content }, caption: typeof metadata.caption === "string" ? metadata.caption : undefined, mimetype: typeof metadata.mimetype === "string" ? metadata.mimetype : undefined };
+    } else if (messageType === "video") {
+      message = { video: { url: content }, caption: typeof metadata.caption === "string" ? metadata.caption : undefined, mimetype: typeof metadata.mimetype === "string" ? metadata.mimetype : undefined, ptv: metadata.ptv === true };
+    } else if (messageType === "document") {
+      message = { document: { url: content }, mimetype: typeof metadata.mimetype === "string" ? metadata.mimetype : "application/octet-stream", fileName: typeof metadata.fileName === "string" ? metadata.fileName : "document" };
+    } else if (messageType === "button") {
+      const buttons = Array.isArray(metadata.buttons) ? metadata.buttons : [];
+      if (buttons.length < 1 || buttons.length > 3) throw new Error("Mensagem de botões exige de 1 a 3 opções");
+      message = { text: content, buttons, footer: typeof metadata.footer === "string" ? metadata.footer : "" } as unknown as AnyMessageContent;
+    } else {
+      throw new Error(`Tipo de mensagem não suportado: ${messageType}`);
+    }
+    const result = await this.socket.sendMessage(jid, message);
     return result?.key?.id ?? crypto.randomUUID();
   }
 

@@ -388,13 +388,9 @@ export function createBaileysAdapter(): BaileysAdapter {
     async sendMessage(command: OutboundMessageCommand) {
       if (!baseUrl || !apiKey)
         throw new Error("Gateway Baileys não configurado");
-      if (command.messageType && command.messageType !== "text")
-        throw new Error(
-          `Gateway Baileys ainda não suporta o tipo ${command.messageType} neste MVP`
-        );
       const instanceId = command.instanceId ?? defaultInstanceId;
       const response = await fetch(
-        `${baseUrl.replace(/\/$/, "")}/api/instances/${encodeURIComponent(instanceId)}/send-text`,
+        `${baseUrl.replace(/\/$/, "")}/api/instances/${encodeURIComponent(instanceId)}/send`,
         {
           method: "POST",
           headers: {
@@ -406,7 +402,9 @@ export function createBaileysAdapter(): BaileysAdapter {
             phone: typeof command.metadata?.jid === "string"
               ? command.metadata.jid
               : normalizePhone(command.phone),
-            text: command.content,
+            messageType: command.messageType ?? "text",
+            content: command.content,
+            metadata: command.metadata ?? {},
           }),
         }
       );
