@@ -5,7 +5,9 @@ import {
   cancelAgendaAppointment,
   createAgendaAppointment,
   getAgendaSnapshot,
-  getApiIdempotency,
+  claimApiIdempotency,
+  completeApiIdempotency,
+  failApiIdempotency,
   getContactById,
   getDefaultWhatsappProvider,
   getDefaultPapiWebhook,
@@ -21,7 +23,6 @@ import {
   queueOutboundMessage,
   registerWebhookEvent,
   rescheduleAgendaAppointment,
-  saveApiIdempotency,
   upsertApiContact,
 } from "./db";
 import { professionalCanExecuteService } from "./agenda";
@@ -141,14 +142,22 @@ async function idempotent(req: Request, res: Response, handler: () => Promise<Ap
   const key = req.header("Idempotency-Key");
   if (!key || key.length < 8 || key.length > 180) return fail(res, 400, "Idempotency-Key é obrigatório", "idempotency_key_required");
   const hash = fingerprint(req.body);
-  const previous = await getApiIdempotency(key);
-  if (previous) {
-    if (previous.fingerprint !== hash) return fail(res, 409, "A chave já foi usada com outro payload", "idempotency_conflict");
-    return res.status(previous.statusCode).json(previous.responseBody ? JSON.parse(previous.responseBody) : { ok: true });
+  const claim = await claimApiIdempotency({ key, fingerprint: hash });
+  if (claim.conflict) return fail(res, 409, "A chave já foi usada com outro payload", "idempotency_conflict");
+  if (claim.completed) return res.status(claim.record.statusCode).json(claim.record.responseBody ? JSON.parse(claim.record.responseBody) : { ok: true });
+  if (claim.inProgress) {
+    res.setHeader("Retry-After", "2");
+    return fail(res, 409, "Já existe uma requisição em processamento para esta chave", "idempotency_in_progress");
   }
-  const result = await handler();
-  await saveApiIdempotency({ key, fingerprint: hash, statusCode: result.statusCode, responseBody: result.body });
-  return res.status(result.statusCode).json(result.body);
+  if (!claim.claimed) return fail(res, 503, "Não foi possível reservar a chave de idempotência", "idempotency_unavailable");
+  try {
+    const result = await handler();
+    await completeApiIdempotency({ key, statusCode: result.statusCode, responseBody: result.body });
+    return res.status(result.statusCode).json(result.body);
+  } catch (error) {
+    await failApiIdempotency(key);
+    throw error;
+  }
 }
 
 api.get("/health", (_req, res) => res.json({ status: "ok", service: "forte-panel-api", version: "v1", timestamp: new Date().toISOString() }));

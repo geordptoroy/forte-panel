@@ -1389,16 +1389,39 @@ export async function getApiIdempotency(key: string) {
   return result[0];
 }
 
-export async function saveApiIdempotency(input: { key: string; fingerprint: string; statusCode: number; responseBody: unknown; workspaceId?: number }) {
+export async function claimApiIdempotency(input: { key: string; fingerprint: string; workspaceId?: number; leaseMs?: number }) {
   const db = await getDb();
-  if (!db) return;
-  await db.insert(apiIdempotency).values({
+  if (!db) throw new Error("Database unavailable");
+  const leaseUntil = new Date(Date.now() + Math.max(10_000, Math.min(input.leaseMs ?? 120_000, 900_000)));
+  const inserted = await db.insert(apiIdempotency).values({
     key: input.key,
     fingerprint: input.fingerprint,
-    statusCode: input.statusCode,
-    responseBody: JSON.stringify(input.responseBody),
+    status: "processing",
     workspaceId: input.workspaceId,
-  });
+    leaseUntil,
+    updatedAt: new Date(),
+  }).onConflictDoNothing({ target: apiIdempotency.key }).returning();
+  if (inserted[0]) return { claimed: true, record: inserted[0] };
+  const existing = await getApiIdempotency(input.key);
+  if (!existing) return { claimed: false, retry: true };
+  if (existing.fingerprint !== input.fingerprint) return { claimed: false, conflict: true, record: existing };
+  if (existing.status === "completed") return { claimed: false, completed: true, record: existing };
+  const reclaimed = await db.update(apiIdempotency).set({ status: "processing", leaseUntil, updatedAt: new Date() })
+    .where(and(eq(apiIdempotency.key, input.key), eq(apiIdempotency.fingerprint, input.fingerprint), or(eq(apiIdempotency.status, "failed"), and(eq(apiIdempotency.status, "processing"), or(isNull(apiIdempotency.leaseUntil), lt(apiIdempotency.leaseUntil, new Date())))))).returning();
+  if (reclaimed[0]) return { claimed: true, record: reclaimed[0] };
+  return { claimed: false, inProgress: true, record: existing };
+}
+
+export async function completeApiIdempotency(input: { key: string; statusCode: number; responseBody: unknown }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.update(apiIdempotency).set({ status: "completed", statusCode: input.statusCode, responseBody: JSON.stringify(input.responseBody), leaseUntil: null, updatedAt: new Date() }).where(eq(apiIdempotency.key, input.key));
+}
+
+export async function failApiIdempotency(key: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(apiIdempotency).set({ status: "failed", leaseUntil: null, updatedAt: new Date() }).where(eq(apiIdempotency.key, key));
 }
 
 export async function registerWebhookEvent(input: { eventId: string; provider: string; payload: unknown; workspaceId?: number }) {

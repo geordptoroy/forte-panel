@@ -1,35 +1,24 @@
 
 
-## Etapa 4 — Leases do worker de eventos — concluída
+## Etapa 5 — Claim atômico de idempotência HTTP — concluída
 
-A tabela `domainEvents` agora possui:
+A idempotência das rotas mutáveis deixou de usar o padrão inseguro `SELECT` antes do handler e `INSERT` depois do handler.
 
-- `workerId` para identificar o processo que fez o claim;
-- `claimedAt` para registrar o início do processamento;
-- `leaseUntil` para delimitar o tempo de posse;
-- índice de recuperação por status/lease.
+Agora o fluxo é:
 
-O worker agora:
+1. `INSERT ... ON CONFLICT DO NOTHING` cria a chave em estado `processing`.
+2. Apenas a requisição que conseguiu inserir executa o efeito.
+3. Requisições concorrentes com o mesmo payload recebem `idempotency_in_progress` e `Retry-After: 2`.
+4. Ao concluir, o registro passa a `completed` e guarda status/body para replay.
+5. Payload diferente para a mesma chave continua retornando conflito.
+6. Se o processo cair, o lease expira e uma nova tentativa pode reassumir a chave.
 
-- faz claim condicional de eventos `pending` ou de `processing` com lease expirado;
-- usa uma identidade estável por processo (`WORKER_ID` ou UUID gerado no startup);
-- limpa os campos de lease ao entregar, reagendar ou falhar;
-- só finaliza/reprograma um evento se ainda for o worker proprietário;
-- recupera apenas eventos abandonados, em vez de resetar todo `processing` no startup.
-
-Migration criada:
+A tabela ganhou `status`, `leaseUntil` e `updatedAt`. Migration:
 
 ```text
-drizzle-pg/0013_domain_event_leases.sql
+drizzle-pg/0014_api_idempotency_claim.sql
 ```
 
-Configuração opcional:
+Isso protege contatos, memória de lead, agendamentos, mensagens, lotes, mudança de etapa e cancelamentos que usam o helper HTTP `idempotent`.
 
-```env
-WORKER_ID=forte-worker-1
-EVENT_WORKER_LEASE_MS=120000
-```
-
-A migration deve ser aplicada pelo fluxo normal (`pnpm db:push`) antes de atualizar o worker em um banco existente. Não remover volumes.
-
-Validação: typecheck, testes, build, journal JSON e diff check passaram.
+Validação: typecheck, testes, build, journal JSON e diff check passaram. O teste de concorrência com PostgreSQL real continua planejado para a suíte de integração, sem exigir ação manual do usuário.

@@ -111,9 +111,12 @@ export const apiIdempotency = pgTable("apiIdempotency", {
   workspaceId: integer("workspaceId"),
   key: varchar("key", { length: 180 }).notNull().unique(),
   fingerprint: varchar("fingerprint", { length: 128 }).notNull(),
+  status: varchar("status", { length: 20 }).default("completed").notNull(),
   statusCode: integer("statusCode").default(200).notNull(),
   responseBody: text("responseBody"),
+  leaseUntil: timestamp("leaseUntil"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export const webhookEvents = pgTable("webhookEvents", {

@@ -99,6 +99,13 @@
       "when": 1790377000000,
       "tag": "0013_domain_event_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790378000000,
+      "tag": "0014_api_idempotency_claim",
+      "breakpoints": true
     }
   ]
 }
