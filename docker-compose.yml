@@ -133,6 +133,7 @@ services:
       DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
       REDIS_URL: redis://redis_panel:6379/0
       RUN_MIGRATIONS: "true"
+      FORTE_API_WORKSPACE_ID: ${FORTE_API_WORKSPACE_ID:-1}
       PAPI_BASE_URL: http://pastorini_api:3000
       PAPI_API_KEY: "teste123"
       PAPI_SEND_MESSAGE_PATH: /messages
@@ -174,6 +175,7 @@ services:
       DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
       REDIS_URL: redis://redis_panel:6379/0
       RUN_MIGRATIONS: "false"
+      FORTE_API_WORKSPACE_ID: ${FORTE_API_WORKSPACE_ID:-1}
       PAPI_BASE_URL: http://pastorini_api:3000
       PAPI_API_KEY: "teste123"
       PAPI_SEND_MESSAGE_PATH: /messages
