@@ -147,7 +147,7 @@ Esses números confirmam processamento interno, mas ainda não confirmam entrega
 
 ## Problema restante
 
-O envio pelo Inbox ainda precisa ser confirmado no Docker pareado do usuário. O sandbox de desenvolvimento não possui Docker nem a sessão WhatsApp para confirmar a entrega física.
+O inbound com JID agora foi confirmado no Docker pareado do usuário. A mensagem `id 16` chegou como `inbound`, `provider = baileys` e `metadata.jid = 236450952020113@lid`. Falta confirmar a resposta outbound dessa conversa no celular.
 
 Logs observados:
 
@@ -163,6 +163,17 @@ USync fetch yielded no results for pending PNs
 ```
 
 Antes da correção, a mensagem outbound era processada e marcada como enviada internamente, mas o destinatário podia não ser resolvido pelo WhatsApp porque o JID era descartado ou porque a conversa antiga não tinha `metadata.jid`. O próximo teste deve usar uma mensagem inbound nova.
+
+### Confirmação do teste inbound após `91a019f`
+
+O usuário atualizou as imagens do Panel e do gateway sem apagar volumes. O readiness voltou como `connected` e a consulta confirmou:
+
+```text
+id  | direction | provider | content | jid
+16   | inbound   | baileys  | Oi      | 236450952020113@lid
+```
+
+Isso confirma que o contrato de JID do webhook e a persistência tenant-aware estão funcionando no ambiente Docker real.
 
 O usuário informou que o último teste não gerou nova mensagem no PostgreSQL nem no Redis. Portanto, antes de outro teste outbound, verificar se uma mensagem inbound nova realmente chegou ao gateway e foi persistida.
 
