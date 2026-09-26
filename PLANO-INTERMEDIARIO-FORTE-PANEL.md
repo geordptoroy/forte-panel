@@ -206,3 +206,11 @@ A migração de tenancy avançou para o domínio CRM/Inbox. Contatos, conversas,
 Validação concluída: `pnpm check`, `pnpm test` (43 aprovados, 19 ignorados sem PostgreSQL), `pnpm build` e `git diff --check`.
 
 Próxima sequência: migrar onboarding/configuração e gestão histórica de instâncias PAPI; depois versionar migration para `auditLogs`, `webhookEvents` e `apiIdempotency` com escopo composto por workspace; executar isolamento com PostgreSQL real antes de abrir novos tenants.
+
+---
+
+## Atualização de execução — 2026-09-26 09:58
+
+Onboarding, prompt publicado, configuração/runtime do agente e gestão de instâncias/webhooks PAPI foram migrados para `workspaceId` explícito. O armazenamento PAPI não aceita mais chamadas sem tenant e o fallback global de `PAPI_INSTANCE_ID` foi removido do caminho tenant-aware.
+
+Decisão operacional para beta: uma chave de provedor mantida no backend pode servir várias empresas/conversas; a separação deve ser feita por autenticação, membership, workspace, rate limit, quota e observabilidade do Forte Panel. Não distribuir a chave do provedor aos testadores. Próximo bloco: migration de auditoria/idempotência/eventos composta por workspace, limites por tenant e teste PostgreSQL de isolamento.

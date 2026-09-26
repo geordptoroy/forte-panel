@@ -692,3 +692,32 @@ O build emite apenas o warning já existente de chunk frontend acima de 500 kB. 
 - `webhookEvents`, `apiIdempotency` e alguns identificadores externos ainda têm unicidade histórica global; o próximo bloco deve criar constraints compostas por workspace com migration versionada e testes PostgreSQL concorrentes.
 - Onboarding/configuração do agente, listagem/gestão de instâncias PAPI e demais helpers históricos ainda usam fallback demo e não devem ser expostos como cadastro multi-conta até a migração correspondente.
 - Executar `workspace-domain-isolation.test.ts`, `agenda-workspace-isolation.test.ts` e a nova cobertura de CRM em PostgreSQL real antes de permitir tenants operacionais adicionais.
+
+---
+
+## Atualização do handoff — 2026-09-26 09:58
+
+A etapa de configuração foi migrada para workspace explícito.
+
+### Implementado
+
+- Onboarding e prompt publicado usam o workspace recebido pelo tRPC/API REST.
+- Configuração persistida e runtime do agente nativo usam o workspace do evento `domainEvent`, evitando que uma mensagem de uma empresa carregue prompt/configuração de outra.
+- Listagem, criação, rotação, seleção e exclusão de instâncias/webhooks PAPI usam o workspace autenticado.
+- O helper de armazenamento PAPI deixou de aceitar chamadas sem tenant e o fallback global de `PAPI_INSTANCE_ID` foi removido dos fluxos tenant-aware.
+- As chaves de provedores de IA continuam server-side. Usuários e empresas não recebem a chave OpenAI/Gemini/NIM; o painel usa membership/sessão e autorização próprias.
+
+### Validação
+
+```text
+pnpm check       ✅
+pnpm test        ✅ 43 testes aprovados; 19 ignorados sem PostgreSQL
+pnpm build       ✅
+git diff --check ✅
+```
+
+### Decisão para o beta de até 10 testadores
+
+Usar uma chave de provedor de IA no backend pode atender várias conversas simultâneas. Cada request é associado ao workspace/usuário no Forte Panel, e não a uma chave individual do provedor. O backend deve controlar rate limit por workspace, limite global, timeout, retries, custo/tokens e logs sem conteúdo sensível. Chaves separadas por empresa só serão necessárias quando houver cobrança direta por cliente, BYOK (bring your own key) ou isolamento financeiro/regulatório mais forte.
+
+Antes de convidar os betas, ainda falta adicionar limites/cotas persistidos por workspace e provar isolamento em PostgreSQL real. Não expor `OPENAI_API_KEY`, `BUILT_IN_FORGE_API_KEY`, tokens PAPI ou tokens Meta no frontend.

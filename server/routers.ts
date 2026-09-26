@@ -436,7 +436,7 @@ export const appRouter = router({
     }),
     defaultChannel: protectedProcedure.query(({ ctx }) => getDefaultWhatsappProvider(ctx.workspace.workspaceId)),
     papiConfig: protectedProcedure.query(({ ctx }) => getPapiIntegrationConfig(ctx.workspace.workspaceId)),
-    papiInstances: requireActiveMember.query(() => listPapiInstances()),
+    papiInstances: requireActiveMember.query(({ ctx }) => listPapiInstances(ctx.workspace.workspaceId)),
     papiCloudStatus: protectedProcedure.query(() => ({
       provisioningEnabled: ENV.papiCloudProvisioningEnabled,
       tokenConfigured: isPapiCloudConfigured(),
@@ -451,12 +451,12 @@ export const appRouter = router({
       const apiKey = await getPapiCloudInstanceApiKey(created.id);
       let webhook: Awaited<ReturnType<typeof createPapiWebhook>> | undefined;
       try {
-        webhook = await createPapiWebhook({ name: input.name, instanceId: created.id });
+        webhook = await createPapiWebhook(ctx.workspace.workspaceId, { name: input.name, instanceId: created.id });
         await configurePapiCloudWebhook(created.id, apiKey, { url: webhook.webhookUrl, events: ["messages", "status"] });
-        await upsertPapiInstance({ instanceId: created.id, name: input.name, deployment: "cloud", apiKey, webhookId: webhook.id, webhookSecret: webhook.secret, status: "provisioned" });
+        await upsertPapiInstance(ctx.workspace.workspaceId, { instanceId: created.id, name: input.name, deployment: "cloud", apiKey, webhookId: webhook.id, webhookSecret: webhook.secret, status: "provisioned" });
       } catch (error) {
         if (webhook) {
-          try { await deletePapiWebhook(webhook.id); } catch { /* preserve original provisioning error */ }
+          try { await deletePapiWebhook(ctx.workspace.workspaceId, webhook.id); } catch { /* preserve original provisioning error */ }
         }
         try { await deletePapiCloudInstance(created.id); } catch { /* provider cleanup is best effort */ }
         throw new TRPCError({ code: "BAD_GATEWAY", message: error instanceof Error ? error.message : "Não foi possível configurar o webhook Cloud" });
@@ -467,7 +467,7 @@ export const appRouter = router({
     rotatePapiCloudApiKey: requireAdministrator.input(z.object({ instanceId: z.string().trim().min(1).max(160) })).mutation(async ({ input, ctx }) => {
       if (!ENV.papiCloudProvisioningEnabled || !isPapiCloudConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Provisionamento PAPI Cloud não está configurado." });
       const apiKey = await rotatePapiCloudInstanceApiKey(input.instanceId);
-      const instance = await updatePapiInstanceApiKey(input.instanceId, apiKey);
+      const instance = await updatePapiInstanceApiKey(ctx.workspace.workspaceId, input.instanceId, apiKey);
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_cloud_api_key_rotated", summary: `API key da instância PAPI Cloud ${input.instanceId} rotacionada` });
       return instance;
     }),
@@ -475,14 +475,14 @@ export const appRouter = router({
       name: z.string().trim().min(1, "Informe um nome para o webhook").max(120),
       instanceId: z.string().trim().min(1, "Informe o instanceId da PAPI").max(160),
     })).mutation(async ({ input, ctx }) => {
-      const webhook = await createPapiWebhook(input);
+      const webhook = await createPapiWebhook(ctx.workspace.workspaceId, input);
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_webhook_created", summary: `Webhook PAPI criado para a instância ${input.instanceId}` });
       return webhook;
     }),
-    setDefaultPapiWebhook: requireAdministrator.input(z.object({ id: z.string().min(1).max(100) })).mutation(({ input }) => setDefaultPapiWebhook(input.id)),
-    setDefaultPapiInstance: requireAdministrator.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => setDefaultPapiInstance(input.id)),
+    setDefaultPapiWebhook: requireAdministrator.input(z.object({ id: z.string().min(1).max(100) })).mutation(({ input, ctx }) => setDefaultPapiWebhook(ctx.workspace.workspaceId, input.id)),
+    setDefaultPapiInstance: requireAdministrator.input(z.object({ id: z.number().int().positive() })).mutation(({ input, ctx }) => setDefaultPapiInstance(ctx.workspace.workspaceId, input.id)),
     deletePapiWebhook: requireAdministrator.input(z.object({ id: z.string().min(1).max(100) })).mutation(async ({ input, ctx }) => {
-      await deletePapiWebhook(input.id);
+      await deletePapiWebhook(ctx.workspace.workspaceId, input.id);
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_webhook_deleted", summary: `Webhook PAPI ${input.id} removido` });
       return { ok: true };
     }),
@@ -507,7 +507,7 @@ export const appRouter = router({
   }),
 
   onboarding: router({
-    profile: protectedProcedure.query(() => getOnboardingProfile()),
+    profile: protectedProcedure.query(({ ctx }) => getOnboardingProfile(ctx.workspace.workspaceId)),
     save: protectedProcedure.input(z.object({
       profile: z.object({
         businessName: z.string().max(160),
@@ -524,12 +524,12 @@ export const appRouter = router({
         qualificationRules: z.string().max(2000),
       }),
       publish: z.boolean().default(false),
-    })).mutation(({ input }) => saveOnboardingProfile(input.profile, input.publish)),
+    })).mutation(({ input, ctx }) => saveOnboardingProfile(ctx.workspace.workspaceId, input.profile, input.publish)),
   }),
 
   agent: router({
-    config: protectedProcedure.query(async () => {
-      const config = await getNativeAgentConfig();
+    config: protectedProcedure.query(async ({ ctx }) => {
+      const config = await getNativeAgentConfig(ctx.workspace.workspaceId);
       return {
         ...config,
         credentials: {
@@ -560,7 +560,7 @@ export const appRouter = router({
         }),
       }),
     })).mutation(async ({ input, ctx }) => {
-      const result = await saveNativeAgentConfig(input);
+      const result = await saveNativeAgentConfig(ctx.workspace.workspaceId, input);
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "native_agent_config_updated", summary: `Agente nativo ${result.enabled ? "ativado" : "pausado"}; modelo ${result.model}` });
       return result;
     }),

@@ -60,7 +60,7 @@ export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfi
   const contact = await getContactById(event.workspaceId, event.contactId);
   if (!contact) throw new Error("Contato do evento não encontrado");
   const thread = await listMessagesForContact(event.workspaceId, event.contactId);
-  const onboarding = await getOnboardingProfile();
+  const onboarding = await getOnboardingProfile(event.workspaceId);
   const configuredPrompt = config.systemPrompt.trim() || onboarding.prompt;
   const system = fallbackPrompt(configuredPrompt || "Atenda o cliente com segurança e cordialidade.");
   const history: Message[] = thread.slice(-30).map((message) => ({

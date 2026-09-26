@@ -191,8 +191,10 @@ api.get("/channels", async (req, res) => {
 
 api.get("/onboarding/prompt", async (req, res) => {
   if (!requireApiKey(req, res)) return;
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   try {
-    const prompt = await getPublishedAiPrompt();
+    const prompt = await getPublishedAiPrompt(workspaceId);
     return res.json({ data: prompt });
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao consultar prompt publicado", "internal_error");

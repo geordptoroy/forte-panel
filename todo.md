@@ -37,13 +37,14 @@
 - [x] API REST de agenda deixa de cair no workspace demo: exige `FORTE_API_WORKSPACE_ID` validado; sem vínculo responde `503`. É ainda uma chave/env de deployment para **um** workspace, não uma API multiempresa pronta.
 - [x] CRM/Inbox agora recebem `workspaceId` explícito: contatos, conversas, mensagens, notas, lead-memory, seleção de canal, outbound, inbound/webhooks e ferramentas do agente não caem mais no workspace demo.
 - [x] API REST de CRM/mensagens/webhooks exige o workspace configurado e preserva validação de payload/idempotência antes do fail-closed de tenancy.
+- [x] Onboarding, prompt publicado, configuração/runtime do agente e gestão de instâncias/webhooks PAPI recebem `workspaceId`; o fallback global de `PAPI_INSTANCE_ID` foi removido dos fluxos tenant-aware.
 - [x] Mapeamento atualizado: o workspace demo permanece apenas em bootstrap/seed, onboarding/configuração histórica, catálogo de canais legado e helpers ainda não migrados; não é mais usado nas leituras/mutações do CRM/Inbox.
 - [ ] Executar `workspace-domain-isolation.test.ts` numa instância PostgreSQL; foi criada nesta etapa, mas está ignorada neste ambiente sem `DATABASE_URL`.
 - [ ] Executar `agenda-workspace-isolation.test.ts` numa instância PostgreSQL; teste novo criado, mas está ignorado aqui sem `DATABASE_URL`.
 - [ ] A API REST de agenda não foi testada contra PostgreSQL real; os testes que passaram cobrem o fail-closed quando o workspace configurado está ausente/inválido.
 - A UI da auditoria está temporariamente sem resultados porque a tabela `auditLogs` não tem `workspaceId`; adicionar coluna e backfill seguro antes de reativá-la.
 - **Atenção:** ainda não abrir cadastro de empresa nem criar outro workspace para operação real. Outras consultas/mutações ainda usam o workspace global/demo e precisam receber `ctx.workspace.workspaceId` antes de permitir tenants ativos.
-- Próxima fatia: migrar configuração/onboarding e o restante dos helpers de canais/integrações; depois adicionar migration para `auditLogs` e chaves idempotentes/eventos com escopo composto por workspace.
+- Próxima fatia: adicionar migration para `auditLogs` e chaves idempotentes/eventos com escopo composto por workspace; depois validar dois tenants reais em PostgreSQL e preparar limites/cotas do beta.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.

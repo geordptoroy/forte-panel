@@ -581,34 +581,20 @@ function summarizePapiInstance(instance: typeof whatsappInstances.$inferSelect):
   };
 }
 
-export async function listPapiInstances() {
+export async function listPapiInstances(workspaceId: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!db || !workspace) return [];
   const existingRows = await db.select().from(whatsappInstances)
     .where(eq(whatsappInstances.workspaceId, workspace.id))
     .orderBy(asc(whatsappInstances.id));
-  const existingIds = new Set(existingRows.map((row) => row.instanceId));
-  const legacyWebhooks = (await getStoredPapiWebhooks()).webhooks;
-  for (const webhook of legacyWebhooks) {
-    if (existingIds.has(webhook.instanceId)) continue;
-    await upsertPapiInstance({
-      instanceId: webhook.instanceId,
-      name: webhook.name,
-      deployment: ENV.papiDeployment as "self_hosted" | "cloud",
-      apiKey: ENV.papiDeployment === "self_hosted" ? process.env.PAPI_API_KEY ?? null : undefined,
-      webhookId: webhook.id,
-      webhookSecret: webhook.secret,
-      status: "configured",
-    });
-  }
   const rows = await db.select().from(whatsappInstances)
     .where(eq(whatsappInstances.workspaceId, workspace.id))
     .orderBy(asc(whatsappInstances.id));
   return rows.map(summarizePapiInstance);
 }
 
-export async function upsertPapiInstance(input: {
+export async function upsertPapiInstance(workspaceId: number, input: {
   instanceId: string;
   name: string;
   deployment?: "self_hosted" | "cloud";
@@ -619,7 +605,7 @@ export async function upsertPapiInstance(input: {
   active?: boolean;
 }) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!db || !workspace) throw new Error("Workspace unavailable");
   const instanceId = input.instanceId.trim();
   if (!instanceId) throw new Error("instanceId é obrigatório");
@@ -654,9 +640,9 @@ export async function getPapiInstanceSecret(workspaceId: number, instanceId: str
   return decryptProviderSecret(row[0]?.encryptedApiKey ?? "");
 }
 
-export async function updatePapiInstanceApiKey(instanceId: string, apiKey: string) {
+export async function updatePapiInstanceApiKey(workspaceId: number, instanceId: string, apiKey: string) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!db || !workspace) throw new Error("Workspace unavailable");
   const updated = await db.update(whatsappInstances).set({ encryptedApiKey: encryptProviderSecret(apiKey), status: "configured", lastHealthError: null, updatedAt: new Date() })
     .where(and(eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.instanceId, instanceId), eq(whatsappInstances.active, 1))).returning();
@@ -664,9 +650,9 @@ export async function updatePapiInstanceApiKey(instanceId: string, apiKey: strin
   return summarizePapiInstance(updated[0]);
 }
 
-export async function setDefaultPapiInstance(id: number) {
+export async function setDefaultPapiInstance(workspaceId: number, id: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!db || !workspace) throw new Error("Workspace unavailable");
   return db.transaction(async (tx) => {
     await tx.update(whatsappInstances).set({ isDefault: 0, updatedAt: new Date() }).where(eq(whatsappInstances.workspaceId, workspace.id));
@@ -679,12 +665,10 @@ export async function setDefaultPapiInstance(id: number) {
   });
 }
 
-export async function getDefaultWhatsappProvider(workspaceId?: number): Promise<WhatsappProvider> {
+export async function getDefaultWhatsappProvider(workspaceId: number): Promise<WhatsappProvider> {
   const db = await getDb();
   if (!db) return "papi";
-  const resolvedWorkspaceId = workspaceId ?? (await ensureDemoWorkspace())?.id;
-  if (!resolvedWorkspaceId) return "papi";
-  const setting = await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, resolvedWorkspaceId), eq(workspaceSettings.key, "default_whatsapp_provider"))).limit(1);
+  const setting = await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "default_whatsapp_provider"))).limit(1);
   return setting[0]?.value === "meta_cloud_api" ? "meta_cloud_api" : "papi";
 }
 
@@ -727,16 +711,13 @@ function papiWebhookBaseUrl() {
   return "http://forte-panel:3000/api/v1/webhooks/providers/papi";
 }
 
-async function getStoredPapiWebhooks(workspaceId?: number) {
-  const workspace = workspaceId ? await getActiveWorkspaceById(workspaceId) : await ensureDemoWorkspace();
+async function getStoredPapiWebhooks(workspaceId: number) {
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) return { workspace: undefined, webhooks: [] as PapiWebhookConfig[] };
   const setting = await getWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING);
   let webhooks: PapiWebhookConfig[] = [];
   if (setting?.value) {
     try { webhooks = JSON.parse(setting.value) as PapiWebhookConfig[]; } catch { webhooks = []; }
-  }
-  if (webhooks.length === 0 && process.env.PAPI_INSTANCE_ID?.trim()) {
-    webhooks = [{ id: "legacy", name: "PAPI existente", instanceId: process.env.PAPI_INSTANCE_ID.trim(), secret: process.env.PAPI_WEBHOOK_SECRET?.trim() ?? "", createdAt: new Date(0).toISOString(), legacy: true }];
   }
   return { workspace, webhooks };
 }
@@ -752,30 +733,30 @@ function withPapiWebhookUrl(webhook: PapiWebhookConfig, includeSecret = false) {
   };
 }
 
-export async function getPapiIntegrationConfig(workspaceId?: number): Promise<PapiIntegrationConfig> {
+export async function getPapiIntegrationConfig(workspaceId: number): Promise<PapiIntegrationConfig> {
   const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
   const setting = workspace ? await getWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING) : undefined;
   const defaultWebhookId = setting?.value || (webhooks[0]?.id ?? null);
   return { webhooks: webhooks.map((webhook) => withPapiWebhookUrl(webhook)), defaultWebhookId };
 }
 
-export async function getPapiWebhookById(id: string, workspaceId?: number) {
+export async function getPapiWebhookById(id: string, workspaceId: number) {
   const { webhooks } = await getStoredPapiWebhooks(workspaceId);
   return webhooks.find((webhook) => webhook.id === id);
 }
 
-export async function getDefaultPapiWebhook(workspaceId?: number) {
+export async function getDefaultPapiWebhook(workspaceId: number) {
   const config = await getPapiIntegrationConfig(workspaceId);
   return config.webhooks.find((webhook) => webhook.id === config.defaultWebhookId) ?? config.webhooks[0];
 }
 
-export async function createPapiWebhook(input: { name: string; instanceId: string }) {
-  const { workspace, webhooks } = await getStoredPapiWebhooks();
+export async function createPapiWebhook(workspaceId: number, input: { name: string; instanceId: string }) {
+  const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const webhook: PapiWebhookConfig = { id: crypto.randomUUID(), name: input.name.trim(), instanceId: input.instanceId.trim(), secret: crypto.randomBytes(24).toString("hex"), createdAt: new Date().toISOString() };
   await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify([...webhooks.filter((item) => !item.legacy), webhook]));
   if (webhooks.length === 0 || webhooks.every((item) => item.legacy)) await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, webhook.id);
-  await upsertPapiInstance({
+  await upsertPapiInstance(workspaceId, {
     instanceId: webhook.instanceId,
     name: webhook.name,
     deployment: ENV.papiDeployment as "self_hosted" | "cloud",
@@ -787,9 +768,9 @@ export async function createPapiWebhook(input: { name: string; instanceId: strin
   return withPapiWebhookUrl(webhook, true);
 }
 
-export async function setDefaultPapiWebhook(id: string) {
+export async function setDefaultPapiWebhook(workspaceId: number, id: string) {
   const db = await getDb();
-  const { workspace, webhooks } = await getStoredPapiWebhooks();
+  const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
   if (!db || !workspace || !webhooks.some((webhook) => webhook.id === id)) throw new Error("Webhook PAPI não encontrado");
   await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, id);
   await db.update(whatsappInstances).set({ isDefault: 0, updatedAt: new Date() }).where(eq(whatsappInstances.workspaceId, workspace.id));
@@ -797,14 +778,14 @@ export async function setDefaultPapiWebhook(id: string) {
   return id;
 }
 
-export async function deletePapiWebhook(id: string) {
+export async function deletePapiWebhook(workspaceId: number, id: string) {
   const db = await getDb();
-  const { workspace, webhooks } = await getStoredPapiWebhooks();
+  const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
   if (!db || !workspace) throw new Error("Workspace unavailable");
   const next = webhooks.filter((webhook) => webhook.id !== id && !webhook.legacy);
   await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify(next));
   await db.update(whatsappInstances).set({ active: 0, isDefault: 0, updatedAt: new Date() }).where(and(eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.webhookId, id)));
-  const config = await getPapiIntegrationConfig();
+  const config = await getPapiIntegrationConfig(workspaceId);
   if (config.defaultWebhookId === id) await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, next[0]?.id ?? "");
 }
 
@@ -857,8 +838,8 @@ async function upsertWorkspaceSetting(workspaceId: number, key: string, value: s
   else await db.insert(workspaceSettings).values({ workspaceId, key, value });
 }
 
-export async function getOnboardingProfile() {
-  const workspace = await ensureDemoWorkspace();
+export async function getOnboardingProfile(workspaceId: number) {
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) return { profile: emptyOnboardingProfile, version: 0, prompt: "", published: false };
   const profileSetting = await getWorkspaceSetting(workspace.id, "onboarding_profile");
   const promptSetting = await getWorkspaceSetting(workspace.id, "ai_prompt_published");
@@ -867,10 +848,10 @@ export async function getOnboardingProfile() {
   return { profile, version: published?.version ?? 0, prompt: published?.prompt ?? "", published: Boolean(published?.prompt) };
 }
 
-export async function saveOnboardingProfile(input: OnboardingProfile, publish: boolean) {
-  const workspace = await ensureDemoWorkspace();
+export async function saveOnboardingProfile(workspaceId: number, input: OnboardingProfile, publish: boolean) {
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
-  const current = await getOnboardingProfile();
+  const current = await getOnboardingProfile(workspaceId);
   const nextVersion = current.version + 1;
   await upsertWorkspaceSetting(workspace.id, "onboarding_profile", JSON.stringify(input));
   const prompt = buildBusinessPrompt(input, nextVersion);
@@ -878,8 +859,8 @@ export async function saveOnboardingProfile(input: OnboardingProfile, publish: b
   return { profile: input, version: publish ? nextVersion : current.version, prompt: publish ? prompt : current.prompt, published: publish || current.published };
 }
 
-export async function getPublishedAiPrompt() {
-  const onboarding = await getOnboardingProfile();
+export async function getPublishedAiPrompt(workspaceId: number) {
+  const onboarding = await getOnboardingProfile(workspaceId);
   return { version: onboarding.version, prompt: onboarding.prompt, published: onboarding.published };
 }
 
@@ -892,8 +873,8 @@ export type NativeAgentConfig = {
   llm: AgentProviderSettings;
 };
 
-export async function getNativeAgentConfig(): Promise<NativeAgentConfig> {
-  const workspace = await ensureDemoWorkspace();
+export async function getNativeAgentConfig(workspaceId: number): Promise<NativeAgentConfig> {
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) return { enabled: true, model: process.env.AGENT_MODEL ?? "gpt-5-mini", systemPrompt: "", maxSteps: 6, apiSource: "environment", llm: defaultAgentProviderSettings() };
   const setting = await getWorkspaceSetting(workspace.id, "native_agent_config");
   let stored: Partial<NativeAgentConfig> = {};
@@ -912,8 +893,8 @@ export async function getNativeAgentConfig(): Promise<NativeAgentConfig> {
   };
 }
 
-export async function getNativeAgentRuntimeConfig(): Promise<NativeAgentConfig> {
-  const workspace = await ensureDemoWorkspace();
+export async function getNativeAgentRuntimeConfig(workspaceId: number): Promise<NativeAgentConfig> {
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) return { enabled: true, model: process.env.AGENT_MODEL ?? "gpt-5-mini", systemPrompt: "", maxSteps: 6, apiSource: "environment", llm: defaultAgentProviderSettings() };
   const setting = await getWorkspaceSetting(workspace.id, "native_agent_config");
   let stored: Partial<NativeAgentConfig> = {};
@@ -930,10 +911,10 @@ export async function getNativeAgentRuntimeConfig(): Promise<NativeAgentConfig> 
   };
 }
 
-export async function saveNativeAgentConfig(input: Partial<NativeAgentConfig>) {
-  const workspace = await ensureDemoWorkspace();
+export async function saveNativeAgentConfig(workspaceId: number, input: Partial<NativeAgentConfig>) {
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
-  const current = await getNativeAgentConfig();
+  const current = await getNativeAgentConfig(workspaceId);
   const next: NativeAgentConfig = {
     enabled: input.enabled ?? current.enabled,
     model: input.model?.trim() || current.model,
@@ -1979,7 +1960,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
         }
       }
       if (item.eventType === "message.received") {
-        const config = await getNativeAgentRuntimeConfig();
+        const config = await getNativeAgentRuntimeConfig(item.workspaceId);
         if (!config.enabled) {
           await db.update(domainEvents).set({ status: "delivered", workerId: null, claimedAt: null, leaseUntil: null, deliveredAt: new Date(), lastError: "native_agent_disabled", updatedAt: new Date() }).where(and(eq(domainEvents.id, item.id), eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)));
           delivered += 1;
