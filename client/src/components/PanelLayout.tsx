@@ -52,7 +52,8 @@ const managementNav: NavGroup[] = [
     label: "Sistema",
     items: [
       { href: "/integrations", label: "Canais conectados", description: "WhatsApp e serviços externos", icon: PlugZap },
-      { href: "/onboarding", label: "Configuração da empresa", description: "Regras do atendimento e IA", icon: BrainCircuit },
+      { href: "/onboarding", label: "Configuração da empresa", description: "Perfil, prompt e regras", icon: BrainCircuit },
+      { href: "/ai-config", label: "Configuração da IA", description: "Credenciais e modelos", icon: BrainCircuit },
       { href: "/team", label: "Equipe", description: "Acessos e permissões", icon: UserCog },
       { href: "/services", label: "Serviços", description: "Catálogo executável", icon: Scissors },
       { href: "/professionals", label: "Profissionais", description: "Executores e jornada", icon: UserCog },

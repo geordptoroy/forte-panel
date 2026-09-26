@@ -20,6 +20,7 @@ import { SettingsTabsPage } from "./pages/SettingsTabs";
 import TeamPage from "./pages/TeamPage";
 import AccessGuard from "./components/AccessGuard";
 import OnboardingPage from "./pages/OnboardingPage";
+import AiConfigPage from "./pages/AiConfigPage";
 import BillingPage from "./pages/BillingPage";
 import LoginPage from "./pages/LoginPage";
 import { PlatformAdminHome, PlatformWorkspacePage } from "./pages/PlatformAdminPage";
@@ -39,7 +40,8 @@ function Router() {
       <Route path="/contacts/:id" component={ContactDetailPage} />
       <Route path="/billing">{() => <AccessGuard requirement="fullAgenda" title="Faturamento"><BillingPage /></AccessGuard>}</Route>
       <Route path="/integrations">{() => <AccessGuard requirement="manager" title="Integrações"><IntegrationsPage /></AccessGuard>}</Route>
-      <Route path="/onboarding">{() => <AccessGuard requirement="manager" title="Onboarding"><OnboardingPage /></AccessGuard>}</Route>
+      <Route path="/onboarding">{() => <AccessGuard requirement="manager" title="Configuração da empresa"><OnboardingPage /></AccessGuard>}</Route>
+      <Route path="/ai-config">{() => <AccessGuard requirement="manager" title="Configuração da IA"><AiConfigPage /></AccessGuard>}</Route>
       <Route path="/team">{() => <AccessGuard requirement="administrator" title="Equipe"><TeamPage /></AccessGuard>}</Route>
       <Route path="/services">{() => <AccessGuard requirement="manager" title="Serviços"><ServicesPage /></AccessGuard>}</Route>
       <Route path="/professionals">{() => <AccessGuard requirement="manager" title="Profissionais"><ProfessionalsPage /></AccessGuard>}</Route>
