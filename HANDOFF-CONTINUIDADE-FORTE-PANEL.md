@@ -62,6 +62,7 @@ d026f05 docs: preserve full handoff history
 0d66201 docs: add branded interface improvement roadmap
 23ebd08 docs: plan public multi-account product
 07ceefa chore: remove automation integration
+36a83ad docs: refresh handoff after integration removal
 ```
 
 No momento do handoff:
@@ -629,7 +630,8 @@ O usuário pediu construir o app completo para o público final:
 
 O repositório já tem login local, hash de senha, memberships e papéis internos que devem ser avaliados/reutilizados. Porém bootstrap global, senha master de ambiente e dependências de workspace demo/global significam que o SaaS multi-tenant ainda não está pronto.
 
-**Próximo bloco de implementação:** matriz de tabelas/rotas/queries e plano de backfill; tenant/owner derivado de membership ativa; revogação de sessão; teste PostgreSQL com pelo menos dois workspaces e tentativa de acesso cruzado. Em seguida, cadastro/login do master e UI/fluxo de criar, alterar, resetar e desativar funcionários. Não começar por Baileys nem fazer mudança destrutiva no banco.
+**Implementação nesta retomada (ainda não publicada):** `sessionVersion` passou a ser incluída no JWT assinado; a autenticação já compara a versão da sessão com a versão atual do banco. O primeiro login OAuth deixou de conceder automaticamente membership `owner` a qualquer usuário: somente o bootstrap explicitamente configurado ou um admin existente pode reivindicar a instalação vazia. Foram adicionados testes de regressão para as duas regras.
+
 
 ### PAPI/Baileys: proposta para fase futura
 

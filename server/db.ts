@@ -54,6 +54,18 @@ export async function getDb() {
   return _db;
 }
 
+export function shouldAssignBootstrapOwnerMembership(input: {
+  openId: string;
+  role?: InsertUser["role"];
+  existingRole?: InsertUser["role"];
+  ownerOpenId: string;
+  canBootstrapAdmin: boolean;
+}) {
+  return input.role === "admin"
+    || input.existingRole === "admin"
+    || (input.canBootstrapAdmin && input.ownerOpenId.length > 0 && input.openId === input.ownerOpenId);
+}
+
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
@@ -66,6 +78,13 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   const existingUser = (await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.openId, user.openId)).limit(1))[0];
   const anyAdmin = (await db.select({ id: users.id }).from(users).where(eq(users.role, "admin")).limit(1))[0];
   const canBootstrapAdmin = !anyAdmin && !existingUser;
+  const shouldAssignBootstrapOwner = shouldAssignBootstrapOwnerMembership({
+    openId: user.openId,
+    role: user.role,
+    existingRole: existingUser?.role,
+    ownerOpenId: ENV.ownerOpenId,
+    canBootstrapAdmin,
+  });
   const textFields = ["name", "email", "loginMethod"] as const;
   for (const field of textFields) {
     if (user[field] === undefined) continue;
@@ -88,7 +107,9 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   await db.insert(users).values(values).onConflictDoUpdate({ target: users.openId, set: updateSet });
   const persisted = await db.select({ id: users.id }).from(users).where(eq(users.openId, user.openId)).limit(1);
   const workspace = await ensureDemoWorkspace();
-  if (persisted[0] && workspace) await ensureWorkspaceMember(workspace.id, persisted[0].id, "owner");
+  if (persisted[0] && workspace && shouldAssignBootstrapOwner) {
+    await ensureWorkspaceMember(workspace.id, persisted[0].id, "owner");
+  }
 }
 
 export async function getUserByOpenId(openId: string) {

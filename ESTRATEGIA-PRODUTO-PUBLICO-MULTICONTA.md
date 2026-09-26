@@ -2,7 +2,7 @@
 
 **Status:** estratégia aprovada para orientar os próximos passos; ainda não é autorização para ligar serviços externos, provisionar contas WhatsApp ou publicar o produto.
 **Atualizado:** 2026-09-25
-**Repositório/HEAD de referência:** `geordptoroy/forte-panel`, `0d66201`
+**Repositório:** `geordptoroy/forte-panel` (consulte `git log -1` para o HEAD vigente)
 **Leitura complementar:** `PRODUCT_SCOPE.md`, `todo.md`, `PLANO-INTERMEDIARIO-FORTE-PANEL.md` e `HANDOFF-CONTINUIDADE-FORTE-PANEL.md`.
 
 ## 1. Direção escolhida
@@ -147,17 +147,18 @@ Requisitos mínimos antes de produção:
 - Marcar PAPI atual como provider de transição e Baileys/PAPI própria como futuro condicionado a source/license assessment.
 - Não alterar ainda a PAPI, não cadastrar dependência Baileys no backend do CRM, não publicar nem provisionar números.
 
-**Pronto quando:** todos os docs ativos deixam de falar em proprietário único por instalação como limite do produto, e o roteiro técnico começa por tenancy/login.
+**Pronto quando:** todos os docs ativos deixam de falar em proprietário único por instalação como limite do produto, e o roteiro técnico começa por tenancy/login. A decisão está registrada; a implementação segue nas fases abaixo.
 
 ### Fase 1 — Segurança do login e tenancy real (**primeiro bloco de implementação**)
 
 1. Criar um registro claro de tenant/empresa e relação com owner/master; backfill do workspace demo atual para owner existente sem apagar dados.
 2. Desativar bootstrap global do primeiro admin para cadastro público; criar fluxo controlado de primeiro master.
-3. Corrigir o JWT para realmente incluir `sessionVersion`; expirar/inutilizar sessão após troca de senha ou desativação.
-4. Introduzir contexto de workspace validado a partir da membership e passar o `workspaceId` explicitamente para toda operação.
-5. Auditar tRPC, REST, worker, webhooks, storage, auditoria, settings, contactos, mensagens, agenda, integrações e agente para não ler/escrever fora do tenant.
-6. Criar testes de banco real com duas empresas e atores de papéis diferentes; tentar cruzar IDs manualmente e provar isolamento.
-7. Migrations reversíveis, índices/unique/FKs após validar os dados existentes.
+3. [x] Corrigir o JWT para realmente incluir `sessionVersion`; a claim assinada é comparada ao banco, e troca de senha/desativação incrementa a versão. Testes de regressão locais cobrem a inclusão e o valor padrão.
+4. [x] Remover concessão automática de membership `owner` a usuários OAuth comuns; só o bootstrap configurado/admin pode reivindicar a instalação vazia.
+5. Introduzir contexto de workspace validado a partir da membership e passar o `workspaceId` explicitamente para toda operação.
+6. Auditar tRPC, REST, worker, webhooks, storage, auditoria, settings, contactos, mensagens, agenda, integrações e agente para não ler/escrever fora do tenant.
+7. Criar testes de banco real com duas empresas e atores de papéis diferentes; tentar cruzar IDs manualmente e provar isolamento.
+8. Migrations reversíveis, índices/unique/FKs após validar os dados existentes.
 
 **Aceite:** duas empresas no mesmo banco não veem nem alteram nada uma da outra; owner e membro desativado têm o comportamento esperado; suites críticas executam em CI com PostgreSQL.
 

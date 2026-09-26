@@ -1,7 +1,7 @@
 # Forte Panel — acompanhamento do produto público
 
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
-**Próxima fase de código:** tenant/workspace real, isolamento por membership e login master seguro. **Não começar pela integração Baileys.**
+**Fase de código atual:** introduzir o contexto real de tenant e migrar operações para `workspaceId` explícito. **Não começar pela integração Baileys.**
 
 ## Concluído até aqui no MVP
 
@@ -14,7 +14,7 @@
 - Multiusuário interno com hash de senha, memberships e papéis base; telas iniciais de Equipe/Configurações e notificações internas.
 - Ledger idempotente das tools de agente e melhorias de leases do worker.
 - Compose, migrations, documentação local e infraestrutura registrados nos docs existentes.
-- Uma inspeção anterior registrou typecheck/build/tests passando, incluindo 39 testes e 13 suites ignoradas por integrações externas; reexecutar no próximo bloco. Não tomar essa contagem histórica como prova de cobertura PostgreSQL.
+- Última validação local: typecheck/build passaram; 39 testes passaram e 13 foram ignorados por dependências externas. Isso não prova cobertura de isolamento com PostgreSQL real.
 
 ## Direção de produto aprovada
 
@@ -28,6 +28,10 @@
 
 ### 1. Tenancy e autenticação (primeiro bloco de código)
 
+- [x] JWT passa a assinar `sessionVersion`, usado na verificação para revogar sessões; testes de regressão adicionados.
+- [x] Login OAuth comum não recebe automaticamente membership `owner`; somente o bootstrap configurado ou admin preexistente pode reivindicar a instalação vazia.
+- [x] Mapeamento inicial: há 68 chamadas servidor-side a `ensureDemoWorkspace` que precisam ser removidas/migradas por domínio.
+- Introduzir `workspaceId` no contexto autenticado, resolvido de membership ativa; não derivar do slug configurado ou do papel global.
 - Mapear todas as rotas, queries e jobs que precisam de `workspaceId`.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
