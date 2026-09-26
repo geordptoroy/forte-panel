@@ -1,4 +1,5 @@
 import http from "node:http";
+import QRCode from "qrcode";
 import { config } from "./config.js";
 import type { InstanceManager } from "./instance-manager.js";
 
@@ -10,6 +11,11 @@ export function createServer(manager: InstanceManager) {
     if (!authorized(req)) return json(res, 401, { error: "unauthorized" });
     if (req.method === "GET" && url.pathname === "/api/instances") return json(res, 200, [manager.getStatus()]);
     if (req.method === "GET" && url.pathname === `/api/instances/${config.instanceId}`) return json(res, 200, manager.getStatus());
+    if (req.method === "GET" && url.pathname === `/api/instances/${config.instanceId}/qr`) {
+      const qr = manager.getStatus().qr;
+      if (!qr) return json(res, 404, { error: "qr_not_available" });
+      return json(res, 200, { instanceId: config.instanceId, imageDataUrl: await QRCode.toDataURL(qr, { width: 420, margin: 2 }) });
+    }
     if (req.method === "POST" && url.pathname === `/api/instances/${config.instanceId}/connect`) { await manager.start(); return json(res, 202, manager.getStatus()); }
     if (req.method === "POST" && url.pathname === `/api/instances/${config.instanceId}/disconnect`) { await manager.stop(); return json(res, 200, manager.getStatus()); }
     if (req.method === "POST" && url.pathname === `/api/instances/${config.instanceId}/logout`) { await manager.stop(true); return json(res, 200, manager.getStatus()); }
