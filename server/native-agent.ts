@@ -57,9 +57,9 @@ function fallbackPrompt(profilePrompt: string) {
 }
 
 export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfig) {
-  const contact = await getContactById(event.contactId);
+  const contact = await getContactById(event.workspaceId, event.contactId);
   if (!contact) throw new Error("Contato do evento não encontrado");
-  const thread = await listMessagesForContact(event.contactId);
+  const thread = await listMessagesForContact(event.workspaceId, event.contactId);
   const onboarding = await getOnboardingProfile();
   const configuredPrompt = config.systemPrompt.trim() || onboarding.prompt;
   const system = fallbackPrompt(configuredPrompt || "Atenda o cliente com segurança e cordialidade.");
@@ -77,7 +77,7 @@ export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfi
     messages.push({ role: "assistant", content: assistant.content ?? "", ...(assistant.tool_calls ? { tool_calls: assistant.tool_calls } : {}) });
     if (!assistant.tool_calls?.length) {
       const text = typeof assistant.content === "string" ? assistant.content.trim() : "";
-      if (text) await queueOutboundMessage(event.contactId, text, undefined, "ai", "text", { agent: true, eventId: event.eventId, model: response.model, ...(event.instanceId ? { instanceId: event.instanceId } : {}) });
+      if (text) await queueOutboundMessage(event.workspaceId, event.contactId, text, undefined, "ai", "text", { agent: true, eventId: event.eventId, model: response.model, ...(event.instanceId ? { instanceId: event.instanceId } : {}) });
       return { response: text, steps: step + 1, model: response.model };
     }
     for (const call of assistant.tool_calls) {
@@ -109,16 +109,16 @@ async function executeTool(name: string, args: Record<string, unknown>, event: N
 }
 
 async function executeToolEffect(name: string, args: Record<string, unknown>, event: NativeAgentEvent) {
-  if (name === "buscar_lead") return leadMemoryOperation({ action: "buscar_lead", phone: asString(args.phone, "phone") });
-  if (name === "atualizar_lead") return leadMemoryOperation({ action: "atualizar_lead", phone: asString(args.phone, "phone"), fields: asObject(args.fields) as Parameters<typeof leadMemoryOperation>[0]["fields"] });
-  if (name === "registrar_nota") return leadMemoryOperation({ action: "registrar_nota", phone: asString(args.phone, "phone"), note: asString(args.note, "note") });
+  if (name === "buscar_lead") return leadMemoryOperation(event.workspaceId, { action: "buscar_lead", phone: asString(args.phone, "phone") });
+  if (name === "atualizar_lead") return leadMemoryOperation(event.workspaceId, { action: "atualizar_lead", phone: asString(args.phone, "phone"), fields: asObject(args.fields) as Parameters<typeof leadMemoryOperation>[1]["fields"] });
+  if (name === "registrar_nota") return leadMemoryOperation(event.workspaceId, { action: "registrar_nota", phone: asString(args.phone, "phone"), note: asString(args.note, "note") });
   if (name === "consultar_agenda") return getAgendaSnapshot(event.workspaceId);
   if (name === "criar_agendamento") {
     const appointment = await createAgendaAppointment(event.workspaceId, { contactId: asNumber(args.contactId ?? event.contactId, "contactId"), serviceId: asNumber(args.serviceId, "serviceId"), professionalId: asNumber(args.professionalId, "professionalId"), startsAt: new Date(asString(args.startsAt, "startsAt")), endsAt: new Date(asString(args.endsAt, "endsAt")), notes: typeof args.notes === "string" ? args.notes : undefined });
     return appointment ? { id: appointment.id, status: appointment.status, startsAt: appointment.startsAt, endsAt: appointment.endsAt } : { created: false };
   }
   if (name === "transferir_humano") {
-    await setContactAi(asNumber(args.contactId ?? event.contactId, "contactId"), false);
+    await setContactAi(event.workspaceId, asNumber(args.contactId ?? event.contactId, "contactId"), false);
     return { transferred: true, reason: asString(args.reason, "reason") };
   }
   throw new Error(`Ferramenta não disponível: ${name}`);

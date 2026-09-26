@@ -421,8 +421,8 @@ export const appRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível criar a conta" });
       }
     }),
-    channels: protectedProcedure.query(async () => {
-      const channels = await listWhatsappChannels();
+    channels: protectedProcedure.query(async ({ ctx }) => {
+      const channels = await listWhatsappChannels(ctx.workspace.workspaceId);
       return channels.map((channel) => ({
         id: channel.id,
         provider: channel.provider,
@@ -434,8 +434,8 @@ export const appRouter = router({
         active: channel.active === 1,
       }));
     }),
-    defaultChannel: protectedProcedure.query(() => getDefaultWhatsappProvider()),
-    papiConfig: protectedProcedure.query(() => getPapiIntegrationConfig()),
+    defaultChannel: protectedProcedure.query(({ ctx }) => getDefaultWhatsappProvider(ctx.workspace.workspaceId)),
+    papiConfig: protectedProcedure.query(({ ctx }) => getPapiIntegrationConfig(ctx.workspace.workspaceId)),
     papiInstances: requireActiveMember.query(() => listPapiInstances()),
     papiCloudStatus: protectedProcedure.query(() => ({
       provisioningEnabled: ENV.papiCloudProvisioningEnabled,
@@ -486,12 +486,12 @@ export const appRouter = router({
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "papi_webhook_deleted", summary: `Webhook PAPI ${input.id} removido` });
       return { ok: true };
     }),
-    setDefaultChannel: protectedProcedure.input(z.object({ provider: z.enum(["papi", "meta_cloud_api"]) })).mutation(({ input }) => {
+    setDefaultChannel: protectedProcedure.input(z.object({ provider: z.enum(["papi", "meta_cloud_api"]) })).mutation(({ input, ctx }) => {
       const configured = input.provider === "papi"
         ? Boolean(process.env.PAPI_BASE_URL && process.env.PAPI_API_KEY)
         : Boolean(process.env.META_WHATSAPP_ACCESS_TOKEN && process.env.META_WHATSAPP_PHONE_NUMBER_ID);
       if (!configured) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure as credenciais deste canal antes de selecioná-lo." });
-      return setDefaultWhatsappProvider(input.provider);
+      return setDefaultWhatsappProvider(ctx.workspace.workspaceId, input.provider);
     }),
   }),
 
@@ -744,8 +744,8 @@ export const appRouter = router({
   }),
 
   inbox: router({
-    contacts: protectedProcedure.query(async () => {
-      const items = await listInboxContacts();
+    contacts: protectedProcedure.query(async ({ ctx }) => {
+      const items = await listInboxContacts(ctx.workspace.workspaceId);
       return items.map(mapContact);
     }),
     createContact: protectedProcedure.input(z.object({
@@ -754,19 +754,19 @@ export const appRouter = router({
       serviceRequested: z.string().trim().max(180).optional(),
       city: z.string().trim().max(100).optional(),
       neighborhood: z.string().trim().max(100).optional(),
-    })).mutation(async ({ input }) => {
-      const contact = await upsertApiContact(input);
+    })).mutation(async ({ input, ctx }) => {
+      const contact = await upsertApiContact(ctx.workspace.workspaceId, input);
       return contact ? mapContact(contact) : null;
     }),
-    thread: protectedProcedure.input(contactIdInput).query(async ({ input }) => {
-      const contact = await getContactById(input.contactId);
+    thread: protectedProcedure.input(contactIdInput).query(async ({ input, ctx }) => {
+      const contact = await getContactById(ctx.workspace.workspaceId, input.contactId);
       if (!contact) return null;
       const [conversation, items, audit] = await Promise.all([
-        getConversationByContact(input.contactId),
-        listMessagesForContact(input.contactId),
-        getAuditLogForContact(input.contactId),
+        getConversationByContact(ctx.workspace.workspaceId, input.contactId),
+        listMessagesForContact(ctx.workspace.workspaceId, input.contactId),
+        getAuditLogForContact(ctx.workspace.workspaceId, input.contactId),
       ]);
-      const notes = await listContactNotes(input.contactId);
+      const notes = await listContactNotes(ctx.workspace.workspaceId, input.contactId);
       return {
         contact: mapContact(contact),
         conversation,
@@ -784,20 +784,20 @@ export const appRouter = router({
       };
     }),
     addNote: protectedProcedure.input(contactIdInput.extend({ content: z.string().trim().min(2).max(2000) })).mutation(async ({ input, ctx }) => {
-      return addContactNote(input.contactId, input.content, ctx.user.id);
+      return addContactNote(ctx.workspace.workspaceId, input.contactId, input.content, ctx.user.id);
     }),
-    toggleAi: protectedProcedure.input(contactIdInput.extend({ enabled: z.boolean() })).mutation(async ({ input }) => {
-      await setContactAi(input.contactId, input.enabled);
-      const contact = await getContactById(input.contactId);
+    toggleAi: protectedProcedure.input(contactIdInput.extend({ enabled: z.boolean() })).mutation(async ({ input, ctx }) => {
+      await setContactAi(ctx.workspace.workspaceId, input.contactId, input.enabled, ctx.user.id);
+      const contact = await getContactById(ctx.workspace.workspaceId, input.contactId);
       return contact ? mapContact(contact) : null;
     }),
-    sendMessage: protectedProcedure.input(contactIdInput.extend({ content: z.string().trim().min(1).max(4000) })).mutation(async ({ input }) => {
-      const message = await sendManualMessage(input.contactId, input.content);
+    sendMessage: protectedProcedure.input(contactIdInput.extend({ content: z.string().trim().min(1).max(4000) })).mutation(async ({ input, ctx }) => {
+      const message = await sendManualMessage(ctx.workspace.workspaceId, input.contactId, input.content, ctx.user.id);
       return message ? { id: String(message.id), content: message.content, createdAt: message.createdAt.toISOString(), sender: message.senderType } : null;
     }),
-    moveStage: protectedProcedure.input(contactIdInput.extend({ stage: z.string().min(1).max(80) })).mutation(async ({ input }) => {
-      await moveContactStage(input.contactId, input.stage);
-      const contact = await getContactById(input.contactId);
+    moveStage: protectedProcedure.input(contactIdInput.extend({ stage: z.string().min(1).max(80) })).mutation(async ({ input, ctx }) => {
+      await moveContactStage(ctx.workspace.workspaceId, input.contactId, input.stage, ctx.user.id);
+      const contact = await getContactById(ctx.workspace.workspaceId, input.contactId);
       return contact ? mapContact(contact) : null;
     }),
     seed: protectedProcedure.mutation(async () => {

@@ -659,3 +659,36 @@ O protótipo, se aprovado depois, exige storage durável e criptografado de cred
 4. `PLANO-INTERMEDIARIO-FORTE-PANEL.md` — decisões e histórico de etapas.
 
 A seção antiga do próximo passo técnico deve ser lida como histórico. Para validações, executar as suites no commit vigente; as contagens de testes registradas em handoffs antigos são históricas.
+
+---
+
+## Atualização do handoff — 2026-09-26 09:52
+
+O bloco seguinte da migração de tenancy foi concluído no código, sem abrir cadastro público nem tocar na PAPI Cloud.
+
+### Implementado
+
+- `listInboxContacts`, `getContactById`, conversas, mensagens, notas, auditoria derivada do contato, `setContactAi`, mensagem manual e mudança de estágio agora recebem `workspaceId` explícito.
+- `upsertApiContact`, `leadMemoryOperation`, `ingestInboundWhatsApp`, `findQueuedBatchMessage` e `queueOutboundMessage` usam o workspace resolvido pelo chamador; consultas de contato/conversa filtram o tenant.
+- Seleção de provider, canais ativos, webhook PAPI e segredo da instância passam a usar o workspace explícito nos fluxos autenticados.
+- Rotas tRPC de Inbox/Canais e agente nativo propagam `ctx.workspace.workspaceId`/`event.workspaceId`.
+- API REST de contatos, lead-memory, mensagens, batch, stage, canais e webhooks exige `FORTE_API_WORKSPACE_ID` válido. A validação de payload e Idempotency-Key permanece antes do `503` de workspace ausente, preservando o contrato existente.
+- Webhooks inbound encaminham o workspace para ingestão e registro do evento; a rota PAPI resolve o webhook dentro do workspace configurado.
+
+### Validação
+
+```text
+pnpm check       ✅
+pnpm test        ✅ 43 testes aprovados; 19 ignorados por dependerem de PostgreSQL/configuração externa
+pnpm build       ✅
+git diff --check ✅
+```
+
+O build emite apenas o warning já existente de chunk frontend acima de 500 kB. Nenhuma migration ou dado foi alterado nesta etapa.
+
+### Limitações e próximo bloco
+
+- `auditLogs` ainda não possui `workspaceId`; a leitura é protegida pela existência do contato no tenant, mas a tabela precisa de coluna/backfill antes de reativar auditoria global.
+- `webhookEvents`, `apiIdempotency` e alguns identificadores externos ainda têm unicidade histórica global; o próximo bloco deve criar constraints compostas por workspace com migration versionada e testes PostgreSQL concorrentes.
+- Onboarding/configuração do agente, listagem/gestão de instâncias PAPI e demais helpers históricos ainda usam fallback demo e não devem ser expostos como cadastro multi-conta até a migração correspondente.
+- Executar `workspace-domain-isolation.test.ts`, `agenda-workspace-isolation.test.ts` e a nova cobertura de CRM em PostgreSQL real antes de permitir tenants operacionais adicionais.

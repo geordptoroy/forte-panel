@@ -196,3 +196,13 @@ O futuro gateway REST pode ser um fork autorizado da PAPI (preferível se houver
 6. Só depois avaliar o fork/API própria PAPI/Baileys e o lançamento gradual.
 
 A tarefa de fencing/ledger PostgreSQL continua válida como requisito de confiabilidade antes do uso comercial do agente, mas deixa de ser o próximo bloco isolado: deve ser encaixada após a fronteira de tenancy e login estar segura.
+
+---
+
+## Atualização de execução — 2026-09-26
+
+A migração de tenancy avançou para o domínio CRM/Inbox. Contatos, conversas, mensagens, notas, lead-memory, inbound/outbound, seleção de canais e chamadas do agente agora propagam `workspaceId` explícito a partir do contexto tRPC, da API REST vinculada e do evento do worker. A superfície REST mantém fail-closed sem `FORTE_API_WORKSPACE_ID`, sem alterar o contrato de validação de payload/idempotência.
+
+Validação concluída: `pnpm check`, `pnpm test` (43 aprovados, 19 ignorados sem PostgreSQL), `pnpm build` e `git diff --check`.
+
+Próxima sequência: migrar onboarding/configuração e gestão histórica de instâncias PAPI; depois versionar migration para `auditLogs`, `webhookEvents` e `apiIdempotency` com escopo composto por workspace; executar isolamento com PostgreSQL real antes de abrir novos tenants.

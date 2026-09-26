@@ -179,8 +179,10 @@ api.get("/health", (_req, res) => res.json({ status: "ok", service: "forte-panel
 
 api.get("/channels", async (req, res) => {
   if (!requireApiKey(req, res)) return;
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   try {
-    const channels = await listWhatsappChannels();
+    const channels = await listWhatsappChannels(workspaceId);
     return res.json({ data: channels.map((channel) => ({ id: channel.id, provider: channel.provider, name: channel.name, phoneNumber: channel.phoneNumber, configured: Boolean(channel.phoneNumberId || channel.credentialsRef), active: Boolean(channel.active) })) });
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao consultar canais", "internal_error");
@@ -201,10 +203,12 @@ api.post("/lead-memory", async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const parsed = leadMemorySchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "Payload da memória do lead inválido", "invalid_payload");
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   const responseMessage = parsed.data.action === "buscar_lead" ? "Estado do lead recuperado." : parsed.data.action === "atualizar_lead" ? "Estado do lead atualizado." : parsed.data.action === "criar_lead" ? "Lead criado ou já existente." : "Evento registrado.";
   try {
     const run = async () => {
-      const result = await leadMemoryOperation(parsed.data);
+      const result = await leadMemoryOperation(workspaceId, parsed.data);
       return { statusCode: 200, body: { success: true, acao: parsed.data.action, telefone: parsed.data.phone.replace(/[^0-9]/g, ""), resultado: result, mensagem: responseMessage } };
     };
     if (parsed.data.action === "buscar_lead") return res.json((await run()).body);
@@ -218,9 +222,11 @@ api.post("/contacts/upsert", async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const parsed = contactSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "Payload de contato inválido", "invalid_payload");
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   try {
     return idempotent(req, res, async () => {
-      const contact = await upsertApiContact(parsed.data);
+      const contact = await upsertApiContact(workspaceId, parsed.data);
       return { statusCode: 200, body: { data: { id: contact?.id, phone: contact?.externalPhone, name: contact?.name, stage: contact?.stage }, created: !contact?.createdAt || contact.createdAt.getTime() === contact.updatedAt.getTime() } };
     });
   } catch (error) {
@@ -230,6 +236,8 @@ api.post("/contacts/upsert", async (req, res) => {
 
 api.get("/contacts/:id/messages", async (req, res) => {
   if (!requireApiKey(req, res)) return;
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de contato inválido", "invalid_id");
   const limit = req.query.limit ? Number(req.query.limit) : 200;
@@ -237,9 +245,9 @@ api.get("/contacts/:id/messages", async (req, res) => {
   if (!Number.isInteger(limit) || limit < 1 || limit > 500) return fail(res, 400, "limit deve estar entre 1 e 500", "invalid_query");
   if (since && Number.isNaN(since.getTime())) return fail(res, 400, "since deve ser uma data ISO válida", "invalid_query");
   try {
-    const contact = await getContactById(id);
+    const contact = await getContactById(workspaceId, id);
     if (!contact) return fail(res, 404, "Contato não encontrado", "not_found");
-    const messages = await listMessagesForContact(id, { limit, since });
+    const messages = await listMessagesForContact(workspaceId, id, { limit, since });
     return res.json({ data: { contactId: id, phone: contact.externalPhone, count: messages.length, messages } });
   } catch (error) {
     return fail(res, 500, error instanceof Error ? error.message : "Falha ao consultar histórico", "internal_error");
@@ -248,10 +256,12 @@ api.get("/contacts/:id/messages", async (req, res) => {
 
 api.get("/contacts/:id", async (req, res) => {
   if (!requireApiKey(req, res)) return;
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de contato inválido", "invalid_id");
   try {
-    const contact = await getContactById(id);
+    const contact = await getContactById(workspaceId, id);
     if (!contact) return fail(res, 404, "Contato não encontrado", "not_found");
     return res.json({ data: { id: contact.id, phone: contact.externalPhone, name: contact.name, city: contact.city, neighborhood: contact.neighborhood, serviceRequested: contact.serviceRequested, stage: contact.stage, urgency: contact.urgency, aiEnabled: Boolean(contact.aiEnabled), quoteCents: contact.quoteCents, lastMessageAt: contact.lastMessageAt } });
   } catch (error) {
@@ -352,19 +362,23 @@ api.post("/messages", async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const parsed = messageSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "Payload de mensagem inválido", "invalid_payload");
+  const idempotencyKey = req.header("Idempotency-Key");
+  if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 180) return fail(res, 400, "Idempotency-Key é obrigatório", "idempotency_key_required");
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   try {
     return idempotent(req, res, async () => {
       const contact = parsed.data.contactId
-        ? await getContactById(parsed.data.contactId)
-        : await upsertApiContact({ phone: String(parsed.data.phone).replace(/[^0-9]/g, ""), name: parsed.data.name });
+        ? await getContactById(workspaceId, parsed.data.contactId)
+        : await upsertApiContact(workspaceId, { phone: String(parsed.data.phone).replace(/[^0-9]/g, ""), name: parsed.data.name });
       if (!contact) return { statusCode: 404, body: { error: "not_found", message: "Contato não encontrado" } };
-      const provider = parsed.data.provider ?? await getDefaultWhatsappProvider();
+      const provider = parsed.data.provider ?? await getDefaultWhatsappProvider(workspaceId);
       const senderType = parsed.data.senderType ?? "human";
       const messageType = parsed.data.messageType ?? "text";
       if (provider === "meta_cloud_api" && messageType !== "text") return { statusCode: 422, body: { error: "unsupported_message_type", message: "Este tipo de mensagem ainda não é suportado pela Meta Cloud API neste worker" } };
-      const defaultPapiWebhook = provider === "papi" ? await getDefaultPapiWebhook() : undefined;
+      const defaultPapiWebhook = provider === "papi" ? await getDefaultPapiWebhook(workspaceId) : undefined;
       if (provider === "papi" && !parsed.data.instanceId && !defaultPapiWebhook?.instanceId) return { statusCode: 422, body: { error: "papi_instance_required", message: "Informe instanceId do PAPI ou associe uma instância em Canais conectados" } };
-      const message = await queueOutboundMessage(contact.id, parsed.data.content, provider, senderType, messageType, { ...(parsed.data.metadata ?? {}), ...(parsed.data.instanceId ? { instanceId: parsed.data.instanceId } : {}) });
+      const message = await queueOutboundMessage(workspaceId, contact.id, parsed.data.content, provider, senderType, messageType, { ...(parsed.data.metadata ?? {}), ...(parsed.data.instanceId ? { instanceId: parsed.data.instanceId } : {}) });
       return { statusCode: 202, body: { data: { id: message?.id, contactId: contact.id, provider, senderType, messageType, status: "queued" } } };
     });
   } catch (error) {
@@ -376,24 +390,28 @@ api.post("/messages/batch", async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const parsed = messageBatchSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "Payload de mensagens em lote inválido", "invalid_payload");
+  const idempotencyKey = req.header("Idempotency-Key");
+  if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 180) return fail(res, 400, "Idempotency-Key é obrigatório", "idempotency_key_required");
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   try {
     return idempotent(req, res, async () => {
       const results: Array<Record<string, unknown>> = [];
       for (let index = 0; index < parsed.data.messages.length; index += 1) {
         const item = parsed.data.messages[index];
         const contact = item.contactId
-          ? await getContactById(item.contactId)
-          : await upsertApiContact({ phone: String(item.phone).replace(/[^0-9]/g, ""), name: item.name });
+          ? await getContactById(workspaceId, item.contactId)
+          : await upsertApiContact(workspaceId, { phone: String(item.phone).replace(/[^0-9]/g, ""), name: item.name });
         if (!contact) return { statusCode: 404, body: { error: "not_found", message: `Contato não encontrado no item ${index + 1}` } };
-        const provider = item.provider ?? await getDefaultWhatsappProvider();
+        const provider = item.provider ?? await getDefaultWhatsappProvider(workspaceId);
         const senderType = item.senderType ?? "ai";
         const messageType = item.messageType ?? "text";
         if (provider === "meta_cloud_api" && messageType !== "text") return { statusCode: 422, body: { error: "unsupported_message_type", message: `Tipo não suportado no item ${index + 1}` } };
-        const defaultPapiWebhook = provider === "papi" ? await getDefaultPapiWebhook() : undefined;
+        const defaultPapiWebhook = provider === "papi" ? await getDefaultPapiWebhook(workspaceId) : undefined;
         if (provider === "papi" && !item.instanceId && !defaultPapiWebhook?.instanceId) return { statusCode: 422, body: { error: "papi_instance_required", message: `Informe instanceId no item ${index + 1} ou associe uma instância em Canais conectados` } };
         const batchId = parsed.data.batchId ?? req.header("Idempotency-Key") ?? `request-${Date.now()}`;
-        const existing = await findQueuedBatchMessage(contact.id, batchId, index);
-        const message = existing ?? await queueOutboundMessage(contact.id, item.content, provider, senderType, messageType, { ...(item.metadata ?? {}), batchId, batchIndex: index, ...(item.instanceId ? { instanceId: item.instanceId } : {}) });
+        const existing = await findQueuedBatchMessage(workspaceId, contact.id, batchId, index);
+        const message = existing ?? await queueOutboundMessage(workspaceId, contact.id, item.content, provider, senderType, messageType, { ...(item.metadata ?? {}), batchId, batchIndex: index, ...(item.instanceId ? { instanceId: item.instanceId } : {}) });
         results.push({ id: message?.id, contactId: contact.id, provider, senderType, messageType, status: "queued", index });
       }
       return { statusCode: 202, body: { accepted: true, count: results.length, data: results } };
@@ -409,11 +427,13 @@ api.patch("/contacts/:id/stage", async (req, res) => {
   const parsed = stageSchema.safeParse(req.body);
   if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de contato inválido", "invalid_id");
   if (!parsed.success) return fail(res, 400, "Payload de estágio inválido", "invalid_payload");
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   try {
     return idempotent(req, res, async () => {
-      const contact = await getContactById(id);
+      const contact = await getContactById(workspaceId, id);
       if (!contact) return { statusCode: 404, body: { error: "not_found", message: "Contato não encontrado" } };
-      await moveContactStage(id, parsed.data.stage);
+      await moveContactStage(workspaceId, id, parsed.data.stage);
       return { statusCode: 200, body: { data: { id, stage: parsed.data.stage } } };
     });
   } catch (error) {
@@ -468,11 +488,13 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
   const idempotencyKey = req.header("Idempotency-Key");
   if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 180) return fail(res, 400, "Idempotency-Key é obrigatório", "idempotency_key_required");
   if (idempotencyKey !== parsed.data.eventId) return fail(res, 409, "Idempotency-Key deve corresponder ao eventId", "idempotency_conflict");
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   try {
-    const registered = await registerWebhookEvent({ eventId: parsed.data.eventId, provider: "whatsapp", payload: parsed.data });
+    const registered = await registerWebhookEvent({ eventId: parsed.data.eventId, provider: "whatsapp", payload: parsed.data, workspaceId });
     if (registered.conflict) return fail(res, 409, "O eventId já foi usado com outro payload", "idempotency_conflict");
     if (registered.duplicate) return res.status(200).json({ accepted: true, duplicate: true, eventId: parsed.data.eventId });
-    const result = await ingestInboundWhatsApp(parsed.data);
+    const result = await ingestInboundWhatsApp(workspaceId, parsed.data);
     await markWebhookEvent(parsed.data.eventId, "processed");
     return res.status(202).json({ accepted: true, duplicate: result.duplicate === true, eventId: parsed.data.eventId, data: result });
   } catch (error) {
@@ -482,7 +504,9 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
 });
 
 async function handlePapiWebhook(req: Request, res: Response, webhookId?: string) {
-  const webhook = webhookId ? await getPapiWebhookById(webhookId) : undefined;
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
+  const webhook = webhookId ? await getPapiWebhookById(webhookId, workspaceId) : undefined;
   if (webhookId && !webhook) return fail(res, 404, "Webhook PAPI não encontrado", "papi_webhook_not_found");
   const configuredSecret = webhook?.secret?.trim() || process.env.PAPI_WEBHOOK_SECRET?.trim();
   const providedSecret = req.header("X-PAPI-Webhook-Secret") ?? req.header("X-Webhook-Secret") ?? "";
@@ -500,10 +524,10 @@ async function handlePapiWebhook(req: Request, res: Response, webhookId?: string
     eventId = normalized.eventId;
     if (normalized.metadata?.isGroup === true) return res.status(202).json({ accepted: true, ignored: true, reason: "group_message", eventId: normalized.eventId });
     if (normalized.phone.length < 8 || !normalized.content.trim()) return fail(res, 400, "Evento PAPI sem telefone ou conteúdo", "invalid_payload");
-    const registered = await registerWebhookEvent({ eventId: normalized.eventId, provider: "papi", payload: req.body });
+    const registered = await registerWebhookEvent({ eventId: normalized.eventId, provider: "papi", payload: req.body, workspaceId });
     if (registered.conflict) return fail(res, 409, "O evento PAPI já foi usado com outro payload", "idempotency_conflict");
     if (registered.duplicate) return res.status(200).json({ accepted: true, duplicate: true, eventId: normalized.eventId });
-    const result = await ingestInboundWhatsApp({ ...normalized, metadata: { ...(normalized.metadata ?? {}), ...(instanceId ? { instanceId } : {}), fromMe: normalized.fromMe === true } });
+    const result = await ingestInboundWhatsApp(workspaceId, { ...normalized, metadata: { ...(normalized.metadata ?? {}), ...(instanceId ? { instanceId } : {}), fromMe: normalized.fromMe === true } });
     await markWebhookEvent(normalized.eventId, "processed");
     return res.status(202).json({ accepted: true, duplicate: result.duplicate === true, eventId: normalized.eventId, instanceId, data: result });
   } catch (error) {

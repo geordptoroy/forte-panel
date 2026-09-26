@@ -543,13 +543,10 @@ export async function ensureDemoWhatsappChannels() {
   return db.select().from(whatsappChannels).where(eq(whatsappChannels.workspaceId, workspace.id));
 }
 
-export async function listWhatsappChannels() {
+export async function listWhatsappChannels(workspaceId: number) {
   const db = await getDb();
   if (!db) return [];
-  await ensureDemoWhatsappChannels();
-  const workspace = await ensureDemoWorkspace();
-  if (!workspace) return [];
-  return db.select().from(whatsappChannels).where(and(eq(whatsappChannels.workspaceId, workspace.id), eq(whatsappChannels.active, 1)));
+  return db.select().from(whatsappChannels).where(and(eq(whatsappChannels.workspaceId, workspaceId), eq(whatsappChannels.active, 1)));
 }
 
 export type PapiInstanceSummary = {
@@ -649,12 +646,11 @@ export async function upsertPapiInstance(input: {
   return summarizePapiInstance(created[0]);
 }
 
-export async function getPapiInstanceSecret(instanceId: string) {
+export async function getPapiInstanceSecret(workspaceId: number, instanceId: string) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return "";
+  if (!db) return "";
   const row = await db.select({ encryptedApiKey: whatsappInstances.encryptedApiKey }).from(whatsappInstances)
-    .where(and(eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.instanceId, instanceId), eq(whatsappInstances.active, 1))).limit(1);
+    .where(and(eq(whatsappInstances.workspaceId, workspaceId), eq(whatsappInstances.instanceId, instanceId), eq(whatsappInstances.active, 1))).limit(1);
   return decryptProviderSecret(row[0]?.encryptedApiKey ?? "");
 }
 
@@ -683,19 +679,19 @@ export async function setDefaultPapiInstance(id: number) {
   });
 }
 
-export async function getDefaultWhatsappProvider(): Promise<WhatsappProvider> {
+export async function getDefaultWhatsappProvider(workspaceId?: number): Promise<WhatsappProvider> {
   const db = await getDb();
   if (!db) return "papi";
-  const workspace = await ensureDemoWorkspace();
-  if (!workspace) return "papi";
-  const setting = await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, workspace.id), eq(workspaceSettings.key, "default_whatsapp_provider"))).limit(1);
+  const resolvedWorkspaceId = workspaceId ?? (await ensureDemoWorkspace())?.id;
+  if (!resolvedWorkspaceId) return "papi";
+  const setting = await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, resolvedWorkspaceId), eq(workspaceSettings.key, "default_whatsapp_provider"))).limit(1);
   return setting[0]?.value === "meta_cloud_api" ? "meta_cloud_api" : "papi";
 }
 
-export async function setDefaultWhatsappProvider(provider: WhatsappProvider) {
+export async function setDefaultWhatsappProvider(workspaceId: number, provider: WhatsappProvider) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const workspace = await ensureDemoWorkspace();
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const existing = await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, workspace.id), eq(workspaceSettings.key, "default_whatsapp_provider"))).limit(1);
   if (existing[0]) {
@@ -731,8 +727,8 @@ function papiWebhookBaseUrl() {
   return "http://forte-panel:3000/api/v1/webhooks/providers/papi";
 }
 
-async function getStoredPapiWebhooks() {
-  const workspace = await ensureDemoWorkspace();
+async function getStoredPapiWebhooks(workspaceId?: number) {
+  const workspace = workspaceId ? await getActiveWorkspaceById(workspaceId) : await ensureDemoWorkspace();
   if (!workspace) return { workspace: undefined, webhooks: [] as PapiWebhookConfig[] };
   const setting = await getWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING);
   let webhooks: PapiWebhookConfig[] = [];
@@ -756,20 +752,20 @@ function withPapiWebhookUrl(webhook: PapiWebhookConfig, includeSecret = false) {
   };
 }
 
-export async function getPapiIntegrationConfig(): Promise<PapiIntegrationConfig> {
-  const { workspace, webhooks } = await getStoredPapiWebhooks();
+export async function getPapiIntegrationConfig(workspaceId?: number): Promise<PapiIntegrationConfig> {
+  const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
   const setting = workspace ? await getWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING) : undefined;
   const defaultWebhookId = setting?.value || (webhooks[0]?.id ?? null);
   return { webhooks: webhooks.map((webhook) => withPapiWebhookUrl(webhook)), defaultWebhookId };
 }
 
-export async function getPapiWebhookById(id: string) {
-  const { webhooks } = await getStoredPapiWebhooks();
+export async function getPapiWebhookById(id: string, workspaceId?: number) {
+  const { webhooks } = await getStoredPapiWebhooks(workspaceId);
   return webhooks.find((webhook) => webhook.id === id);
 }
 
-export async function getDefaultPapiWebhook() {
-  const config = await getPapiIntegrationConfig();
+export async function getDefaultPapiWebhook(workspaceId?: number) {
+  const config = await getPapiIntegrationConfig(workspaceId);
   return config.webhooks.find((webhook) => webhook.id === config.defaultWebhookId) ?? config.webhooks[0];
 }
 
@@ -1263,27 +1259,25 @@ export async function createAgendaAppointment(workspaceId: number, input: { cont
   return createdAppointment;
 }
 
-export async function listInboxContacts() {
+export async function listInboxContacts(workspaceId: number) {
   const db = await getDb();
   if (!db) return [];
-  await ensureDemoInbox();
-  const workspace = await ensureDemoWorkspace();
-  if (!workspace) return [];
-  return db.select().from(contacts).where(eq(contacts.workspaceId, workspace.id)).orderBy(desc(contacts.lastMessageAt), desc(contacts.id));
+  return db.select().from(contacts).where(eq(contacts.workspaceId, workspaceId)).orderBy(desc(contacts.lastMessageAt), desc(contacts.id));
 }
 
-export async function getConversationByContact(contactId: number) {
+export async function getConversationByContact(workspaceId: number, contactId: number) {
   const db = await getDb();
   if (!db) return undefined;
-  await ensureDemoInbox();
-  const result = await db.select().from(conversations).where(eq(conversations.contactId, contactId)).limit(1);
-  return result[0];
+  const result = await db.select().from(conversations)
+    .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+    .where(and(eq(conversations.contactId, contactId), eq(contacts.workspaceId, workspaceId))).limit(1);
+  return result[0]?.conversations;
 }
 
-export async function listMessagesForContact(contactId: number, options?: { limit?: number; since?: Date }) {
+export async function listMessagesForContact(workspaceId: number, contactId: number, options?: { limit?: number; since?: Date }) {
   const db = await getDb();
   if (!db) return [];
-  const conversation = await getConversationByContact(contactId);
+  const conversation = await getConversationByContact(workspaceId, contactId);
   if (!conversation) return [];
   const limit = Math.min(Math.max(options?.limit ?? 200, 1), 500);
   const rows = await db.select().from(messages).where(and(
@@ -1293,26 +1287,26 @@ export async function listMessagesForContact(contactId: number, options?: { limi
   return rows.reverse();
 }
 
-export async function setContactAi(contactId: number, enabled: boolean, actorUserId?: number) {
+export async function setContactAi(workspaceId: number, contactId: number, enabled: boolean, actorUserId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db.update(contacts).set({ aiEnabled: enabled ? 1 : 0, updatedAt: new Date() }).where(eq(contacts.id, contactId));
-  const conversation = await getConversationByContact(contactId);
+  await db.update(contacts).set({ aiEnabled: enabled ? 1 : 0, updatedAt: new Date() }).where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId)));
+  const conversation = await getConversationByContact(workspaceId, contactId);
   if (conversation) {
     await db.update(conversations).set({ humanControlled: enabled ? 0 : 1, updatedAt: new Date() }).where(eq(conversations.id, conversation.id));
   }
   await db.insert(auditLogs).values({ actorUserId, contactId, action: enabled ? "ai_enabled" : "ai_paused", summary: enabled ? "IA reativada pelo operador" : "IA pausada pelo operador" });
 }
 
-export async function sendManualMessage(contactId: number, content: string, actorUserId?: number) {
+export async function sendManualMessage(workspaceId: number, contactId: number, content: string, actorUserId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const contact = await getContactById(contactId);
+  const contact = await getContactById(workspaceId, contactId);
   if (!contact) throw new Error("Contact not found");
-  const conversation = await getConversationByContact(contactId);
+  const conversation = await getConversationByContact(workspaceId, contactId);
   if (!conversation) throw new Error("Conversation not found");
-  const provider = await getDefaultWhatsappProvider();
-  const defaultPapiWebhook = provider === "papi" ? await getDefaultPapiWebhook() : undefined;
+  const provider = await getDefaultWhatsappProvider(workspaceId);
+  const defaultPapiWebhook = provider === "papi" ? await getDefaultPapiWebhook(workspaceId) : undefined;
   if (provider === "papi" && !defaultPapiWebhook?.instanceId) throw new Error("Associe uma instância PAPI em Canais conectados para enviar mensagens manuais pelo painel");
   const createdAt = new Date();
   const manualInstanceId = provider === "papi" ? defaultPapiWebhook?.instanceId : undefined;
@@ -1324,13 +1318,13 @@ export async function sendManualMessage(contactId: number, content: string, acto
   return result[0];
 }
 
-export async function moveContactStage(contactId: number, stage: string, actorUserId?: number) {
+export async function moveContactStage(workspaceId: number, contactId: number, stage: string, actorUserId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const updatedAt = new Date();
-  await db.update(contacts).set({ stage, updatedAt }).where(eq(contacts.id, contactId));
+  await db.update(contacts).set({ stage, updatedAt }).where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId)));
   await db.insert(auditLogs).values({ actorUserId, contactId, action: "stage_changed", summary: `Lead movido para ${stage}` });
-  const contact = await getContactById(contactId);
+  const contact = await getContactById(workspaceId, contactId);
   if (contact?.workspaceId) {
     await enqueueDomainEvent({
       workspaceId: contact.workspaceId,
@@ -1343,39 +1337,36 @@ export async function moveContactStage(contactId: number, stage: string, actorUs
   }
 }
 
-export async function getContactById(contactId: number) {
+export async function getContactById(workspaceId: number, contactId: number) {
   const db = await getDb();
   if (!db) return undefined;
-  await ensureDemoInbox();
-  const workspace = await ensureDemoWorkspace();
-  if (!workspace) return undefined;
-  const result = await db.select().from(contacts).where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspace.id))).limit(1);
+  const result = await db.select().from(contacts).where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))).limit(1);
   return result[0];
 }
 
-export async function listContactNotes(contactId: number) {
+export async function listContactNotes(workspaceId: number, contactId: number) {
   const db = await getDb();
   if (!db) return [];
-  const workspace = await ensureDemoWorkspace();
-  if (!workspace) return [];
   return db.select().from(contactNotes)
-    .where(and(eq(contactNotes.contactId, contactId), eq(contactNotes.workspaceId, workspace.id)))
+    .where(and(eq(contactNotes.contactId, contactId), eq(contactNotes.workspaceId, workspaceId)))
     .orderBy(desc(contactNotes.createdAt), desc(contactNotes.id)).limit(50);
 }
 
-export async function addContactNote(contactId: number, content: string, actorUserId?: number) {
+export async function addContactNote(workspaceId: number, contactId: number, content: string, actorUserId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const contact = await getContactById(contactId);
+  const contact = await getContactById(workspaceId, contactId);
   if (!contact || !contact.workspaceId) throw new Error("Contact not found");
   const created = await db.insert(contactNotes).values({ workspaceId: contact.workspaceId, contactId, content: content.trim(), authorType: "human" }).returning();
   await db.insert(auditLogs).values({ actorUserId, contactId, action: "note_created", summary: "Nota interna adicionada à ficha" });
   return created[0];
 }
 
-export async function getAuditLogForContact(contactId: number) {
+export async function getAuditLogForContact(workspaceId: number, contactId: number) {
   const db = await getDb();
   if (!db) return [];
+  const contact = await getContactById(workspaceId, contactId);
+  if (!contact) return [];
   return db.select().from(auditLogs).where(eq(auditLogs.contactId, contactId)).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(20);
 }
 
@@ -1548,11 +1539,10 @@ export async function markWebhookEvent(eventId: string, status: "processed" | "f
   await db.update(webhookEvents).set({ status, processedAt: new Date() }).where(and(eq(webhookEvents.eventId, eventId), eq(webhookEvents.status, "received")));
 }
 
-export async function ingestInboundWhatsApp(input: { eventId: string; phone: string; name?: string; content: string; messageType?: "text" | "image" | "audio" | "video" | "document"; metadata?: Record<string, unknown>; fromMe?: boolean; receivedAt?: Date }) {
+export async function ingestInboundWhatsApp(workspaceId: number, input: { eventId: string; phone: string; name?: string; content: string; messageType?: "text" | "image" | "audio" | "video" | "document"; metadata?: Record<string, unknown>; fromMe?: boolean; receivedAt?: Date }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await ensureDemoInbox();
-  const workspace = await ensureDemoWorkspace();
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const priorMessage = await db.select({ messageId: messages.id, contactId: conversations.contactId, conversationId: conversations.id })
     .from(messages)
@@ -1631,10 +1621,10 @@ export async function ingestInboundWhatsApp(input: { eventId: string; phone: str
 }
 
 
-export async function upsertApiContact(input: { phone: string; name?: string; city?: string; neighborhood?: string; serviceRequested?: string }) {
+export async function upsertApiContact(workspaceId: number, input: { phone: string; name?: string; city?: string; neighborhood?: string; serviceRequested?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const workspace = await ensureDemoWorkspace();
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const existing = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, input.phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
   if (existing) {
@@ -1675,10 +1665,10 @@ export async function upsertApiContact(input: { phone: string; name?: string; ci
 }
 
 
-export async function findQueuedBatchMessage(contactId: number, batchId: string, batchIndex: number) {
+export async function findQueuedBatchMessage(workspaceId: number, contactId: number, batchId: string, batchIndex: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const conversation = await getConversationByContact(contactId);
+  const conversation = await getConversationByContact(workspaceId, contactId);
   if (!conversation) return undefined;
   const found = await db.select().from(messages).where(and(
     eq(messages.conversationId, conversation.id),
@@ -1688,20 +1678,20 @@ export async function findQueuedBatchMessage(contactId: number, batchId: string,
   return found[0];
 }
 
-export async function queueOutboundMessage(contactId: number, content: string, provider?: WhatsappProvider, senderType: "ai" | "human" = "human", messageType: "text" | "audio" | "button" = "text", metadata?: Record<string, unknown>) {
+export async function queueOutboundMessage(workspaceId: number, contactId: number, content: string, provider?: WhatsappProvider, senderType: "ai" | "human" = "human", messageType: "text" | "audio" | "button" = "text", metadata?: Record<string, unknown>) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const selectedProvider = provider ?? await getDefaultWhatsappProvider();
-  const defaultPapiWebhook = selectedProvider === "papi" ? await getDefaultPapiWebhook() : undefined;
-  const contact = await getContactById(contactId);
+  const selectedProvider = provider ?? await getDefaultWhatsappProvider(workspaceId);
+  const defaultPapiWebhook = selectedProvider === "papi" ? await getDefaultPapiWebhook(workspaceId) : undefined;
+  const contact = await getContactById(workspaceId, contactId);
   if (!contact) throw new Error("Contact not found");
   if (selectedProvider === "papi" && !metadata?.instanceId && !defaultPapiWebhook?.instanceId) throw new Error("PAPI instanceId não informado; associe uma instância em Canais conectados");
-  const channels = await listWhatsappChannels();
+  const channels = await listWhatsappChannels(workspaceId);
   if (channels.length > 0 && !channels.some((channel) => channel.provider === selectedProvider)) throw new Error("Provedor de WhatsApp não está ativo neste workspace");
-  let conversation = await getConversationByContact(contactId);
+  let conversation = await getConversationByContact(workspaceId, contactId);
   if (!conversation) {
     await db.insert(conversations).values({ contactId, unreadCount: 0, lastMessageAt: new Date() }).onConflictDoNothing({ target: conversations.contactId });
-    conversation = await getConversationByContact(contactId);
+    conversation = await getConversationByContact(workspaceId, contactId);
   }
   if (!conversation) throw new Error("Conversation not found");
   const createdAt = new Date();
@@ -1753,7 +1743,7 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
         messageType: item.message.messageType,
         metadata: item.message.metadata ?? undefined,
         instanceId,
-        apiKey: item.message.provider === "papi" && instanceId ? await getPapiInstanceSecret(instanceId) || undefined : undefined,
+        apiKey: item.message.provider === "papi" && instanceId && item.workspaceId ? await getPapiInstanceSecret(item.workspaceId, instanceId) || undefined : undefined,
         provider: item.message.provider,
       });
       await db.update(messages).set({ status: "sent", externalId: result.externalId, sentAt: new Date(), lastError: null }).where(eq(messages.id, item.message.id));
@@ -1851,7 +1841,7 @@ export async function rescheduleAgendaAppointment(workspaceId: number, appointme
 }
 
 
-export async function leadMemoryOperation(input: {
+export async function leadMemoryOperation(workspaceId: number, input: {
   action: "buscar_lead" | "criar_lead" | "atualizar_lead" | "registrar_nota";
   phone: string;
   name?: string;
@@ -1863,8 +1853,7 @@ export async function leadMemoryOperation(input: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await ensureDemoInbox();
-  const workspace = await ensureDemoWorkspace();
+  const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const phone = input.phone.replace(/[^0-9]/g, "");
   let contact = (await db.select().from(contacts).where(and(eq(contacts.externalPhone, phone), eq(contacts.workspaceId, workspace.id))).limit(1))[0];
@@ -1880,7 +1869,7 @@ export async function leadMemoryOperation(input: {
 
   if (input.action === "criar_lead" || input.action === "atualizar_lead") {
     const fields = input.fields ?? {};
-    contact = await upsertApiContact({ phone, name: fields.name ?? input.name, city: fields.city ?? input.city, neighborhood: fields.neighborhood ?? input.neighborhood, serviceRequested: fields.serviceRequested ?? input.serviceRequested });
+    contact = await upsertApiContact(workspaceId, { phone, name: fields.name ?? input.name, city: fields.city ?? input.city, neighborhood: fields.neighborhood ?? input.neighborhood, serviceRequested: fields.serviceRequested ?? input.serviceRequested });
     if (!contact) throw new Error("Contact could not be created");
     if (fields.urgency || fields.stage || fields.quoteCents !== undefined || fields.aiEnabled !== undefined) {
       await db.update(contacts).set({ urgency: fields.urgency, stage: fields.stage, quoteCents: fields.quoteCents, aiEnabled: fields.aiEnabled === undefined ? undefined : fields.aiEnabled ? 1 : 0, updatedAt: new Date() }).where(eq(contacts.id, contact.id));
