@@ -25,6 +25,7 @@ import {
   workspaceMembers,
   workspaceSettings,
   workspaceUsageBuckets,
+  workspaceUserUsageBuckets,
   workspaces,
   type InsertUser,
 } from "../drizzle/schema";
@@ -972,23 +973,30 @@ export type WorkspaceUsageDecision = {
   retryAfterMs: number;
 };
 
-function workspaceUsageLimit(metric: WorkspaceUsageMetric) {
+export function workspaceUsageLimitsForPlan(plan: "starter" | "pro" | "business", metric: WorkspaceUsageMetric) {
   const envKey = metric === "apiRequests"
     ? "FORTE_WORKSPACE_API_REQUESTS_PER_MINUTE"
     : metric === "aiRequests"
       ? "FORTE_WORKSPACE_AI_REQUESTS_PER_MINUTE"
       : "FORTE_WORKSPACE_OUTBOUND_MESSAGES_PER_MINUTE";
-  const fallback = metric === "aiRequests" ? 60 : 120;
+  const defaults = {
+    starter: { apiRequests: 120, aiRequests: 60, outboundMessages: 120 },
+    pro: { apiRequests: 600, aiRequests: 300, outboundMessages: 600 },
+    business: { apiRequests: 1800, aiRequests: 900, outboundMessages: 1800 },
+  } as const;
+  const fallback = defaults[plan]?.[metric] ?? defaults.starter[metric];
   const parsed = Number(process.env[envKey] ?? fallback);
-  return Number.isFinite(parsed) ? Math.max(0, Math.min(Math.floor(parsed), 10_000)) : fallback;
+  const workspaceLimit = Number.isFinite(parsed) ? Math.max(0, Math.min(Math.floor(parsed), 10_000)) : fallback;
+  return { workspaceLimit, userLimit: Math.max(1, Math.ceil(workspaceLimit / (plan === "starter" ? 4 : 10))) };
 }
 
 export async function consumeWorkspaceUsage(workspaceId: number, metric: WorkspaceUsageMetric): Promise<WorkspaceUsageDecision> {
-  const limit = workspaceUsageLimit(metric);
   const now = new Date();
   const bucketStart = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
   const retryAfterMs = Math.max(1_000, bucketStart.getTime() + 60_000 - now.getTime());
   const db = await getDb();
+  const workspace = db ? await getActiveWorkspaceById(workspaceId) : undefined;
+  const limit = workspaceUsageLimitsForPlan(workspace?.plan ?? "starter", metric).workspaceLimit;
   if (!db) return { allowed: true, limit, remaining: limit, retryAfterMs };
   const column = metric === "apiRequests"
     ? workspaceUsageBuckets.apiRequests
@@ -1000,6 +1008,31 @@ export async function consumeWorkspaceUsage(workspaceId: number, metric: Workspa
     const updated = await tx.update(workspaceUsageBuckets)
       .set({ [metric]: sql`${column} + 1`, updatedAt: new Date() })
       .where(and(eq(workspaceUsageBuckets.workspaceId, workspaceId), eq(workspaceUsageBuckets.bucketStart, bucketStart), lt(column, limit)))
+      .returning({ count: column });
+    const count = Number(updated[0]?.count ?? limit);
+    if (!updated[0]) return { allowed: false, limit, remaining: 0, retryAfterMs };
+    return { allowed: true, limit, remaining: Math.max(0, limit - count), retryAfterMs };
+  });
+}
+
+export async function consumeWorkspaceUserUsage(workspaceId: number, userId: number, metric: WorkspaceUsageMetric): Promise<WorkspaceUsageDecision> {
+  const now = new Date();
+  const bucketStart = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
+  const retryAfterMs = Math.max(1_000, bucketStart.getTime() + 60_000 - now.getTime());
+  const db = await getDb();
+  const workspace = db ? await getActiveWorkspaceById(workspaceId) : undefined;
+  const limit = workspaceUsageLimitsForPlan(workspace?.plan ?? "starter", metric).userLimit;
+  if (!db) return { allowed: true, limit, remaining: limit, retryAfterMs };
+  const column = metric === "apiRequests"
+    ? workspaceUserUsageBuckets.apiRequests
+    : metric === "aiRequests"
+      ? workspaceUserUsageBuckets.aiRequests
+      : workspaceUserUsageBuckets.outboundMessages;
+  return db.transaction(async (tx) => {
+    await tx.insert(workspaceUserUsageBuckets).values({ workspaceId, userId, bucketStart }).onConflictDoNothing({ target: [workspaceUserUsageBuckets.workspaceId, workspaceUserUsageBuckets.userId, workspaceUserUsageBuckets.bucketStart] });
+    const updated = await tx.update(workspaceUserUsageBuckets)
+      .set({ [metric]: sql`${column} + 1`, updatedAt: new Date() })
+      .where(and(eq(workspaceUserUsageBuckets.workspaceId, workspaceId), eq(workspaceUserUsageBuckets.userId, userId), eq(workspaceUserUsageBuckets.bucketStart, bucketStart), lt(column, limit)))
       .returning({ count: column });
     const count = Number(updated[0]?.count ?? limit);
     if (!updated[0]) return { allowed: false, limit, remaining: 0, retryAfterMs };
@@ -1030,6 +1063,7 @@ export async function resetWorkspaceDevelopmentData() {
     await tx.delete(professionals).where(eq(professionals.workspaceId, workspace.id));
     await tx.delete(whatsappChannels).where(eq(whatsappChannels.workspaceId, workspace.id));
     await tx.delete(workspaceUsageBuckets).where(eq(workspaceUsageBuckets.workspaceId, workspace.id));
+    await tx.delete(workspaceUserUsageBuckets).where(eq(workspaceUserUsageBuckets.workspaceId, workspace.id));
     await tx.delete(workspaceSettings).where(eq(workspaceSettings.workspaceId, workspace.id));
     return { workspaceId: workspace.id, reset: true };
   });

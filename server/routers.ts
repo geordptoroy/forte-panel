@@ -25,6 +25,7 @@ import {
   touchLastSignedIn,
   getDefaultWhatsappProvider,
   createPapiWebhook,
+  consumeWorkspaceUserUsage,
   deletePapiWebhook,
   getPapiIntegrationConfig,
   listWhatsappChannels,
@@ -793,6 +794,8 @@ export const appRouter = router({
       return contact ? mapContact(contact) : null;
     }),
     sendMessage: protectedProcedure.input(contactIdInput.extend({ content: z.string().trim().min(1).max(4000) })).mutation(async ({ input, ctx }) => {
+      const usage = await consumeWorkspaceUserUsage(ctx.workspace.workspaceId, ctx.user.id, "outboundMessages");
+      if (!usage.allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Seu limite de mensagens por minuto foi atingido" });
       const message = await sendManualMessage(ctx.workspace.workspaceId, input.contactId, input.content, ctx.user.id);
       return message ? { id: String(message.id), content: message.content, createdAt: message.createdAt.toISOString(), sender: message.senderType } : null;
     }),

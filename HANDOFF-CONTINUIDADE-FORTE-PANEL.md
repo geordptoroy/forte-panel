@@ -814,3 +814,33 @@ pnpm test -- server/secret-safety.test.ts server/api.contract.test.ts server/int
 ```
 
 Atenção para o beta: definir `JWT_SECRET` forte e persistente no ambiente de produção. O fallback local de desenvolvimento não deve ser usado em produção, pois ele também participa da chave de criptografia dos secrets persistidos.
+
+---
+
+## Atualização do handoff — 2026-09-26 10:19
+
+A proteção de consumo do beta foi ampliada: além do bucket por workspace, o sistema agora mantém um bucket por usuário e minuto para impedir que um operador consuma sozinho toda a cota da empresa.
+
+### Política atual
+
+- `starter`: 120 API/min, 60 execuções de IA/min, 120 mensagens outbound/min por workspace; cota individual = workspace dividido por 4.
+- `pro`: 600 API/min, 300 IA/min, 600 outbound/min por workspace; cota individual = workspace dividido por 10.
+- `business`: 1800 API/min, 900 IA/min, 1800 outbound/min por workspace; cota individual = workspace dividido por 10.
+- Variáveis `FORTE_WORKSPACE_*_PER_MINUTE` continuam podendo sobrescrever o limite do deployment.
+- O envio manual do Inbox consome a cota `outboundMessages` do usuário autenticado e retorna erro de limite quando esgotada.
+- O contador individual usa update atômico condicionado ao limite e chave única `(workspaceId, userId, bucketStart)`.
+
+Migration criada:
+
+```text
+0018_workspace_user_usage_buckets.sql
+```
+
+Validação local:
+
+```text
+pnpm check ✅
+pnpm test  ✅ 48 aprovados; 21 ignorados por dependência de PostgreSQL
+```
+
+A aplicação das migrations 0016, 0017 e 0018 e o teste concorrente ainda precisam ocorrer no PostgreSQL real. O próximo trabalho será expor consumo/limites no painel e aplicar cota também ao outbound automático do worker.

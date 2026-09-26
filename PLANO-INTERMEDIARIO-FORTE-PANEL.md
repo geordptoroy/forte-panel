@@ -238,3 +238,11 @@ A migration `0017_tenant_scoped_deduplication.sql` contém backfill seguro com f
 A revisão de segredos foi concluída. A cópia dos segredos de webhook PAPI em `workspaceSettings` agora usa AES-256-GCM, respostas do frontend permanecem mascaradas e foi adicionada cobertura unitária contra exposição e ciphertext adulterado.
 
 Antes do beta, configurar `JWT_SECRET` forte e persistente no servidor, aplicar as migrations 0016/0017 no PostgreSQL real e executar as suites de isolamento com dois workspaces.
+
+---
+
+## Atualização de execução — 2026-09-26 10:19
+
+Foi adicionada política de limites por plano e bucket individual por operador. O endpoint manual do Inbox já impede que um único usuário consuma toda a capacidade do workspace. A migration 0018 cria a persistência do bucket individual.
+
+Próximo passo: executar as três migrations em PostgreSQL real, validar concorrência entre usuários e criar uma visão operacional de consumo antes de abrir o beta.
