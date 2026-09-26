@@ -119,6 +119,23 @@ export const apiIdempotency = pgTable("apiIdempotency", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
+export const agentEffects = pgTable("agentEffects", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspaceId").notNull(),
+  eventId: varchar("eventId", { length: 180 }).notNull(),
+  toolCallId: varchar("toolCallId", { length: 180 }).notNull(),
+  toolName: varchar("toolName", { length: 100 }).notNull(),
+  fingerprint: varchar("fingerprint", { length: 128 }).notNull(),
+  status: varchar("status", { length: 20 }).default("processing").notNull(),
+  result: text("result"),
+  leaseUntil: timestamp("leaseUntil"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("agent_effects_event_tool_unique_idx").on(table.workspaceId, table.eventId, table.toolCallId),
+  index("agent_effects_lease_idx").on(table.status, table.leaseUntil, table.id),
+]);
+
 export const webhookEvents = pgTable("webhookEvents", {
   id: serial("id").primaryKey(),
   workspaceId: integer("workspaceId"),

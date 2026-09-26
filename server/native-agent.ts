@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { type Message, type Tool } from "./_core/llm";
 import {
   createAgendaAppointment,
@@ -7,6 +8,9 @@ import {
   leadMemoryOperation,
   listMessagesForContact,
   queueOutboundMessage,
+  claimAgentEffect,
+  completeAgentEffect,
+  failAgentEffect,
   setContactAi,
 } from "./db";
 import { capabilityForMessageType, invokeConfiguredLLM, type AgentProviderSettings } from "./llm-providers";
@@ -78,14 +82,33 @@ export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfi
     }
     for (const call of assistant.tool_calls) {
       const args = asObject(JSON.parse(call.function.arguments || "{}"));
-      const result = await executeTool(call.function.name, args, event);
+      const result = await executeTool(call.function.name, args, event, call.id);
       messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
     }
   }
   throw new Error("O agente excedeu o número máximo de etapas");
 }
 
-async function executeTool(name: string, args: Record<string, unknown>, event: NativeAgentEvent) {
+const mutatingTools = new Set(["atualizar_lead", "registrar_nota", "criar_agendamento", "transferir_humano"]);
+
+async function executeTool(name: string, args: Record<string, unknown>, event: NativeAgentEvent, toolCallId: string) {
+  if (!mutatingTools.has(name)) return executeToolEffect(name, args, event);
+  const fingerprint = crypto.createHash("sha256").update(JSON.stringify({ name, args })).digest("hex");
+  const claim = await claimAgentEffect({ workspaceId: event.workspaceId, eventId: event.eventId, toolCallId, toolName: name, fingerprint });
+  if (claim.completed) return claim.result;
+  if (claim.conflict) throw new Error(`Efeito do agente em conflito para ${name}`);
+  if (claim.inProgress || !claim.claimed) throw new Error(`Efeito do agente ainda está em processamento para ${name}`);
+  try {
+    const result = await executeToolEffect(name, args, event);
+    await completeAgentEffect({ workspaceId: event.workspaceId, eventId: event.eventId, toolCallId, result });
+    return result;
+  } catch (error) {
+    await failAgentEffect({ workspaceId: event.workspaceId, eventId: event.eventId, toolCallId, result: { error: error instanceof Error ? error.message : "Falha na ferramenta" } });
+    throw error;
+  }
+}
+
+async function executeToolEffect(name: string, args: Record<string, unknown>, event: NativeAgentEvent) {
   if (name === "buscar_lead") return leadMemoryOperation({ action: "buscar_lead", phone: asString(args.phone, "phone") });
   if (name === "atualizar_lead") return leadMemoryOperation({ action: "atualizar_lead", phone: asString(args.phone, "phone"), fields: asObject(args.fields) as Parameters<typeof leadMemoryOperation>[0]["fields"] });
   if (name === "registrar_nota") return leadMemoryOperation({ action: "registrar_nota", phone: asString(args.phone, "phone"), note: asString(args.note, "note") });

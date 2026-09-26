@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import {
   appointmentsTable,
+  agentEffects,
   apiIdempotency,
   auditLogs,
   availability,
@@ -918,6 +919,7 @@ export async function resetWorkspaceDevelopmentData() {
     await tx.delete(contactNotes).where(eq(contactNotes.workspaceId, workspace.id));
     await tx.delete(messages).where(inArray(messages.conversationId, sql`(SELECT "id" FROM "conversations" WHERE "contactId" IN (SELECT "id" FROM "contacts" WHERE "workspaceId" = ${workspace.id}))`));
     await tx.delete(domainEvents).where(eq(domainEvents.workspaceId, workspace.id));
+    await tx.delete(agentEffects).where(eq(agentEffects.workspaceId, workspace.id));
     await tx.delete(webhookEvents).where(eq(webhookEvents.workspaceId, workspace.id));
     await tx.delete(apiIdempotency).where(eq(apiIdempotency.workspaceId, workspace.id));
     await tx.delete(appointmentsTable).where(eq(appointmentsTable.workspaceId, workspace.id));
@@ -1422,6 +1424,34 @@ export async function failApiIdempotency(key: string) {
   const db = await getDb();
   if (!db) return;
   await db.update(apiIdempotency).set({ status: "failed", leaseUntil: null, updatedAt: new Date() }).where(eq(apiIdempotency.key, key));
+}
+
+export async function claimAgentEffect(input: { workspaceId: number; eventId: string; toolCallId: string; toolName: string; fingerprint: string; leaseMs?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const { leaseMs: _leaseMs, ...recordInput } = input;
+  const leaseUntil = new Date(Date.now() + Math.max(10_000, Math.min(input.leaseMs ?? 120_000, 900_000)));
+  const inserted = await db.insert(agentEffects).values({ ...recordInput, status: "processing", leaseUntil, updatedAt: new Date() }).onConflictDoNothing({ target: [agentEffects.workspaceId, agentEffects.eventId, agentEffects.toolCallId] }).returning();
+  if (inserted[0]) return { claimed: true, record: inserted[0] };
+  const existing = (await db.select().from(agentEffects).where(and(eq(agentEffects.workspaceId, input.workspaceId), eq(agentEffects.eventId, input.eventId), eq(agentEffects.toolCallId, input.toolCallId))).limit(1))[0];
+  if (!existing) return { claimed: false, retry: true };
+  if (existing.fingerprint !== input.fingerprint || existing.toolName !== input.toolName) return { claimed: false, conflict: true, record: existing };
+  if (existing.status === "completed") return { claimed: false, completed: true, result: existing.result ? JSON.parse(existing.result) : null, record: existing };
+  const reclaimed = await db.update(agentEffects).set({ status: "processing", leaseUntil, updatedAt: new Date() }).where(and(eq(agentEffects.workspaceId, input.workspaceId), eq(agentEffects.eventId, input.eventId), eq(agentEffects.toolCallId, input.toolCallId), or(eq(agentEffects.status, "failed"), and(eq(agentEffects.status, "processing"), or(isNull(agentEffects.leaseUntil), lt(agentEffects.leaseUntil, new Date())))))).returning();
+  if (reclaimed[0]) return { claimed: true, record: reclaimed[0] };
+  return { claimed: false, inProgress: true, record: existing };
+}
+
+export async function completeAgentEffect(input: { workspaceId: number; eventId: string; toolCallId: string; result: unknown }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.update(agentEffects).set({ status: "completed", result: JSON.stringify(input.result), leaseUntil: null, updatedAt: new Date() }).where(and(eq(agentEffects.workspaceId, input.workspaceId), eq(agentEffects.eventId, input.eventId), eq(agentEffects.toolCallId, input.toolCallId)));
+}
+
+export async function failAgentEffect(input: { workspaceId: number; eventId: string; toolCallId: string; result?: unknown }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(agentEffects).set({ status: "failed", result: input.result === undefined ? undefined : JSON.stringify(input.result), leaseUntil: null, updatedAt: new Date() }).where(and(eq(agentEffects.workspaceId, input.workspaceId), eq(agentEffects.eventId, input.eventId), eq(agentEffects.toolCallId, input.toolCallId)));
 }
 
 export async function registerWebhookEvent(input: { eventId: string; provider: string; payload: unknown; workspaceId?: number }) {
