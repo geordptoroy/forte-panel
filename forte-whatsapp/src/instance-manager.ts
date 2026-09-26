@@ -91,6 +91,6 @@ export class InstanceManager {
 async function postWebhook(payload: Record<string, unknown>) {
   const body = JSON.stringify(payload);
   const signature = config.webhookSecret ? `sha256=${crypto.createHmac("sha256", config.webhookSecret).update(body).digest("hex")}` : "";
-  const response = await fetch(config.webhookUrl, { method: "POST", headers: { "content-type": "application/json", ...(signature ? { "x-webhook-signature": signature } : {}) }, body });
+  const response = await fetch(config.webhookUrl, { method: "POST", headers: { "content-type": "application/json", ...(config.webhookSecret ? { "x-webhook-secret": config.webhookSecret } : {}), ...(signature ? { "x-webhook-signature": signature } : {}) }, body });
   if (!response.ok) logger.warn({ status: response.status }, "inbound webhook rejected");
 }
