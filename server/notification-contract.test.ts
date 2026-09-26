@@ -6,6 +6,8 @@ import {
   notificationForEvent,
   notificationPreferenceForEvent,
   parseNotificationPreferences,
+  quotaAlertEventKey,
+  quotaAlertFor,
 } from "./notification-contract";
 
 describe("notification contract", () => {
@@ -49,5 +51,17 @@ describe("notification contract", () => {
     expect(dailySummaryFor("2026-09-25", 1, 2).body).toBe("1 atendimento · 2 novos leads em 25/09/2026.");
     expect(dailySummaryFor("2026-09-25", 0, 0).body).toBe("0 atendimentos · 0 novos leads em 25/09/2026.");
     expect(dailySummaryEventKey(42, "2026-09-25")).toBe("daily-summary:42:2026-09-25");
+  });
+
+  it("formats warning and critical quota alerts with stable keys", () => {
+    const bucket = new Date("2026-09-26T13:52:00.000Z");
+    expect(quotaAlertFor({ metric: "outboundMessages", threshold: 70, used: 84, limit: 120 })).toMatchObject({
+      type: "quota_warning",
+      title: "Consumo elevado",
+      body: "mensagens outbound atingiu 70% da cota (84/120) na janela atual.",
+      href: "/integrations",
+    });
+    expect(quotaAlertFor({ metric: "aiRequests", threshold: 90, used: 54, limit: 60 }).type).toBe("quota_critical");
+    expect(quotaAlertEventKey(42, bucket, "outboundMessages", 70)).toBe("quota-alert:42:2026-09-26T13:52:00.000Z:outboundMessages:70");
   });
 });

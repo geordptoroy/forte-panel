@@ -262,3 +262,11 @@ Próximo passo: validar as migrations em PostgreSQL real e fechar o limite do wo
 O worker agora aplica o limite de outbound do workspace antes do envio externo. Mensagens limitadas permanecem na fila sem consumir tentativa, sendo retomadas na janela seguinte.
 
 Próximo passo: validação em PostgreSQL real e alertas operacionais de consumo.
+
+---
+
+## Atualização de execução — 2026-09-26 10:53
+
+O sistema ganhou alertas in-app de consumo em 70% e 90%, entregues aos responsáveis ativos e deduplicados por janela, métrica e threshold. A documentação do beta foi consolidada no manual operacional e no índice de documentação.
+
+Próximo passo: executar build final, publicar este bloco e realizar a validação real das migrations e concorrência em PostgreSQL.

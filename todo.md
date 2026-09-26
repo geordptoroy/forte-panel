@@ -14,7 +14,7 @@
 - Multiusuário interno com hash de senha, memberships e papéis base; telas iniciais de Equipe/Configurações e notificações internas.
 - Ledger idempotente das tools de agente e melhorias de leases do worker.
 - Compose, migrations, documentação local e infraestrutura registrados nos docs existentes.
-- Última validação local (2026-09-26): `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check` passaram; 43 testes passaram e 19 foram ignorados. Isso não prova isolamento em banco neste sandbox.
+- Última validação local (2026-09-26): `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check` passaram; 49 testes passaram e 21 foram ignorados. Isso não prova isolamento em banco neste sandbox.
 
 ## Direção de produto aprovada
 
@@ -43,13 +43,15 @@
 - [x] Cotas agora derivam do plano (`starter`, `pro`, `business`) e existe bucket atômico por `(workspaceId, userId, minuto)`; o envio manual do Inbox aplica a cota individual do operador.
 - [x] Painel operacional tenant-aware adicionado em Integrações: mostra consumo atual do workspace, limites do plano, renovação da janela e operadores com maior consumo outbound.
 - [x] Worker outbound agora consome `outboundMessages` do workspace antes de chamar PAPI/Meta; mensagens excedentes permanecem `queued` e são tentadas na próxima janela, sem perda.
+- [x] Alertas in-app de consumo em 70% e 90% para owners/admins/managers ativos, com chave idempotente por workspace, janela, métrica e threshold; worker registra `alertasCota=N`.
+- [x] Documentação consolidada em `BETA-OPERATIONS-CHECKLIST.md`, `PROJECT_DOCUMENTATION_INDEX.md` e atualização do `API_CONTRACT.md`.
 - [x] Mapeamento atualizado: o workspace demo permanece apenas em bootstrap/seed, onboarding/configuração histórica, catálogo de canais legado e helpers ainda não migrados; não é mais usado nas leituras/mutações do CRM/Inbox.
 - [ ] Executar `workspace-domain-isolation.test.ts` numa instância PostgreSQL; foi criada nesta etapa, mas está ignorada neste ambiente sem `DATABASE_URL`.
 - [ ] Executar `agenda-workspace-isolation.test.ts` numa instância PostgreSQL; teste novo criado, mas está ignorado aqui sem `DATABASE_URL`.
 - [ ] A API REST de agenda não foi testada contra PostgreSQL real; os testes que passaram cobrem o fail-closed quando o workspace configurado está ausente/inválido.
-- A migration 0017 adiciona `workspaceId` à auditoria e reativa a leitura tenant-aware; ainda precisa ser aplicada no PostgreSQL real.
+- As migrations 0016–0018 adicionam buckets de uso, chaves tenant-aware e uso individual; ainda precisam ser aplicadas no PostgreSQL real.
 - **Atenção:** ainda não abrir cadastro de empresa nem criar outro workspace para operação real. Outras consultas/mutações ainda usam o workspace global/demo e precisam receber `ctx.workspace.workspaceId` antes de permitir tenants ativos.
-- Próxima fatia: aplicar as migrations 0016/0017/0018 em PostgreSQL real e validar dois tenants; depois criar alertas operacionais para cotas próximas do limite.
+- Próxima fatia: aplicar as migrations 0016/0017/0018 em PostgreSQL real e validar dois tenants; depois observar retenção dos buckets e alertas externos.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.

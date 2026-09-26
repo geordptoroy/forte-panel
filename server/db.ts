@@ -33,7 +33,7 @@ import type { WhatsappProvider } from "./integrations/contracts";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
 import { assertWithinWorkingHours, getLocalDayBounds, ScheduleError } from "./schedule";
-import { dailySummaryEventKey, dailySummaryFor, notificationForEvent, notificationPreferenceForEvent, parseNotificationPreferences, type NotificationEvent } from "./notification-contract";
+import { dailySummaryEventKey, dailySummaryFor, notificationForEvent, notificationPreferenceForEvent, parseNotificationPreferences, quotaAlertEventKey, quotaAlertFor, type NotificationEvent } from "./notification-contract";
 import { defaultAgentProviderSettings, decryptProviderSecret, encryptProviderSecret, maskProviderSecret, mergeAgentProviderSettings, type AgentProviderSettings } from "./llm-providers";
 
 const DOMAIN_EVENT_WORKER_ID = process.env.WORKER_ID?.trim() || `worker-${crypto.randomUUID()}`;
@@ -500,6 +500,49 @@ export async function processDailySummaryNotificationsOnce(now = new Date(), onl
       href: copy.href,
     }))).onConflictDoNothing({ target: [notifications.workspaceId, notifications.userId, notifications.eventKey] }).returning({ id: notifications.id });
     processed += created.length;
+  }
+  return { processed, skipped: false };
+}
+
+export async function processWorkspaceQuotaAlertsOnce(now = new Date(), onlyWorkspaceId?: number) {
+  const db = await getDb();
+  if (!db) return { processed: 0, skipped: true };
+  const bucketStart = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
+  const activeWorkspaces = await db.select().from(workspaces).where(onlyWorkspaceId
+    ? and(eq(workspaces.active, 1), eq(workspaces.id, onlyWorkspaceId))
+    : eq(workspaces.active, 1));
+  const metrics: WorkspaceUsageMetric[] = ["apiRequests", "aiRequests", "outboundMessages"];
+  let processed = 0;
+  for (const workspace of activeWorkspaces) {
+    const usage = (await db.select().from(workspaceUsageBuckets).where(and(eq(workspaceUsageBuckets.workspaceId, workspace.id), eq(workspaceUsageBuckets.bucketStart, bucketStart))).limit(1))[0];
+    if (!usage) continue;
+    const recipients = await db.select({ userId: workspaceMembers.userId }).from(workspaceMembers).where(and(
+      eq(workspaceMembers.workspaceId, workspace.id),
+      eq(workspaceMembers.active, 1),
+      inArray(workspaceMembers.role, ["owner", "admin", "manager"]),
+    ));
+    if (recipients.length === 0) continue;
+    for (const metric of metrics) {
+      const used = Number(usage[metric] ?? 0);
+      const limit = workspaceUsageLimitsForPlan(workspace.plan, metric).workspaceLimit;
+      if (limit <= 0) continue;
+      for (const threshold of [70, 90] as const) {
+        if (used * 100 < limit * threshold) continue;
+        const copy = quotaAlertFor({ metric, threshold, used, limit });
+        const eventKey = quotaAlertEventKey(workspace.id, bucketStart, metric, threshold);
+        const created = await db.insert(notifications).values(recipients.map(({ userId }) => ({
+          workspaceId: workspace.id,
+          userId,
+          eventKey,
+          type: copy.type,
+          title: copy.title,
+          body: copy.body,
+          href: copy.href,
+          createdAt: now,
+        }))).onConflictDoNothing({ target: [notifications.workspaceId, notifications.userId, notifications.eventKey] }).returning({ id: notifications.id });
+        processed += created.length;
+      }
+    }
   }
   return { processed, skipped: false };
 }

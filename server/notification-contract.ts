@@ -71,3 +71,17 @@ export function dailySummaryFor(dateKey: string, appointments: number, newLeads:
 export function dailySummaryEventKey(workspaceId: number, dateKey: string) {
   return `daily-summary:${workspaceId}:${dateKey}`;
 }
+
+export function quotaAlertFor(input: { metric: "apiRequests" | "aiRequests" | "outboundMessages"; threshold: 70 | 90; used: number; limit: number }) {
+  const labels = { apiRequests: "API", aiRequests: "execuções de IA", outboundMessages: "mensagens outbound" };
+  return {
+    type: input.threshold >= 90 ? "quota_critical" : "quota_warning",
+    title: input.threshold >= 90 ? "Cota quase esgotada" : "Consumo elevado",
+    body: `${labels[input.metric]} atingiu ${input.threshold}% da cota (${input.used}/${input.limit}) na janela atual.`,
+    href: "/integrations",
+  };
+}
+
+export function quotaAlertEventKey(workspaceId: number, bucketStart: Date, metric: string, threshold: number) {
+  return `quota-alert:${workspaceId}:${bucketStart.toISOString()}:${metric}:${threshold}`;
+}

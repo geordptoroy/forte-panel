@@ -56,7 +56,7 @@ O evento deve conter `eventId`, `phone`, `content` e `receivedAt`; `name`, `mess
 
 Use o Forte Panel como fonte única para CRM, anotações e agenda; não mantenha uma segunda base privada de estado do lead. A API disponível para clientes autorizados é `POST /api/v1/lead-memory`, que aceita `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota` com `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`.
 
-Mensagens enviadas por `POST /api/v1/messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio. Toda mutação exige `Idempotency-Key`; retries iguais retornam a resposta original e o mesmo key com body diferente conflita. O payload aceita `contactId` ou `phone`, `provider`, `senderType: "ai" | "human"` (padrão `human`), `messageType` e `instanceId`. Para PAPI, o fluxo repassa o `instanceId` recebido pelo webhook, ou o servidor usa `PAPI_INSTANCE_ID` como fallback. Mensagens `ai` não desligam `aiEnabled` nem ativam `humanControlled`; mensagens `human` mantêm o comportamento de takeover do painel.
+Mensagens enviadas por `POST /api/v1/messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio. Toda mutação exige `Idempotency-Key`; retries iguais retornam a resposta original e o mesmo key com body diferente conflita. O payload aceita `contactId` ou `phone`, `provider`, `senderType: "ai" | "human"` (padrão `human`), `messageType` e `instanceId`. Para PAPI, o fluxo repassa o `instanceId` recebido pelo webhook ou usa a instância PAPI padrão configurada no workspace; não há fallback global entre tenants. Mensagens `ai` não desligam `aiEnabled` nem ativam `humanControlled`; mensagens `human` mantêm o comportamento de takeover do painel.
 
 PAPI suporta estes formatos no worker:
 
@@ -90,3 +90,11 @@ Quando `dailySummary` está ativo, o worker gera no máximo um resumo por worksp
 ## Erros
 
 A API usa respostas JSON com `error`, `message` e, quando aplicável, `requestId`. Os códigos esperados são `400` para payload inválido, `401` para credencial ausente ou incorreta, `409` para conflito de agenda/idempotência incompatível, `422` para regra de negócio, `503 api_workspace_not_configured` quando faltar vínculo válido da agenda REST ao tenant e `500` para falha inesperada.
+
+## Consumo, quotas e alertas do beta
+
+O painel tRPC `workspace.usage` é protegido por `requireManager` e retorna a janela atual de consumo do workspace e dos operadores. A tela de Integrações atualiza esse resumo a cada 30 segundos.
+
+O worker aplica `outboundMessages` antes de chamar um provider externo. Se a cota estiver cheia, a mensagem permanece `queued`, não incrementa tentativa e é reprocessada na janela seguinte. O fluxo de IA aplica `aiRequests` no processamento de `message.received`.
+
+As cotas são persistidas em `workspaceUsageBuckets` e `workspaceUserUsageBuckets`. O worker cria notificações in-app para owners, admins e managers ativos ao atingir 70% e 90% da cota na janela. A chave `quota-alert:<workspace>:<bucket>:<metric>:<threshold>` torna o alerta idempotente. Alertas apontam para `/integrations` e não carregam segredos.

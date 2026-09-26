@@ -333,3 +333,11 @@ A recomendação é só marcar o sistema como pronto quando todos os pontos abai
 ## Conclusão
 
 O projeto está em uma boa fase de protótipo avançado/MVP, mas a evolução para operação com múltiplas instâncias PAPI e agente autônomo exige priorizar **segurança de credenciais, isolamento de tenant, idempotência, leases/outbox e controle humano do agente**. Essas melhorias reduzem o risco de vazamento, envio pelo número errado, resposta duplicada e ações automáticas repetidas — os quatro modos de falha mais perigosos para este produto.
+
+---
+
+## Atualização técnica — 2026-09-26 10:53
+
+A auditoria avançou da contenção de tenancy para operação segura do beta: quotas por workspace/usuário, proteção do outbound automático, painel de consumo e alertas in-app de 70%/90% para responsáveis ativos. O risco prioritário deixou de ser apenas implementação e passou a ser validação operacional com PostgreSQL real, retenção dos buckets e definição comercial de planos.
+
+A referência consolidada para abertura do beta é `BETA-OPERATIONS-CHECKLIST.md`; o mapa de todos os documentos está em `PROJECT_DOCUMENTATION_INDEX.md`.

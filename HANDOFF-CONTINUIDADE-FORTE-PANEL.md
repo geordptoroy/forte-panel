@@ -895,3 +895,36 @@ pnpm build  ✅
 ```
 
 Próximo bloco: aplicar as migrations 0016/0017/0018 no PostgreSQL real e validar concorrência entre workspaces, seguida de alertas para aproximação do limite.
+
+---
+
+## Atualização do handoff — 2026-09-26 10:53
+
+Foi concluído o bloco de alertas operacionais e a consolidação documental do projeto.
+
+### Alertas de consumo
+
+- `processWorkspaceQuotaAlertsOnce` varre o bucket atual de cada workspace ativo.
+- Owners, admins e managers ativos recebem alertas in-app.
+- 70% gera `quota_warning` / “Consumo elevado”.
+- 90% gera `quota_critical` / “Cota quase esgotada”.
+- A chave inclui workspace, minuto, métrica e threshold; execuções repetidas não duplicam notificações.
+- O worker executa a varredura uma vez por minuto e registra `alertasCota=N` quando cria notificações.
+- O alerta aponta para `/integrations`, onde o manager vê o consumo detalhado.
+
+### Documentação consolidada
+
+Foi criado `BETA-OPERATIONS-CHECKLIST.md` com a arquitetura de API/chaves, tenancy, fluxo da IA, quotas, migrations, checklist de abertura do beta para até 10 testadores, riscos abertos e comandos de validação.
+
+Foi criado `PROJECT_DOCUMENTATION_INDEX.md` com o mapa de todos os documentos do projeto e as regras para manter handoff, roadmap, contrato e operação sincronizados.
+
+`API_CONTRACT.md` foi atualizado com a semântica de quotas, alertas, worker e remoção do fallback global de PAPI entre tenants.
+
+Validação deste bloco:
+
+```text
+pnpm check ✅
+pnpm test  ✅ 49 aprovados; 21 ignorados
+```
+
+O `pnpm build` final passou. Continua pendente apenas validar as migrations 0016–0018 e a concorrência no PostgreSQL real.
