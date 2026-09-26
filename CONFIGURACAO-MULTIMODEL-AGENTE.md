@@ -1,11 +1,11 @@
 # Configuração multimodelo do agente
 
-O agente do Forte Panel não coloca chaves de modelos no `.env`. O `.env` fica reservado para a infraestrutura, PAPI, banco, autenticação e segredos de webhook. As credenciais de IA são cadastradas em **Sistema → Configuração da empresa → Agente nativo**.
+O agente do Forte Panel não coloca chaves de modelos no `.env`. O `.env` fica reservado para a infraestrutura, Baileys, banco, autenticação e segredos de webhook. As credenciais de IA são cadastradas em **Sistema → Configuração da empresa → Agente nativo**.
 
 ## Provedores disponíveis
 
 ### NVIDIA NIM
-Use para conversa e geração de texto, aproveitando o free tier da NVIDIA.
+Use principalmente para conversa e geração de texto, aproveitando o free tier da NVIDIA quando disponível.
 
 - Provedor: `NVIDIA NIM`
 - URL padrão: `https://integrate.api.nvidia.com/v1`
@@ -39,7 +39,7 @@ A interface possui um modelo separado para cada tipo de entrada:
 | Áudio | Áudios/voz recebidos | Google Gemini ou transcrição dedicada |
 | Documentos | PDFs e documentos | Google Gemini |
 
-O worker identifica o `messageType` recebido da PAPI e escolhe automaticamente a rota correspondente. Assim, não é necessário usar o mesmo modelo para tudo.
+O worker identifica o `messageType` recebido pelo Baileys e escolhe automaticamente a rota correspondente. Assim, não é necessário usar o mesmo modelo para tudo.
 
 ## Segurança
 
