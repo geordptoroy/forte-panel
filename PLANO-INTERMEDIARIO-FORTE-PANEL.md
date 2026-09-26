@@ -230,3 +230,11 @@ Defaults: 120 requests REST/minuto e 60 execuções de IA/minuto por workspace, 
 Foi concluída a migração do núcleo de deduplicação para escopo composto por workspace. Idempotência REST, eventos de webhook, domain events e auditoria não dependem mais de chaves globais; a auditoria voltou a ser exibida apenas ao workspace atual.
 
 A migration `0017_tenant_scoped_deduplication.sql` contém backfill seguro com fallback explícito para `forte-demo`. Próximo passo operacional: aplicar em PostgreSQL real, validar o backfill e a concorrência dos índices compostos; depois revisar isolamento de tokens/segredos e implementar limites por plano/usuário.
+
+---
+
+## Atualização de execução — 2026-09-26 10:14
+
+A revisão de segredos foi concluída. A cópia dos segredos de webhook PAPI em `workspaceSettings` agora usa AES-256-GCM, respostas do frontend permanecem mascaradas e foi adicionada cobertura unitária contra exposição e ciphertext adulterado.
+
+Antes do beta, configurar `JWT_SECRET` forte e persistente no servidor, aplicar as migrations 0016/0017 no PostgreSQL real e executar as suites de isolamento com dois workspaces.

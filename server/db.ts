@@ -719,9 +719,16 @@ async function getStoredPapiWebhooks(workspaceId: number) {
   const setting = await getWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING);
   let webhooks: PapiWebhookConfig[] = [];
   if (setting?.value) {
-    try { webhooks = JSON.parse(setting.value) as PapiWebhookConfig[]; } catch { webhooks = []; }
+    try {
+      const stored = JSON.parse(setting.value) as PapiWebhookConfig[];
+      webhooks = stored.map((webhook) => ({ ...webhook, secret: decryptProviderSecret(webhook.secret) }));
+    } catch { webhooks = []; }
   }
   return { workspace, webhooks };
+}
+
+function serializePapiWebhooks(webhooks: PapiWebhookConfig[]) {
+  return webhooks.map((webhook) => ({ ...webhook, secret: encryptProviderSecret(webhook.secret) }));
 }
 
 function withPapiWebhookUrl(webhook: PapiWebhookConfig, includeSecret = false) {
@@ -756,7 +763,7 @@ export async function createPapiWebhook(workspaceId: number, input: { name: stri
   const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const webhook: PapiWebhookConfig = { id: crypto.randomUUID(), name: input.name.trim(), instanceId: input.instanceId.trim(), secret: crypto.randomBytes(24).toString("hex"), createdAt: new Date().toISOString() };
-  await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify([...webhooks.filter((item) => !item.legacy), webhook]));
+  await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify(serializePapiWebhooks([...webhooks.filter((item) => !item.legacy), webhook])));
   if (webhooks.length === 0 || webhooks.every((item) => item.legacy)) await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, webhook.id);
   await upsertPapiInstance(workspaceId, {
     instanceId: webhook.instanceId,
@@ -785,7 +792,7 @@ export async function deletePapiWebhook(workspaceId: number, id: string) {
   const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
   if (!db || !workspace) throw new Error("Workspace unavailable");
   const next = webhooks.filter((webhook) => webhook.id !== id && !webhook.legacy);
-  await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify(next));
+  await upsertWorkspaceSetting(workspace.id, PAPI_WEBHOOKS_SETTING, JSON.stringify(serializePapiWebhooks(next)));
   await db.update(whatsappInstances).set({ active: 0, isDefault: 0, updatedAt: new Date() }).where(and(eq(whatsappInstances.workspaceId, workspace.id), eq(whatsappInstances.webhookId, id)));
   const config = await getPapiIntegrationConfig(workspaceId);
   if (config.defaultWebhookId === id) await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, next[0]?.id ?? "");

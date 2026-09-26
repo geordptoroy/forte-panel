@@ -38,13 +38,15 @@
 - [x] CRM/Inbox agora recebem `workspaceId` explícito: contatos, conversas, mensagens, notas, lead-memory, seleção de canal, outbound, inbound/webhooks e ferramentas do agente não caem mais no workspace demo.
 - [x] API REST de CRM/mensagens/webhooks exige o workspace configurado e preserva validação de payload/idempotência antes do fail-closed de tenancy.
 - [x] Onboarding, prompt publicado, configuração/runtime do agente e gestão de instâncias/webhooks PAPI recebem `workspaceId`; o fallback global de `PAPI_INSTANCE_ID` foi removido dos fluxos tenant-aware.
+- [x] Segredos de provider e API key PAPI são criptografados em repouso; segredos de webhook PAPI também são criptografados dentro de `workspaceSettings`, com leitura compatível com registros legados.
+- [x] Respostas de configuração retornam somente valores mascarados; o segredo de webhook é devolvido apenas no momento de criação/provisionamento.
 - [x] Mapeamento atualizado: o workspace demo permanece apenas em bootstrap/seed, onboarding/configuração histórica, catálogo de canais legado e helpers ainda não migrados; não é mais usado nas leituras/mutações do CRM/Inbox.
 - [ ] Executar `workspace-domain-isolation.test.ts` numa instância PostgreSQL; foi criada nesta etapa, mas está ignorada neste ambiente sem `DATABASE_URL`.
 - [ ] Executar `agenda-workspace-isolation.test.ts` numa instância PostgreSQL; teste novo criado, mas está ignorado aqui sem `DATABASE_URL`.
 - [ ] A API REST de agenda não foi testada contra PostgreSQL real; os testes que passaram cobrem o fail-closed quando o workspace configurado está ausente/inválido.
-- A UI da auditoria está temporariamente sem resultados porque a tabela `auditLogs` não tem `workspaceId`; adicionar coluna e backfill seguro antes de reativá-la.
+- A migration 0017 adiciona `workspaceId` à auditoria e reativa a leitura tenant-aware; ainda precisa ser aplicada no PostgreSQL real.
 - **Atenção:** ainda não abrir cadastro de empresa nem criar outro workspace para operação real. Outras consultas/mutações ainda usam o workspace global/demo e precisam receber `ctx.workspace.workspaceId` antes de permitir tenants ativos.
-- Próxima fatia: adicionar migration para `auditLogs` e chaves idempotentes/eventos com escopo composto por workspace; depois validar dois tenants reais em PostgreSQL e preparar limites/cotas do beta.
+- Próxima fatia: aplicar as migrations 0016/0017 em PostgreSQL real e validar dois tenants; depois revisar limites por plano/usuário e exigir `JWT_SECRET` forte de produção para criptografia e sessões.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.

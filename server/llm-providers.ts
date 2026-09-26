@@ -47,7 +47,11 @@ export function mergeAgentProviderSettings(input?: Partial<AgentProviderSettings
   return base;
 }
 
-const secretKey = () => crypto.createHash("sha256").update(process.env.JWT_SECRET || "forte-panel-local-secret").digest();
+const secretKey = () => {
+  const configured = process.env.JWT_SECRET?.trim();
+  if (!configured && process.env.NODE_ENV === "production") throw new Error("JWT_SECRET é obrigatório em produção para criptografar secrets");
+  return crypto.createHash("sha256").update(configured || "forte-panel-local-secret").digest();
+};
 
 export function encryptProviderSecret(value: string) {
   if (!value) return "";

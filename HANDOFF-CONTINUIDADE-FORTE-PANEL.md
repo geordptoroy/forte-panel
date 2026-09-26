@@ -789,3 +789,28 @@ git diff --check ✅
 ```
 
 Limitação conhecida: o sandbox atual não possui `DATABASE_URL`, então backfill, constraints e testes de concorrência ainda precisam ser executados no PostgreSQL de desenvolvimento antes do beta.
+
+---
+
+## Atualização do handoff — 2026-09-26 10:14
+
+A auditoria de secrets encontrou e corrigiu um ponto de risco: os webhooks PAPI persistidos em `workspaceSettings.papi_webhooks` mantinham a cópia do segredo em plaintext, embora a instância também tivesse uma cópia criptografada.
+
+### Correção
+
+- Segredos de webhook agora são criptografados com AES-256-GCM antes de serem gravados em `workspaceSettings`.
+- A leitura descriptografa somente no backend e mantém compatibilidade com registros legados em plaintext, que serão regravados criptografados na próxima alteração do webhook.
+- A configuração retornada ao frontend continua sem o segredo bruto: apenas `secretMasked` é retornado.
+- O segredo completo continua sendo entregue somente na resposta única de criação/provisionamento, para ser copiado para a PAPI.
+- Chaves de providers LLM e API keys PAPI já eram criptografadas em repouso e continuam sendo retornadas apenas mascaradas.
+
+Teste criado: `server/secret-safety.test.ts`.
+
+Validação desta etapa:
+
+```text
+pnpm check ✅
+pnpm test -- server/secret-safety.test.ts server/api.contract.test.ts server/integrations/whatsapp.test.ts ✅ 46 aprovados; 21 ignorados
+```
+
+Atenção para o beta: definir `JWT_SECRET` forte e persistente no ambiente de produção. O fallback local de desenvolvimento não deve ser usado em produção, pois ele também participa da chave de criptografia dos secrets persistidos.
