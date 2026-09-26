@@ -25,6 +25,7 @@ Toda operação mutável aceita `Idempotency-Key`. A mesma chave não pode execu
 | Método | Endpoint | Uso |
 |---|---|---|
 | `GET` | `/api/v1/health` | Healthcheck sem credencial |
+| `GET` | `/api/v1/ready` | Readiness com verificação segura do PostgreSQL |
 | `GET` | `/api/v1/channels` | Listar canais WhatsApp ativos do workspace |
 | `GET` | `/api/v1/onboarding/prompt` | Buscar o prompt operacional publicado da empresa |
 | `POST` | `/api/v1/contacts/upsert` | Criar ou atualizar lead por telefone |
@@ -98,3 +99,9 @@ O painel tRPC `workspace.usage` é protegido por `requireManager` e retorna a ja
 O worker aplica `outboundMessages` antes de chamar um provider externo. Se a cota estiver cheia, a mensagem permanece `queued`, não incrementa tentativa e é reprocessada na janela seguinte. O fluxo de IA aplica `aiRequests` no processamento de `message.received`.
 
 As cotas são persistidas em `workspaceUsageBuckets` e `workspaceUserUsageBuckets`. O worker cria notificações in-app para owners, admins e managers ativos ao atingir 70% e 90% da cota na janela. A chave `quota-alert:<workspace>:<bucket>:<metric>:<threshold>` torna o alerta idempotente. Alertas apontam para `/integrations` e não carregam segredos.
+
+## Health, readiness e observabilidade
+
+`GET /api/v1/health` é liveness: responde `200` quando o processo HTTP está executando e não depende do banco. `GET /api/v1/ready` é readiness: executa `select 1` no PostgreSQL e responde `200` com `status: "ready"` somente quando a conexão está funcional. Sem banco configurado ou com falha de conexão, responde `503` com `status: "not_ready"` e apenas o estado agregado da checagem; detalhes de conexão não são expostos.
+
+O worker registra um heartbeat JSON periódico, controlado por `WORKER_HEARTBEAT_MS` (padrão de 60 segundos), com `event`, `service`, quantidade de ciclos, intervalo, último tipo de erro e timestamp. Os eventos de operação continuam usando os campos `processadas`, `limitadas`, `alertasCota` e `bucketsRemovidos`.

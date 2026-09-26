@@ -143,3 +143,9 @@ Esse resultado valida o código contra PostgreSQL local, mas não substitui a ex
 ## 11. Retenção de consumo
 
 Os buckets de uso não são mantidos indefinidamente. O worker executa uma limpeza diária através de `cleanupWorkspaceUsageBuckets`. O padrão é 30 dias e pode ser alterado por `FORTE_USAGE_RETENTION_DAYS`, entre 1 e 365 dias. A limpeza remove tanto `workspaceUsageBuckets` quanto `workspaceUserUsageBuckets` e preserva a janela dentro do período configurado.
+
+## 12. Sinais de operação
+
+Use `GET /api/v1/health` para liveness e `GET /api/v1/ready` para readiness. O primeiro confirma somente o processo HTTP; o segundo confirma também a conexão PostgreSQL. Configure o monitoramento para considerar `503` em `/ready` como indisponibilidade do serviço.
+
+O worker emite um evento JSON `worker_heartbeat` por padrão a cada 60 segundos. Ajuste `WORKER_HEARTBEAT_MS` somente se o sistema de logs/monitoramento exigir outra frequência. Monitore também `limitadas`, `alertasCota`, `bucketsRemovidos` e `lastError`.

@@ -985,3 +985,35 @@ pnpm check ✅
 ```
 
 Próximo passo: repetir a política no staging real e avaliar retenção/alertas externos com dados do beta.
+
+---
+
+## Atualização do handoff — 2026-09-26 11:27
+
+Foi concluído o bloco de observabilidade mínima para o beta.
+
+### API
+
+- `GET /api/v1/health` permanece como liveness, sem dependência de banco.
+- `GET /api/v1/ready` foi adicionado como readiness.
+- Readiness executa `select 1` e retorna `200` apenas com PostgreSQL funcional.
+- Sem banco configurado ou com falha, retorna `503`, `status: "not_ready"` e somente o estado agregado da checagem.
+- Nenhum detalhe de conexão ou segredo é retornado.
+
+### Worker
+
+- Heartbeat JSON periódico adicionado.
+- Intervalo configurável por `WORKER_HEARTBEAT_MS`, padrão de 60 segundos.
+- Eventos de operação permanecem identificáveis por `processadas`, `limitadas`, `alertasCota` e `bucketsRemovidos`.
+
+### Validação
+
+```text
+21 test files passed
+74 tests passed
+pnpm check ✅
+```
+
+A primeira tentativa de teste com PostgreSQL falhou porque o banco havia sido encerrado antes da execução paralela; a repetição iniciou o PostgreSQL no mesmo comando e passou integralmente. O banco efêmero foi encerrado após a validação.
+
+Próximo passo: configurar monitoramento no staging real para `/api/v1/ready` e para o heartbeat do worker.

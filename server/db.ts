@@ -56,6 +56,17 @@ export async function getDb() {
   return _db;
 }
 
+export async function checkDatabaseHealth() {
+  const db = await getDb();
+  if (!db) return { status: "not_configured" as const };
+  try {
+    await db.execute(sql`select 1`);
+    return { status: "ok" as const };
+  } catch {
+    return { status: "error" as const };
+  }
+}
+
 export function shouldAssignBootstrapOwnerMembership(input: {
   openId: string;
   role?: InsertUser["role"];

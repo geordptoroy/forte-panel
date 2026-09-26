@@ -3,6 +3,7 @@ import express, { type Express, type Request, type Response } from "express";
 import { z } from "zod";
 import {
   cancelAgendaAppointment,
+  checkDatabaseHealth,
   createAgendaAppointment,
   getAgendaSnapshot,
   claimApiIdempotency,
@@ -185,6 +186,17 @@ async function idempotent(req: Request, res: Response, workspaceId: number, hand
 }
 
 api.get("/health", (_req, res) => res.json({ status: "ok", service: "forte-panel-api", version: "v1", timestamp: new Date().toISOString() }));
+
+api.get("/ready", async (_req, res) => {
+  const database = await checkDatabaseHealth();
+  const ready = database.status === "ok";
+  return res.status(ready ? 200 : 503).json({
+    status: ready ? "ready" : "not_ready",
+    service: "forte-panel-api",
+    checks: { database: database.status },
+    timestamp: new Date().toISOString(),
+  });
+});
 
 api.get("/channels", async (req, res) => {
   if (!requireApiKey(req, res)) return;

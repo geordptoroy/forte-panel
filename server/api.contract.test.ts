@@ -30,6 +30,14 @@ describe("versioned API", () => {
     await expect(response.json()).resolves.toMatchObject({ status: "ok", version: "v1" });
   });
 
+  it("exposes readiness separately and never reports ready without a database", async () => {
+    const response = await fetch(`${baseUrl}/api/v1/ready`);
+    const body = await response.json();
+    expect([200, 503]).toContain(response.status);
+    expect(body).toMatchObject({ service: "forte-panel-api", checks: { database: expect.any(String) } });
+    if (!process.env.DATABASE_URL) expect(response.status).toBe(503);
+  });
+
   it("does not expose private contact routes without server credentials", async () => {
     const response = await fetch(`${baseUrl}/api/v1/contacts/upsert`, {
       method: "POST",

@@ -286,3 +286,11 @@ Próximo passo: repetir migrations e a mesma suíte no staging real, sem apagar 
 Foi adicionada retenção diária dos buckets de consumo, configurável por `FORTE_USAGE_RETENTION_DAYS` e protegida por teste PostgreSQL. O padrão de 30 dias evita crescimento indefinido antes do beta.
 
 Próximo passo: validar no staging e observar o custo/volume real.
+
+---
+
+## Atualização de execução — 2026-09-26 11:27
+
+Foi adicionado healthcheck/readiness para a API e heartbeat periódico do worker. A suíte PostgreSQL passou com 74 testes e o typecheck passou.
+
+Próximo passo: instalar esses sinais no staging real e confirmar que o monitoramento diferencia processo vivo de serviço pronto.

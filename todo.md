@@ -50,9 +50,10 @@
 - [x] Aplicar as migrations versionadas no PostgreSQL local e confirmar as tabelas/índices tenant-aware, incluindo buckets 0016–0018.
 - [x] Validar alertas de quota em PostgreSQL: 70% cria uma notificação, segunda varredura não duplica e outro workspace não recebe alerta.
 - [x] Adicionar retenção de buckets: o worker remove diariamente registros antigos de workspace e usuário; padrão de 30 dias configurável por `FORTE_USAGE_RETENTION_DAYS`.
+- [x] Adicionar liveness `/api/v1/health`, readiness `/api/v1/ready` com `select 1` seguro e heartbeat JSON do worker configurável por `WORKER_HEARTBEAT_MS`.
 - [ ] Repetir a mesma validação no PostgreSQL do ambiente de staging/produção antes do beta.
 - **Atenção:** ainda não abrir cadastro público de empresa; o banco local foi efêmero e serve apenas para validação automatizada.
-- Próxima fatia: repetir migrations/testes no staging real e decidir alertas externos; depois revisar planos comerciais a partir do consumo observado.
+- Próxima fatia: repetir migrations/testes no staging real e conectar os sinais de readiness/heartbeat ao monitoramento; depois revisar planos comerciais a partir do consumo observado.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.

@@ -5,13 +5,17 @@ const batchSize = Number(process.env.WORKER_BATCH_SIZE ?? 10);
 const maxAttempts = Number(process.env.WORKER_MAX_ATTEMPTS ?? 3);
 const eventBatchSize = Number(process.env.EVENT_WORKER_BATCH_SIZE ?? batchSize);
 const eventMaxAttempts = Number(process.env.EVENT_WORKER_MAX_ATTEMPTS ?? 5);
+const heartbeatMs = Math.max(10_000, Number(process.env.WORKER_HEARTBEAT_MS ?? 60_000));
 let stopping = false;
 let nextDailySummarySweepAt = 0;
 let nextQuotaAlertSweepAt = 0;
 let nextUsageCleanupAt = 0;
-
+let nextHeartbeatAt = 0;
+let tickCount = 0;
+let lastError: string | null = null;
 async function tick() {
   try {
+    tickCount += 1;
     const result = await processQueuedMessagesOnce(batchSize, maxAttempts);
     if (result.processed > 0 || result.throttled > 0) {
       console.log(`[forte-worker] processadas=${result.processed} enviadas=${result.sent} falhas=${result.failed} limitadas=${result.throttled}`);
@@ -37,7 +41,13 @@ async function tick() {
         console.log(`[forte-worker] bucketsRemovidos workspace=${cleanup.workspaceBuckets} usuarios=${cleanup.userBuckets}`);
       }
     }
+    if (Date.now() >= nextHeartbeatAt) {
+      nextHeartbeatAt = Date.now() + heartbeatMs;
+      console.log(JSON.stringify({ event: "worker_heartbeat", service: "forte-panel-worker", ticks: tickCount, intervalMs, lastError, timestamp: new Date().toISOString() }));
+      lastError = null;
+    }
   } catch (error) {
+    lastError = error instanceof Error ? error.name : "unknown_error";
     console.error("[forte-worker] erro no ciclo", error);
   }
 }
