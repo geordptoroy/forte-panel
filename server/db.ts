@@ -1831,7 +1831,7 @@ export async function recoverProcessingMessages() {
 
 export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
   const db = await getDb();
-  if (!db) return { processed: 0, sent: 0, failed: 0 };
+  if (!db) return { processed: 0, sent: 0, failed: 0, throttled: 0 };
   const pending = await db.select({
     message: messages,
     phone: contacts.externalPhone,
@@ -1846,7 +1846,15 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
 
   let sent = 0;
   let failed = 0;
+  let throttled = 0;
   for (const item of pending) {
+    if (item.workspaceId) {
+      const usage = await consumeWorkspaceUsage(item.workspaceId, "outboundMessages");
+      if (!usage.allowed) {
+        throttled += 1;
+        continue;
+      }
+    }
     const claimed = await db.update(messages).set({
       status: "processing",
       attemptCount: sql`${messages.attemptCount} + 1`,
@@ -1889,7 +1897,7 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
       failed += 1;
     }
   }
-  return { processed: sent + failed, sent, failed };
+  return { processed: sent + failed, sent, failed, throttled };
 }
 
 export async function cancelAgendaAppointment(workspaceId: number, appointmentId: number) {

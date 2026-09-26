@@ -42,13 +42,14 @@
 - [x] Respostas de configuração retornam somente valores mascarados; o segredo de webhook é devolvido apenas no momento de criação/provisionamento.
 - [x] Cotas agora derivam do plano (`starter`, `pro`, `business`) e existe bucket atômico por `(workspaceId, userId, minuto)`; o envio manual do Inbox aplica a cota individual do operador.
 - [x] Painel operacional tenant-aware adicionado em Integrações: mostra consumo atual do workspace, limites do plano, renovação da janela e operadores com maior consumo outbound.
+- [x] Worker outbound agora consome `outboundMessages` do workspace antes de chamar PAPI/Meta; mensagens excedentes permanecem `queued` e são tentadas na próxima janela, sem perda.
 - [x] Mapeamento atualizado: o workspace demo permanece apenas em bootstrap/seed, onboarding/configuração histórica, catálogo de canais legado e helpers ainda não migrados; não é mais usado nas leituras/mutações do CRM/Inbox.
 - [ ] Executar `workspace-domain-isolation.test.ts` numa instância PostgreSQL; foi criada nesta etapa, mas está ignorada neste ambiente sem `DATABASE_URL`.
 - [ ] Executar `agenda-workspace-isolation.test.ts` numa instância PostgreSQL; teste novo criado, mas está ignorado aqui sem `DATABASE_URL`.
 - [ ] A API REST de agenda não foi testada contra PostgreSQL real; os testes que passaram cobrem o fail-closed quando o workspace configurado está ausente/inválido.
 - A migration 0017 adiciona `workspaceId` à auditoria e reativa a leitura tenant-aware; ainda precisa ser aplicada no PostgreSQL real.
 - **Atenção:** ainda não abrir cadastro de empresa nem criar outro workspace para operação real. Outras consultas/mutações ainda usam o workspace global/demo e precisam receber `ctx.workspace.workspaceId` antes de permitir tenants ativos.
-- Próxima fatia: aplicar as migrations 0016/0017/0018 em PostgreSQL real e validar dois tenants; depois aplicar cota também ao outbound automático do worker.
+- Próxima fatia: aplicar as migrations 0016/0017/0018 em PostgreSQL real e validar dois tenants; depois criar alertas operacionais para cotas próximas do limite.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.

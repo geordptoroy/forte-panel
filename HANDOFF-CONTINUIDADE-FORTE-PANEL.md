@@ -870,3 +870,28 @@ pnpm build  ✅
 ```
 
 Próximo bloco: aplicar as migrations 0016/0017/0018 em PostgreSQL real, validar a consulta com dois workspaces e adicionar a mesma proteção de cota ao outbound automático do worker.
+
+---
+
+## Atualização do handoff — 2026-09-26 10:45
+
+O outbound automático do worker passou a respeitar a cota do workspace antes de chamar o adapter PAPI/Meta.
+
+### Comportamento
+
+- Cada mensagem `queued` com workspace válido consome uma unidade de `outboundMessages` na janela atual.
+- Quando a cota está cheia, a mensagem não é marcada como `processing`, não incrementa tentativa e continua `queued`.
+- A próxima passagem do worker tenta novamente após a renovação da janela.
+- O retorno de `processQueuedMessagesOnce` inclui `throttled`.
+- O log do worker exibe `limitadas=N` quando mensagens foram adiadas por cota.
+- O limite de execuções de IA no fluxo de `message.received` já estava protegido; agora o envio outbound também está coberto.
+
+Validação:
+
+```text
+pnpm check ✅
+pnpm test  ✅ 48 aprovados; 21 ignorados
+pnpm build  ✅
+```
+
+Próximo bloco: aplicar as migrations 0016/0017/0018 no PostgreSQL real e validar concorrência entre workspaces, seguida de alertas para aproximação do limite.

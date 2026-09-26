@@ -11,8 +11,8 @@ let nextDailySummarySweepAt = 0;
 async function tick() {
   try {
     const result = await processQueuedMessagesOnce(batchSize, maxAttempts);
-    if (result.processed > 0) {
-      console.log(`[forte-worker] processadas=${result.processed} enviadas=${result.sent} falhas=${result.failed}`);
+    if (result.processed > 0 || result.throttled > 0) {
+      console.log(`[forte-worker] processadas=${result.processed} enviadas=${result.sent} falhas=${result.failed} limitadas=${result.throttled}`);
     }
     const events = await processDomainEventsOnce(eventBatchSize, eventMaxAttempts);
     if (events.processed > 0) {

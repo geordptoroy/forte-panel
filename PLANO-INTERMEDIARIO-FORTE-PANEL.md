@@ -254,3 +254,11 @@ Próximo passo: executar as três migrations em PostgreSQL real, validar concorr
 A tela de Integrações passou a exibir o consumo do workspace e dos operadores, com limites derivados do plano e atualização automática. O endpoint usa `requireManager`, mantendo a visibilidade operacional restrita a gestores.
 
 Próximo passo: validar as migrations em PostgreSQL real e fechar o limite do worker outbound.
+
+---
+
+## Atualização de execução — 2026-09-26 10:45
+
+O worker agora aplica o limite de outbound do workspace antes do envio externo. Mensagens limitadas permanecem na fila sem consumir tentativa, sendo retomadas na janela seguinte.
+
+Próximo passo: validação em PostgreSQL real e alertas operacionais de consumo.
