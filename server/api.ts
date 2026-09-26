@@ -9,6 +9,7 @@ import {
   completeApiIdempotency,
   failApiIdempotency,
   getContactById,
+  getActiveWorkspaceById,
   getDefaultWhatsappProvider,
   getDefaultPapiWebhook,
   getPapiWebhookById,
@@ -130,6 +131,20 @@ function requireApiKey(req: Request, res: Response) {
   return true;
 }
 
+async function requireApiWorkspaceId(res: Response): Promise<number | undefined> {
+  const workspaceId = Number(process.env.FORTE_API_WORKSPACE_ID);
+  if (!Number.isSafeInteger(workspaceId) || workspaceId <= 0) {
+    fail(res, 503, "FORTE_API_WORKSPACE_ID não configurado para a API REST", "api_workspace_not_configured");
+    return undefined;
+  }
+  const workspace = await getActiveWorkspaceById(workspaceId);
+  if (!workspace) {
+    fail(res, 503, "FORTE_API_WORKSPACE_ID não corresponde a um workspace ativo", "api_workspace_not_configured");
+    return undefined;
+  }
+  return workspaceId;
+}
+
 function hasValidWebhookSignature(req: Request) {
   const secret = process.env.WEBHOOK_SIGNING_SECRET;
   if (!secret) return false;
@@ -246,8 +261,10 @@ api.get("/contacts/:id", async (req, res) => {
 
 api.get("/availability", async (req, res) => {
   if (!requireApiKey(req, res)) return;
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   try {
-    const snapshot = await getAgendaSnapshot(undefined, true);
+    const snapshot = await getAgendaSnapshot(workspaceId, undefined, true);
     const requestedServiceId = req.query.serviceId ? Number(req.query.serviceId) : undefined;
     const requestedProfessionalId = req.query.professionalId ? Number(req.query.professionalId) : undefined;
     const serviceId = Number.isInteger(requestedServiceId) && (requestedServiceId ?? 0) > 0 ? requestedServiceId : undefined;
@@ -310,14 +327,16 @@ api.get("/availability", async (req, res) => {
 
 api.post("/appointments", async (req, res) => {
   if (!requireApiKey(req, res)) return;
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   const parsed = appointmentSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "Payload de agendamento inválido", "invalid_payload");
   if (parsed.data.endsAt <= parsed.data.startsAt) return fail(res, 400, "O horário final precisa ser maior que o inicial", "invalid_period");
   try {
     return await idempotent(req, res, async () => {
-      const allowed = await professionalCanExecuteService(parsed.data.professionalId, parsed.data.serviceId);
+      const allowed = await professionalCanExecuteService(workspaceId, parsed.data.professionalId, parsed.data.serviceId);
       if (!allowed) return { statusCode: 409, body: { error: "service_not_linked", message: "Este profissional não executa o serviço informado" } };
-      const appointment = await createAgendaAppointment(parsed.data);
+      const appointment = await createAgendaAppointment(workspaceId, parsed.data);
       return { statusCode: 201, body: { data: { id: appointment?.id, status: appointment?.status, startsAt: appointment?.startsAt, endsAt: appointment?.endsAt } } };
     });
   } catch (error) {
@@ -404,11 +423,13 @@ api.patch("/contacts/:id/stage", async (req, res) => {
 
 api.post("/appointments/:id/cancel", async (req, res) => {
   if (!requireApiKey(req, res)) return;
+  const workspaceId = await requireApiWorkspaceId(res);
+  if (!workspaceId) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de agendamento inválido", "invalid_id");
   try {
     return idempotent(req, res, async () => {
-      const appointment = await cancelAgendaAppointment(id);
+      const appointment = await cancelAgendaAppointment(workspaceId, id);
       if (!appointment) return { statusCode: 404, body: { error: "not_found", message: "Agendamento não encontrado" } };
       return { statusCode: 200, body: { data: { id, status: "cancelled" } } };
     });
@@ -419,13 +440,15 @@ api.post("/appointments/:id/cancel", async (req, res) => {
 
 api.post("/appointments/:id/reschedule", async (req, res) => {
   if (!requireApiKey(req, res)) return;
+  const workspaceId = await requireApiWorkspaceId(res);
   const id = Number(req.params.id);
   const parsed = rescheduleSchema.safeParse(req.body);
   if (!Number.isInteger(id) || id <= 0) return fail(res, 400, "ID de agendamento inválido", "invalid_id");
+  if (!workspaceId) return;
   if (!parsed.success) return fail(res, 400, "Payload de reagendamento inválido", "invalid_payload");
   try {
     return await idempotent(req, res, async () => {
-      const appointment = await rescheduleAgendaAppointment(id, parsed.data.startsAt, parsed.data.endsAt);
+      const appointment = await rescheduleAgendaAppointment(workspaceId, id, parsed.data.startsAt, parsed.data.endsAt);
       if (!appointment) return { statusCode: 404, body: { error: "not_found", message: "Agendamento não encontrado" } };
       return { statusCode: 200, body: { data: { id, status: appointment.status, startsAt: appointment.startsAt, endsAt: appointment.endsAt } } };
     });

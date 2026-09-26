@@ -45,6 +45,7 @@ services:
       WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
       DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
       REDIS_URL: redis://redis_panel:6379/0
+      FORTE_API_WORKSPACE_ID: ${FORTE_API_WORKSPACE_ID:-}
       RUN_MIGRATIONS: "true"
       PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
       PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}

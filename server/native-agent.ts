@@ -112,9 +112,9 @@ async function executeToolEffect(name: string, args: Record<string, unknown>, ev
   if (name === "buscar_lead") return leadMemoryOperation({ action: "buscar_lead", phone: asString(args.phone, "phone") });
   if (name === "atualizar_lead") return leadMemoryOperation({ action: "atualizar_lead", phone: asString(args.phone, "phone"), fields: asObject(args.fields) as Parameters<typeof leadMemoryOperation>[0]["fields"] });
   if (name === "registrar_nota") return leadMemoryOperation({ action: "registrar_nota", phone: asString(args.phone, "phone"), note: asString(args.note, "note") });
-  if (name === "consultar_agenda") return getAgendaSnapshot();
+  if (name === "consultar_agenda") return getAgendaSnapshot(event.workspaceId);
   if (name === "criar_agendamento") {
-    const appointment = await createAgendaAppointment({ contactId: asNumber(args.contactId ?? event.contactId, "contactId"), serviceId: asNumber(args.serviceId, "serviceId"), professionalId: asNumber(args.professionalId, "professionalId"), startsAt: new Date(asString(args.startsAt, "startsAt")), endsAt: new Date(asString(args.endsAt, "endsAt")), notes: typeof args.notes === "string" ? args.notes : undefined });
+    const appointment = await createAgendaAppointment(event.workspaceId, { contactId: asNumber(args.contactId ?? event.contactId, "contactId"), serviceId: asNumber(args.serviceId, "serviceId"), professionalId: asNumber(args.professionalId, "professionalId"), startsAt: new Date(asString(args.startsAt, "startsAt")), endsAt: new Date(asString(args.endsAt, "endsAt")), notes: typeof args.notes === "string" ? args.notes : undefined });
     return appointment ? { id: appointment.id, status: appointment.status, startsAt: appointment.startsAt, endsAt: appointment.endsAt } : { created: false };
   }
   if (name === "transferir_humano") {

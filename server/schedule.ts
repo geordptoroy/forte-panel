@@ -4,7 +4,7 @@ export type WeeklyAvailabilityWindow = {
   endMinute: number;
 };
 
-export type ScheduleFailure = "invalid_period" | "schedule_not_configured" | "outside_working_hours" | "appointment_conflict" | "professional_unavailable";
+export type ScheduleFailure = "invalid_period" | "schedule_not_configured" | "outside_working_hours" | "appointment_conflict" | "professional_unavailable" | "service_unavailable" | "contact_unavailable";
 
 export class ScheduleError extends Error {
   constructor(readonly reason: ScheduleFailure, message: string) {

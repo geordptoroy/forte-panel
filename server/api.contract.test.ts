@@ -39,6 +39,37 @@ describe("versioned API", () => {
     expect([401, 503]).toContain(response.status);
   });
 
+  it("fails closed on every REST agenda route without a valid workspace binding", async () => {
+    const previousKey = process.env.FORTE_API_KEY;
+    const previousWorkspaceId = process.env.FORTE_API_WORKSPACE_ID;
+    process.env.FORTE_API_KEY = "test-api-key";
+    delete process.env.FORTE_API_WORKSPACE_ID;
+    try {
+      const headers = { Authorization: "Bearer test-api-key", "Content-Type": "application/json", "Idempotency-Key": "agenda-tenant-test-1" };
+      const requests: Array<[string, RequestInit]> = [
+        ["/api/v1/availability", { headers }],
+        ["/api/v1/appointments", { method: "POST", headers, body: JSON.stringify({ serviceId: 1, professionalId: 1, startsAt: "2030-01-10T13:00:00Z", endsAt: "2030-01-10T14:00:00Z" }) }],
+        ["/api/v1/appointments/1/cancel", { method: "POST", headers }],
+        ["/api/v1/appointments/1/reschedule", { method: "POST", headers, body: JSON.stringify({ startsAt: "2030-01-10T13:00:00Z", endsAt: "2030-01-10T14:00:00Z" }) }],
+      ];
+      for (const [path, init] of requests) {
+        const response = await fetch(`${baseUrl}${path}`, init);
+        expect(response.status, path).toBe(503);
+        await expect(response.json(), path).resolves.toMatchObject({ error: "api_workspace_not_configured" });
+      }
+
+      process.env.FORTE_API_WORKSPACE_ID = "not-a-workspace-id";
+      const invalid = await fetch(`${baseUrl}/api/v1/availability`, { headers });
+      expect(invalid.status).toBe(503);
+      await expect(invalid.json()).resolves.toMatchObject({ error: "api_workspace_not_configured" });
+    } finally {
+      if (previousKey === undefined) delete process.env.FORTE_API_KEY;
+      else process.env.FORTE_API_KEY = previousKey;
+      if (previousWorkspaceId === undefined) delete process.env.FORTE_API_WORKSPACE_ID;
+      else process.env.FORTE_API_WORKSPACE_ID = previousWorkspaceId;
+    }
+  });
+
   it("validates the CRM lead-memory contract", async () => {
     const previousKey = process.env.FORTE_API_KEY;
     process.env.FORTE_API_KEY = "test-api-key";

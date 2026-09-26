@@ -14,7 +14,7 @@
 - Multiusuário interno com hash de senha, memberships e papéis base; telas iniciais de Equipe/Configurações e notificações internas.
 - Ledger idempotente das tools de agente e melhorias de leases do worker.
 - Compose, migrations, documentação local e infraestrutura registrados nos docs existentes.
-- Última validação local: typecheck/build passaram; 42 testes passaram e 16 foram ignorados, incluindo os testes que exigem PostgreSQL real. Isso não prova isolamento em banco neste sandbox.
+- Última validação local (2026-09-25): `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check` passaram; 43 testes passaram e 19 foram ignorados. Isso não prova isolamento em banco neste sandbox.
 
 ## Direção de produto aprovada
 
@@ -33,11 +33,15 @@
 - [x] Contexto tRPC e middleware agora exigem uma única membership ativa; usuário sem tenant é negado mesmo se `users.role` for `admin`.
 - [x] Login local e `workspace.current` usam o tenant resolvido; notificações e preferências usam o `workspaceId` desse contexto.
 - [x] Equipe, catálogo, profissionais, vínculos e disponibilidade semanal recebem `workspaceId` explícito vindo do contexto autenticado; papéis de funcionário não promovem admin global.
-- [x] Mapeamento atualizado: restam 42 chamadas servidor-side a `ensureDemoWorkspace` para remover/migrar por domínio.
+- [x] Agenda, dashboard, portal do profissional, validação de serviço, mudanças de status/cancelamento/reagendamento e ferramentas de agenda do agente recebem `workspaceId` explícito.
+- [x] API REST de agenda deixa de cair no workspace demo: exige `FORTE_API_WORKSPACE_ID` validado; sem vínculo responde `503`. É ainda uma chave/env de deployment para **um** workspace, não uma API multiempresa pronta.
+- [x] Mapeamento atualizado: restam 29 referências servidor-side a `ensureDemoWorkspace` para remover/migrar por domínio.
 - [ ] Executar `workspace-domain-isolation.test.ts` numa instância PostgreSQL; foi criada nesta etapa, mas está ignorada neste ambiente sem `DATABASE_URL`.
+- [ ] Executar `agenda-workspace-isolation.test.ts` numa instância PostgreSQL; teste novo criado, mas está ignorado aqui sem `DATABASE_URL`.
+- [ ] A API REST de agenda não foi testada contra PostgreSQL real; os testes que passaram cobrem o fail-closed quando o workspace configurado está ausente/inválido.
 - A UI da auditoria está temporariamente sem resultados porque a tabela `auditLogs` não tem `workspaceId`; adicionar coluna e backfill seguro antes de reativá-la.
 - **Atenção:** ainda não abrir cadastro de empresa nem criar outro workspace para operação real. Outras consultas/mutações ainda usam o workspace global/demo e precisam receber `ctx.workspace.workspaceId` antes de permitir tenants ativos.
-- Mapear todas as rotas, queries e jobs que precisam de `workspaceId`.
+- Próxima fatia: migrar CRM/contatos, conversas e mensagens, com joins e mutações checando tenant; mapear também seus workers/webhooks.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.

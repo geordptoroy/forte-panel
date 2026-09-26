@@ -118,8 +118,8 @@ const serializeAgendaAppointment = serializeAppointment;
 
 function throwScheduleTrpcError(error: unknown): never {
   if (error instanceof ScheduleError) {
+    if (error.reason === "contact_unavailable" || error.reason === "service_unavailable" || error.reason === "professional_unavailable") throw new TRPCError({ code: "NOT_FOUND", message: error.message });
     if (error.reason === "invalid_period") throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
-    if (error.reason === "professional_unavailable") throw new TRPCError({ code: "NOT_FOUND", message: error.message });
     throw new TRPCError({ code: "CONFLICT", message: error.message });
   }
   throw error;
@@ -496,8 +496,8 @@ export const appRouter = router({
   }),
 
   dashboard: router({
-    snapshot: protectedProcedure.query(async () => {
-      const snapshot = await getDashboardSnapshot();
+    snapshot: protectedProcedure.query(async ({ ctx }) => {
+      const snapshot = await getDashboardSnapshot(ctx.workspace.workspaceId);
       return {
         ...snapshot,
         recentEvents: snapshot.recentEvents.map((event) => ({ ...event, createdAt: event.createdAt.toISOString() })),
@@ -610,7 +610,7 @@ export const appRouter = router({
       const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
       const professionalId = access.canSeeFullAgenda ? undefined : access.professionalId ?? undefined;
-      const snapshot = await getAgendaSnapshot(professionalId);
+      const snapshot = await getAgendaSnapshot(ctx.workspace.workspaceId, professionalId);
       return {
         timezone: snapshot.timezone,
         services: snapshot.services,
@@ -634,11 +634,11 @@ export const appRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode agendar atendimentos vinculados a você" });
       }
       if (input.endsAt <= input.startsAt) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser maior que o inicial" });
-      const allowed = await professionalCanExecuteService(input.professionalId, input.serviceId);
+      const allowed = await professionalCanExecuteService(ctx.workspace.workspaceId, input.professionalId, input.serviceId);
       if (!allowed) throw new TRPCError({ code: "BAD_REQUEST", message: "Este profissional não executa o serviço selecionado" });
       let appointment;
       try {
-        appointment = await createAgendaAppointment(input);
+        appointment = await createAgendaAppointment(ctx.workspace.workspaceId, input);
       } catch (error) {
         throwScheduleTrpcError(error);
       }
@@ -653,7 +653,7 @@ export const appRouter = router({
       const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
       const restriction = access.canSeeFullAgenda ? undefined : access.professionalId ?? -1;
-      const updated = await transitionAppointment({ appointmentId: input.id, status: input.status, actorUserId: ctx.user.id, restrictToProfessionalId: restriction });
+      const updated = await transitionAppointment({ workspaceId: ctx.workspace.workspaceId, appointmentId: input.id, status: input.status, actorUserId: ctx.user.id, restrictToProfessionalId: restriction });
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado para o seu acesso" });
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: `appointment_${input.status}`, summary: `Agendamento ${input.id} atualizado para ${input.status}` });
       return { id: updated.id, status: updated.status };
@@ -662,12 +662,12 @@ export const appRouter = router({
       const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
       if (access.canSeeFullAgenda) {
-        const updated = await cancelAgendaAppointment(input.id);
+        const updated = await cancelAgendaAppointment(ctx.workspace.workspaceId, input.id);
         if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado" });
         await logWorkspaceAction({ actorUserId: ctx.user.id, action: "appointment_cancelled", summary: `Agendamento ${input.id} cancelado` });
         return { id: updated.id, status: updated.status };
       }
-      const updated = await transitionAppointment({ appointmentId: input.id, status: "cancelled", actorUserId: ctx.user.id, restrictToProfessionalId: access.professionalId ?? -1 });
+      const updated = await transitionAppointment({ workspaceId: ctx.workspace.workspaceId, appointmentId: input.id, status: "cancelled", actorUserId: ctx.user.id, restrictToProfessionalId: access.professionalId ?? -1 });
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado para o seu acesso" });
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: "appointment_cancelled", summary: `Agendamento ${input.id} cancelado pelo profissional` });
       return { id: updated.id, status: updated.status };
@@ -679,7 +679,7 @@ export const appRouter = router({
       const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
       if (!access.memberActive) throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
       if (!access.professionalId) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não está vinculado a um profissional" });
-      const updated = await transitionAppointment({ appointmentId: input.id, status: input.status, actorUserId: ctx.user.id, restrictToProfessionalId: access.professionalId });
+      const updated = await transitionAppointment({ workspaceId: ctx.workspace.workspaceId, appointmentId: input.id, status: input.status, actorUserId: ctx.user.id, restrictToProfessionalId: access.professionalId });
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Este atendimento não pertence à sua agenda" });
       await logWorkspaceAction({ actorUserId: ctx.user.id, action: `appointment_${input.status}`, summary: `Profissional atualizou o atendimento ${input.id} para ${input.status}` });
       return { id: updated.id, status: updated.status };
@@ -701,7 +701,7 @@ export const appRouter = router({
           nextAppointment: null, today: [], upcoming: [], week: [], month: [], clients: [],
         };
       }
-      const snapshot = await getProfessionalPortalSnapshot(access.professionalId);
+      const snapshot = await getProfessionalPortalSnapshot(ctx.workspace.workspaceId, access.professionalId);
       return {
         linked: true as const,
         ...snapshot,
@@ -718,7 +718,7 @@ export const appRouter = router({
       if (!access.professionalId) return { linked: false as const, entries: [] };
       const professionalsList = await listProfessionalsDetailed(ctx.workspace.workspaceId, { includeInactive: true });
       const professional = professionalsList.find((item) => item.id === access.professionalId);
-      const ownAvailability = (await getAgendaSnapshot(access.professionalId)).availability ?? [];
+      const ownAvailability = (await getAgendaSnapshot(ctx.workspace.workspaceId, access.professionalId)).availability ?? [];
       return {
         linked: true as const,
         professionalId: access.professionalId,

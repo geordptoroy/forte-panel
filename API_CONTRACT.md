@@ -14,6 +14,8 @@ O adapter PAPI usa `PAPI_BASE_URL` e `PAPI_API_KEY`. O adapter Meta usa `META_GR
 
 As requisições privadas usam `Authorization: Bearer <FORTE_API_KEY>`. A chave fica somente em sistemas de servidor autorizados e nunca no bundle do navegador. Em produção, a chave deverá ser criada por workspace e armazenada com hash; o primeiro adaptador usa uma chave de ambiente para preparar o contrato sem expor credenciais.
 
+**Limite de tenancy atual:** os endpoints REST de agenda (`availability`, criar/cancelar/reagendar agendamento) exigem também `FORTE_API_WORKSPACE_ID`, configurado somente no servidor e validado como ID positivo de um workspace existente e ativo. Sem isso respondem `503 api_workspace_not_configured`; não tentam descobrir o tenant por slug, payload ou workspace demo. A combinação atual é uma chave única presa a um workspace por deployment, não a autenticação multiempresa pronta para uso público. Os demais endpoints da API ainda dependem de migração de tenancy e não devem ser expostos a clientes de empresas diferentes nesta fase.
+
 ## Idempotência
 
 Toda operação mutável aceita `Idempotency-Key`. A mesma chave não pode executar duas vezes a mesma ação. O servidor guarda a resposta associada à chave e devolve a resposta original em retries.
@@ -38,7 +40,7 @@ Toda operação mutável aceita `Idempotency-Key`. A mesma chave não pode execu
 
 ## Agenda, serviços e profissionais
 
-`GET /api/v1/availability` devolve a agenda operacional real do workspace. O retorno inclui `timezone`, `services`, `professionals` e `appointments`, sempre considerando apenas serviços e profissionais ativos.
+`GET /api/v1/availability` devolve a agenda operacional real do workspace configurado em `FORTE_API_WORKSPACE_ID`. O retorno inclui `timezone`, `services`, `professionals` e `appointments`, sempre considerando apenas serviços e profissionais ativos.
 
 Os parâmetros opcionais `serviceId` e `professionalId` restringem a consulta. Quando um `serviceId` é informado, a lista de profissionais traz somente quem executa aquele serviço, segundo a tabela `professionalServices`. Sem essa tabela, todos os profissionais ativos permanecem disponíveis como compatibilidade.
 
@@ -87,4 +89,4 @@ Quando `dailySummary` está ativo, o worker gera no máximo um resumo por worksp
 
 ## Erros
 
-A API usa respostas JSON com `error`, `message` e, quando aplicável, `requestId`. Os códigos esperados são `400` para payload inválido, `401` para credencial ausente ou incorreta, `409` para conflito de agenda/idempotência incompatível, `422` para regra de negócio e `500` para falha inesperada.
+A API usa respostas JSON com `error`, `message` e, quando aplicável, `requestId`. Os códigos esperados são `400` para payload inválido, `401` para credencial ausente ou incorreta, `409` para conflito de agenda/idempotência incompatível, `422` para regra de negócio, `503 api_workspace_not_configured` quando faltar vínculo válido da agenda REST ao tenant e `500` para falha inesperada.

@@ -6,8 +6,9 @@ import {
   professionals,
   professionalServices,
   services,
+  workspaces,
 } from "../drizzle/schema";
-import { ensureDemoWorkspace, getDb, enqueueDomainEvent } from "./db";
+import { getDb, enqueueDomainEvent } from "./db";
 
 export type AppointmentStatus = "requested" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 
@@ -51,11 +52,10 @@ export function addDays(date: Date, amount: number) {
  * date range. Every query is scoped by workspace and professional id, so a
  * professional executor can never read another professional's agenda.
  */
-export async function listAppointmentsForProfessional(professionalId: number, options: { from?: Date; to?: Date; includeCancelled?: boolean } = {}): Promise<AgendaEntry[]> {
+export async function listAppointmentsForProfessional(workspaceId: number, professionalId: number, options: { from?: Date; to?: Date; includeCancelled?: boolean } = {}): Promise<AgendaEntry[]> {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return [];
-  const filters = [eq(appointmentsTable.workspaceId, workspace.id), eq(appointmentsTable.professionalId, professionalId)];
+  if (!db) return [];
+  const filters = [eq(appointmentsTable.workspaceId, workspaceId), eq(appointmentsTable.professionalId, professionalId)];
   if (options.from) filters.push(gte(appointmentsTable.startsAt, options.from));
   if (options.to) filters.push(lt(appointmentsTable.startsAt, options.to));
   if (!options.includeCancelled) filters.push(ne(appointmentsTable.status, "cancelled"));
@@ -81,9 +81,9 @@ export async function listAppointmentsForProfessional(professionalId: number, op
     contactNeighborhood: contacts.neighborhood,
     contactStage: contacts.stage,
   }).from(appointmentsTable)
-    .leftJoin(services, eq(services.id, appointmentsTable.serviceId))
-    .leftJoin(professionals, eq(professionals.id, appointmentsTable.professionalId))
-    .leftJoin(contacts, eq(contacts.id, appointmentsTable.contactId))
+    .leftJoin(services, and(eq(services.id, appointmentsTable.serviceId), eq(services.workspaceId, workspaceId)))
+    .leftJoin(professionals, and(eq(professionals.id, appointmentsTable.professionalId), eq(professionals.workspaceId, workspaceId)))
+    .leftJoin(contacts, and(eq(contacts.id, appointmentsTable.contactId), eq(contacts.workspaceId, workspaceId)))
     .where(and(...filters))
     .orderBy(asc(appointmentsTable.startsAt), asc(appointmentsTable.id));
   return rows as AgendaEntry[];
@@ -108,9 +108,9 @@ export type ProfessionalPortalSnapshot = {
   clients: { id: number; name: string; phone: string; city: string | null; neighborhood: string | null; stage: string | null; lastAppointmentAt: Date }[];
 };
 
-export async function getProfessionalPortalSnapshot(professionalId: number, reference: Date = new Date()): Promise<ProfessionalPortalSnapshot> {
+export async function getProfessionalPortalSnapshot(workspaceId: number, professionalId: number, reference: Date = new Date()): Promise<ProfessionalPortalSnapshot> {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
+  const workspace = db ? (await db.select({ timezone: workspaces.timezone }).from(workspaces).where(and(eq(workspaces.id, workspaceId), eq(workspaces.active, 1))).limit(1))[0] : undefined;
   const empty: ProfessionalPortalSnapshot = {
     timezone: workspace?.timezone ?? "America/Sao_Paulo",
     professionalId,
@@ -131,7 +131,7 @@ export async function getProfessionalPortalSnapshot(professionalId: number, refe
   };
   if (!db || !workspace) return empty;
 
-  const professional = (await db.select().from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.workspaceId, workspace.id))).limit(1))[0];
+  const professional = (await db.select().from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.workspaceId, workspaceId))).limit(1))[0];
   if (!professional) return empty;
 
   const dayStart = startOfDay(reference);
@@ -140,9 +140,9 @@ export async function getProfessionalPortalSnapshot(professionalId: number, refe
   const monthStart = new Date(dayStart.getFullYear(), dayStart.getMonth(), 1);
   const monthEnd = new Date(dayStart.getFullYear(), dayStart.getMonth() + 1, 1);
 
-  const monthEntries = await listAppointmentsForProfessional(professionalId, { from: monthStart, to: monthEnd });
-  const weekEntries = await listAppointmentsForProfessional(professionalId, { from: weekStart, to: weekEnd });
-  const allEntries = await listAppointmentsForProfessional(professionalId, { from: addDays(dayStart, -180), to: addDays(dayStart, 365) });
+  const monthEntries = await listAppointmentsForProfessional(workspaceId, professionalId, { from: monthStart, to: monthEnd });
+  const weekEntries = await listAppointmentsForProfessional(workspaceId, professionalId, { from: weekStart, to: weekEnd });
+  const allEntries = await listAppointmentsForProfessional(workspaceId, professionalId, { from: addDays(dayStart, -180), to: addDays(dayStart, 365) });
 
   const today = allEntries.filter((entry) => entry.startsAt >= dayStart && entry.startsAt < addDays(dayStart, 1));
   const upcoming = allEntries.filter((entry) => entry.startsAt >= reference && entry.status !== "completed" && entry.status !== "no_show");
@@ -189,24 +189,24 @@ export async function getProfessionalPortalSnapshot(professionalId: number, refe
  * appointments; managers keep full access.
  */
 export async function transitionAppointment(input: {
+  workspaceId: number;
   appointmentId: number;
   status: AppointmentStatus;
   actorUserId?: number;
   restrictToProfessionalId?: number;
 }) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Banco indisponível");
-  const filters = [eq(appointmentsTable.id, input.appointmentId), eq(appointmentsTable.workspaceId, workspace.id)];
+  if (!db) throw new Error("Banco indisponível");
+  const filters = [eq(appointmentsTable.id, input.appointmentId), eq(appointmentsTable.workspaceId, input.workspaceId)];
   if (input.restrictToProfessionalId) filters.push(eq(appointmentsTable.professionalId, input.restrictToProfessionalId));
   const appointment = (await db.select().from(appointmentsTable).where(and(...filters)).limit(1))[0];
   if (!appointment) return undefined;
   if (appointment.status === input.status) return appointment;
   const updatedAt = new Date();
-  const updated = await db.update(appointmentsTable).set({ status: input.status, updatedAt }).where(eq(appointmentsTable.id, appointment.id)).returning();
+  const updated = await db.update(appointmentsTable).set({ status: input.status, updatedAt }).where(and(eq(appointmentsTable.id, appointment.id), eq(appointmentsTable.workspaceId, input.workspaceId))).returning();
   if (input.status === "confirmed" || input.status === "cancelled") {
     await enqueueDomainEvent({
-      workspaceId: workspace.id,
+      workspaceId: input.workspaceId,
       event: input.status === "confirmed" ? "appointment.confirmed" : "appointment.cancelled",
       aggregateType: "appointment",
       aggregateId: appointment.id,
@@ -217,39 +217,36 @@ export async function transitionAppointment(input: {
   return updated[0];
 }
 
-export async function professionalCanExecuteService(professionalId: number, serviceId: number) {
+export async function professionalCanExecuteService(workspaceId: number, professionalId: number, serviceId: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return false;
+  if (!db) return false;
   const link = (await db.select({ id: professionalServices.id }).from(professionalServices).where(and(
-    eq(professionalServices.workspaceId, workspace.id),
+    eq(professionalServices.workspaceId, workspaceId),
     eq(professionalServices.professionalId, professionalId),
     eq(professionalServices.serviceId, serviceId),
     eq(professionalServices.active, 1),
   )).limit(1))[0];
   if (link) return true;
-  const anyLink = (await db.select({ id: professionalServices.id }).from(professionalServices).where(eq(professionalServices.workspaceId, workspace.id)).limit(1))[0];
+  const anyLink = (await db.select({ id: professionalServices.id }).from(professionalServices).where(eq(professionalServices.workspaceId, workspaceId)).limit(1))[0];
   if (anyLink) return false;
-  const service = (await db.select({ id: services.id }).from(services).where(and(eq(services.id, serviceId), eq(services.workspaceId, workspace.id), eq(services.active, 1))).limit(1))[0];
+  const service = (await db.select({ id: services.id }).from(services).where(and(eq(services.id, serviceId), eq(services.workspaceId, workspaceId), eq(services.active, 1))).limit(1))[0];
   return Boolean(service);
 }
 
-export async function listActiveProfessionalsForService(serviceId: number) {
+export async function listActiveProfessionalsForService(workspaceId: number, serviceId: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return [];
+  if (!db) return [];
   const links = await db.select({ professionalId: professionalServices.professionalId }).from(professionalServices)
-    .where(and(eq(professionalServices.workspaceId, workspace.id), eq(professionalServices.serviceId, serviceId), eq(professionalServices.active, 1)));
+    .where(and(eq(professionalServices.workspaceId, workspaceId), eq(professionalServices.serviceId, serviceId), eq(professionalServices.active, 1)));
   const linkedIds = links.map((link) => link.professionalId);
-  const rows = await db.select().from(professionals).where(and(eq(professionals.workspaceId, workspace.id), eq(professionals.active, 1)));
+  const rows = await db.select().from(professionals).where(and(eq(professionals.workspaceId, workspaceId), eq(professionals.active, 1)));
   const filtered = linkedIds.length > 0 ? rows.filter((row) => linkedIds.includes(row.id)) : rows;
   return filtered;
 }
 
-export async function listAvailabilityForProfessional(professionalId: number) {
+export async function listAvailabilityForProfessional(workspaceId: number, professionalId: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return [];
-  const rows = await db.select().from(availability).where(and(eq(availability.workspaceId, workspace.id), eq(availability.professionalId, professionalId))).orderBy(availability.weekday);
+  if (!db) return [];
+  const rows = await db.select().from(availability).where(and(eq(availability.workspaceId, workspaceId), eq(availability.professionalId, professionalId))).orderBy(availability.weekday);
   return rows;
 }

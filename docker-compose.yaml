@@ -131,6 +131,7 @@ services:
       DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
       REDIS_URL: redis://:${REDIS_PANEL_PASSWORD:?REDIS_PANEL_PASSWORD is required}@redis_panel:6379/0
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      FORTE_API_WORKSPACE_ID: ${FORTE_API_WORKSPACE_ID:-}
       PAPI_BASE_URL: ${PAPI_BASE_URL:-http://pastorini_api:3000}
       PAPI_DEPLOYMENT: ${PAPI_DEPLOYMENT:-self_hosted}
       PAPI_CLOUD_API_URL: ${PAPI_CLOUD_API_URL:-https://api.papi.api.br}

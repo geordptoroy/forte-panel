@@ -189,6 +189,7 @@ describe.skipIf(!hasDatabase)("professional agenda isolation", () => {
     })).rejects.toMatchObject({ code: "CONFLICT" });
 
     await expect(rescheduleAgendaAppointment(
+      workspaceId,
       appointmentAId,
       new Date("2030-01-10T22:00:00.000Z"),
       new Date("2030-01-10T23:00:00.000Z"),
