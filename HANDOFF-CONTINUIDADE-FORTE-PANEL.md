@@ -928,3 +928,37 @@ pnpm test  ✅ 49 aprovados; 21 ignorados
 ```
 
 O `pnpm build` final passou. Continua pendente apenas validar as migrations 0016–0018 e a concorrência no PostgreSQL real.
+
+---
+
+## Atualização do handoff — 2026-09-26 11:03
+
+A validação que estava pendente foi executada em um PostgreSQL 16 local efêmero, sem Docker e sem tocar em volumes do projeto.
+
+### Procedimento
+
+- PostgreSQL 16 instalado localmente na sandbox.
+- Banco `forte_test` e role `forte_test` criados somente para testes.
+- `DATABASE_URL` apontado para `127.0.0.1`.
+- `pnpm exec drizzle-kit migrate` aplicado com sucesso.
+- Confirmadas as tabelas `workspaceUsageBuckets`, `workspaceUserUsageBuckets`, `apiIdempotency`, `webhookEvents`, `domainEvents`, `auditLogs` e `notifications`.
+- Confirmados os índices compostos de workspace para idempotência, webhook, domain events, buckets e memberships.
+
+### Resultado
+
+```text
+PostgreSQL 16.15
+20 test files passed
+72 tests passed
+0 skipped
+pnpm check ✅
+pnpm build ✅
+```
+
+Foi criado `server/workspace-quota-alerts.test.ts`. O teste confirmou que:
+
+1. 70% de consumo gera uma notificação para o manager correto;
+2. uma segunda varredura não duplica o alerta;
+3. outro workspace sem consumo não recebe a notificação.
+
+Essa validação comprova o isolamento e as constraints no banco efêmero. Ainda é necessário repetir o procedimento no PostgreSQL de staging antes de convidar os beta testers.

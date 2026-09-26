@@ -270,3 +270,11 @@ Próximo passo: validação em PostgreSQL real e alertas operacionais de consumo
 O sistema ganhou alertas in-app de consumo em 70% e 90%, entregues aos responsáveis ativos e deduplicados por janela, métrica e threshold. A documentação do beta foi consolidada no manual operacional e no índice de documentação.
 
 Próximo passo: executar build final, publicar este bloco e realizar a validação real das migrations e concorrência em PostgreSQL.
+
+---
+
+## Atualização de execução — 2026-09-26 11:03
+
+A validação PostgreSQL que estava pendente foi executada localmente. Migrations, constraints de tenancy, isolamento entre dois workspaces, quotas e alertas foram exercitados; 72 testes passaram sem skips.
+
+Próximo passo: repetir migrations e a mesma suíte no staging real, sem apagar volumes, antes de convidar os 10 beta testers.

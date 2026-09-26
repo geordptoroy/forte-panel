@@ -14,7 +14,7 @@
 - Multiusuário interno com hash de senha, memberships e papéis base; telas iniciais de Equipe/Configurações e notificações internas.
 - Ledger idempotente das tools de agente e melhorias de leases do worker.
 - Compose, migrations, documentação local e infraestrutura registrados nos docs existentes.
-- Última validação local (2026-09-26): `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check` passaram; 49 testes passaram e 21 foram ignorados. Isso não prova isolamento em banco neste sandbox.
+- Última validação (2026-09-26): sandbox sem banco: 49 testes passaram e 21 foram ignorados; PostgreSQL local efêmero: **72 testes passaram, 0 ignorados**, incluindo isolamento, deduplicação, quotas e alertas.
 
 ## Direção de produto aprovada
 
@@ -46,12 +46,12 @@
 - [x] Alertas in-app de consumo em 70% e 90% para owners/admins/managers ativos, com chave idempotente por workspace, janela, métrica e threshold; worker registra `alertasCota=N`.
 - [x] Documentação consolidada em `BETA-OPERATIONS-CHECKLIST.md`, `PROJECT_DOCUMENTATION_INDEX.md` e atualização do `API_CONTRACT.md`.
 - [x] Mapeamento atualizado: o workspace demo permanece apenas em bootstrap/seed, onboarding/configuração histórica, catálogo de canais legado e helpers ainda não migrados; não é mais usado nas leituras/mutações do CRM/Inbox.
-- [ ] Executar `workspace-domain-isolation.test.ts` numa instância PostgreSQL; foi criada nesta etapa, mas está ignorada neste ambiente sem `DATABASE_URL`.
-- [ ] Executar `agenda-workspace-isolation.test.ts` numa instância PostgreSQL; teste novo criado, mas está ignorado aqui sem `DATABASE_URL`.
-- [ ] A API REST de agenda não foi testada contra PostgreSQL real; os testes que passaram cobrem o fail-closed quando o workspace configurado está ausente/inválido.
-- As migrations 0016–0018 adicionam buckets de uso, chaves tenant-aware e uso individual; ainda precisam ser aplicadas no PostgreSQL real.
-- **Atenção:** ainda não abrir cadastro de empresa nem criar outro workspace para operação real. Outras consultas/mutações ainda usam o workspace global/demo e precisam receber `ctx.workspace.workspaceId` antes de permitir tenants ativos.
-- Próxima fatia: aplicar as migrations 0016/0017/0018 em PostgreSQL real e validar dois tenants; depois observar retenção dos buckets e alertas externos.
+- [x] Executar `workspace-domain-isolation.test.ts`, `agenda-workspace-isolation.test.ts`, `professional-isolation.test.ts`, `workspace-key-isolation.test.ts` e `workspace-usage.test.ts` contra PostgreSQL real local.
+- [x] Aplicar as migrations versionadas no PostgreSQL local e confirmar as tabelas/índices tenant-aware, incluindo buckets 0016–0018.
+- [x] Validar alertas de quota em PostgreSQL: 70% cria uma notificação, segunda varredura não duplica e outro workspace não recebe alerta.
+- [ ] Repetir a mesma validação no PostgreSQL do ambiente de staging/produção antes do beta.
+- **Atenção:** ainda não abrir cadastro público de empresa; o banco local foi efêmero e serve apenas para validação automatizada.
+- Próxima fatia: repetir migrations/testes no staging real, observar retenção dos buckets e decidir alertas externos.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.

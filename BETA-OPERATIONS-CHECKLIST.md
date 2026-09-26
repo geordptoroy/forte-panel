@@ -133,3 +133,9 @@ No estado atual, os comandos passam no sandbox. Parte dos testes de isolamento �
 - Painel operacional de consumo em Integrações.
 - Limite outbound no worker.
 - Alertas in-app de 70% e 90% para gestores.
+
+## 10. Validação PostgreSQL executada
+
+Em 26/09/2026 foi criada uma instância PostgreSQL 16 local efêmera. As migrations versionadas foram aplicadas com `pnpm exec drizzle-kit migrate`. O banco confirmou as tabelas e índices compostos de tenancy. A suíte passou com 20 arquivos e 72 testes, sem testes ignorados. O teste adicional de alertas confirmou criação em 70%, deduplicação e isolamento entre workspaces.
+
+Esse resultado valida o código contra PostgreSQL local, mas não substitui a execução no PostgreSQL de staging com as credenciais e configurações reais do deployment.
