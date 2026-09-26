@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPapiAdapter } from "./whatsapp";
+import { createBaileysAdapter, createPapiAdapter } from "./whatsapp";
 
 const originalEnv = {
   baseUrl: process.env.PAPI_BASE_URL,
   apiKey: process.env.PAPI_API_KEY,
   sendPath: process.env.PAPI_SEND_MESSAGE_PATH,
   instanceId: process.env.PAPI_INSTANCE_ID,
+  baileysBaseUrl: process.env.BAILEYS_BASE_URL,
+  baileysApiKey: process.env.BAILEYS_API_KEY,
 };
 
 afterEach(() => {
@@ -18,6 +20,10 @@ afterEach(() => {
   else process.env.PAPI_SEND_MESSAGE_PATH = originalEnv.sendPath;
   if (originalEnv.instanceId === undefined) delete process.env.PAPI_INSTANCE_ID;
   else process.env.PAPI_INSTANCE_ID = originalEnv.instanceId;
+  if (originalEnv.baileysBaseUrl === undefined) delete process.env.BAILEYS_BASE_URL;
+  else process.env.BAILEYS_BASE_URL = originalEnv.baileysBaseUrl;
+  if (originalEnv.baileysApiKey === undefined) delete process.env.BAILEYS_API_KEY;
+  else process.env.BAILEYS_API_KEY = originalEnv.baileysApiKey;
 });
 
 function configure() {
@@ -98,5 +104,35 @@ describe("PAPI outbound adapter", () => {
     expect(normalized.fromMe).toBe(true);
     expect(normalized.metadata?.fromMe).toBe(true);
     expect(normalized.eventId).toBe("m-owner");
+  });
+});
+
+describe("Baileys adapter JID routing", () => {
+  it("preserves the inbound JID for replies to LID contacts", () => {
+    const normalized = createBaileysAdapter().normalizeInbound({
+      eventId: "baileys-inbound-1",
+      phone: "1234567890@lid",
+      content: "Oi",
+      metadata: { provider: "baileys", jid: "1234567890@lid" },
+    });
+    expect(normalized.phone).toBe("1234567890");
+    expect(normalized.metadata).toMatchObject({ provider: "baileys", jid: "1234567890@lid" });
+  });
+
+  it("sends through the gateway using the preserved JID instead of rebuilding a phone JID", async () => {
+    process.env.BAILEYS_BASE_URL = "http://baileys.test";
+    process.env.BAILEYS_API_KEY = "secret";
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ externalId: "baileys-msg-1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createBaileysAdapter().sendMessage({
+      idempotencyKey: "forte-message-baileys-1",
+      phone: "1234567890",
+      content: "Resposta",
+      messageType: "text",
+      metadata: { jid: "1234567890@lid" },
+    })).resolves.toMatchObject({ externalId: "baileys-msg-1", status: "sent" });
+    expect(fetchMock).toHaveBeenCalledWith("http://baileys.test/api/instances/default/send-text", expect.objectContaining({
+      body: JSON.stringify({ phone: "1234567890@lid", text: "Resposta" }),
+    }));
   });
 });

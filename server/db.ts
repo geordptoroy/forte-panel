@@ -1507,9 +1507,14 @@ export async function sendManualMessage(workspaceId: number, contactId: number, 
   const provider = await getDefaultWhatsappProvider(workspaceId);
   const defaultPapiWebhook = provider === "papi" ? await getDefaultPapiWebhook(workspaceId) : undefined;
   if (provider === "papi" && !defaultPapiWebhook?.instanceId) throw new Error("Associe uma instância PAPI em Canais conectados para enviar mensagens manuais pelo painel");
+  const latestInbound = await db.select({ metadata: messages.metadata }).from(messages)
+    .where(and(eq(messages.conversationId, conversation.id), eq(messages.direction, "inbound")))
+    .orderBy(desc(messages.createdAt), desc(messages.id)).limit(1);
+  const inboundJid = typeof latestInbound[0]?.metadata?.jid === "string" ? latestInbound[0].metadata.jid : undefined;
   const createdAt = new Date();
   const manualInstanceId = provider === "papi" ? defaultPapiWebhook?.instanceId : undefined;
-  await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, metadata: manualInstanceId ? { instanceId: manualInstanceId } : undefined, status: "queued", provider, createdAt });
+  const metadata = { ...(inboundJid ? { jid: inboundJid } : {}), ...(manualInstanceId ? { instanceId: manualInstanceId } : {}) };
+  await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType: "human", messageType: "text", content, metadata: Object.keys(metadata).length ? metadata : undefined, status: "queued", provider, createdAt });
   await db.update(contacts).set({ aiEnabled: 0, unreadCount: 0, lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
   await db.update(conversations).set({ humanControlled: 1, unreadCount: 0, lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));
   await db.insert(auditLogs).values({ workspaceId, actorUserId, contactId, action: "manual_message_queued", summary: `Mensagem manual enfileirada para ${provider}` });
@@ -1899,7 +1904,11 @@ export async function queueOutboundMessage(workspaceId: number, contactId: numbe
   }
   if (!conversation) throw new Error("Conversation not found");
   const createdAt = new Date();
-  const resolvedMetadata = { ...metadata, ...(selectedProvider === "papi" && !metadata?.instanceId && defaultPapiWebhook?.instanceId ? { instanceId: defaultPapiWebhook.instanceId } : {}) };
+  const latestInbound = await db.select({ metadata: messages.metadata }).from(messages)
+    .where(and(eq(messages.conversationId, conversation.id), eq(messages.direction, "inbound")))
+    .orderBy(desc(messages.createdAt), desc(messages.id)).limit(1);
+  const inboundJid = typeof latestInbound[0]?.metadata?.jid === "string" ? latestInbound[0].metadata.jid : undefined;
+  const resolvedMetadata = { ...metadata, ...(!metadata?.jid && inboundJid ? { jid: inboundJid } : {}), ...(selectedProvider === "papi" && !metadata?.instanceId && defaultPapiWebhook?.instanceId ? { instanceId: defaultPapiWebhook.instanceId } : {}) };
   const created = await db.insert(messages).values({ conversationId: conversation.id, direction: "outbound", senderType, messageType, content, metadata: Object.keys(resolvedMetadata).length ? resolvedMetadata : undefined, status: "queued", provider: selectedProvider, createdAt }).returning();
   await db.update(contacts).set({ ...(senderType === "human" ? { aiEnabled: 0, unreadCount: 0 } : {}), lastMessagePreview: content.slice(0, 500), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(contacts.id, contactId));
   await db.update(conversations).set({ ...(senderType === "human" ? { humanControlled: 1, unreadCount: 0 } : {}), lastMessageAt: createdAt, updatedAt: createdAt }).where(eq(conversations.id, conversation.id));

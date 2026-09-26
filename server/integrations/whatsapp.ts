@@ -28,6 +28,14 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
   const data = event?.data ?? event?.payload ?? event?.body ?? event;
   const message = data?.message ?? data?.messages?.[0] ?? data;
   const key = data?.key ?? message?.key ?? message?.message?.key ?? {};
+  const jid = String(
+    message?.jid ??
+      message?.metadata?.jid ??
+      data?.metadata?.jid ??
+      message?.remoteJid ??
+      key?.remoteJid ??
+      ""
+  );
   const phone = normalizePhone(
     String(
       message?.phone ??
@@ -108,6 +116,7 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
       ...(instanceId ? { instanceId: String(instanceId) } : {}),
       ...(fromMe ? { fromMe: true } : {}),
       ...(isGroup ? { isGroup: true } : {}),
+      ...(jid ? { jid } : {}),
       rawType,
       messageId: eventId,
     },
