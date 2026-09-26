@@ -3,7 +3,7 @@
 **Data do handoff:** 2026-09-25 21:02 (America/Sao_Paulo)
 **Repositório:** `geordptoroy/forte-panel`
 **Branch:** `main`
-**HEAD atual:** `b2fbd76`
+**HEAD atual:** `d026f05`
 **Remote:** `https://github.com/geordptoroy/forte-panel.git`
 **Usuário precisa poder entregar esta conversa a outra IA sem repetir contexto.**
 
@@ -58,6 +58,8 @@ c8f3111 feat(papi): persist instances per workspace
 3e6a311 fix(agent): preserve instance routing and bound llm latency
 34259a3 feat(worker): add expiring domain event leases
 b2fbd76 fix(api): claim idempotency keys atomically
+dd34c28 feat(agent): add idempotent tool effect ledger
+d026f05 docs: preserve full handoff history
 ```
 
 No momento do handoff:
