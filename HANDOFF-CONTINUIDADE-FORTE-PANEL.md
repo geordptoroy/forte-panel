@@ -554,3 +554,29 @@ Validação: `pnpm check`, `pnpm test` (39 passaram; 13 ignorados), `pnpm build`
 Próximo bloco recomendado: teste PostgreSQL real de concorrência, estado `unknown` para crash após mutação, fencing de conversa contra handoff humano e parser dos comandos de controle humano.
 
 A regra continua: não executar smoke test PAPI Cloud nem pedir token neste momento; o usuário adiou essa operação. Não alterar login proprietário único e não remover volumes Docker.
+
+---
+
+## Nova decisão de produto — Onboarding Conversacional Assistido por IA
+
+O usuário quer que o cliente final consiga configurar o produto sozinho por meio de um chat integrado. Esse chat deve entrevistar o responsável pela empresa e descobrir dados suficientes para formar o perfil da empresa e um system prompt de atendimento.
+
+Nome técnico adotado no roadmap: **Onboarding Conversacional Assistido por IA**. Nomes comerciais possíveis: Configuração Inteligente, Assistente de Ativação, Setup Guiado por IA ou DNA da Empresa.
+
+O fluxo seguro planejado é:
+
+```text
+chat de descoberta
+→ perfil estruturado da empresa
+→ rascunho de system prompt/políticas
+→ revisão do proprietário
+→ simulação
+→ aprovação explícita
+→ versão publicada do agente
+```
+
+Não salvar simplesmente texto livre produzido pela IA. Criar perfil estruturado, versionamento, revisão, rollback e limites do agente. A IA não pode publicar sem aprovação do proprietário. Segredos/API keys ficam fora do prompt. O cliente deve conseguir editar fatos, tom de voz, FAQs, serviços, regras de agenda e condições de transferência para humano.
+
+A feature é uma fase de produto comercial posterior às correções de segurança/tenancy/confiabilidade, mas o MVP pode funcionar localmente usando o agente nativo atual, sem depender da PAPI Cloud.
+
+Se “Jev” for uma ferramenta específica, confirmar qual produto/serviço o usuário quis dizer antes de criar dependência; o roadmap permanece vendor-neutral por enquanto.

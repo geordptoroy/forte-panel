@@ -40,3 +40,58 @@ Migration: `drizzle-pg/0015_agent_effects.sql`.
 Validação: `pnpm check`, `pnpm test` (39 aprovados; 13 ignorados), `pnpm build`, journal JSON e diff check passaram.
 
 Limitações para a próxima etapa: teste PostgreSQL real de crash/concorrência, estado `unknown` depois de mutação antes de persistir o resultado e fencing de handoff humano.
+
+## Visão de produto comercial — Onboarding Conversacional Assistido por IA
+
+A experiência final desejada é permitir que um cliente configure o Forte Panel sem precisar entender variáveis de ambiente, prompts ou detalhes técnicos. Depois do login inicial, um chat de onboarding conversa com o responsável pela empresa e descobre, em linguagem natural:
+
+- nome, segmento e região da empresa;
+- serviços oferecidos;
+- público e perfil dos clientes;
+- diferenciais, restrições e políticas comerciais;
+- horários, profissionais e regras de agenda;
+- tom de voz desejado;
+- perguntas frequentes e respostas aprovadas;
+- limites do agente e situações que exigem atendimento humano;
+- canais/instâncias de WhatsApp que serão conectados.
+
+O resultado não deve ser um prompt livre salvo diretamente. O fluxo recomendado é:
+
+```text
+chat de descoberta
+→ perfil estruturado da empresa
+→ rascunho de system prompt + políticas
+→ revisão visual pelo proprietário
+→ simulação de conversas
+→ aprovação explícita
+→ publicação de versão do agente
+```
+
+### Nome recomendado
+
+Nome técnico da feature: **Onboarding Conversacional Assistido por IA**.
+
+Nomes comerciais possíveis:
+
+- **Configuração Inteligente**;
+- **Assistente de Ativação**;
+- **Setup Guiado por IA**;
+- **DNA da Empresa** — nome mais marcante para o perfil estruturado.
+
+Se “Jev” for o nome de uma ferramenta/produto específico que o usuário tem em mente, validar o contrato e a licença antes de adotá-lo. Por enquanto, o roadmap usa o nome genérico e independente de fornecedor.
+
+### Requisitos de segurança e produto
+
+- O proprietário continua sendo o único aprovador final.
+- A IA pode sugerir, mas não publica configuração comercial sem aprovação.
+- Toda publicação gera uma versão do prompt e permite rollback.
+- Segredos, API keys e credenciais nunca entram no prompt.
+- O chat deve separar fatos informados pelo cliente de sugestões inferidas pela IA.
+- O cliente pode editar qualquer resposta antes da publicação.
+- O agente deve ter limites explícitos: quando transferir para humano, o que não pode prometer e quais ações exigem confirmação.
+- Deve existir preview/teste com conversas simuladas antes de ativar.
+- O perfil estruturado deve ser reutilizável por prompt, FAQ, treinamento, mensagens e futuras campanhas.
+
+### Fase planejada
+
+Esta é uma fase de **produto comercial**, depois da contenção de segurança, tenancy, confiabilidade do worker e ledger/handoff do agente. O primeiro MVP pode ser implementado sem provisionamento Cloud: usar o agente nativo existente, salvar o perfil estruturado e gerar uma versão revisável do prompt.
