@@ -724,9 +724,14 @@ export async function setDefaultPapiInstance(workspaceId: number, id: number) {
 
 export async function getDefaultWhatsappProvider(workspaceId: number): Promise<WhatsappProvider> {
   const db = await getDb();
-  if (!db) return "papi";
+  const baileysConfigured = Boolean(
+    process.env.BAILEYS_BASE_URL?.trim() && process.env.BAILEYS_API_KEY?.trim()
+  );
+  if (!db) return baileysConfigured ? "baileys" : "papi";
   const setting = await db.select().from(workspaceSettings).where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "default_whatsapp_provider"))).limit(1);
-  return setting[0]?.value === "meta_cloud_api" ? "meta_cloud_api" : "papi";
+  if (setting[0]?.value === "meta_cloud_api") return "meta_cloud_api";
+  if (setting[0]?.value === "baileys") return "baileys";
+  return baileysConfigured ? "baileys" : "papi";
 }
 
 export async function setDefaultWhatsappProvider(workspaceId: number, provider: WhatsappProvider) {
@@ -1796,6 +1801,11 @@ export async function ingestInboundWhatsApp(workspaceId: number, input: { eventI
     senderType: fromMe ? "human" : "lead",
     messageType: input.messageType ?? "text",
     content: input.content,
+    provider: input.metadata?.provider === "baileys"
+      ? "baileys"
+      : input.metadata?.provider === "meta_cloud_api"
+        ? "meta_cloud_api"
+        : await getDefaultWhatsappProvider(workspace.id),
     metadata: input.metadata,
     status: "received",
     createdAt: receivedAt,
