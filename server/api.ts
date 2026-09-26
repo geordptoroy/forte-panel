@@ -1092,23 +1092,19 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
         "idempotency_conflict"
       );
     if (registered.duplicate)
-      return res
-        .status(200)
-        .json({
-          accepted: true,
-          duplicate: true,
-          eventId: parsed.data.eventId,
-        });
+      return res.status(200).json({
+        accepted: true,
+        duplicate: true,
+        eventId: parsed.data.eventId,
+      });
     const result = await ingestInboundWhatsApp(workspaceId, parsed.data);
     await markWebhookEvent(workspaceId, parsed.data.eventId, "processed");
-    return res
-      .status(202)
-      .json({
-        accepted: true,
-        duplicate: result.duplicate === true,
-        eventId: parsed.data.eventId,
-        data: result,
-      });
+    return res.status(202).json({
+      accepted: true,
+      duplicate: result.duplicate === true,
+      eventId: parsed.data.eventId,
+      data: result,
+    });
   } catch (error) {
     await markWebhookEvent(workspaceId, parsed.data.eventId, "failed");
     return fail(
@@ -1164,14 +1160,12 @@ async function handlePapiWebhook(
       (normalized.metadata?.instanceId as string | undefined);
     eventId = normalized.eventId;
     if (normalized.metadata?.isGroup === true)
-      return res
-        .status(202)
-        .json({
-          accepted: true,
-          ignored: true,
-          reason: "group_message",
-          eventId: normalized.eventId,
-        });
+      return res.status(202).json({
+        accepted: true,
+        ignored: true,
+        reason: "group_message",
+        eventId: normalized.eventId,
+      });
     if (normalized.phone.length < 8 || !normalized.content.trim())
       return fail(
         res,
@@ -1205,15 +1199,13 @@ async function handlePapiWebhook(
       },
     });
     await markWebhookEvent(workspaceId, normalized.eventId, "processed");
-    return res
-      .status(202)
-      .json({
-        accepted: true,
-        duplicate: result.duplicate === true,
-        eventId: normalized.eventId,
-        instanceId,
-        data: result,
-      });
+    return res.status(202).json({
+      accepted: true,
+      duplicate: result.duplicate === true,
+      eventId: normalized.eventId,
+      instanceId,
+      data: result,
+    });
   } catch (error) {
     await markWebhookEvent(workspaceId, eventId, "failed");
     return fail(
@@ -1252,14 +1244,12 @@ async function handleBaileysWebhook(req: Request, res: Response) {
     const normalized = getWhatsappAdapter("baileys").normalizeInbound(req.body);
     eventId = normalized.eventId;
     if (normalized.metadata?.isGroup === true)
-      return res
-        .status(202)
-        .json({
-          accepted: true,
-          ignored: true,
-          reason: "group_message",
-          eventId,
-        });
+      return res.status(202).json({
+        accepted: true,
+        ignored: true,
+        reason: "group_message",
+        eventId,
+      });
     if (normalized.phone.length < 8 || !normalized.content.trim())
       return fail(
         res,
@@ -1287,14 +1277,12 @@ async function handleBaileysWebhook(req: Request, res: Response) {
       metadata: { ...(normalized.metadata ?? {}), provider: "baileys" },
     });
     await markWebhookEvent(workspaceId, eventId, "processed");
-    return res
-      .status(202)
-      .json({
-        accepted: true,
-        duplicate: result.duplicate === true,
-        eventId,
-        data: result,
-      });
+    return res.status(202).json({
+      accepted: true,
+      duplicate: result.duplicate === true,
+      eventId,
+      data: result,
+    });
   } catch (error) {
     await markWebhookEvent(workspaceId, eventId, "failed");
     return fail(
