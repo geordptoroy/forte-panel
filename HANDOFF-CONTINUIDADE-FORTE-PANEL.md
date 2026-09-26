@@ -731,7 +731,7 @@ Foi implementada a primeira camada de proteção operacional para o beta.
 ### Rate limit por workspace
 
 - Nova tabela `workspaceUsageBuckets`, com buckets de 1 minuto por workspace.
-- Métricas persistidas: `apiRequests`, `aiRequests` e `outboundMessages`.
+- Estrutura preparada para `apiRequests`, `aiRequests` e `outboundMessages`; nesta etapa os contadores efetivamente consumidos são REST e IA, enquanto outbound fica reservado para a próxima camada de fila/cota.
 - Contador usa update atômico condicionado ao limite, evitando que requisições concorrentes ultrapassem a cota.
 - API REST vinculada a workspace aplica `FORTE_WORKSPACE_API_REQUESTS_PER_MINUTE` e responde `429 workspace_rate_limited` com `X-RateLimit-Limit`, `X-RateLimit-Remaining` e `Retry-After`.
 - Worker aplica `FORTE_WORKSPACE_AI_REQUESTS_PER_MINUTE` antes de executar o agente. Ao atingir o limite, o evento retorna para `pending` com `availableAt` no próximo intervalo, sem ser descartado.
