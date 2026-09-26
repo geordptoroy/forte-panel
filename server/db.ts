@@ -1860,7 +1860,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
 
   let delivered = 0;
   let failed = 0;
-  const debounceMsRaw = Number(process.env.AGENT_DEBOUNCE_MS ?? process.env.N8N_DEBOUNCE_MS ?? 1500);
+  const debounceMsRaw = Number(process.env.AGENT_DEBOUNCE_MS ?? 1500);
   const debounceMs = Number.isFinite(debounceMsRaw) && debounceMsRaw >= 0 ? Math.min(debounceMsRaw, 30_000) : 1500;
   for (const item of pending) {
     const leaseUntil = new Date(Date.now() + DOMAIN_EVENT_LEASE_MS);

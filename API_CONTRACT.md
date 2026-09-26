@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-A API versionada permite que n8n, sites, anúncios e integrações externas operem o CRM sem acessar o banco. O Forte Panel continua sendo a fonte de verdade para contatos, agenda, funil e auditoria.
+A API versionada permite que sites e integrações autorizadas operem o CRM sem acessar o banco. O Forte Panel continua sendo a fonte de verdade para contatos, agenda, funil e auditoria.
 
 ## Provedores WhatsApp
 
@@ -12,7 +12,7 @@ O adapter PAPI usa `PAPI_BASE_URL` e `PAPI_API_KEY`. O adapter Meta usa `META_GR
 
 ## Autenticação
 
-As requisições privadas usam `Authorization: Bearer <FORTE_API_KEY>`. A chave fica somente no n8n/servidor e nunca no bundle do navegador. Em produção, a chave deverá ser criada por workspace e armazenada com hash; o primeiro adaptador usa uma chave de ambiente para preparar o contrato sem expor credenciais.
+As requisições privadas usam `Authorization: Bearer <FORTE_API_KEY>`. A chave fica somente em sistemas de servidor autorizados e nunca no bundle do navegador. Em produção, a chave deverá ser criada por workspace e armazenada com hash; o primeiro adaptador usa uma chave de ambiente para preparar o contrato sem expor credenciais.
 
 ## Idempotência
 
@@ -27,14 +27,14 @@ Toda operação mutável aceita `Idempotency-Key`. A mesma chave não pode execu
 | `GET` | `/api/v1/onboarding/prompt` | Buscar o prompt operacional publicado da empresa |
 | `POST` | `/api/v1/contacts/upsert` | Criar ou atualizar lead por telefone |
 | `GET` | `/api/v1/contacts/:id` | Consultar contexto operacional do contato |
-| `POST` | `/api/v1/lead-memory` | Buscar, criar, atualizar lead ou registrar nota para o n8n |
+| `POST` | `/api/v1/lead-memory` | Buscar, criar, atualizar lead ou registrar nota no CRM |
 | `GET` | `/api/v1/availability` | Consultar serviços, profissionais ativos e horários futuros reais |
 | `POST` | `/api/v1/appointments` | Criar reserva com checagem de conflito |
 | `POST` | `/api/v1/messages` | Enfileirar texto, áudio PTT ou botões para o worker e registrar no histórico |
 | `PATCH` | `/api/v1/contacts/:id/stage` | Mover contato no funil com auditoria |
 | `POST` | `/api/v1/appointments/:id/cancel` | Cancelar reserva |
 | `POST` | `/api/v1/appointments/:id/reschedule` | Reagendar reserva com checagem de conflito |
-| `POST` | `/api/v1/webhooks/inbound/whatsapp` | Receber evento normalizado do PAPI/n8n |
+| `POST` | `/api/v1/webhooks/inbound/whatsapp` | Receber evento normalizado do provider WhatsApp |
 
 ## Agenda, serviços e profissionais
 
@@ -50,9 +50,9 @@ Cada profissional traz `serviceIds` e `weeklyAvailability` (faixas com `weekday`
 
 O evento deve conter `eventId`, `phone`, `content` e `receivedAt`; `name`, `messageType` e `metadata` são opcionais. Toda requisição exige `Idempotency-Key` igual ao `eventId`; o `eventId` deve ser único por instância/canal. Ele também é gravado em `messages.externalId` sob índice único, impedindo duplicação no histórico mesmo se um processamento anterior falhar depois da gravação. A mesma chave com outro payload retorna conflito. Eventos com status `failed` podem ser reprocessados; eventos em `received` ou `processed` são tratados como duplicados. O endpoint poderá exigir `X-Webhook-Signature` com HMAC quando `WEBHOOK_SIGNING_SECRET` estiver configurado.
 
-### Substituição da Lead Memory Tool
+### Operações de memória comercial
 
-O workflow n8n usa o node `Forte Panel Tool` como fonte única para CRM, anotações e agenda; não deve manter uma segunda base privada de estado do lead. A API equivalente para outros clientes é `POST /api/v1/lead-memory`, que aceita `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota` com `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`.
+Use o Forte Panel como fonte única para CRM, anotações e agenda; não mantenha uma segunda base privada de estado do lead. A API disponível para clientes autorizados é `POST /api/v1/lead-memory`, que aceita `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota` com `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`.
 
 Mensagens enviadas por `POST /api/v1/messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio. Toda mutação exige `Idempotency-Key`; retries iguais retornam a resposta original e o mesmo key com body diferente conflita. O payload aceita `contactId` ou `phone`, `provider`, `senderType: "ai" | "human"` (padrão `human`), `messageType` e `instanceId`. Para PAPI, o fluxo repassa o `instanceId` recebido pelo webhook, ou o servidor usa `PAPI_INSTANCE_ID` como fallback. Mensagens `ai` não desligam `aiEnabled` nem ativam `humanControlled`; mensagens `human` mantêm o comportamento de takeover do painel.
 
@@ -64,9 +64,7 @@ PAPI suporta estes formatos no worker:
 | `audio` | URL acessível ao serviço PAPI | `{ "ptt": true }` (padrão) | `POST /api/instances/:instanceId/send-audio` |
 | `button` | Texto do corpo | `buttons` (1–3 objetos `{ "id", "displayText" }`), `footer?`, `headerType?` | `POST /api/instances/:instanceId/send-buttons` |
 
-O adapter usa o cabeçalho `x-api-key`, igual ao community node PAPI no workflow. Outros tipos não textuais não são aceitos pela Meta Cloud API neste worker e retornam `422` no enqueue. O worker recupera jobs presos após reinício e tenta novamente até `WORKER_MAX_ATTEMPTS` antes de marcar `failed`. A chave idempotente protege a fila do painel; a confirmação final de entrega depende da resposta do provedor.
-
-O n8n pode consultar `GET /onboarding/prompt` no início de uma execução para usar somente a versão publicada pelo administrador. O endpoint nunca devolve um rascunho não publicado.
+O adapter usa o cabeçalho `x-api-key`, conforme o contrato da API PAPI. Outros tipos não textuais não são aceitos pela Meta Cloud API neste worker e retornam `422` no enqueue. O worker recupera jobs presos após reinício e tenta novamente até `WORKER_MAX_ATTEMPTS` antes de marcar `failed`. A chave idempotente protege a fila do painel; a confirmação final de entrega depende da resposta do provedor.
 
 ```json
 {
@@ -78,12 +76,6 @@ O n8n pode consultar `GET /onboarding/prompt` no início de uma execução para 
   "receivedAt": "2026-09-24T12:00:00.000Z"
 }
 ```
-
-## Eventos publicados pelo worker
-
-Quando `N8N_EVENTS_WEBHOOK_URL` está configurada, o worker publica `message.received`, `message.sent`, `contact.created`, `stage.changed`, `appointment.created` e `appointment.cancelled` como eventos JSON para o n8n. O outbox PostgreSQL mantém a entrega pendente, em processamento, entregue ou falha definitiva; cada tentativa possui contador, erro e `availableAt` para backoff exponencial.
-
-Cada requisição inclui `X-Forte-Event-Id`, `Idempotency-Key` com o mesmo identificador do evento e, quando `N8N_WEBHOOK_SECRET` está configurado, `X-Forte-Signature: sha256=<HMAC-SHA256 do corpo bruto>`. O timeout é controlado por `N8N_WEBHOOK_TIMEOUT_MS`; após `EVENT_WORKER_MAX_ATTEMPTS`, o evento permanece como `failed` para reprocessamento operacional.
 
 ## Notificações internas
 

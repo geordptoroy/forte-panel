@@ -77,7 +77,7 @@ export default function OnboardingPage() {
   const providerLabel: Record<ProviderId, string> = { nvidia_nim: "NVIDIA NIM", google_gemini: "Google Gemini", openai_compatible: "Outro OpenAI-compatible" };
   const updateProvider = (id: ProviderId, patch: Partial<AgentConfig["llm"]["providers"][ProviderId]>) => setAgentConfig((current) => ({ ...current, llm: { ...current.llm, providers: { ...current.llm.providers, [id]: { ...current.llm.providers[id], ...patch } } } }));
   const updateRoute = (capability: Capability, patch: Partial<AgentConfig["llm"]["routing"][Capability]>) => setAgentConfig((current) => ({ ...current, llm: { ...current.llm, routing: { ...current.llm.routing, [capability]: { ...current.llm.routing[capability], ...patch } } } }));
-  return <PanelLayout eyebrow="Sistema / Configuração" title="Agente e configuração da empresa" description="O agente nativo do Forte Panel atende, agenda, registra dados e envia pelo WhatsApp sem depender do n8n.">
+  return <PanelLayout eyebrow="Sistema / Configuração" title="Agente e configuração da empresa" description="O agente nativo do Forte Panel atende, agenda, registra dados e envia pelo WhatsApp.">
     <section className="surface" style={{ padding: 22, marginBottom: 18 }}>
       <SectionTitle eyebrow="Agente nativo" title="Modelo, prompt e credenciais" />
       <div className="demo-banner" style={{ marginBottom: 16 }}><Info size={14} /><span>As chaves de API continuam protegidas no ambiente do servidor. Esta tela altera o comportamento do agente, não expõe segredos.</span></div>

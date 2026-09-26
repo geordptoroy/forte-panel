@@ -20,24 +20,6 @@ services:
       timeout: 5s
       retries: 5
 
-  postgres_n8n:
-    image: postgres:15-alpine
-    container_name: postgres_n8n
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${N8N_POSTGRES_USER:-n8n}
-      POSTGRES_PASSWORD: ${N8N_POSTGRES_PASSWORD:?N8N_POSTGRES_PASSWORD is required}
-      POSTGRES_DB: ${N8N_POSTGRES_DB:-n8n}
-    volumes:
-      - postgres_n8n_data:/var/lib/postgresql/data
-    networks:
-      - pastorini-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U n8n"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   postgres_panel:
     image: postgres:16-alpine
     container_name: postgres_panel
@@ -86,42 +68,7 @@ services:
       retries: 10
 
   # ============================================================================
-  # ORQUESTRADOR DE AUTOMAÇÕES (N8N)
   # ============================================================================
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: n8n
-    restart: unless-stopped
-    ports:
-      - "${N8N_PORT_PUBLIC:-5678}:5678"
-    environment:
-      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-America/Sao_Paulo}
-      - TZ=${TZ:-America/Sao_Paulo}
-      - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgres_n8n
-      - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=${N8N_POSTGRES_DB:-n8n}
-      - DB_POSTGRESDB_USER=${N8N_POSTGRES_USER:-n8n}
-      - DB_POSTGRESDB_PASSWORD=${N8N_POSTGRES_PASSWORD:?N8N_POSTGRES_PASSWORD is required}
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:?N8N_BASIC_AUTH_USER is required}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:?N8N_BASIC_AUTH_PASSWORD is required}
-      - N8N_HOST=${N8N_HOST:-n8n}
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://n8n:5678}
-      - N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/nodes/node_modules/n8n-nodes-forte-panel
-      - N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true
-      - N8N_AI_TIMEOUT=${N8N_AI_TIMEOUT:-3600000}
-    volumes:
-      - n8n_data:/home/node/.n8n
-      - ${N8N_AUDIO_HOST_PATH:-./audios}:/home/node/midias
-    depends_on:
-      postgres_n8n:
-        condition: service_healthy
-    networks:
-      - pastorini-network
-
   # ============================================================================
   # CANAL DE COMUNICAÇÃO (WHATSAPP)
   # ============================================================================
@@ -190,11 +137,6 @@ services:
       PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
       PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
       PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:?PAPI_WEBHOOK_SECRET is required}
-      N8N_BASE_URL: http://n8n:5678
-      N8N_EVENTS_WEBHOOK_URL: ${N8N_EVENTS_WEBHOOK_URL:-http://n8n:5678/webhook/forte-panel-event}
-      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:?N8N_WEBHOOK_SECRET is required}
-      N8N_WEBHOOK_TIMEOUT_MS: ${N8N_WEBHOOK_TIMEOUT_MS:-10000}
-      N8N_DEBOUNCE_MS: ${N8N_DEBOUNCE_MS:-1500}
       META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
       META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
       META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
@@ -204,8 +146,6 @@ services:
       redis_panel:
         condition: service_healthy
       pastorini_api:
-        condition: service_started
-      n8n:
         condition: service_started
     networks:
       - pastorini-network
@@ -235,11 +175,6 @@ services:
       PAPI_API_KEY: ${PAPI_API_KEY:?PAPI_API_KEY is required}
       PAPI_SEND_MESSAGE_PATH: ${PAPI_SEND_MESSAGE_PATH:-/messages}
       PAPI_WEBHOOK_SECRET: ${PAPI_WEBHOOK_SECRET:?PAPI_WEBHOOK_SECRET is required}
-      N8N_BASE_URL: http://n8n:5678
-      N8N_EVENTS_WEBHOOK_URL: ${N8N_EVENTS_WEBHOOK_URL:-http://n8n:5678/webhook/forte-panel-event}
-      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:?N8N_WEBHOOK_SECRET is required}
-      N8N_WEBHOOK_TIMEOUT_MS: ${N8N_WEBHOOK_TIMEOUT_MS:-10000}
-      N8N_DEBOUNCE_MS: ${N8N_DEBOUNCE_MS:-1500}
       META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
       META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
       META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
@@ -269,7 +204,5 @@ volumes:
   redis_papi_data:
   pastorini_sessions:
   pastorini_media:
-  postgres_n8n_data:
-  n8n_data:
   postgres_panel_data:
   redis_panel_data:

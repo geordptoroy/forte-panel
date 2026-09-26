@@ -3,7 +3,7 @@
 **Data do handoff:** 2026-09-25 21:02 (America/Sao_Paulo)
 **Repositório:** `geordptoroy/forte-panel`
 **Branch:** `main`
-**HEAD no handoff original:** `d026f05`; HEAD verificado nesta revisão: `0d66201`.
+**HEAD verificado antes desta alteração:** `23ebd08`; conferir novamente após publicar esta revisão.
 **Remote:** `https://github.com/geordptoroy/forte-panel.git`
 **Usuário precisa poder entregar esta conversa a outra IA sem repetir contexto.**
 
@@ -21,7 +21,6 @@ O Forte Panel é um CRM/atendimento WhatsApp com:
 - agente nativo conectado a provedores LLM;
 - integração PAPI WhatsApp self-hosted hoje;
 - integração futura PAPI Cloud;
-- integração n8n e Meta prevista;
 - a decisão histórica de login administrativo/proprietário único foi substituída em 2026-09-25 pela estratégia de produto público multi-conta, master + funcionários, registrada em `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
 
 Decisão histórica: desenvolvimento local no Docker/WSL, pensando em produto comercial hospedado. A decisão vigente é construir o app completo para público final e começar por tenancy/login seguro; opções de hospedagem e cobrança são decisões posteriores. PostgreSQL continua como banco de negócio.
@@ -61,6 +60,7 @@ b2fbd76 fix(api): claim idempotency keys atomically
 dd34c28 feat(agent): add idempotent tool effect ledger
 d026f05 docs: preserve full handoff history
 0d66201 docs: add branded interface improvement roadmap
+23ebd08 docs: plan public multi-account product
 ```
 
 No momento do handoff:
@@ -432,7 +432,6 @@ A auditoria completa está em `AUDITORIA-TECNICA-E-ROADMAP.md`. Não marcar como
 11. Transportar mídia real para LLM ou encaminhar para humano quando não houver capacidade.
 12. Converter falha de tool em resultado estruturado/fallback seguro.
 13. Corrigir duplicação/papéis/status do histórico do agente.
-14. Confirmar dispatch n8n para todos eventos relevantes.
 15. Completar Meta inbound/challenge/assinatura ou remover promessa de suporte.
 16. Adicionar health/readiness, logs estruturados, correlation ID, métricas e alertas.
 17. CI com PostgreSQL, integração, E2E, scan e smoke automatizado.

@@ -56,4 +56,4 @@ A mensagem continua sendo registrada no PostgreSQL. O worker marca o processamen
 
 ## Documentação do projeto
 
-As decisões de arquitetura e os comandos de atualização continuam documentados em `ATUALIZACAO-STACK-DESENVOLVIMENTO.md`. Esta separação permite adicionar futuramente transcrição dedicada, OCR, embeddings, busca semântica e modelos especializados sem voltar a depender do n8n.
+As decisões de arquitetura e os comandos de atualização continuam documentados em `ATUALIZACAO-STACK-DESENVOLVIMENTO.md`. Esta separação permite adicionar futuramente transcrição dedicada, OCR, embeddings, busca semântica e modelos especializados mantendo o processamento no agente nativo.

@@ -20,24 +20,6 @@ services:
       timeout: 5s
       retries: 5
 
-  postgres_n8n:
-    image: postgres:15-alpine
-    container_name: postgres_n8n
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: n8n
-      POSTGRES_PASSWORD: n8n123
-      POSTGRES_DB: n8n
-    volumes:
-      - postgres_n8n_data:/var/lib/postgresql/data
-    networks:
-      - pastorini-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U n8n"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   postgres_panel:
     image: postgres:16-alpine
     container_name: postgres_panel
@@ -86,42 +68,7 @@ services:
       retries: 10
 
   # ============================================================================
-  # ORQUESTRADOR DE AUTOMAÇÕES (N8N)
   # ============================================================================
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: n8n
-    restart: unless-stopped
-    ports:
-      - "5678:5678"
-    environment:
-      - GENERIC_TIMEZONE=America/Sao_Paulo
-      - TZ=America/Sao_Paulo
-      - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgres_n8n
-      - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=n8n
-      - DB_POSTGRESDB_USER=n8n
-      - DB_POSTGRESDB_PASSWORD=n8n123
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=admin123
-      - N8N_HOST=n8n
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      - WEBHOOK_URL=http://n8n:5678
-      - N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true
-      - N8N_AI_TIMEOUT=3600000
-      - N8N_CUSTOM_EXTENSIONS=@aorizondo/n8n-nodes-evolution,n8n-evolution-tools,n8n-nodes-mcp
-    volumes:
-      - n8n_data:/home/node/.n8n
-      - /mnt/c/Users/Rafae/Desktop/audios:/home/node/midias
-    depends_on:
-      postgres_n8n:
-        condition: service_healthy
-    networks:
-      - pastorini-network
-
   # ============================================================================
   # CANAL DE COMUNICAÇÃO (WhatsApp)
   # ============================================================================
@@ -183,10 +130,6 @@ services:
       REDIS_URL: redis://redis_panel:6379/0
       PAPI_BASE_URL: http://pastorini_api:3000
       PAPI_API_KEY: "teste123"
-      N8N_BASE_URL: http://n8n:5678
-      N8N_EVENTS_WEBHOOK_URL: ""
-      N8N_WEBHOOK_SECRET: ""
-      N8N_WEBHOOK_TIMEOUT_MS: "10000"
       RUN_MIGRATIONS: "true"
     depends_on:
       postgres_panel:
@@ -194,8 +137,6 @@ services:
       redis_panel:
         condition: service_healthy
       pastorini_api:
-        condition: service_started
-      n8n:
         condition: service_started
     networks:
       - pastorini-network
@@ -215,10 +156,6 @@ services:
       PAPI_BASE_URL: http://pastorini_api:3000
       PAPI_API_KEY: "teste123"
       PAPI_SEND_MESSAGE_PATH: /messages
-      N8N_BASE_URL: http://n8n:5678
-      N8N_EVENTS_WEBHOOK_URL: ""
-      N8N_WEBHOOK_SECRET: ""
-      N8N_WEBHOOK_TIMEOUT_MS: "10000"
       EVENT_WORKER_BATCH_SIZE: "10"
       EVENT_WORKER_MAX_ATTEMPTS: "5"
       WORKER_INTERVAL_MS: "1500"
@@ -245,7 +182,5 @@ volumes:
   redis_papi_data:
   pastorini_sessions:
   pastorini_media:
-  postgres_n8n_data:
-  n8n_data:
   postgres_panel_data:
   redis_panel_data:

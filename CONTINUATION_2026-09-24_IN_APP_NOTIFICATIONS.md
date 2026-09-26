@@ -51,7 +51,6 @@ A validação visual usou notificações manuais temporárias numa instalação 
 
 ## Próximos passos
 
-A sequência recomendada passa a ser importar e exercitar o workflow real do n8n contra a API do Panel, adicionar uma tela administrativa segura para visualizar/reprocessar eventos do outbox em estado `failed` e testar a stack reduzida em uma máquina com Docker. Antes de qualquer deploy, substituir os segredos em texto puro do compose, configurar proxy HTTPS e evoluir a autenticação de API para chave com hash por workspace.
 
 Notificações externas não estão implementadas, por decisão de produto: o escopo escolhido foi a caixa dentro do painel.
 
@@ -69,7 +68,6 @@ A suíte `server/notifications.test.ts` e os testes de isolamento de profissiona
 ## Próxima sessão
 
 1. Ler este documento, `todo.md` e `API_CONTRACT.md`.
-2. Priorizar a importação do workflow real n8n e a validação com a stack reduzida.
 3. Manter a implementação de notificações restrita ao painel até uma futura decisão explícita de canal externo.
 4. Não usar o banco de produção para fixtures de teste; as verificações de integração devem receber `DATABASE_URL` de teste isolado.
 5. Encerrar servidores locais de preview depois da validação, em vez de deixá-los como processos residentes.

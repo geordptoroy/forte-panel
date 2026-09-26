@@ -1,1 +1,0 @@
-export { FortePanelAtualizarLead } from './FortePanelOperations';

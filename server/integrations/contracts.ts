@@ -1,4 +1,4 @@
-export type IntegrationName = "papi" | "meta_cloud_api" | "n8n" | "qdrant" | "localai";
+export type IntegrationName = "papi" | "meta_cloud_api" | "qdrant" | "localai";
 export type WhatsappProvider = "papi" | "meta_cloud_api";
 
 export type IntegrationHealth = {
@@ -32,23 +32,6 @@ export type OutboundMessageCommand = {
   provider?: WhatsappProvider;
 };
 
-export type WorkflowCommand = {
-  idempotencyKey: string;
-  event: string;
-  contactId: number;
-  payload: Record<string, unknown>;
-};
-
-export type DomainEventCommand = {
-  eventId: string;
-  event: string;
-  workspaceId: number;
-  aggregateType: string;
-  aggregateId?: number;
-  payload: Record<string, unknown>;
-  occurredAt: Date;
-};
-
 export type AppointmentSlot = {
   id: number;
   startsAt: Date;
@@ -71,12 +54,6 @@ export interface PapiAdapter extends WhatsappAdapter {
 
 export interface MetaCloudApiAdapter extends WhatsappAdapter {
   provider: "meta_cloud_api";
-}
-
-export interface N8nAdapter {
-  health(): Promise<IntegrationHealth>;
-  dispatch(command: WorkflowCommand): Promise<{ accepted: boolean; executionId?: string }>;
-  dispatchEvent(command: DomainEventCommand): Promise<{ accepted: boolean; executionId?: string }>;
 }
 
 export interface VectorMemoryAdapter {

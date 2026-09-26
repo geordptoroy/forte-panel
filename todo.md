@@ -13,7 +13,7 @@
 - Adapters de WhatsApp PAPI e Meta Cloud API, seleção de canal por workspace e worker separado.
 - Multiusuário interno com hash de senha, memberships e papéis base; telas iniciais de Equipe/Configurações e notificações internas.
 - Ledger idempotente das tools de agente e melhorias de leases do worker.
-- Compose, migrations, documentação local, n8n e infraestrutura registrados nos docs existentes.
+- Compose, migrations, documentação local e infraestrutura registrados nos docs existentes.
 - Uma inspeção anterior registrou typecheck/build/tests passando, incluindo 39 testes e 13 suites ignoradas por integrações externas; reexecutar no próximo bloco. Não tomar essa contagem histórica como prova de cobertura PostgreSQL.
 
 ## Direção de produto aprovada

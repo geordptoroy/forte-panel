@@ -59,7 +59,6 @@ Perfil operacional: human_attendant
 Profissional vinculado: nenhum
 ```
 
-A IA não precisa ser um usuário humano com senha. Ela pode continuar sendo o agente conectado ao n8n.
 
 ### Três fontes de contexto do agente
 
@@ -69,7 +68,6 @@ Lead Memory Tool = estado estruturado e resumo do lead
 Forte Panel Tool = CRM oficial, notas operacionais e agenda
 ```
 
-A Lead Memory Tool deve estar publicada no n8n. Ela possui as ações `ler`, `atualizar` e `registrar_evento`. A Forte Panel Tool possui as ações de CRM e agenda. Nenhuma das duas deve repetir a mesma operação.
 
 ## O que já foi confirmado
 
@@ -374,20 +372,17 @@ Antes de continuar, revisar estes pontos:
 7. O login local ainda depende de `LOCAL_AUTH_ENABLED` e da configuração atual do Compose; validar se essa regra deve continuar para todas as contas ou apenas para o bootstrap administrativo.
 8. A migration não foi aplicada.
 9. Ainda não foram executados `pnpm test` e `pnpm build` depois das alterações.
-10. O workspace contém arquivos de Compose enviados pelo usuário e uma exclusão antiga do node n8n. Não apagar nem incluir esses arquivos sem revisar o status e a intenção.
 
 ## Arquivos de Compose que não devem ser confundidos
 
 O `git status` ao documentar esta etapa mostrou:
 
 ```text
-D packages/n8n-nodes-forte-panel/nodes/FortePanel/FortePanelTool.node.ts
 ?? docker-compose.corrected.yaml
 ?? docker-compose.evomain-preserved.yaml
 ?? docker-compose.yaml
 ```
 
-Esses arquivos vieram das etapas anteriores de instalação/teste do n8n e não devem ser misturados automaticamente ao commit do portal profissional.
 
 ## Ordem recomendada de implementação
 
@@ -426,7 +421,6 @@ Esses arquivos vieram das etapas anteriores de instalação/teste do n8n e não 
 3. Retornar `professionalId` real nos horários.
 4. Criar appointment somente com ID real.
 5. Atualizar Lead Memory e CRM sem duplicidade.
-6. Repetir o teste pelo n8n somente depois de publicar a Lead Memory Tool.
 
 ## Comandos para retomar
 
@@ -478,6 +472,5 @@ A etapa pode ser considerada concluída quando:
 
 ## Resumo para a próxima IA
 
-Não recomeçar o node n8n. A API real já foi consumida com sucesso. O próximo trabalho é produto e autorização: criar usuários locais no Panel, separar papel de acesso de perfil operacional, cadastrar serviços/profissionais/disponibilidade e entregar um portal de agenda filtrado no servidor para cada profissional executor.
 
 A primeira implementação incompleta desta etapa já está no workspace em `drizzle/schema.ts`, `server/db.ts`, `server/routers.ts` e na migration `drizzle-pg/0006_lumpy_night_thrasher.sql`. O TypeScript passou, mas o restante ainda precisa ser concluído e testado.

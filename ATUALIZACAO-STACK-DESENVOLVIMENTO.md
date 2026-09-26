@@ -6,19 +6,17 @@ A arquitetura operacional agora é:
 WhatsApp → PAPI → webhook do Forte Panel → PostgreSQL/worker → agente nativo → ferramentas do Forte Panel → fila → PAPI → WhatsApp
 ```
 
-O **n8n foi retirado do fluxo**. O Forte Panel concentra contatos, conversas, deduplicação, idempotência, controle humano, debounce, memória do lead, agenda, system prompt, ferramentas do agente e envio.
 
 ## Arquivos principais
 
 - `docker-compose.yaml`: compose final com PAPI, seus bancos, Forte Panel e worker.
-- `docker-compose.forte-panel-papi.yaml`: cópia explícita do compose sem serviço n8n; o container e os volumes antigos do n8n não são declarados nem alterados.
+- `docker-compose.forte-panel-papi.yaml`: Compose alternativo para Panel + PAPI.
 - `.env.forte-panel-papi.example`: modelo seguro do ambiente; preserve o `.env` atual para manter as credenciais existentes.
 - `.env`: configurações e credenciais da sua stack; não publique este arquivo.
 - `.env.stack.example`: referência sem segredos.
 - `server/native-agent.ts`: execução do agente e tools nativas.
 - `ATUALIZACAO-STACK-DESENVOLVIMENTO.md`: este procedimento.
 
-Os arquivos em `infra/n8n/` e o `.tgz` do community node são históricos da etapa de desenvolvimento e não devem ser instalados nesta etapa. O n8n existente pode continuar parado ou ligado: este compose não executa `pull`, `stop`, `rm` ou `down` nele.
 
 ## 1. Backup e atualização
 
@@ -32,7 +30,7 @@ Copy-Item .\docker-compose.yaml .\docker-compose.before-native-agent.yaml
 
 Não use `docker compose down -v`: o `-v` remove volumes e dados.
 
-O reset disponível em **Configurações → Limpeza de desenvolvimento** apaga somente os registros do workspace do Forte Panel, depois de exigir a frase `APAGAR DADOS DO FORTE PANEL` e uma confirmação do navegador. Ele não toca em nenhum container, volume ou banco do n8n.
+O reset disponível em **Configurações → Limpeza de desenvolvimento** apaga somente os registros do workspace do Forte Panel, depois de exigir a frase `APAGAR DADOS DO FORTE PANEL` e uma confirmação do navegador. Ele não toca em containers, volumes ou bancos externos.
 
 Copie o `docker-compose.yaml` final e mantenha o `.env` existente. Os volumes continuam sendo `postgres_papi_data`, `redis_papi_data`, `pastorini_sessions`, `pastorini_media`, `postgres_panel_data` e `redis_panel_data`.
 
@@ -51,7 +49,7 @@ docker compose ps
 docker compose logs --tail=120 forte-panel forte-panel-worker
 ```
 
-O comando não recria os bancos nem o Redis. O worker não deve mais procurar `N8N_EVENTS_WEBHOOK_URL`.
+O comando não recria os bancos nem o Redis. O worker processa os eventos internos do agente nativo.
 
 ## 4. Webhook do Forte Panel na PAPI
 
@@ -92,7 +90,7 @@ O agente possui ferramentas para consultar/atualizar leads, registrar notas, con
 - IA pausada ou conversa sob controle humano não dispara o agente.
 - Mensagens próximas são agrupadas pelo debounce configurado em `AGENT_DEBOUNCE_MS`.
 - A resposta é enfileirada no PostgreSQL e enviada pelo worker através do provedor padrão, atualmente PAPI.
-- O histórico e as configurações persistem no PostgreSQL; não dependem do n8n.
+- O histórico e as configurações persistem no PostgreSQL e são processados pelo backend e worker nativos.
 
 ## 7. Teste controlado
 

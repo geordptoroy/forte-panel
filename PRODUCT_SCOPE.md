@@ -58,7 +58,7 @@ Baileys é uma biblioteca independente sobre WhatsApp Web/Linked Devices, não a
 | Agenda própria | Serviços, profissionais, duração, jornada, bloqueios e confirmação | P0 |
 | Onboarding guiado | Configurar empresa, equipe, catálogo, agenda e IA sem jargão | P0 |
 | Automação | Gatilhos de mensagem, mudança de estágio, agendamento e follow-up | P1 |
-| API e webhooks | Integração por tenant com n8n, site e sistemas externos | P1 |
+| API e webhooks | API por tenant para sites e integrações autorizadas | P1 |
 | Relatórios | Conversão, resposta, ocupação, receita e equipe | P1 |
 | Planos/limites/cobrança | Limites de empresas, funcionários, conversas, automações e canais | P2, decisão posterior |
 | Gateway REST próprio | Fork PAPI autorizado ou serviço próprio Baileys | Futuro condicionado |
@@ -75,7 +75,7 @@ página do produto → cadastro de master → criação de empresa
 
 A IA pode sugerir uma configuração estruturada de empresa e agente, mas owner revisa e aprova antes de publicar. Não inserir credenciais no prompt. Simulação, versionamento e rollback fazem parte do caminho seguro.
 
-## API para n8n e providers
+## API e providers
 
 Manter endpoints versionados e webhooks assinados por tenant. A API de negócio deve incluir os endpoints existentes para contatos, mensagens, disponibilidade e agendamentos, todos autenticados, idempotentes e auditados.
 

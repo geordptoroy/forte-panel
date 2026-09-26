@@ -1,1 +1,0 @@
-export { FortePanelCriarLead } from './FortePanelOperations';

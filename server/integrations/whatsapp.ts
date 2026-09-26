@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { IntegrationHealth, InboundMessageEvent, MetaCloudApiAdapter, OutboundMessageCommand, PapiAdapter, WhatsappAdapter, WhatsappProvider } from "./contracts";
 import { ENV } from "../_core/env";
 
-function nowHealth(name: "papi" | "meta_cloud_api" | "n8n", ok: boolean, detail: string, latencyMs?: number): IntegrationHealth {
+function nowHealth(name: "papi" | "meta_cloud_api", ok: boolean, detail: string, latencyMs?: number): IntegrationHealth {
   return { name, ok, detail, latencyMs, checkedAt: new Date() };
 }
 

@@ -1,7 +1,7 @@
 # Auditoria técnica completa — Forte Panel
 
-**Data:** 2026-09-25  
-**Escopo:** segurança, autenticação/autorização, multi-tenant, backend, banco, agente nativo, PAPI/n8n/Meta, frontend, Docker, CI/CD, operação e testes.  
+**Data:** 2026-09-25
+**Escopo:** segurança, autenticação/autorização, multi-tenant, backend, banco, agente nativo, PAPI/Meta, frontend, Docker, CI/CD, operação e testes.
 **Método:** inspeção estática do repositório, revisão dos fluxos e execução de validações locais. Nenhum código de produto foi alterado para produzir este relatório.
 
 ## Resumo executivo
@@ -17,7 +17,7 @@ Entretanto, **eu não consideraria a stack pronta para produção multi-tenant c
 5. **Membros desativados ainda conseguem acessar/mutar várias rotas.**
 6. **Workspace resolvido globalmente**, não pela membership da sessão.
 7. **Idempotência check-then-act**, permitindo efeitos duplicados em concorrência.
-8. **Worker sem lease robusto**, outbox não transacional e dispatch n8n não chamado.
+8. **Worker sem lease robusto**, outbox não transacional .
 9. **Agente nativo sem idempotência de efeitos**, com corrida entre LLM e handoff humano.
 10. **Múltiplas instâncias PAPI podem responder pelo número errado**, porque o `instanceId` não é carregado até o evento do agente.
 11. **CI publica imagem sem executar testes, typecheck, build, scan ou smoke test.**
@@ -54,12 +54,12 @@ Não foi confirmado P0 nesta auditoria, mas há vários P1 que devem ser tratado
 
 **Problema:** existem credenciais, senhas, API keys, JWT/webhook secrets e outros valores sensíveis ou com aparência de utilizáveis em arquivos Compose e exemplos rastreados.
 
-**Risco:** acesso ao n8n, PostgreSQL, PAPI, API do Panel, webhooks ou provedores externos caso algum valor tenha sido usado fora de ambiente descartável.
+**Risco:** acesso ao PostgreSQL, PAPI, API do Panel, webhooks ou provedores externos caso algum valor tenha sido usado fora de ambiente descartável.
 
 **Ações:**
 
 - Considerar comprometidos todos os segredos que já foram usados.
-- Rotacionar credenciais PAPI, PostgreSQL, n8n, Panel, JWT, webhook signing e chaves de provedores.
+- Rotacionar credenciais PAPI, PostgreSQL, Panel, JWT, webhook signing e chaves de provedores.
 - Remover valores reais e defaults fracos do Git e revisar o histórico.
 - Usar `.env` fora do repositório, Docker secrets ou Secret Manager.
 - Fazer o processo falhar quando uma variável obrigatória tiver valor de exemplo.
@@ -213,7 +213,6 @@ A mensagem atual já está no histórico e é acrescentada novamente como `Nova 
 
 ## 9. Corrigir canais e integrações
 
-- O adapter n8n existe, mas o worker não chama `dispatchEvent`; eventos não relacionados a `message.received` podem ser marcados como entregues sem envio.
 - Meta tem adapter de envio, mas não possui webhook nativo completo de entrada/challenge/assinatura.
 - Credenciais PAPI/Meta são globais no ambiente, não realmente por canal/workspace.
 - Meta não tem estratégia equivalente de idempotência.
@@ -254,7 +253,7 @@ A mensagem atual já está no histórico e é acrescentada novamente como `Nova 
 - Usar imagem por digest ou SHA imutável, nunca `latest` em produção.
 - Rodar container como usuário não-root.
 - Separar redes de ingress, aplicação, banco e Redis.
-- Não publicar PAPI, n8n, PostgreSQL ou Redis diretamente.
+- Não publicar PAPI, PostgreSQL ou Redis diretamente.
 - Configurar autenticação/ACL do Redis.
 - Adicionar healthcheck real do Panel e readiness que valide banco/migrations.
 - Separar migration em job único com lock e backup verificado.

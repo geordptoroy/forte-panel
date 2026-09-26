@@ -218,11 +218,11 @@ function DevelopmentTab() {
   const phrase = "APAGAR DADOS DO FORTE PANEL";
   return <div>
     <SectionTitle eyebrow="Somente desenvolvimento" title="Limpar dados do Forte Panel" action={<StatusBadge tone="red">Ação destrutiva</StatusBadge>} />
-    <div className="demo-banner" style={{ marginBottom: 18 }}><AlertTriangle size={15} /><span>Isso apaga contatos, conversas, mensagens, agenda, serviços, profissionais, notas, eventos, configurações do agente e canais do Forte Panel. Não apaga nem acessa o n8n, seus fluxos, banco ou volumes.</span></div>
+    <div className="demo-banner" style={{ marginBottom: 18 }}><AlertTriangle size={15} /><span>Isso apaga contatos, conversas, mensagens, agenda, serviços, profissionais, notas, eventos, configurações do agente e canais do Forte Panel.</span></div>
     <p className="muted">O usuário administrador e o workspace permanecem para você entrar novamente. O botão só funciona quando você digitar exatamente:</p>
     <code style={{ display: "block", padding: 12, margin: "12px 0", background: "rgba(255,255,255,.04)" }}>{phrase}</code>
     <input className="input-control" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder={phrase} />
-    <button className="btn-primary" style={{ marginTop: 16, background: "#8f3030" }} disabled={reset.isPending || confirmation !== phrase} onClick={() => { if (window.confirm("Confirma apagar todos os dados de desenvolvimento do Forte Panel? O n8n não será alterado.")) reset.mutate({ confirmation: phrase }); }}><Trash2 size={13} /> {reset.isPending ? "Apagando..." : "Apagar dados do Forte Panel"}</button>
+    <button className="btn-primary" style={{ marginTop: 16, background: "#8f3030" }} disabled={reset.isPending || confirmation !== phrase} onClick={() => { if (window.confirm("Confirma apagar todos os dados de desenvolvimento do Forte Panel?")) reset.mutate({ confirmation: phrase }); }}><Trash2 size={13} /> {reset.isPending ? "Apagando..." : "Apagar dados do Forte Panel"}</button>
   </div>;
 }
 

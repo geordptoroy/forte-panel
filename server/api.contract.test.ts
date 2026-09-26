@@ -39,7 +39,7 @@ describe("versioned API", () => {
     expect([401, 503]).toContain(response.status);
   });
 
-  it("validates the n8n lead memory contract", async () => {
+  it("validates the CRM lead-memory contract", async () => {
     const previousKey = process.env.FORTE_API_KEY;
     process.env.FORTE_API_KEY = "test-api-key";
     try {
