@@ -343,12 +343,19 @@ a { color: inherit; text-decoration: none; }
 .ai-config-section { padding: 20px; margin-bottom: 18px; }
 .ai-section-intro { max-width: 700px; margin: -5px 0 0; color: #777; font-size: 10px; line-height: 1.5; }
 .ai-route-card { display: grid; grid-template-columns: 38px minmax(150px, .7fr) minmax(300px, 1.3fr); gap: 14px; align-items: center; }
+.ai-route-card-expanded { display: block; }
+.ai-route-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 15px; }
+.ai-route-top .ai-toggle { margin-left: auto; }
+.ai-connection-label { margin-left: auto; color: #626262; font-size: 8px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.ai-route-fields-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ai-route-fields-four .form-field { min-width: 0; }
 .ai-route-number { color: #83ae92; font-size: 10px; font-weight: 900; letter-spacing: .1em; }
 .ai-route-fields { gap: 9px; }
 .ai-recommendation { margin-top: 14px; margin-bottom: 0; }
 .ai-prompt-field { margin-top: 18px; }
 .ai-config-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 .ai-config-actions .green { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; }
+.ai-prompt-editor { min-height: 390px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.55; }
 .form-panel { padding: 19px; }
 .form-panel h3 { margin: 0 0 20px; font-size: 13px; }
 .quote-row { display: flex; align-items: flex-start; gap: 11px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.055); }
@@ -436,6 +443,9 @@ a { color: inherit; text-decoration: none; }
   .ai-provider-heading { flex-direction: column; }
   .ai-toggle { width: 100%; justify-content: space-between; }
   .ai-provider-fields, .ai-route-fields, .ai-operation-grid { grid-template-columns: 1fr; }
+  .ai-route-fields-four { grid-template-columns: 1fr; }
+  .ai-route-top { flex-wrap: wrap; }
+  .ai-route-top .ai-toggle { width: 100%; margin-left: 0; justify-content: space-between; }
   .ai-route-card { grid-template-columns: 30px 1fr; gap: 10px; }
   .ai-route-fields { grid-column: 1 / -1; }
 }

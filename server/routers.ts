@@ -938,6 +938,8 @@ export const appRouter = router({
                   "openai_compatible",
                 ]),
                 model: z.string().max(200),
+                baseUrl: z.string().max(500).optional(),
+                apiKey: z.string().max(500).optional(),
               }),
               vision: z.object({
                 provider: z.enum([
@@ -946,6 +948,8 @@ export const appRouter = router({
                   "openai_compatible",
                 ]),
                 model: z.string().max(200),
+                baseUrl: z.string().max(500).optional(),
+                apiKey: z.string().max(500).optional(),
               }),
               audio: z.object({
                 provider: z.enum([
@@ -954,6 +958,8 @@ export const appRouter = router({
                   "openai_compatible",
                 ]),
                 model: z.string().max(200),
+                baseUrl: z.string().max(500).optional(),
+                apiKey: z.string().max(500).optional(),
               }),
               document: z.object({
                 provider: z.enum([
@@ -962,6 +968,8 @@ export const appRouter = router({
                   "openai_compatible",
                 ]),
                 model: z.string().max(200),
+                baseUrl: z.string().max(500).optional(),
+                apiKey: z.string().max(500).optional(),
               }),
             }),
           }),
