@@ -33,6 +33,21 @@ import { ScheduleError } from "./schedule";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 
 const api = express.Router();
+const internalApiPaths = new Set([
+  "/health",
+  "/ready",
+  "/webhooks/providers/baileys",
+]);
+api.use((req, res, next) => {
+  const routePath = req.path.replace(/\/+$/, "") || "/";
+  if (internalApiPaths.has(routePath)) return next();
+  if (process.env.FORTE_PUBLIC_API_ENABLED === "true") return next();
+  return res.status(404).json({
+    error: "not_found",
+    message: "Endpoint não encontrado",
+  });
+});
+
 const contactSchema = z.object({
   phone: z.string().min(8).max(32),
   name: z.string().max(160).optional(),

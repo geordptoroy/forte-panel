@@ -3,6 +3,8 @@
 Este arquivo organiza a documentação do projeto e aponta qual documento consultar em cada decisão.
 
 > **Direção mais recente (2026-09-27):** consulte [`AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`](./AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md) para a auditoria de modelos/agentes, credenciais, redesign do Console Administrativo e prioridade do core pós-login **Instância e consumo**. A próxima execução deve trabalhar uma fatia por vez, com congelamento reversível das demais áreas.
+>
+> **Ambiente e integrações:** [`DEVELOPMENT-CONTEXT-AND-INTEGRATION-POLICY.md`](./DEVELOPMENT-CONTEXT-AND-INTEGRATION-POLICY.md) registra Docker/WSL/PowerShell, OCI como destino futuro, ausência de n8n, API REST empresarial fechada por padrão e preferência de commits/push por fatia.
 
 ## Começar pela continuidade
 

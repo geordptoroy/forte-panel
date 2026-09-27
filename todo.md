@@ -2,17 +2,19 @@
 
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
 **Fase de código atual:** consolidar Baileys nativo, multimídia, interface operacional e validação em staging. A migração inicial do canal já foi executada; o foco agora é hardening, E2E e produto.
+**Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
 
 ## Direção registrada — 2026-09-27: core antes do restante
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [ ] Próxima fatia de código: implementar modo reversível `CORE_ONLY_MODE` e página **Conexão da instância e consumo** como experiência principal pós-login.
-- [ ] Enquanto o modo core estiver ativo, ocultar/bloquear temporariamente as demais telas por flag central; preservar dados, código, APIs, workers e a opção de rollback. Não desativar fluxos funcionais em contas existentes sem validação separada.
+- [ ] Enquanto o modo core estiver ativo, ocultar/bloquear temporariamente as demais telas por flag central; preservar dados, código, tRPC interno, workers e callback Baileys, com rollback. A REST empresarial segue opt-in e fechada por padrão. Não desativar fluxos funcionais em contas existentes sem validação separada.
 - [ ] Validar conexão da instância e consumo (unidades e janela) antes de reabrir inbound/outbound e IA.
 - [ ] Depois do core, seguir a ordem documentada: transporte de texto → router/provider/model registry → agente WhatsApp → mídia → configurador de onboarding → Ajuda do Produto → copiloto/admin → módulos workspace, uma fatia por vez.
 - [ ] Redesenhar o Console Administrativo com o sistema visual do workspace e áreas separadas de providers/modelos, rotas/capacidades, agentes, workspaces, suporte, conhecimento e auditoria.
 - [ ] Corrigir antes de uso amplo do admin: precedência/herança global-local, contrato/normalização de endpoint, testes reais por modalidade, proveniência de configuração e rotação da chave de criptografia.
 - [ ] Separar métricas de rate-limit (janela por minuto) de tokens, custo de provider e eventual faturamento comercial.
+- [x] Desativar por padrão os endpoints REST empresariais (`FORTE_PUBLIC_API_ENABLED=false`), sem rota n8n ativa nem consumidor no frontend; manter somente health/readiness e callback interno autenticado do Baileys. O E2E manual exige opt-in explícito no servidor de staging.
 
 ## Concluído até aqui no MVP
 
@@ -20,8 +22,8 @@
 - Schema para contatos, conversas, mensagens e auditoria, seed demo idempotente e Inbox/Kanban/Contatos persistentes.
 - Pausar/reativar IA, enviar mensagem humana e takeover com auditoria.
 - Agenda nativa com serviços, profissionais, jornada semanal por fuso, conflitos, locks para reservas concorrentes e portal do profissional.
-- API v1 inicial para contatos, memória, disponibilidade, agendamentos, mensagens e webhooks; autenticação, idempotência e outbox de eventos.
-- Gateway Baileys nativo com QR, webhook assinado, mídia multimodal, envio genérico e worker separado; Meta Cloud API permanece como alternativa oficial.
+- Contrato REST v1 opcional para contatos, memória, disponibilidade, agenda e mensagens; agora fechado por padrão, com opt-in de staging para E2E. O callback interno assinado do Baileys continua ativo.
+- Gateway Baileys nativo com QR, webhook assinado, mídia multimodal, envio genérico e worker separado. O adapter Meta ainda existe como código opcional, mas não é configurado/ativado no fluxo local nem deve entrar no core atual.
 - Multiusuário interno com hash de senha, memberships e papéis base; telas iniciais de Equipe/Configurações e notificações internas.
 - Ledger idempotente das tools de agente e melhorias de leases do worker.
 - Compose, migrations, documentação local e infraestrutura registrados nos docs existentes.

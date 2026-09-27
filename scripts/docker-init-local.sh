@@ -22,8 +22,6 @@ path = Path(sys.argv[1])
 values = {
     "CHANGE_ME_LOCAL_ADMIN_PASSWORD": f"local-{secrets.token_urlsafe(18)}",
     "CHANGE_ME_JWT_SECRET": secrets.token_urlsafe(48),
-    "CHANGE_ME_FORTE_API_KEY": secrets.token_urlsafe(30),
-    "CHANGE_ME_WEBHOOK_SECRET": secrets.token_urlsafe(30),
     "CHANGE_ME_POSTGRES_PASSWORD": secrets.token_urlsafe(30),
     "CHANGE_ME_BAILEYS_API_KEY": secrets.token_urlsafe(30),
     "CHANGE_ME_BAILEYS_WEBHOOK_SECRET": secrets.token_urlsafe(30),
