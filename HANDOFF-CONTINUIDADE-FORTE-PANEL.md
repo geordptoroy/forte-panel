@@ -1363,3 +1363,12 @@ A tela `TeamPage` foi migrada de criação direta com senha para convite: owner/
 Foi criada `InviteAcceptPage` em `/invite/:token`: o funcionário informa nome e cria a própria senha; o token é enviado a `auth.acceptInvite`, e, após sucesso, a pessoa é direcionada ao login. O login foi atualizado para mencionar cadastro ou convite. O envio automático de e-mail continua desligado por decisão de produto; o link é manual/controlado nesta fase.
 
 Validação pendente deste slice: typecheck, suíte completa e build. Próximas extensões: recuperação de senha, signup público do owner, assignment de Inbox e envio transacional quando o provedor estiver configurado.
+
+
+### Auditoria de clareza e facilidade — 2026-09-27
+
+Foi criada `GUIA-UX-CLAREZA-E-FACILIDADE.md` com a revisão de produto para clientes leigos e funcionários. A maior melhoria recomendada é um checklist de primeiro acesso com um único próximo passo, progresso, autosave, “fazer depois” e retomada. A navegação deve separar configurar negócio, atender clientes, acompanhar resultados e administrar equipe.
+
+Também foram priorizados: linguagem de negócio no lugar de provider/webhook/prompt; estados vazios e erros com explicação e ação; ajuda contextual por campo; navegação inicial por papel; preview curto e simulação antes de publicar; clareza de que recebimento manual não é gateway nem confirmação bancária; separação visual entre original, transcrição, fatos, regra redigida, regra confirmada e prompt publicado.
+
+Essa auditoria é de produto/UX e não alterou comportamento de código neste slice. O próximo bloco funcional continua sendo capabilities/escopos server-side e leitura transacional da Inbox; o checklist de primeiro acesso entra como P0 de UX antes do onboarding público completo.

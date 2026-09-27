@@ -334,3 +334,29 @@ Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
 - [ ] Criar console de suporte para comparar respostas, transcrições, fatos extraídos e versões do prompt.
 - [ ] Adicionar `promptReviewComments`, `promptPublications`, `promptSimulations` e `supportAccessLogs`.
 - [ ] Registrar visualizar, baixar, corrigir, exportar, publicar e rollback; aplicar retenção, exportação e exclusão LGPD.
+
+
+## UX de clareza e facilidade — ordem de impacto
+
+Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
+
+### P0 — primeiro acesso
+
+- [ ] Criar checklist de primeiro acesso com um próximo passo único, progresso, autosave, “fazer depois” e retomada.
+- [ ] Separar visualmente configurar negócio, atender clientes, acompanhar resultados e administrar equipe.
+- [ ] Revisar termos técnicos das telas para linguagem de negócio; deixar provider, webhook, prompt e secrets somente em detalhes/suporte.
+- [ ] Reescrever estados vazios e erros com explicação, exemplo e ação de resolução.
+- [ ] Mostrar impacto antes de publicar regra, revogar convite, desativar membro, cancelar orçamento ou registrar recebimento.
+
+### P1 — onboarding e perfis
+
+- [ ] Implementar ajuda contextual “O que é isso?” para campos de serviço, horário, agenda, orçamento, recebimento e regras do bot.
+- [ ] Fazer a navegação inicial variar por papel: owner/admin no checklist da empresa, atendente na Inbox, professional em Minha agenda.
+- [ ] Implementar preview curto por bloco e simulação antes de publicar prompt; leitura completa fica opcional.
+- [ ] Medir abandono por etapa, tempo até primeira simulação, correções por bloco, erros de convite e tempo até primeira resposta.
+
+### P2 — clareza financeira e confiança na IA
+
+- [ ] Renomear o fluxo para “registrar recebimento manual” e explicar que não é gateway nem confirmação bancária.
+- [ ] Separar visualmente original, transcrição, fatos extraídos, regra redigida, regra confirmada e prompt publicado.
+- [ ] Exibir conflitos e campos faltantes em linguagem simples, com correção guiada e fallback humano.
