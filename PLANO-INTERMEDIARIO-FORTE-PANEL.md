@@ -503,3 +503,11 @@ Próximo corte: usar `stepAnswers` em uma revisão por bloco com confirmação h
 `stepAnswers` agora aparece em cards de revisão, com confirmação individual para identidade, oferta, operações e guardrails. O backend preserva confirmações quando o conteúdo não mudou, rebaixa blocos editados para `draft` e bloqueia publicação sem confirmação humana dos blocos obrigatórios.
 
 Próximo corte: adicionar confirmação para blocos opcionais e histórico de revisões, ou iniciar o desenho de consentimento/retensão para áudio. Nenhuma extração por LLM deve publicar sem passar por este mesmo gate.
+
+
+---
+## Etapa seguinte — histórico de revisões e confirmação opcional — 2026-09-27
+
+A migration `0030_onboarding_step_answer_revisions` mantém histórico imutável por bloco e a UI exibe as últimas revisões. O bloco `voice` ganhou confirmação explícita opcional; somente os quatro blocos essenciais continuam bloqueando a publicação.
+
+Próximo corte: adicionar campos `source`, `confidence`, `missing` e `conflict` ao contrato estruturado, antes de conectar qualquer transcrição de áudio ou LLM.

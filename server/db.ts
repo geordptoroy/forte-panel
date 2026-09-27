@@ -32,6 +32,7 @@ import {
   notifications,
   onboardingSessions,
   onboardingStepAnswers,
+  onboardingStepAnswerRevisions,
   passwordResetTokens,
   professionals,
   professionalServices,
@@ -2146,6 +2147,10 @@ export const requiredOnboardingStepKeys = [
   "operations",
   "guardrails",
 ] as const;
+export const confirmableOnboardingStepKeys = [
+  ...requiredOnboardingStepKeys,
+  "voice",
+] as const;
 
 export function buildOnboardingStepAnswers(profile: OnboardingProfile): OnboardingStepAnswerPayload[] {
   return [
@@ -2201,9 +2206,36 @@ async function listOnboardingStepAnswers(workspaceId: number) {
       )
     )
     .orderBy(onboardingStepAnswers.id);
+  const revisions = await db
+    .select({
+      id: onboardingStepAnswerRevisions.id,
+      stepKey: onboardingStepAnswerRevisions.stepKey,
+      answer: onboardingStepAnswerRevisions.answer,
+      status: onboardingStepAnswerRevisions.status,
+      changedBy: onboardingStepAnswerRevisions.changedBy,
+      createdAt: onboardingStepAnswerRevisions.createdAt,
+    })
+    .from(onboardingStepAnswerRevisions)
+    .where(
+      and(
+        eq(onboardingStepAnswerRevisions.workspaceId, workspaceId),
+        eq(onboardingStepAnswerRevisions.sessionId, session.id)
+      )
+    )
+    .orderBy(desc(onboardingStepAnswerRevisions.createdAt));
+  const revisionsByStep = new Map<string, typeof revisions>();
+  for (const revision of revisions) {
+    const current = revisionsByStep.get(revision.stepKey) ?? [];
+    current.push(revision);
+    revisionsByStep.set(revision.stepKey, current);
+  }
   return rows.map(row => ({
     ...row,
     answer: JSON.parse(row.answer) as Record<string, string>,
+    revisions: (revisionsByStep.get(row.stepKey) ?? []).map(revision => ({
+      ...revision,
+      answer: JSON.parse(revision.answer) as Record<string, string>,
+    })),
   }));
 }
 
@@ -2220,7 +2252,7 @@ async function persistOnboardingStepAnswers(
     const serializedAnswer = JSON.stringify(payload.answer);
     const existing = (
       await db
-        .select({ answer: onboardingStepAnswers.answer, status: onboardingStepAnswers.status })
+        .select({ id: onboardingStepAnswers.id, answer: onboardingStepAnswers.answer, status: onboardingStepAnswers.status })
         .from(onboardingStepAnswers)
         .where(
           and(
@@ -2233,7 +2265,7 @@ async function persistOnboardingStepAnswers(
     const status = existing?.answer === serializedAnswer && existing.status === "confirmed"
       ? "confirmed"
       : "draft";
-    await db
+    const [savedAnswer] = await db
       .insert(onboardingStepAnswers)
       .values({
         sessionId: session.id,
@@ -2254,13 +2286,25 @@ async function persistOnboardingStepAnswers(
           updatedBy,
           updatedAt: now,
         },
+      })
+      .returning({ id: onboardingStepAnswers.id });
+    const answerId = existing?.id ?? savedAnswer?.id;
+    if (answerId && (!existing || existing.answer !== serializedAnswer))
+      await db.insert(onboardingStepAnswerRevisions).values({
+        answerId,
+        sessionId: session.id,
+        workspaceId,
+        stepKey: payload.stepKey,
+        answer: serializedAnswer,
+        status,
+        changedBy: updatedBy,
       });
   }
 }
 
 export async function confirmOnboardingStep(
   workspaceId: number,
-  stepKey: (typeof requiredOnboardingStepKeys)[number],
+  stepKey: (typeof confirmableOnboardingStepKeys)[number],
   updatedBy: number
 ) {
   const db = await getDb();
@@ -2276,8 +2320,23 @@ export async function confirmOnboardingStep(
         eq(onboardingStepAnswers.stepKey, stepKey)
       )
     )
-    .returning({ id: onboardingStepAnswers.id, stepKey: onboardingStepAnswers.stepKey });
+    .returning({
+      id: onboardingStepAnswers.id,
+      sessionId: onboardingStepAnswers.sessionId,
+      workspaceId: onboardingStepAnswers.workspaceId,
+      stepKey: onboardingStepAnswers.stepKey,
+      answer: onboardingStepAnswers.answer,
+    });
   if (!answer) throw new Error("ONBOARDING_STEP_NOT_FOUND");
+  await db.insert(onboardingStepAnswerRevisions).values({
+    answerId: answer.id,
+    sessionId: answer.sessionId,
+    workspaceId: answer.workspaceId,
+    stepKey: answer.stepKey,
+    answer: answer.answer,
+    status: "confirmed",
+    changedBy: updatedBy,
+  });
   return answer;
 }
 

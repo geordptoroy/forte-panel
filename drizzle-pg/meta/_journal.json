@@ -211,6 +211,13 @@
       "when": 1790456000000,
       "tag": "0029_onboarding_step_answers",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790457000000,
+      "tag": "0030_onboarding_step_answer_revisions",
+      "breakpoints": true
     }
   ]
 }

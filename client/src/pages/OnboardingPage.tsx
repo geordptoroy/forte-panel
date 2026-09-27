@@ -135,6 +135,7 @@ export default function OnboardingPage() {
   const readyForHumanApprovedPublish =
     profileQuery.data?.checklist.readyToPublish === true &&
     requiredStepKeys.every(stepKey => confirmedStepKeys.has(stepKey));
+  const confirmedRequiredCount = requiredStepKeys.filter(stepKey => confirmedStepKeys.has(stepKey)).length;
   const field = (
     key: keyof Profile,
     label: string,
@@ -215,7 +216,7 @@ export default function OnboardingPage() {
           <SectionTitle
             eyebrow="Revisão humana"
             title="Confirme cada bloco antes de publicar"
-            action={<span className="muted" style={{ fontSize: 10 }}>{confirmedStepKeys.size}/{requiredStepKeys.length} obrigatórios confirmados</span>}
+            action={<span className="muted" style={{ fontSize: 10 }}>{confirmedRequiredCount}/{requiredStepKeys.length} obrigatórios confirmados</span>}
           />
           <div style={{ display: "grid", gap: 10 }}>
             {(profileQuery.data?.stepAnswers ?? []).map(step => {
@@ -233,14 +234,28 @@ export default function OnboardingPage() {
                           </div>
                         ))}
                       </div>
+                      {step.revisions.length > 0 && (
+                        <details style={{ marginTop: 10 }}>
+                          <summary className="muted" style={{ cursor: "pointer", fontSize: 10 }}>
+                            Histórico · {step.revisions.length} {step.revisions.length === 1 ? "revisão" : "revisões"}
+                          </summary>
+                          <div style={{ display: "grid", gap: 5, marginTop: 7 }}>
+                            {step.revisions.slice(0, 5).map((revision, index) => (
+                              <div key={revision.id} className="muted" style={{ fontSize: 9 }}>
+                                #{step.revisions.length - index} · {new Date(revision.createdAt).toLocaleString("pt-BR")} · {revision.status === "confirmed" ? "confirmada" : "rascunho"}{revision.changedBy ? ` · usuário ${revision.changedBy}` : ""}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                     </div>
-                    {required && (
+                    {(required || step.stepKey === "voice") && (
                       <button
                         className={confirmed ? "btn-secondary" : "btn-primary"}
                         disabled={confirmed || confirmStep.isPending}
-                        onClick={() => confirmStep.mutate({ stepKey: step.stepKey as "identity" | "offering" | "operations" | "guardrails" })}
+                        onClick={() => confirmStep.mutate({ stepKey: step.stepKey as "identity" | "offering" | "operations" | "guardrails" | "voice" })}
                       >
-                        <CheckCircle2 size={13} /> {confirmed ? "Confirmado" : "Confirmar bloco"}
+                        <CheckCircle2 size={13} /> {confirmed ? "Confirmado" : required ? "Confirmar bloco" : "Confirmar opcional"}
                       </button>
                     )}
                   </div>

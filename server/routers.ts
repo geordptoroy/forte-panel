@@ -1143,7 +1143,7 @@ export const appRouter = router({
       getOnboardingProfile(ctx.workspace.workspaceId)
     ),
     confirmStep: requireOnboardingEditor
-      .input(z.object({ stepKey: z.enum(["identity", "offering", "operations", "guardrails"]) }))
+      .input(z.object({ stepKey: z.enum(["identity", "offering", "operations", "guardrails", "voice"]) }))
       .mutation(async ({ input, ctx }) => {
         const result = await confirmOnboardingStep(
           ctx.workspace.workspaceId,

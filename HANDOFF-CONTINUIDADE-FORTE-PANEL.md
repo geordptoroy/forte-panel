@@ -1650,3 +1650,15 @@ A tela de onboarding agora apresenta `stepAnswers` em uma revisão visual bloco 
 A nova procedure `onboarding.confirmStep` registra usuário, workspace e auditoria. O autosave preserva `confirmed` quando o conteúdo do bloco não mudou; qualquer edição rebaixa somente aquele bloco para `draft`. A publicação exige tanto os fatos obrigatórios completos quanto a confirmação humana de identidade, oferta, operações e guardrails. O botão de publicar permanece desabilitado no frontend até cumprir os dois critérios, e o backend repete a validação.
 
 A publicação não confirma automaticamente blocos. Isso mantém a separação entre fato extraído/rascunho, fato revisado pelo dono e regra operacional publicada.
+
+
+---
+## Atualização do handoff — 2026-09-27 13:35 — histórico de revisões e bloco opcional
+
+Foi adicionada a migration `0030_onboarding_step_answer_revisions` para manter histórico imutável das alterações em cada resposta estruturada. O histórico registra bloco, sessão, workspace, conteúdo, status, usuário e timestamp.
+
+A leitura de `onboarding.profile` agora retorna as revisões agregadas por bloco. A UI exibe até as cinco mais recentes em cada card. Criação/alteração do conteúdo gera revisão; confirmação humana também gera uma revisão `confirmed`, além da auditoria de ação.
+
+O bloco `voice` agora pode ser confirmado explicitamente, mas continua opcional para publicação. O gate de publicação segue exigindo somente `identity`, `offering`, `operations` e `guardrails` confirmados.
+
+Validação: `pnpm check`, `pnpm test` (99 aprovados, 35 ignorados), `pnpm build`, journal JSON e `git diff --check` passaram.
