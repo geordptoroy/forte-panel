@@ -58,7 +58,7 @@
 - [x] **P0 antes dos convites beta:** implementar configuração versionada do agente por workspace: rascunho, simulação sem envio externo, publicação, histórico e rollback.
 - [x] Permitir rollback de qualquer versão arquivada, publicando uma nova versão e preservando o histórico.
 - [x] Atualizar a aba do agente após salvar, simular, publicar ou fazer rollback, sem exigir recarregamento manual.
-- [ ] **P0 antes dos convites beta:** validar no ambiente real pausar/reativar IA, suspender/reativar conta e notas de suporte com motivo, sem revelar senha ou segredo bruto.
+- [x] Suíte PostgreSQL criada para validar pausar/reativar IA, suspender/reativar workspace e nota de suporte com motivo/auditoria, sem revelar segredo bruto; falta repetir no staging real.
 - [x] Cobertura local prova que owner/member e `users.role = admin` sem registro em `platformAdmins` não acessam o console.
 - [x] Suíte PostgreSQL criada para provar sessão de suporte read-only, operador, expiração, revogação e rejeição de outro workspace; executar no staging quando `DATABASE_URL` estiver disponível.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.

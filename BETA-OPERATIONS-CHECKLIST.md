@@ -160,3 +160,8 @@ O worker emite um evento JSON `worker_heartbeat` por padrão a cada 60 segundos.
 O repositório contém `scripts/staging-smoke.sh`, que valida `GET /api/v1/health` com `200/status=ok` e `GET /api/v1/ready` com `200/status=ready`. O script não recebe nem imprime credenciais; precisa apenas de `STAGING_BASE_URL` e falha explicitamente quando a URL não está configurada ou o banco não está pronto.
 
 Também foi criado o workflow manual `Staging smoke check`. Para habilitá-lo, configure a variável de repositório `STAGING_BASE_URL` no GitHub ou informe `base_url` ao disparar o workflow. Execute-o após cada deploy de staging; um `503` em readiness deve bloquear a abertura do beta até a causa ser resolvida.
+
+
+## 14. Mutações administrativas
+
+A suíte PostgreSQL `server/platform-admin-actions.test.ts` valida o fluxo de pausar/reativar a IA, suspender/reativar workspace e registrar nota interna de suporte com motivo, sessão escopada e auditoria por workspace. Esse gate passa no CI com banco limpo; ainda deve ser repetido no staging real antes dos convites beta.
