@@ -13,6 +13,7 @@ const hasDatabase = Boolean(
 
 describe.skipIf(!hasDatabase)("worker heartbeat observability", () => {
   const suffix = `heartbeat${Date.now()}`;
+  const service = "forte-panel-worker";
   let workspaceId = 0;
 
   beforeAll(async () => {
@@ -31,12 +32,10 @@ describe.skipIf(!hasDatabase)("worker heartbeat observability", () => {
     await db.delete(workspaces).where(eq(workspaces.id, workspaceId));
     await db
       .delete(workerHeartbeats)
-      .where(eq(workerHeartbeats.service, `test-worker-${suffix}`));
+      .where(eq(workerHeartbeats.service, service));
   });
 
   it("upserts the worker signal and exposes healthy/degraded/stale states", async () => {
-    const service = `test-worker-${suffix}`;
-
     await recordWorkerHeartbeat({
       service,
       ticks: 1,
