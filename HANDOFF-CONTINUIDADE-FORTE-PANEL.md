@@ -1796,3 +1796,17 @@ Eventos conectados: `session_started`, `session_paused`, `session_completed`, `a
 `onboarding.metrics` é uma query protegida por workspace com janela de 1 a 90 dias. Retorna sessões iniciadas/concluídas, abandono estimado para a sessão corrente ativa/pausada sem atividade há 7 dias, correções de áudio, follow-ups, conflitos, duração total de áudio, chamadas/tokens LLM e duração média das sessões concluídas. A tela exibe o resumo e identifica tokens como proxy de custo. O catálogo real de preço por modelo ainda não foi configurado, portanto não há custo monetário inventado.
 
 Próximo passo recomendado: validar a migration em PostgreSQL/staging com dados sintéticos, observar a telemetria por uma janela real e só então implementar publicação versionada do rascunho confirmado.
+
+
+---
+## Atualização do handoff — 2026-09-27 — publicação versionada
+
+A publicação versionada do onboarding foi implementada com `onboardingPublishedVersions` e migration `0036_onboarding_published_versions`. Cada linha armazena snapshot JSON do perfil, prompt final, versão incremental por workspace, autor, data e `rollbackOfId` opcional. Versões anteriores nunca são sobrescritas.
+
+`publishOnboardingDraft(workspaceId, publishedBy)` lê os blocos persistidos e falha fechado quando qualquer bloco obrigatório não está `confirmed`, possui `missing` ou possui conflito. Também valida o checklist de fatos obrigatórios. O prompt publicado é montado a partir dos blocos confirmados, não apenas da cópia local do formulário. O setting legado `ai_prompt_published` é atualizado dentro da mesma transação do snapshot versionado.
+
+A procedure `onboarding.save` agora salva alterações visuais como draft e, quando `publish=true`, preserva os blocos confirmados antes de executar o gate. `onboarding.versions` lista o histórico protegido. `onboarding.rollback` publica uma nova versão baseada no snapshot escolhido, registra a origem, atualiza o perfil e reconstitui respostas sem apagar histórico.
+
+A tela mostra as versões e informa que rollback cria nova versão. O teste `server/onboarding-publish.test.ts` cobre bloqueio antes de confirmação, publicação v1 e rollback v2; ele é condicional e ficou skipped no sandbox sem PostgreSQL. Antes de staging, aplicar migrations 0035 e 0036 e executar esse teste contra um banco efêmero.
+
+Próximo passo recomendado: aplicar as migrations em PostgreSQL/staging, validar o fluxo com dados sintéticos e revisar autorização/observabilidade antes de ampliar o onboarding para usuários beta.

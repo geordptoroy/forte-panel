@@ -310,7 +310,7 @@ Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
 ### P0 — fundação segura
 
 - [ ] Separar núcleo obrigatório curto de perguntas condicionais e aprofundamento; permitir áudio, texto, “não se aplica”, “decidir depois” e retomada.
-- [ ] Definir schemas por bloco, estados `draft/confirmed/published` e campos `missing/conflict/source/confidence`. (blocos, draft/confirmed, `missing/conflicts/source/confidence`, política de fontes/confiança, retenção e resolução auditável já persistidos; published separado ainda pendente)
+- [x] Definir schemas por bloco, estados `draft/confirmed/published` e campos `missing/conflict/source/confidence`. (blocos, draft/confirmed, `missing/conflicts/source/confidence`, política de fontes/confiança, retenção, resolução auditável e histórico publicado separado persistidos)
 - [ ] Mostrar após cada resposta/bloco apenas a regra curta daquela área; manter o prompt completo recolhido e opcional.
 - [x] Definir confirmação humana obrigatória antes de publicar prompt ou regra operacional. (quatro blocos obrigatórios exigem `onboarding.confirmStep` e o backend repete o gate)
 - [x] Persistir histórico imutável de revisões por bloco e permitir confirmação explícita opcional do bloco `voice`; publicação continua exigindo somente os blocos essenciais.
@@ -321,12 +321,12 @@ Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
 
 - [ ] Implementar sessão retomável com núcleo de 10 blocos e perguntas condicionais por segmento.
 - [ ] Extrair respostas textuais para JSON validado e gerar rascunho de prompt com resumo, conflitos e exemplos.
-- [ ] Criar `promptDraftVersions`, revisão pelo prestador, publicação versionada e rollback.
+- [x] Criar histórico de versões publicadas do onboarding, revisão pelo prestador, gate server-side, publicação incremental e rollback que cria nova versão. (migration `0036_onboarding_published_versions`)
 - [ ] Criar simulações mínimas: primeira mensagem, triagem, preço, agendamento, fora do horário e handoff.
 
 ### P2 — áudio assistido
 - [x] Conectar captura/upload privado à transcrição tenant-aware, preservando original, fonte, trecho e confiança. (OnboardingPage agora oferece MediaRecorder, preview, upload, transcrição e retry; a transcrição permanece revisável e o formulário continua como fallback)
-- [x] Permitir correção por texto ou áudio curto e proposta estruturada com pergunta explícita de revisão para ambiguidade. (textarea editável, regravação de até 30s, consentimento `llm`, schema JSON estrito, `missing/conflicts/confidence`, persistência como `draft`, follow-up por campo/conflito e revisão imutável; publicação versionada ainda pendente)
+- [x] Permitir correção por texto ou áudio curto e proposta estruturada com pergunta explícita de revisão para ambiguidade. (textarea editável, regravação de até 30s, consentimento `llm`, schema JSON estrito, `missing/conflicts/confidence`, persistência como `draft`, follow-up por campo/conflito, revisão imutável e publicação versionada com rollback)
 - [x] Tornar processamento idempotente, com status, retry e fallback textual/humano. (claim por asset, estados `uploaded/processing/completed/failed` e retry da UI)
 - [x] Medir custo, duração, taxa de correção e abandono antes de ampliar áudio para toda a base. (migration `0035_onboarding_telemetry`, eventos tenant-aware sem conteúdo, tokens como proxy de custo, duração de sessão/áudio, correções, follow-ups, conclusão e abandono estimado por 7 dias; preço real por modelo ainda depende de catálogo configurado)
 

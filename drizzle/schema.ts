@@ -459,6 +459,30 @@ export const onboardingTelemetryEvents = pgTable(
   ]
 );
 
+export const onboardingPublishedVersions = pgTable(
+  "onboardingPublishedVersions",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    version: integer("version").notNull(),
+    profile: text("profile").notNull(),
+    prompt: text("prompt").notNull(),
+    publishedBy: integer("publishedBy").notNull(),
+    rollbackOfId: integer("rollbackOfId"),
+    publishedAt: timestamp("publishedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("onboarding_published_versions_workspace_version_idx").on(
+      table.workspaceId,
+      table.version
+    ),
+    index("onboarding_published_versions_workspace_published_idx").on(
+      table.workspaceId,
+      table.publishedAt
+    ),
+  ]
+);
+
 export const workspaces = pgTable("workspaces", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 160 }).notNull(),
@@ -1223,6 +1247,8 @@ export type OnboardingTranscription = typeof onboardingTranscriptions.$inferSele
 export type InsertOnboardingTranscription = typeof onboardingTranscriptions.$inferInsert;
 export type OnboardingTelemetryEvent = typeof onboardingTelemetryEvents.$inferSelect;
 export type InsertOnboardingTelemetryEvent = typeof onboardingTelemetryEvents.$inferInsert;
+export type OnboardingPublishedVersion = typeof onboardingPublishedVersions.$inferSelect;
+export type InsertOnboardingPublishedVersion = typeof onboardingPublishedVersions.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;
 export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

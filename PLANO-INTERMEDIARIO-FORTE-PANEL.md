@@ -633,3 +633,14 @@ A sessão registra início, retomada, pausa e conclusão; uploads registram dura
 A procedure protegida `onboarding.metrics` retorna resumo por workspace e janela de 1–90 dias: sessões iniciadas/concluídas, abandono estimado para sessão sem atividade há 7 dias, correções, follow-ups, duração de áudio, chamadas/tokens LLM e duração média de sessões concluídas. A UI apresenta esses indicadores no onboarding. Tokens são explicitamente tratados como proxy de custo enquanto o catálogo de preço por modelo não estiver configurado.
 
 Validação desta etapa: `pnpm check` ✅; migration/journal JSON e diff SQL serão validados antes do release; a suíte completa e `pnpm build` permanecem como gates finais.
+
+
+---
+## Etapa seguinte — publicação versionada e rollback — 2026-09-27
+A publicação deixou de sobrescrever diretamente o setting atual. A migration `0036_onboarding_published_versions` mantém snapshot imutável de perfil, prompt, autor, versão, data e origem de rollback por workspace.
+
+`publishOnboardingDraft` só publica quando os quatro blocos obrigatórios (`identity`, `offering`, `operations`, `guardrails`) estão `confirmed`, sem `missing`, sem conflitos e com checklist obrigatório completo. O perfil publicado é projetado a partir dos blocos confirmados, evitando publicar uma cópia visual stale do formulário. O versionamento é incremental e o setting compatível `ai_prompt_published` continua atualizado atomicamente com o snapshot.
+
+`onboarding.versions` lista o histórico protegido. `onboarding.rollback` recupera uma versão do mesmo workspace, gera nova versão incremental com `rollbackOfId`, atualiza o perfil publicado e repõe o histórico de respostas; nunca apaga ou reescreve uma versão anterior. A UI apresenta o histórico e a ação de publicar uma versão anterior como novo rollback.
+
+Validação desta etapa: `pnpm check` ✅; teste PostgreSQL condicional de gate/publicação/rollback adicionado (skipped no sandbox sem PostgreSQL); suíte local: 112 aprovados e 41 skipped; migration/journal e build permanecem gates finais.

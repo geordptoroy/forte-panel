@@ -115,6 +115,7 @@ export default function OnboardingPage() {
   });
   const profileQuery = trpc.onboarding.profile.useQuery();
   const metricsQuery = trpc.onboarding.metrics.useQuery({ windowDays: 30 });
+  const versionsQuery = trpc.onboarding.versions.useQuery();
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [published, setPublished] = useState(false);
   const [savedVersion, setSavedVersion] = useState(0);
@@ -147,6 +148,15 @@ export default function OnboardingPage() {
       setDirty(false);
       setAutosaveState("saved");
       void utils.onboarding.profile.invalidate();
+      void utils.onboarding.versions.invalidate();
+    },
+  });
+  const rollbackMutation = trpc.onboarding.rollback.useMutation({
+    onSuccess: result => {
+      setPublished(true);
+      setSavedVersion(result.version);
+      void utils.onboarding.profile.invalidate();
+      void utils.onboarding.versions.invalidate();
     },
   });
   const [voiceStepKey, setVoiceStepKey] = useState<VoiceStepKey>("voice");
@@ -606,6 +616,25 @@ export default function OnboardingPage() {
           <p className="muted" style={{ margin: "10px 0 0", fontSize: 10 }}>
             Tokens são o proxy de custo até o catálogo de preços do modelo ser configurado. Abandono = sessão ativa/pausada sem atividade há 7 dias.
           </p>
+        </section>
+      )}
+      {versionsQuery.data && versionsQuery.data.length > 0 && (
+        <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+          <SectionTitle eyebrow="Histórico imutável" title="Versões publicadas" action={<span className="muted" style={{ fontSize: 10 }}>rollback cria nova versão</span>} />
+          <div style={{ display: "grid", gap: 7 }}>
+            {versionsQuery.data.map(version => (
+              <div key={version.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "9px 10px", border: "1px solid rgba(255,255,255,.07)" }}>
+                <div>
+                  <strong style={{ color: "#ddd", fontSize: 11 }}>v{version.version}{version.version === profileQuery.data?.version ? " · atual" : ""}</strong>
+                  <div className="muted" style={{ fontSize: 9 }}>{new Date(version.publishedAt).toLocaleString("pt-BR")}{version.rollbackOfId ? ` · rollback de #${version.rollbackOfId}` : ""}</div>
+                </div>
+                {version.version !== profileQuery.data?.version && (
+                  <button className="btn-secondary" style={{ padding: "5px 8px", fontSize: 9 }} disabled={rollbackMutation.isPending} onClick={() => rollbackMutation.mutate({ version: version.version })}>Publicar esta versão</button>
+                )}
+              </div>
+            ))}
+          </div>
+          {rollbackMutation.error && <div className="demo-banner" style={{ marginTop: 10, fontSize: 10 }}><Info size={13} /> {rollbackMutation.error.message}</div>}
         </section>
       )}
       {(profileQuery.data?.stepAnswers ?? []).length > 0 && (

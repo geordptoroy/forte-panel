@@ -47,6 +47,7 @@ import {
   getWorkspaceUsageSnapshot,
   getOnboardingSession,
   getOnboardingTelemetrySummary,
+  listOnboardingPublishedVersions,
   getOnboardingProfile,
   getNativeAgentConfig,
   getNativeAgentRuntimeConfig,
@@ -84,7 +85,9 @@ import {
   applyOnboardingFollowUpAnswer,
   persistOnboardingAudioTranscription,
   persistOnboardingStepAnswerProposal,
+  publishOnboardingDraft,
   recordOnboardingTelemetry,
+  rollbackOnboardingPublishedVersion,
   saveOnboardingProfile,
   startOnboardingSession,
   setContactAi,
@@ -1172,6 +1175,31 @@ export const appRouter = router({
       .query(({ input, ctx }) =>
         getOnboardingTelemetrySummary(ctx.workspace.workspaceId, input?.windowDays ?? 30)
       ),
+    versions: requireOnboardingEditor.query(({ ctx }) =>
+      listOnboardingPublishedVersions(ctx.workspace.workspaceId)
+    ),
+    rollback: requireOnboardingEditor
+      .input(z.object({ version: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const result = await rollbackOnboardingPublishedVersion(
+            ctx.workspace.workspaceId,
+            input.version,
+            ctx.user.id
+          );
+          await logWorkspaceAction({
+            workspaceId: ctx.workspace.workspaceId,
+            actorUserId: ctx.user.id,
+            action: "onboarding_published_rollback",
+            summary: `Rollback da versão ${input.version} publicado como versão ${result.version}`,
+          });
+          return result;
+        } catch (error) {
+          if (error instanceof Error && error.message === "ONBOARDING_PUBLISHED_VERSION_NOT_FOUND")
+            throw new TRPCError({ code: "NOT_FOUND", message: "Versão publicada não encontrada neste workspace." });
+          throw error;
+        }
+      }),
     governance: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingGovernance(ctx.workspace.workspaceId)
     ),
@@ -1396,12 +1424,12 @@ export const appRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         try {
-          const result = await saveOnboardingProfile(
-            ctx.workspace.workspaceId,
-            input.profile,
-            input.publish,
-            ctx.user.id
-          );
+          const result = input.publish
+              ? await (async () => {
+                await saveOnboardingProfile(ctx.workspace.workspaceId, input.profile, false, ctx.user.id, false);
+                return publishOnboardingDraft(ctx.workspace.workspaceId, ctx.user.id);
+              })()
+            : await saveOnboardingProfile(ctx.workspace.workspaceId, input.profile, false, ctx.user.id);
           await logWorkspaceAction({
             workspaceId: ctx.workspace.workspaceId,
             actorUserId: ctx.user.id,

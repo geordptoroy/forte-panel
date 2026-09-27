@@ -38,6 +38,7 @@ import {
   onboardingStepAnswers,
   onboardingStepAnswerRevisions,
   onboardingTelemetryEvents,
+  onboardingPublishedVersions,
   onboardingTranscriptions,
   passwordResetTokens,
   professionals,
@@ -3258,8 +3259,14 @@ export async function saveOnboardingProfile(
   workspaceId: number,
   input: OnboardingProfile,
   publish: boolean,
-  updatedBy?: number
+  updatedBy?: number,
+  syncAnswers = true
 ) {
+  if (publish) {
+    await saveOnboardingProfile(workspaceId, input, false, updatedBy);
+    if (!updatedBy) throw new Error("ONBOARDING_PUBLISH_ACTOR_REQUIRED");
+    return publishOnboardingDraft(workspaceId, updatedBy);
+  }
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const current = await getOnboardingProfile(workspaceId);
@@ -3283,7 +3290,7 @@ export async function saveOnboardingProfile(
     "onboarding_profile",
     JSON.stringify(input)
   );
-  await persistOnboardingStepAnswers(workspaceId, input, updatedBy);
+  if (syncAnswers) await persistOnboardingStepAnswers(workspaceId, input, updatedBy);
   if (publish) {
     const answers = await listOnboardingStepAnswers(workspaceId);
     const missing = requiredOnboardingStepKeys.filter(stepKey =>
@@ -3317,6 +3324,169 @@ export async function saveOnboardingProfile(
     checklist: nextChecklist,
     stepAnswers,
   };
+}
+
+function profileFromConfirmedOnboardingAnswers(
+  current: OnboardingProfile,
+  answers: Awaited<ReturnType<typeof listOnboardingStepAnswers>>
+) {
+  const profile = { ...current };
+  for (const answer of answers) {
+    if (answer.status !== "confirmed") continue;
+    for (const [key, value] of Object.entries(answer.answer)) {
+      if (key in profile && typeof value === "string")
+        profile[key as keyof OnboardingProfile] = value as never;
+    }
+  }
+  return profile;
+}
+
+export async function listOnboardingPublishedVersions(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: onboardingPublishedVersions.id,
+      version: onboardingPublishedVersions.version,
+      publishedBy: onboardingPublishedVersions.publishedBy,
+      rollbackOfId: onboardingPublishedVersions.rollbackOfId,
+      publishedAt: onboardingPublishedVersions.publishedAt,
+    })
+    .from(onboardingPublishedVersions)
+    .where(eq(onboardingPublishedVersions.workspaceId, workspaceId))
+    .orderBy(desc(onboardingPublishedVersions.version))
+    .limit(20);
+}
+
+export async function publishOnboardingDraft(workspaceId: number, publishedBy: number) {
+  const db = await getDb();
+  const workspace = await getActiveWorkspaceById(workspaceId);
+  if (!db || !workspace) throw new Error("Workspace unavailable");
+  const current = await getOnboardingProfile(workspaceId);
+  const answers = await listOnboardingStepAnswers(workspaceId);
+  const incomplete = requiredOnboardingStepKeys.filter(stepKey => {
+    const answer = answers.find(item => item.stepKey === stepKey);
+    return !answer || answer.status !== "confirmed" || answer.missing.length > 0;
+  });
+  if (incomplete.length)
+    throw new Error(`ONBOARDING_CONFIRMATION_REQUIRED:${incomplete.join(",")}`);
+  const conflicted = answers.filter(answer => answer.conflicts.length > 0).map(answer => answer.stepKey);
+  if (conflicted.length)
+    throw new Error(`ONBOARDING_CONFLICTS_UNRESOLVED:${conflicted.join(",")}`);
+  const profile = profileFromConfirmedOnboardingAnswers(current.profile, answers);
+  const checklist = getOnboardingChecklist(profile, true);
+  if (!checklist.requiredComplete) {
+    const missing = checklist.items.filter(item => item.required && !item.complete).map(item => item.title).join(", ");
+    throw new Error(`ONBOARDING_INCOMPLETE:${missing}`);
+  }
+  const latest = (
+    await db
+      .select({ id: onboardingPublishedVersions.id, version: onboardingPublishedVersions.version })
+      .from(onboardingPublishedVersions)
+      .where(eq(onboardingPublishedVersions.workspaceId, workspaceId))
+      .orderBy(desc(onboardingPublishedVersions.version))
+      .limit(1)
+  )[0];
+  const nextVersion = Math.max(current.version, latest?.version ?? 0) + 1;
+  const prompt = buildBusinessPrompt(profile, nextVersion);
+  const publishedAt = new Date();
+  const [version] = await db.transaction(async tx => {
+    const [created] = await tx
+      .insert(onboardingPublishedVersions)
+      .values({
+        workspaceId,
+        version: nextVersion,
+        profile: JSON.stringify(profile),
+        prompt,
+        publishedBy,
+        publishedAt,
+      })
+      .returning();
+    const setting = (
+      await tx
+        .select({ id: workspaceSettings.id })
+        .from(workspaceSettings)
+        .where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "ai_prompt_published")))
+        .orderBy(desc(workspaceSettings.updatedAt), desc(workspaceSettings.id))
+        .limit(1)
+    )[0];
+    const value = JSON.stringify({ version: nextVersion, prompt, publishedAt: publishedAt.toISOString() });
+    if (setting)
+      await tx.update(workspaceSettings).set({ value, updatedAt: publishedAt }).where(eq(workspaceSettings.id, setting.id));
+    else await tx.insert(workspaceSettings).values({ workspaceId, key: "ai_prompt_published", value, updatedAt: publishedAt });
+    const profileSetting = (
+      await tx
+        .select({ id: workspaceSettings.id })
+        .from(workspaceSettings)
+        .where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "onboarding_profile")))
+        .orderBy(desc(workspaceSettings.updatedAt), desc(workspaceSettings.id))
+        .limit(1)
+    )[0];
+    const serializedProfile = JSON.stringify(profile);
+    if (profileSetting)
+      await tx.update(workspaceSettings).set({ value: serializedProfile, updatedAt: publishedAt }).where(eq(workspaceSettings.id, profileSetting.id));
+    else await tx.insert(workspaceSettings).values({ workspaceId, key: "onboarding_profile", value: serializedProfile, updatedAt: publishedAt });
+    return [created];
+  });
+  return {
+    profile,
+    version: version.version,
+    prompt,
+    published: true,
+    checklist,
+    stepAnswers: await listOnboardingStepAnswers(workspaceId),
+  };
+}
+
+export async function rollbackOnboardingPublishedVersion(
+  workspaceId: number,
+  version: number,
+  rolledBackBy: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_UNAVAILABLE");
+  const [target] = await db
+    .select()
+    .from(onboardingPublishedVersions)
+    .where(and(eq(onboardingPublishedVersions.workspaceId, workspaceId), eq(onboardingPublishedVersions.version, version)))
+    .limit(1);
+  if (!target) throw new Error("ONBOARDING_PUBLISHED_VERSION_NOT_FOUND");
+  const profile = JSON.parse(target.profile) as OnboardingProfile;
+  const latest = (
+    await db
+      .select({ version: onboardingPublishedVersions.version })
+      .from(onboardingPublishedVersions)
+      .where(eq(onboardingPublishedVersions.workspaceId, workspaceId))
+      .orderBy(desc(onboardingPublishedVersions.version))
+      .limit(1)
+  )[0];
+  const nextVersion = (latest?.version ?? 0) + 1;
+  const prompt = buildBusinessPrompt(profile, nextVersion);
+  const publishedAt = new Date();
+  const [created] = await db.transaction(async tx => {
+    const [inserted] = await tx.insert(onboardingPublishedVersions).values({
+      workspaceId,
+      version: nextVersion,
+      profile: JSON.stringify(profile),
+      prompt,
+      publishedBy: rolledBackBy,
+      rollbackOfId: target.id,
+      publishedAt,
+    }).returning();
+    const setting = (
+      await tx.select({ id: workspaceSettings.id }).from(workspaceSettings)
+        .where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "ai_prompt_published")))
+        .orderBy(desc(workspaceSettings.updatedAt), desc(workspaceSettings.id)).limit(1)
+    )[0];
+    const value = JSON.stringify({ version: nextVersion, prompt, publishedAt: publishedAt.toISOString(), rollbackOf: target.id });
+    if (setting) await tx.update(workspaceSettings).set({ value, updatedAt: publishedAt }).where(eq(workspaceSettings.id, setting.id));
+    else await tx.insert(workspaceSettings).values({ workspaceId, key: "ai_prompt_published", value, updatedAt: publishedAt });
+    await tx.update(workspaceSettings).set({ value: JSON.stringify(profile), updatedAt: publishedAt })
+      .where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "onboarding_profile")));
+    return [inserted];
+  });
+  await persistOnboardingStepAnswers(workspaceId, profile, rolledBackBy);
+  return { version: created.version, rollbackOf: target.version, prompt, profile, published: true };
 }
 
 export async function getPublishedAiPrompt(workspaceId: number) {
