@@ -49,6 +49,10 @@ import { ENV } from "./_core/env";
 import { resolveReplyRoute } from "./_core/message-routing";
 import { normalizeContactPhone, normalizeWhatsappJid } from "./_core/phone";
 import {
+  deriveConversationState,
+  type ConversationActivity,
+} from "./_core/conversation-state";
+import {
   assertWithinWorkingHours,
   getLocalDayBounds,
   ScheduleError,
@@ -3020,11 +3024,34 @@ export async function createAgendaAppointment(
 export async function listInboxContacts(workspaceId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db
+  const contactRows = await db
     .select()
     .from(contacts)
     .where(eq(contacts.workspaceId, workspaceId))
     .orderBy(desc(contacts.lastMessageAt), desc(contacts.id));
+  const messageRows = await db
+    .select({
+      contactId: conversations.contactId,
+      id: messages.id,
+      direction: messages.direction,
+      status: messages.status,
+      createdAt: messages.createdAt,
+    })
+    .from(messages)
+    .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+    .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+    .where(eq(contacts.workspaceId, workspaceId))
+    .orderBy(asc(messages.createdAt), asc(messages.id));
+  const activitiesByContact = new Map<number, ConversationActivity[]>();
+  for (const row of messageRows) {
+    const activities = activitiesByContact.get(row.contactId) ?? [];
+    activities.push(row);
+    activitiesByContact.set(row.contactId, activities);
+  }
+  return contactRows.map(contact => ({
+    ...contact,
+    ...deriveConversationState(activitiesByContact.get(contact.id) ?? []),
+  }));
 }
 
 export async function getConversationByContact(
@@ -3353,10 +3380,7 @@ export async function getDashboardSnapshot(workspaceId: number) {
       recentEvents: [],
       upcomingAppointments: [],
     };
-  const workspaceContacts = await db
-    .select()
-    .from(contacts)
-    .where(eq(contacts.workspaceId, workspace.id));
+  const workspaceContacts = await listInboxContacts(workspace.id);
   const workspaceAppointments = await db
     .select()
     .from(appointmentsTable)
@@ -3395,7 +3419,7 @@ export async function getDashboardSnapshot(workspaceId: number) {
       contact => contact.createdAt >= startOfToday
     ).length,
     awaitingResponse: workspaceContacts.filter(
-      contact => contact.unreadCount > 0
+      contact => contact.awaitingResponse
     ).length,
     aiPaused: workspaceContacts.filter(contact => contact.aiEnabled === 0)
       .length,

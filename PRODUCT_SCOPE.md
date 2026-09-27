@@ -24,7 +24,7 @@ Na primeira versão comercial: uma conta master cria uma empresa e administra lo
 
 Além dos papéis de uma empresa, existe um papel de **plataforma** separado: `platform_admin`/suporte interno. Ele administra workspaces do Forte Panel e não deve ser modelado como um admin global capaz de ignorar a membership. O suporte usa sessão escopada, read-only por padrão, expiração, motivo e auditoria.
 
-Funcionários terão nome, identificador de login e senha inicial temporária; cada funcionário possui credencial individual. Senhas nunca ficam em texto puro e desativar ou redefinir credenciais invalida as sessões existentes. Login sem e-mail pode ser suportado inicialmente via username, mas cadastro público do master requer verificação de e-mail antes de abertura ampla.
+Funcionários terão nome, identificador de login e senha inicial temporária; cada funcionário possui credencial individual. Senhas nunca ficam em texto puro e desativar ou redefinir credenciais invalida as sessões existentes. O cadastro público inicial do owner/master será por e-mail e senha, criando um workspace em `onboarding`; confirmação de e-mail será adicionada depois, atrás de feature flag desligada até o provedor de envio estar configurado. Google OAuth e outros provedores também ficam para uma fase posterior.
 
 ## Segurança e multi-tenancy
 
@@ -91,7 +91,7 @@ A interface REST interna do futuro gateway WhatsApp deve ficar separada da API p
 3. **Autoatendimento:** onboarding de empresa, checklist, UI sem configuração técnica e perfil IA revisável.
 4. **Canal:** uma conexão WhatsApp por tenant no provider aprovado; staging com E2E, idempotência e takeover humano.
 5. **Operação do beta:** console interno de contas/suporte, configuração versionada do agente, backup/restore, observabilidade, rate limits, privacidade e operação.
-6. **Lançamento:** cadastro público, autosserviço do owner, suporte delegado, planos/cobrança e critérios de produção.
+6. **Lançamento:** cadastro público por e-mail/senha, autosserviço do owner, suporte delegado, planos/cobrança e critérios de produção. Confirmação de e-mail e Google OAuth entram depois, desligados até configuração e testes do provedor.
 7. **Depois:** avaliar source/license e prototipar fork PAPI ou gateway Baileys; múltiplos canais entram após validação de produto.
 
 Detalhamento, testes de aceite e fontes estão em `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`. As tarefas vigentes estão em `todo.md`; recomendações antigas para iniciar pelo ledger/fencing não substituem a nova prioridade de tenancy e login master.

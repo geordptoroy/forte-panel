@@ -339,7 +339,7 @@ export function DashboardPage() {
           <StatCard
             label="Aguardando resposta"
             value={String(snapshot?.awaitingResponse ?? 0).padStart(2, "0")}
-            foot="Conversas não lidas"
+            foot="Última resposta enviada"
             icon={MessageCircle}
             tone="amber"
           />

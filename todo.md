@@ -52,8 +52,11 @@
 - [x] Adicionar retenção de buckets: o worker remove diariamente registros antigos de workspace e usuário; padrão de 30 dias configurável por `FORTE_USAGE_RETENTION_DAYS`.
 - [x] Adicionar liveness `/api/v1/health`, readiness `/api/v1/ready` com `select 1` seguro e heartbeat JSON do worker configurável por `WORKER_HEARTBEAT_MS`.
 - [ ] Repetir a mesma validação no PostgreSQL do ambiente de staging/produção antes do beta.
-- **Atenção:** ainda não abrir cadastro público de empresa; o banco local foi efêmero e serve apenas para validação automatizada.
-- Próxima fatia: repetir migrations/testes no staging real e conectar os sinais de readiness/heartbeat ao monitoramento; depois revisar planos comerciais a partir do consumo observado.
+- **Decisão de produto:** o cadastro público será por e-mail + senha para criar owner e workspace em `onboarding`; o login/bootstrap de `platform_admin` continua separado e protegido por secrets de deployment. A implementação pública ainda não foi aberta: falta concluir os gates de segurança, consentimento, recuperação e staging.
+- [ ] Implementar signup público inicial por e-mail + senha, com hash, rate limit, aceite versionado e criação transacional de owner/workspace em `onboarding`.
+- [ ] Preparar `EMAIL_VERIFICATION_ENABLED=false`, tokens e provider de confirmação sem ativar envio; ativar somente após configurar secret, domínio/remetente e testes de entrega.
+- [ ] Planejar Google OAuth e outros provedores atrás de feature flag desligada; não bloquear o signup inicial por essa integração.
+- Próxima fatia de código: integrar `awaitingResponse` às consultas da Inbox/Dashboard e depois criar leitura transacional por operador; staging real continua gate antes de abrir o cadastro.
 - [x] Estrutura inicial do console interno `platform_admin` criada para listar workspaces, consultar saúde/uso, prestar suporte escopado e registrar auditoria; falta validar em PostgreSQL/staging.
 - [x] API keys, configuração de IA, prompt e reset removidos do painel operacional comum; backend e rotas exigem `platformAdmins`, e o reset está no detalhe do workspace com sessão operadora e auditoria.
 - [x] **P0 antes dos convites beta:** implementar configuração versionada do agente por workspace: rascunho, simulação sem envio externo, publicação, histórico e rollback.
@@ -67,6 +70,7 @@
 - [x] Interface de Integrações recebe card de conexão Baileys com status, QR Code, reconexão e desconexão/logout.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
+- Manter `LOCAL_ADMIN_EMAIL`/`LOCAL_ADMIN_PASSWORD` apenas como bootstrap operacional da plataforma; em produção usar secret manager e rotação, sem senha global compartilhada entre clientes.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.
 - Testar com PostgreSQL real: duas empresas não podem ler, mutar, consultar storage ou disparar mensagens uma da outra.
 
@@ -239,7 +243,8 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [x] Responder pela instância/canal de origem da conversa, não por `defaultPapiWebhook`. (mensagens legadas sem origem ainda usam o default explicitamente marcado)
 - [ ] Formalizar se a operação é caixa compartilhada; caso não seja, implementar assignment/equipe/ACL por contato e mídia.
 - [x] Definir semanticamente `awaiting_response` separado de unread: a última atividade outbound aceita aguarda o lead; a última inbound precisa de operador; outbound `failed` não conta. (contrato puro e testes adicionados)
-- [ ] Integrar `awaiting_response` às consultas da Inbox/Dashboard e implementar leitura transacional por usuário; `unread` continua significando somente não lida pelo operador.
+- [x] Integrar `awaiting_response` às consultas da Inbox/Dashboard; o KPI agora usa a última mensagem outbound `sent`, e `unread` continua separado. (leitura transacional por usuário permanece pendente)
+- [ ] Implementar leitura transacional por operador e atualizar `unreadCount` sem misturar com `awaitingResponse`.
 - [ ] Exibir status `queued/processing/sent/failed`, erro e retry na Inbox; invalidar após webhook/worker.
 - [ ] Corrigir KPIs `daysNoReply`/`receivedMonthCents`, usar consultas server-side e timezone do workspace.
 - [ ] Persistir histórico de stages (from/to, ator, motivo, timestamp, SLA, open/won/lost) e tratar Sem retorno/Perdido como estados terminais.

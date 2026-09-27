@@ -1322,3 +1322,19 @@ A consolidação histórica permanece pendente e deve ocorrer em staging: revisa
 Foi definido em `server/_core/conversation-state.ts` que `unread` e `awaitingResponse` são estados diferentes. `unread` representa mensagem inbound ainda não lida pelo operador. `awaitingResponse` representa a última atividade outbound com status `sent`, indicando que o negócio respondeu e aguarda o lead. A última inbound indica necessidade de resposta do operador; outbound `queued`, `processing` ou `failed` não conta como resposta entregue.
 
 Foram adicionados quatro testes cobrindo outbound aceito, inbound novo, outbound falho e desempate por ID no mesmo timestamp. A integração nas consultas da Inbox/Dashboard e a leitura transacional por usuário ainda são o próximo slice, pois exigem decidir a persistência da leitura e evitar divergência entre `contacts.unreadCount` e `conversations.unreadCount`.
+
+
+### Decisão sobre cadastro público e login administrativo — 2026-09-27
+
+O cadastro público inicial do cliente será **e-mail + senha**, criando o owner e um workspace com status `onboarding`. Isso é separado do `platform_admin`: `LOCAL_ADMIN_EMAIL`, `LOCAL_ADMIN_PASSWORD`, `PLATFORM_ADMIN_OPEN_IDS`/`OWNER_OPEN_ID` permanecem apenas como bootstrap operacional do Forte Panel e, em produção, devem vir de secret manager e ser rotacionáveis. Não haverá senha global compartilhada entre clientes.
+
+Confirmação de e-mail será construída para uma fase posterior, atrás de `EMAIL_VERIFICATION_ENABLED=false`, e permanecerá desligada até configurar domínio, remetente, secrets e provedor de envio. Google OAuth e outros provedores também ficam planejados atrás de feature flag desligada; não devem bloquear o signup inicial por e-mail/senha. O cadastro público ainda não foi aberto: faltam implementação, consentimento, recuperação, validação de staging e gates de segurança.
+
+A próxima fatia de código, após esta decisão, continua sendo integrar `awaitingResponse` nas consultas da Inbox/Dashboard e separar a leitura transacional por operador. Depois disso vem o signup público inicial.
+
+
+### Integração do estado da Inbox e decisão de cadastro — 2026-09-27
+
+O contrato `awaitingResponse` foi integrado ao backend: `listInboxContacts` busca as atividades por workspace e deriva o estado pela última mensagem; `getDashboardSnapshot` deixou de usar `unreadCount` como proxy e passa a contar apenas conversas cuja última outbound está `sent`. A API agora expõe `awaitingResponse` e `needsOperatorResponse`, e o rótulo do KPI foi corrigido para “Última resposta enviada”. `unread` continua sendo somente a contagem de inbound não lida; leitura transacional por operador ainda falta.
+
+Também foi formalizado que o cadastro público inicial será e-mail + senha para owner/workspace em `onboarding`. O `platform_admin` permanece separado, com bootstrap por secrets de deployment. Confirmação de e-mail (`EMAIL_VERIFICATION_ENABLED=false`) e Google OAuth ficam planejados e desligados até configurar os provedores. O cadastro público não foi aberto neste slice.

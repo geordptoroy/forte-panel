@@ -105,8 +105,15 @@ import {
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
 
 type ContactRow = Awaited<ReturnType<typeof listInboxContacts>>[number];
+type MappableContact = Omit<
+  ContactRow,
+  "awaitingResponse" | "needsOperatorResponse"
+> & {
+  awaitingResponse?: boolean;
+  needsOperatorResponse?: boolean;
+};
 
-const mapContact = (contact: ContactRow) => ({
+const mapContact = (contact: MappableContact) => ({
   id: String(contact.id),
   name: contact.name,
   phone: contact.externalPhone,
@@ -117,6 +124,8 @@ const mapContact = (contact: ContactRow) => ({
   stage: contact.stage,
   aiEnabled: contact.aiEnabled === 1,
   unread: contact.unreadCount,
+  awaitingResponse: contact.awaitingResponse ?? false,
+  needsOperatorResponse: contact.needsOperatorResponse ?? false,
   lastMessage: contact.lastMessagePreview ?? "Sem mensagens",
   lastMessageAt:
     contact.lastMessageAt?.toISOString() ?? contact.updatedAt.toISOString(),
