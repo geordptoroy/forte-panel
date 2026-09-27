@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import {
   ArrowDownRight,
@@ -16,7 +16,6 @@ import {
   Filter,
   Gauge,
   Headphones,
-  ImagePlus,
   Info,
   KanbanSquare,
   MapPin,
@@ -37,6 +36,7 @@ import {
   UsersRound,
   WalletCards,
   Zap,
+  X,
 } from "lucide-react";
 import PanelLayout, {
   EmptyState,
@@ -361,10 +361,14 @@ function MessageBubble({ message }: { message: Message }) {
   const mediaUrlValue =
     typeof metadata.mediaUrl === "string"
       ? metadata.mediaUrl
-      : message.messageType === "audio"
-        ? message.text
-        : "";
+      : typeof metadata.mediaData === "string"
+        ? metadata.mediaData
+        : message.messageType === "audio"
+          ? message.text
+          : "";
   const safeMediaUrl = (() => {
+    if (/^data:(image|audio|video)\//i.test(mediaUrlValue) || /^data:application\/pdf;/i.test(mediaUrlValue))
+      return mediaUrlValue;
     try {
       const url = new URL(mediaUrlValue);
       return url.protocol === "https:" || url.protocol === "http:"
@@ -400,9 +404,24 @@ function MessageBubble({ message }: { message: Message }) {
           ) : message.messageType &&
             ["image", "video", "document"].includes(message.messageType) ? (
             safeMediaUrl ? (
-              <a href={safeMediaUrl} target="_blank" rel="noreferrer">
-                {mediaLabel}
-              </a>
+              message.messageType === "image" ? (
+                <img
+                  className="message-media-image"
+                  src={safeMediaUrl}
+                  alt={mediaLabel}
+                />
+              ) : message.messageType === "video" ? (
+                <video
+                  className="message-media-video"
+                  controls
+                  preload="metadata"
+                  src={safeMediaUrl}
+                />
+              ) : (
+                <a href={safeMediaUrl} target="_blank" rel="noreferrer">
+                  {mediaLabel}
+                </a>
+              )
             ) : (
               <span>{message.text || `[${mediaLabel}]`}</span>
             )
@@ -534,6 +553,13 @@ export function InboxPage() {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("Todos");
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<{
+    name: string;
+    type: "image" | "audio" | "video" | "document";
+    mimeType: string;
+    dataUrl: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const contactsQuery = trpc.inbox.contacts.useQuery();
   const remoteContacts = contactsQuery.data ?? [];
   const items = remoteContacts;
@@ -612,12 +638,48 @@ export function InboxPage() {
     });
   };
   const send = () => {
-    if (!draft.trim()) return;
+    if (!draft.trim() && !attachment) return;
+    const currentAttachment = attachment;
     sendMutation.mutate({
       contactId: selectedNumericId,
-      content: draft.trim(),
+      content: currentAttachment?.dataUrl ?? draft.trim(),
+      messageType: currentAttachment?.type ?? "text",
+      metadata: currentAttachment
+        ? {
+            mediaData: currentAttachment.dataUrl,
+            mediaMimeType: currentAttachment.mimeType,
+            fileName: currentAttachment.name,
+            ...(draft.trim() ? { caption: draft.trim() } : {}),
+          }
+        : undefined,
     });
     setDraft("");
+    setAttachment(null);
+  };
+  const selectAttachment = (file?: File) => {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      window.alert("Escolha um arquivo de até 8 MB.");
+      return;
+    }
+    const type = file.type.startsWith("image/")
+      ? "image"
+      : file.type.startsWith("audio/")
+        ? "audio"
+        : file.type.startsWith("video/")
+          ? "video"
+          : "document";
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string")
+        setAttachment({
+          name: file.name,
+          type,
+          mimeType: file.type || "application/octet-stream",
+          dataUrl: reader.result,
+        });
+    };
+    reader.readAsDataURL(file);
   };
   return (
     <PanelLayout
@@ -687,12 +749,40 @@ export function InboxPage() {
               <MessageBubble key={message.id} message={message} />
             ))}
           </div>
+          {attachment && (
+            <div className="chat-attachment-preview">
+              <div>
+                <strong>{attachment.name}</strong>
+                <small>{attachment.type} · até 8 MB</small>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Remover anexo"
+                onClick={() => setAttachment(null)}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
           <div className="chat-composer">
-            <button className="icon-button" aria-label="Anexar arquivo">
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+              onChange={event => {
+                selectAttachment(event.target.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="Anexar arquivo"
+              onClick={() => fileInputRef.current?.click()}
+            >
               <Paperclip size={16} />
-            </button>
-            <button className="icon-button" aria-label="Adicionar imagem">
-              <ImagePlus size={16} />
             </button>
             <input
               className="input-control"

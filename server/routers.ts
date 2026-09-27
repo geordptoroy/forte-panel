@@ -1579,7 +1579,13 @@ export const appRouter = router({
       }),
     sendMessage: protectedProcedure
       .input(
-        contactIdInput.extend({ content: z.string().trim().min(1).max(4000) })
+        contactIdInput.extend({
+          content: z.string().trim().min(1).max(12_000_000),
+          messageType: z
+            .enum(["text", "image", "audio", "video", "document"])
+            .default("text"),
+          metadata: z.record(z.string(), z.unknown()).optional(),
+        })
       )
       .mutation(async ({ input, ctx }) => {
         const usage = await consumeWorkspaceUserUsage(
@@ -1596,7 +1602,9 @@ export const appRouter = router({
           ctx.workspace.workspaceId,
           input.contactId,
           input.content,
-          ctx.user.id
+          ctx.user.id,
+          input.messageType,
+          input.metadata
         );
         return message
           ? {

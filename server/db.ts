@@ -3091,7 +3091,9 @@ export async function sendManualMessage(
   workspaceId: number,
   contactId: number,
   content: string,
-  actorUserId?: number
+  actorUserId?: number,
+  messageType: "text" | "image" | "audio" | "video" | "document" = "text",
+  messageMetadata?: Record<string, unknown>
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -3127,13 +3129,17 @@ export async function sendManualMessage(
   const metadata = {
     ...(inboundJid ? { jid: inboundJid } : {}),
     ...(manualInstanceId ? { instanceId: manualInstanceId } : {}),
+    ...(messageMetadata ?? {}),
   };
   await db.insert(messages).values({
     conversationId: conversation.id,
     direction: "outbound",
     senderType: "human",
-    messageType: "text",
-    content,
+    messageType,
+    content:
+      messageType === "text"
+        ? content
+        : String(messageMetadata?.fileName ?? `[${messageType}]`),
     metadata: Object.keys(metadata).length ? metadata : undefined,
     status: "queued",
     provider,
@@ -3144,7 +3150,10 @@ export async function sendManualMessage(
     .set({
       aiEnabled: 0,
       unreadCount: 0,
-      lastMessagePreview: content.slice(0, 500),
+      lastMessagePreview:
+        messageType === "text"
+          ? content.slice(0, 500)
+          : String(messageMetadata?.fileName ?? `[${messageType}]`),
       lastMessageAt: createdAt,
       updatedAt: createdAt,
     })

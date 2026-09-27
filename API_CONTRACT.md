@@ -22,22 +22,22 @@ Toda operação mutável aceita `Idempotency-Key`. A mesma chave não pode execu
 
 ## Endpoints da primeira versão
 
-| Método | Endpoint | Uso |
-|---|---|---|
-| `GET` | `/api/v1/health` | Healthcheck sem credencial |
-| `GET` | `/api/v1/ready` | Readiness com verificação segura do PostgreSQL |
-| `GET` | `/api/v1/channels` | Listar canais WhatsApp ativos do workspace |
-| `GET` | `/api/v1/onboarding/prompt` | Buscar o prompt operacional publicado da empresa |
-| `POST` | `/api/v1/contacts/upsert` | Criar ou atualizar lead por telefone |
-| `GET` | `/api/v1/contacts/:id` | Consultar contexto operacional do contato |
-| `POST` | `/api/v1/lead-memory` | Buscar, criar, atualizar lead ou registrar nota no CRM |
-| `GET` | `/api/v1/availability` | Consultar serviços, profissionais ativos e horários futuros reais |
-| `POST` | `/api/v1/appointments` | Criar reserva com checagem de conflito |
-| `POST` | `/api/v1/messages` | Enfileirar texto, áudio PTT ou botões para o worker e registrar no histórico |
-| `PATCH` | `/api/v1/contacts/:id/stage` | Mover contato no funil com auditoria |
-| `POST` | `/api/v1/appointments/:id/cancel` | Cancelar reserva |
-| `POST` | `/api/v1/appointments/:id/reschedule` | Reagendar reserva com checagem de conflito |
-| `POST` | `/api/v1/webhooks/inbound/whatsapp` | Receber evento normalizado do provider WhatsApp |
+| Método  | Endpoint                              | Uso                                                                          |
+| ------- | ------------------------------------- | ---------------------------------------------------------------------------- |
+| `GET`   | `/api/v1/health`                      | Healthcheck sem credencial                                                   |
+| `GET`   | `/api/v1/ready`                       | Readiness com verificação segura do PostgreSQL                               |
+| `GET`   | `/api/v1/channels`                    | Listar canais WhatsApp ativos do workspace                                   |
+| `GET`   | `/api/v1/onboarding/prompt`           | Buscar o prompt operacional publicado da empresa                             |
+| `POST`  | `/api/v1/contacts/upsert`             | Criar ou atualizar lead por telefone                                         |
+| `GET`   | `/api/v1/contacts/:id`                | Consultar contexto operacional do contato                                    |
+| `POST`  | `/api/v1/lead-memory`                 | Buscar, criar, atualizar lead ou registrar nota no CRM                       |
+| `GET`   | `/api/v1/availability`                | Consultar serviços, profissionais ativos e horários futuros reais            |
+| `POST`  | `/api/v1/appointments`                | Criar reserva com checagem de conflito                                       |
+| `POST`  | `/api/v1/messages`                    | Enfileirar texto, áudio PTT ou botões para o worker e registrar no histórico |
+| `PATCH` | `/api/v1/contacts/:id/stage`          | Mover contato no funil com auditoria                                         |
+| `POST`  | `/api/v1/appointments/:id/cancel`     | Cancelar reserva                                                             |
+| `POST`  | `/api/v1/appointments/:id/reschedule` | Reagendar reserva com checagem de conflito                                   |
+| `POST`  | `/api/v1/webhooks/inbound/whatsapp`   | Receber evento normalizado do provider WhatsApp                              |
 
 ## Agenda, serviços e profissionais
 
@@ -61,16 +61,18 @@ Mensagens enviadas por `POST /api/v1/messages` entram com status `queued` e não
 
 O gateway Baileys suporta estes formatos no worker:
 
-| `messageType` | `content` | `metadata` | Operação Baileys |
-|---|---|---|---|
-| `text` (padrão) | Texto da mensagem | Opcional | `POST /api/instances/:instanceId/send` |
-| `audio` | URL ou conteúdo compatível | `{ "ptt": true, "mimetype": "audio/ogg" }` | `POST /api/instances/:instanceId/send` |
-| `image` | URL ou conteúdo compatível | `caption?`, `mimetype?` | `POST /api/instances/:instanceId/send` |
-| `video` | URL ou conteúdo compatível | `caption?`, `mimetype?`, `ptv?` | `POST /api/instances/:instanceId/send` |
-| `document` | URL ou conteúdo compatível | `fileName`, `mimetype?` | `POST /api/instances/:instanceId/send` |
-| `button`/interativo | Texto do corpo | `buttons`, `footer?` e payload compatível | `POST /api/instances/:instanceId/send` |
+| `messageType`       | `content`                  | `metadata`                                 | Operação Baileys                       |
+| ------------------- | -------------------------- | ------------------------------------------ | -------------------------------------- |
+| `text` (padrão)     | Texto da mensagem          | Opcional                                   | `POST /api/instances/:instanceId/send` |
+| `audio`             | URL ou conteúdo compatível | `{ "ptt": true, "mimetype": "audio/ogg" }` | `POST /api/instances/:instanceId/send` |
+| `image`             | URL ou conteúdo compatível | `caption?`, `mimetype?`                    | `POST /api/instances/:instanceId/send` |
+| `video`             | URL ou conteúdo compatível | `caption?`, `mimetype?`, `ptv?`            | `POST /api/instances/:instanceId/send` |
+| `document`          | URL ou conteúdo compatível | `fileName`, `mimetype?`                    | `POST /api/instances/:instanceId/send` |
+| `button`/interativo | Texto do corpo             | `buttons`, `footer?` e payload compatível  | `POST /api/instances/:instanceId/send` |
 
 O gateway usa `Authorization: Bearer <BAILEYS_API_KEY>`. Tipos avançados devem ser enviados no payload genérico e só podem ser apresentados na interface quando houver suporte comprovado no canal selecionado. O worker recupera jobs presos após reinício e tenta novamente até `WORKER_MAX_ATTEMPTS` antes de marcar `failed`. A chave idempotente protege a fila do painel; a confirmação final de entrega depende da resposta do canal.
+
+O composer manual do Inbox aceita arquivos de até 8 MB para `image`, `audio`, `video` e `document`. Na implementação atual o arquivo é convertido para data URL e enviado em `metadata.mediaData`; o worker usa esse valor para o gateway, enquanto o banco guarda um rótulo no campo `content`. A migração para storage privado com URL assinada é obrigatória antes de arquivos grandes em produção.
 
 ```json
 {
@@ -108,7 +110,6 @@ As cotas são persistidas em `workspaceUsageBuckets` e `workspaceUserUsageBucket
 `GET /api/v1/health` é liveness: responde `200` quando o processo HTTP está executando e não depende do banco. `GET /api/v1/ready` é readiness: executa `select 1` no PostgreSQL e responde `200` com `status: "ready"` somente quando a conexão está funcional. Sem banco configurado ou com falha de conexão, responde `503` com `status: "not_ready"` e apenas o estado agregado da checagem; detalhes de conexão não são expostos.
 
 O worker registra um heartbeat JSON periódico, controlado por `WORKER_HEARTBEAT_MS` (padrão de 60 segundos), com `event`, `service`, quantidade de ciclos, intervalo, último tipo de erro e timestamp. Os eventos de operação continuam usando os campos `processadas`, `limitadas`, `alertasCota` e `bucketsRemovidos`.
-
 
 ## Baileys nativo — estado atual
 

@@ -41,7 +41,7 @@ A partir deste documento, o roadmap canônico passa a ser organizado por produto
 - **Storage de mídia:** o primeiro fluxo transporta mídia como data URL no webhook. Funciona para o MVP, mas não é a arquitetura final para arquivos grandes. Deve migrar para storage privado com URL assinada e expiração.
 - **Sessão Baileys:** o gateway usa `useMultiFileAuthState`; precisa de store durável, criptografado, com lock por instância e backup/restauração testados antes de escala.
 - **Multi-instância:** o gateway atual está estruturado ao redor de uma instância configurada por processo. O produto precisa de lifecycle de instâncias por workspace, QR escopado, reconexão e limites.
-- **Interface de mensagens:** o backend tem caminho genérico para payload Baileys, mas o Inbox ainda não oferece composer completo para anexos, botões, listas, enquetes, localização, contatos e respostas interativas.
+- **Interface de mensagens:** o Inbox agora oferece composer básico para imagem, áudio, vídeo e documento; botões, listas, enquetes, localização, contatos, reações e respostas interativas continuam pendentes.
 - **Calls:** eventos de chamada recebida são registrados. Iniciar chamada não é uma mensagem normal do Baileys e requer um fluxo de signaling próprio; não deve ser documentado como envio já entregue.
 - **Carrossel:** o Baileys expõe conteúdos específicos como álbum e mensagens interativas; “carrossel” precisa de contrato de produto explícito por versão, não apenas de um nome genérico na UI.
 - **Meta Cloud API:** permanece alternativa oficial, mas não possui paridade com todos os tipos Baileys. A interface deve mostrar disponibilidade por canal, não prometer paridade universal.
@@ -115,7 +115,8 @@ A partir deste documento, o roadmap canônico passa a ser organizado por produto
 - [ ] Storage privado de mídia com URL assinada.
 - [ ] Store de autenticação durável/criptografado e lock de instância.
 - [ ] Lifecycle multi-instância por workspace.
-- [ ] Inbox com anexos, preview, botões, listas, enquetes, localização, contato, reação e respostas interativas.
+- [x] Inbox com anexos, preview e envio de imagem, áudio, vídeo e documento.
+- [ ] Inbox com botões, listas, enquetes, localização, contato, reação e respostas interativas.
 - [ ] Contrato explícito de álbum/carrossel por versão do Baileys.
 - [ ] Testes E2E em Docker com número de teste.
 - [ ] Métricas de conexão, envio, download de mídia, retry e desconexão.
@@ -148,7 +149,8 @@ A partir deste documento, o roadmap canônico passa a ser organizado por produto
 - [x] Shell responsivo e navegação por áreas.
 - [ ] Dashboard orientado a ações: “o que precisa ser feito agora”.
 - [ ] Inbox com estados `IA ativa`, `IA pausada`, `Humano assumiu` e conexão degradada.
-- [ ] Composer com anexos e tipos Baileys suportados pelo canal.
+- [x] Composer com anexos básicos e tipos Baileys de mídia suportados pelo canal.
+- [ ] Composer para tipos interativos e payloads avançados.
 - [ ] Timeline sem expor raciocínio privado do modelo.
 - [ ] Canais em duas camadas: simples por padrão, detalhes avançados sob demanda.
 - [ ] Separar `PanelPages.tsx` por domínio.
@@ -199,7 +201,7 @@ A partir deste documento, o roadmap canônico passa a ser organizado por produto
 2. Finalizar redesign da interface de configuração e estados.
 3. Validar Baileys em Docker real com mídia e payloads avançados.
 4. Implementar storage privado de mídia.
-5. Fechar Inbox/composer multimídia.
+5. Fechar tipos interativos do Inbox/composer multimídia e substituir data URL por storage privado.
 6. Aplicar migrations e testes de tenancy em staging.
 7. Fechar versionamento/simulação do agente.
 8. Operar beta fechado pelo console interno.

@@ -68,13 +68,13 @@ O gateway inicia a conexão automaticamente. Se a sessão for encerrada ou desco
 
 O contrato interno do worker é `OutboundMessageCommand`. O campo `messageType` suporta:
 
-| Tipo | `content` | Metadados principais |
-|---|---|---|
-| `text` | Texto da mensagem | — |
-| `audio` | URL acessível pelo gateway | `ptt`, `mimetype` |
-| `image` | URL da imagem | `caption`, `mimetype` |
-| `video` | URL do vídeo | `caption`, `mimetype`, `ptv` |
-| `document` | URL do arquivo | `fileName`, `mimetype` |
+| Tipo                | `content`                         | Metadados principais                     |
+| ------------------- | --------------------------------- | ---------------------------------------- |
+| `text`              | Texto da mensagem                 | —                                        |
+| `audio`             | URL acessível pelo gateway        | `ptt`, `mimetype`                        |
+| `image`             | URL da imagem                     | `caption`, `mimetype`                    |
+| `video`             | URL do vídeo                      | `caption`, `mimetype`, `ptv`             |
+| `document`          | URL do arquivo                    | `fileName`, `mimetype`                   |
 | `button`/interativo | Texto do corpo ou payload Baileys | `buttons`, `footer` e campos compatíveis |
 
 O gateway também aceita o payload genérico compatível com `AnyMessageContent` para tipos avançados. A interface ainda precisa oferecer composer específico para todos esses tipos; “payload aceito no gateway” não significa que a experiência completa já esteja disponível no Inbox.
@@ -157,7 +157,7 @@ A tela **Sistema → Conectividade** agora mostra:
 - tipos de envio suportados;
 - consumo e proteções do workspace.
 
-As telas de provisionamento, webhooks, API keys e instâncias PAPI foram retiradas da interface. A tela do agente também não exibe mais credencial PAPI.
+As telas de provisionamento, webhooks, API keys e instâncias PAPI foram retiradas da interface. A tela do agente também não exibe mais credencial PAPI. O Inbox possui composer multimídia para imagem, áudio, vídeo e documento, com preview, remoção antes do envio e limite de 8 MB por arquivo. Nesta primeira versão o arquivo viaja como data URL; storage privado e URL assinada continuam sendo hardening de produção.
 
 ## Limpeza de ambiente
 

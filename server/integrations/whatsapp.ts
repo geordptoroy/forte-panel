@@ -416,7 +416,11 @@ export function createBaileysAdapter(): BaileysAdapter {
                 ? command.metadata.jid
                 : normalizePhone(command.phone),
             messageType: command.messageType ?? "text",
-            content: command.content,
+            content:
+              command.messageType !== "text" &&
+              typeof command.metadata?.mediaData === "string"
+                ? command.metadata.mediaData
+                : command.content,
             metadata: command.metadata ?? {},
             ...(command.metadata?.payload &&
             typeof command.metadata.payload === "object"
