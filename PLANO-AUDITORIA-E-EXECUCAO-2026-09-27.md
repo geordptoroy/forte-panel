@@ -187,3 +187,38 @@ A prioridade de conexão WhatsApp avançou: a experiência comum agora é focada
 A cobertura automatizada do gateway está verde: TypeScript direto e 15 testes passaram. O painel também passou em TypeScript e build. O alerta de chunk acima de 500 kB permanece backlog de performance P1. O gate operacional desta etapa continua dependente de Docker/staging com um número de teste, pois somente esse ambiente comprova o QR real, a persistência da sessão e o webhook inbound.
 
 Próximo passo: smoke browser no fluxo completo e, se aprovado, seguir para P1.2 de Inbox/dados de atendimento e KPIs por workspace.
+
+---
+## Continuação executada — fechamento pré-teste do MVP
+
+Esta rodada fechou o maior número possível de promessas do MVP antes do próximo teste operacional:
+
+### Baileys e operação de mensagens
+
+- O gateway ganhou `WebhookOutbox`, com arquivo JSON durável, escrita atômica, HMAC `sha256`, headers de segredo/assinatura, retry com backoff, quarentena de envelopes inválidos e retomada após reinício.
+- O ciclo de vida libera o lock de sessão e o timer da outbox no shutdown; `/health` continua representando processo vivo e `/ready` preserva o contrato de readiness do gateway.
+- O adapter do Panel agora separa gateway online de sessão WhatsApp realmente conectada e aplica timeout de rede às chamadas de health/envio.
+- O compose passou a persistir a outbox em `/app/sessions/outbox` e a ter um serviço one-shot de migrations; web e worker só iniciam após `service_completed_successfully`.
+
+### Auth, convites e equipe
+
+- Signup e login local continuam com sessão HTTP segura, rate limit e consentimento versionado.
+- Recovery usa provider transacional configurável (Resend, Postmark ou SendGrid) sem revelar existência de conta; convite usa o mesmo adapter.
+- Aceite de convite agora cria a sessão automaticamente e leva o usuário ao destino operacional correto.
+- Função textual e `canRegisterPayments` foram persistidos em membros/convites pela migration `0037_mvp_team_capabilities.sql`, propagados no aceite e aplicados nas rotas de financeiro.
+
+### Console da plataforma e IA
+
+- A política global de IA passou a ser armazenada no namespace protegido da plataforma, herdada pelos workspaces sem apagar overrides locais.
+- O console expõe leitura mascarada, edição global de prompt/modelo/limite, motivo obrigatório e auditoria; secrets continuam server-side e mascarados na UI.
+
+### Evidência desta rodada
+
+- Painel: TypeScript sem erros e `29` arquivos de teste aprovados (`113` testes); `17` arquivos/`41` testes continuam skipped por dependerem de PostgreSQL/ambiente externo.
+- Gateway: TypeScript sem erros e `4` arquivos/`17` testes aprovados, incluindo outbox, assinatura, persistência e retry.
+- `git diff --check` aprovado.
+- O sandbox não possui Docker CLI; por isso `docker compose config`, build de imagem, migrations reais, QR, pareamento e entrega física no telefone permanecem gates externos.
+
+### Próximo gate autorizado
+
+Executar em Docker/staging descartável, nesta ordem: migration one-shot, login/signup/recovery com provider configurado, convite, QR com número de teste, inbound para Inbox, outbound de texto/mídia, restart do PostgreSQL, restart do gateway e reprocessamento da outbox. Não usar número comercial nem ativar cobrança real.

@@ -31,6 +31,7 @@ export type WorkspaceAccess = {
   canUseInbox: boolean;
   canSendMessages: boolean;
   canManageInbox: boolean;
+  canRegisterPayments: boolean;
   canSeeFullAgenda: boolean;
   restrictedToOwnAgenda: boolean;
 };
@@ -77,6 +78,8 @@ export async function resolveWorkspaceAccess(
   const canUseInbox = memberActive;
   const canSendMessages = memberActive;
   const canManageInbox = memberActive;
+  const canRegisterPayments =
+    manager || membership.canRegisterPayments;
 
   return {
     userId: user.id,
@@ -93,6 +96,7 @@ export async function resolveWorkspaceAccess(
     canUseInbox,
     canSendMessages,
     canManageInbox,
+    canRegisterPayments,
     canSeeFullAgenda: manager,
     restrictedToOwnAgenda: !manager && operationalRole === "professional",
   };
@@ -262,6 +266,8 @@ export async function listWorkspaceMembersDetailed(workspaceId: number) {
     role: workspaceMembers.role,
     active: workspaceMembers.active,
     professionalId: workspaceMembers.professionalId,
+    jobTitle: workspaceMembers.jobTitle,
+    canRegisterPayments: workspaceMembers.canRegisterPayments,
     name: users.name,
     email: users.email,
     operationalRole: users.operationalRole,
@@ -277,7 +283,7 @@ export async function listWorkspaceMembersDetailed(workspaceId: number) {
   }));
 }
 
-export async function setMemberProfile(workspaceId: number, memberId: number, input: { role?: WorkspaceMemberRole; operationalRole?: OperationalRole; professionalId?: number | null; active?: boolean }) {
+export async function setMemberProfile(workspaceId: number, memberId: number, input: { role?: WorkspaceMemberRole; operationalRole?: OperationalRole; professionalId?: number | null; jobTitle?: string | null; canRegisterPayments?: boolean; active?: boolean }) {
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const member = (await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.id, memberId), eq(workspaceMembers.workspaceId, workspaceId))).limit(1))[0];
@@ -288,13 +294,20 @@ export async function setMemberProfile(workspaceId: number, memberId: number, in
   }
   const nextRole = input.role ?? (member.role as WorkspaceMemberRole);
   const nextProfessionalId = input.professionalId === undefined ? member.professionalId : input.professionalId;
+  const nextOperationalRole = input.operationalRole ?? null;
+  if (nextOperationalRole === "professional" && !input.jobTitle?.trim() && !member.jobTitle?.trim())
+    throw new Error("Informe a função do profissional executor");
   if (member.role === "owner" && nextRole !== "owner") {
     const owners = await db.select({ id: workspaceMembers.id }).from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.role, "owner"), eq(workspaceMembers.active, 1)));
     if (owners.length <= 1) throw new Error("A instalação precisa manter pelo menos um proprietário ativo");
   }
   const updated = await db.update(workspaceMembers).set({
     role: nextRole,
+    jobTitle: input.jobTitle === undefined ? member.jobTitle : input.jobTitle?.trim() || null,
     professionalId: nextProfessionalId ?? null,
+    canRegisterPayments: input.canRegisterPayments === undefined
+      ? member.canRegisterPayments
+      : input.canRegisterPayments ? 1 : 0,
     active: input.active === undefined ? member.active : input.active ? 1 : 0,
     updatedAt: new Date(),
   }).where(and(eq(workspaceMembers.id, memberId), eq(workspaceMembers.workspaceId, workspaceId))).returning();

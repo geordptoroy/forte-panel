@@ -21,12 +21,14 @@ import {
 import {
   getActiveWorkspaceById,
   getDb,
+  getPlatformGlobalNativeAgentConfig,
   getPlatformNativeAgentConfig,
   getWorkspaceById,
   resetWorkspaceDevelopmentData,
   getWorkspaceUsageSnapshot,
   listPapiInstances,
   saveNativeAgentConfig,
+  savePlatformGlobalNativeAgentConfig,
 } from "./db";
 import type { NativeAgentConfig } from "./db";
 import {
@@ -218,6 +220,36 @@ export function safeAgentConfig(config: NativeAgentConfig): SafeAgentConfig {
     apiSource: "environment",
     llm: safeProviderSettings(config.llm),
   };
+}
+
+export async function getPlatformGlobalAgentSnapshot() {
+  return safeAgentConfig(await getPlatformGlobalNativeAgentConfig());
+}
+
+export async function savePlatformGlobalAgentPolicy(input: {
+  platformAdminId: number;
+  reason: string;
+  enabled: boolean;
+  model: string;
+  systemPrompt: string;
+  maxSteps: number;
+}) {
+  const before = await getPlatformGlobalNativeAgentConfig();
+  const saved = await savePlatformGlobalNativeAgentConfig({
+    enabled: input.enabled,
+    model: input.model,
+    systemPrompt: input.systemPrompt,
+    maxSteps: input.maxSteps,
+  });
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    action: "platform_global_ai_policy_updated",
+    reason: input.reason,
+    summary: `Política global da IA ${input.enabled ? "ativada" : "pausada"}; modelo ${input.model}`,
+    before,
+    after: saved,
+  });
+  return safeAgentConfig(saved);
 }
 
 function parseSafeAgentConfig(

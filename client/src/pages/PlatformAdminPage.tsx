@@ -187,6 +187,81 @@ function MetricCard({
   );
 }
 
+function GlobalAiPolicyCard({ canMutate }: { canMutate: boolean }) {
+  const global = trpc.platform.globalAiConfig.useQuery();
+  const [enabled, setEnabled] = useState(true);
+  const [model, setModel] = useState("gpt-5-mini");
+  const [prompt, setPrompt] = useState("");
+  const [maxSteps, setMaxSteps] = useState(6);
+  const [reason, setReason] = useState("Política global inicial do agente");
+  useEffect(() => {
+    if (!global.data) return;
+    setEnabled(global.data.enabled);
+    setModel(global.data.model);
+    setPrompt(global.data.systemPrompt);
+    setMaxSteps(global.data.maxSteps);
+  }, [global.data]);
+  const save = trpc.platform.saveGlobalAiConfig.useMutation({
+    onSuccess: result => {
+      setEnabled(result.enabled);
+      setModel(result.model);
+      setPrompt(result.systemPrompt);
+      setMaxSteps(result.maxSteps);
+      void global.refetch();
+      toast.success("Política global da IA salva");
+    },
+    onError: error => toast.error(error.message),
+  });
+  return (
+    <section className="platform-card" style={{ marginBottom: 20 }}>
+      <div className="platform-card-title">
+        <div>
+          <span className="eyebrow">Governança global</span>
+          <h2>Política da IA para novos workspaces</h2>
+        </div>
+        <Bot size={18} />
+      </div>
+      <p className="platform-muted">
+        Esta política vira fallback operacional para todos os workspaces. Um
+        override local continua possível e os segredos dos provedores nunca são
+        exibidos neste console.
+      </p>
+      <div className="platform-form-grid">
+        <label className="platform-field">
+          <span>Estado global</span>
+          <select className="select-control" value={enabled ? "enabled" : "paused"} onChange={event => setEnabled(event.target.value === "enabled")}>
+            <option value="enabled">Ativa</option>
+            <option value="paused">Pausada</option>
+          </select>
+        </label>
+        <label className="platform-field">
+          <span>Modelo lógico</span>
+          <input className="input-control" value={model} onChange={event => setModel(event.target.value)} />
+        </label>
+        <label className="platform-field">
+          <span>Máximo de etapas</span>
+          <input className="input-control" type="number" min={1} max={8} value={maxSteps} onChange={event => setMaxSteps(Number(event.target.value))} />
+        </label>
+        <label className="platform-field full">
+          <span>System prompt global</span>
+          <textarea className="textarea-control agent-prompt-editor" value={prompt} onChange={event => setPrompt(event.target.value)} />
+        </label>
+        <label className="platform-field full">
+          <span>Motivo obrigatório</span>
+          <input className="input-control" value={reason} onChange={event => setReason(event.target.value)} />
+        </label>
+      </div>
+      <div className="platform-form-actions">
+        <button className="btn-primary" disabled={!canMutate || save.isPending || reason.trim().length < 3 || model.trim().length < 1} onClick={() => save.mutate({ enabled, model: model.trim(), systemPrompt: prompt, maxSteps, reason })}>
+          <Sparkles size={14} /> {save.isPending ? "Salvando…" : "Salvar política global"}
+        </button>
+        {!canMutate && <small className="platform-muted">Sua permissão de plataforma é somente leitura.</small>}
+      </div>
+      {global.error && <div className="form-error">{global.error.message}</div>}
+    </section>
+  );
+}
+
 function WorkspaceStatus({ value }: { value: string }) {
   return (
     <span className={`platform-status ${statusTone(value)}`}>
@@ -314,6 +389,7 @@ function PlatformAdminOverview() {
           </span>
         </div>
       </div>
+      <GlobalAiPolicyCard canMutate={Boolean(access.data?.canMutate)} />
       <div className="platform-metric-grid">
         <MetricCard
           label="Contas monitoradas"

@@ -64,7 +64,7 @@ function Router() {
       <Route path="/contacts/:id" component={ContactDetailPage} />
       <Route path="/billing">
         {() => (
-          <AccessGuard requirement="manager" title="Faturamento">
+          <AccessGuard requirement="financial" title="Faturamento">
             <BillingPage />
           </AccessGuard>
         )}
