@@ -234,6 +234,8 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [x] Impedir `auditLogs` falsos: só registrar evento após confirmar que a mutação alterou uma linha do próprio workspace. (toggle IA e mudança de stage protegidos; cobertura de banco real continua dependente de staging)
 - [ ] Adicionar FKs/constraints para conversations/messages/notes/quotes e decidir barreira redundante de `workspaceId` nas entidades derivadas.
 - [x] Normalizar telefones/JIDs antes do upsert e testar formatos equivalentes. (chave canônica compartilhada; LID/grupo preservados; adapters usam JID normalizado para roteamento)
+- [x] Criar auditoria somente leitura de duplicidades (`pnpm exec tsx scripts/audit-contact-duplicates.ts --workspace=<id> --json`); nenhuma consolidação automática.
+- [ ] Revisar grupos em staging, escolher contato canônico, migrar referências/transações e só depois aplicar deduplicação controlada.
 - [x] Responder pela instância/canal de origem da conversa, não por `defaultPapiWebhook`. (mensagens legadas sem origem ainda usam o default explicitamente marcado)
 - [ ] Formalizar se a operação é caixa compartilhada; caso não seja, implementar assignment/equipe/ACL por contato e mídia.
 - [ ] Separar `awaiting_response` de unread: derivar por última inbound/outbound e implementar leitura transacional por usuário.

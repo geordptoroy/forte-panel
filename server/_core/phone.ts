@@ -7,6 +7,10 @@ function cleanJidLocal(value: string) {
 /** Canonical key used for workspace contact deduplication. */
 export function normalizeContactPhone(input: string) {
   const raw = input.trim().toLowerCase();
+  if (raw.startsWith("lid:"))
+    return `lid:${cleanJidLocal(raw.slice("lid:".length))}`;
+  if (raw.startsWith("group:"))
+    return `group:${cleanJidLocal(raw.slice("group:".length))}`;
   const at = raw.indexOf("@");
   if (at > 0) {
     const local = cleanJidLocal(raw.slice(0, at));

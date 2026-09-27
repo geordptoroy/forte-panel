@@ -1308,3 +1308,10 @@ O próximo slice técnico foi concluído: `sendManualMessage` agora lê o provid
 ### Normalização de telefone e JID — 2026-09-27
 
 O slice seguinte foi concluído com helpers compartilhados em `server/_core/phone.ts`. Inbound e `upsertApiContact` normalizam a chave antes do lookup/insert, evitando duplicidade entre `+55 (11) 99999-9999`, `55 11 99999-9999` e o JID equivalente. Identidades `@lid` e `@g.us` ficam distintas (`lid:`/`group:`), enquanto o JID normalizado permanece no metadata para roteamento. Os adapters PAPI/Baileys/Meta usam a regra compartilhada e PAPI preserva o JID no destinatário quando disponível. Foram adicionados 4 testes de normalização; a migração/deduplicação de registros históricos deve ser feita em staging.
+
+
+### Auditoria de duplicidades de contatos — 2026-09-27
+
+Foi criado `scripts/audit-contact-duplicates.ts`, em modo somente leitura. Uso: `pnpm exec tsx scripts/audit-contact-duplicates.ts --workspace=<id> --json`. O comando consulta apenas `contacts`, agrupa por workspace e chave canônica, reporta IDs, telefones e nomes envolvidos e não mescla, exclui ou atualiza nada. Também não cruza automaticamente LID/grupo com telefone comum.
+
+A consolidação histórica permanece pendente e deve ocorrer em staging: revisar cada grupo, escolher o contato canônico, migrar referências de conversas/mensagens/notas/orçamentos/agendamentos com transação e backup, validar contagens e só então executar uma migração aprovada. Nunca rodar uma mesclagem automática em produção.
