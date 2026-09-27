@@ -208,7 +208,22 @@ function safeProviderSettings(
       ];
     })
   ) as AgentProviderSettings["providers"];
-  return { providers, routing: settings.routing };
+  const routing = Object.fromEntries(
+    Object.entries(settings.routing).map(([capability, route]) => [
+      capability,
+      {
+        ...route,
+        ...(route.apiKey
+          ? {
+              apiKey: route.apiKey.startsWith("••••")
+                ? route.apiKey
+                : maskProviderSecret(route.apiKey),
+            }
+          : {}),
+      },
+    ])
+  ) as AgentProviderSettings["routing"];
+  return { providers, routing };
 }
 
 export function safeAgentConfig(config: NativeAgentConfig): SafeAgentConfig {
