@@ -44,6 +44,12 @@ const managementNav: NavGroup[] = [
     label: "Operação",
     items: [
       {
+        href: "/whatsapp-connection",
+        label: "Conectar WhatsApp",
+        description: "Primeiro passo com QR Code",
+        icon: PlugZap,
+      },
+      {
         href: "/dashboard",
         label: "Dashboard",
         description: "Visão geral",

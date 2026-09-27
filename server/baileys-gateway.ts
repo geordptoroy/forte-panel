@@ -1,5 +1,9 @@
 const gatewayBaseUrl = () => (process.env.BAILEYS_BASE_URL ?? "").replace(/\/$/, "");
 const instanceId = () => process.env.BAILEYS_INSTANCE_ID ?? "default";
+const instanceName = () =>
+  process.env.BAILEYS_INSTANCE_NAME?.trim() || `WhatsApp · ${instanceId()}`;
+const maskSecret = (value: string | undefined) =>
+  value ? `${value.slice(0, 3)}••••${value.slice(-3)}` : null;
 
 async function gatewayRequest(path: string, init?: RequestInit) {
   const baseUrl = gatewayBaseUrl();
@@ -29,9 +33,18 @@ export async function getBaileysStatus() {
     return {
       configured: false,
       instanceId: instanceId(),
+      instanceName: instanceName(),
       status: "unconfigured" as const,
       qrAvailable: false,
       lastError: null,
+      configuration: {
+        gatewayUrl: gatewayBaseUrl() || null,
+        apiKeyMasked: maskSecret(process.env.BAILEYS_API_KEY),
+        webhookConfigured: Boolean(process.env.BAILEYS_WEBHOOK_SECRET),
+        webhookUrl: "/api/v1/webhooks/providers/baileys",
+        sessionPersistent: true,
+        sessionEncrypted: Boolean(process.env.BAILEYS_SESSION_ENCRYPTION_KEY),
+      },
     };
   const body = (await response.json()) as {
     status?: string;
@@ -43,11 +56,20 @@ export async function getBaileysStatus() {
   return {
     configured: true,
     instanceId: instanceId(),
+    instanceName: instanceName(),
     status: body.status ?? "unknown",
     phoneNumber: body.phoneNumber ?? body.phone ?? null,
     qrAvailable: body.status === "qr",
     lastError: body.lastError ?? null,
     updatedAt: body.updatedAt ?? null,
+    configuration: {
+      gatewayUrl: gatewayBaseUrl() || null,
+      apiKeyMasked: maskSecret(process.env.BAILEYS_API_KEY),
+      webhookConfigured: Boolean(process.env.BAILEYS_WEBHOOK_SECRET),
+      webhookUrl: "/api/v1/webhooks/providers/baileys",
+      sessionPersistent: true,
+      sessionEncrypted: Boolean(process.env.BAILEYS_SESSION_ENCRYPTION_KEY),
+    },
   };
 }
 

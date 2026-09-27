@@ -21,7 +21,7 @@ export default function SignupPage() {
         utils.auth.me.invalidate(),
         utils.auth.access.invalidate(),
       ]);
-      navigate("/dashboard");
+      navigate("/whatsapp-connection");
     },
     onError: error => toast.error(error.message),
   });

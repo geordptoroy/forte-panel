@@ -215,10 +215,22 @@ function BaileysConnectionCard() {
                 <input className="input-control" value={current.instanceId} readOnly />
               </div>
               <div className="form-field">
+                <label>Nome da instância</label>
+                <input className="input-control" value={current.instanceName ?? current.instanceId} readOnly />
+              </div>
+              <div className="form-field">
                 <label>Número conectado</label>
                 <input className="input-control" value={current.phoneNumber ?? "Aguardando leitura"} readOnly />
               </div>
             </div>
+            {current.configuration && (
+              <div className="connection-config-grid" aria-label="Configuração operacional da instância">
+                <div><span>Gateway</span><strong>{current.configuration.gatewayUrl ?? "Não configurado"}</strong></div>
+                <div><span>API key</span><strong>{current.configuration.apiKeyMasked ?? "Não configurada"}</strong></div>
+                <div><span>Webhook</span><strong>{current.configuration.webhookConfigured ? "Configurado" : "Pendente"}</strong></div>
+                <div><span>Sessão</span><strong>{current.configuration.sessionEncrypted ? "Persistente e criptografada" : "Persistente"}</strong></div>
+              </div>
+            )}
             <div className="qr-actions" style={{ marginTop: 16 }}>
               {!connected && (
                 <button
@@ -2363,7 +2375,7 @@ export function BillingPage() {
   );
 }
 
-export function IntegrationsPage() {
+export function WhatsappConnectionPage() {
   const channelsQuery = trpc.workspace.channels.useQuery();
   const usageQuery = trpc.workspace.usage.useQuery(undefined, {
     refetchInterval: 30_000,
@@ -2384,9 +2396,9 @@ export function IntegrationsPage() {
     limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   return (
     <PanelLayout
-      eyebrow="Conexão WhatsApp"
+      eyebrow="Primeiro passo do workspace"
       title="Conecte seu WhatsApp"
-      description="Gerencie uma única instância WhatsApp por workspace, com QR Code e sessão persistente."
+      description="Identifique a instância, leia o QR Code e confirme a sessão antes de testar mensagens, agente ou agenda."
     >
       <DemoBanner />
       <BaileysConnectionCard />
@@ -2491,6 +2503,10 @@ export function IntegrationsPage() {
       </section>
     </PanelLayout>
   );
+}
+
+export function IntegrationsPage() {
+  return <WhatsappConnectionPage />;
 }
 
 export function NotFoundPage() {

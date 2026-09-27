@@ -589,3 +589,10 @@ a { color: inherit; text-decoration: none; }
 .platform-ai-route { display: grid; gap: 8px; padding: 12px; border-left: 2px solid rgba(86,214,138,.42); background: rgba(255,255,255,.018); }
 .platform-ai-route strong { color: #cfcfcf; font-size: 10px; }
 @media (max-width: 900px) { .platform-ai-provider-grid, .platform-ai-routing-grid { grid-template-columns: 1fr; } }
+
+.connection-config-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.connection-config-grid > div { display: grid; gap: 6px; min-width: 0; padding: 10px 11px; border: 1px solid var(--line); background: rgba(255,255,255,.025); }
+.connection-config-grid span { color: #777; font-size: 8px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.connection-config-grid strong { overflow: hidden; color: #c9c9c9; font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) { .connection-config-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .connection-config-grid { grid-template-columns: 1fr; } }

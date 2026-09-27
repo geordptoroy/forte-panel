@@ -11,6 +11,7 @@ import {
   DashboardPage,
   InboxPage,
   IntegrationsPage,
+  WhatsappConnectionPage,
   KanbanPage,
   NotFoundPage,
 } from "./pages/PanelPages";
@@ -43,6 +44,13 @@ function Router() {
         <Redirect to="/dashboard" />
       </Route>
       <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/whatsapp-connection">
+        {() => (
+          <AccessGuard requirement="manager" title="Conectar WhatsApp">
+            <WhatsappConnectionPage />
+          </AccessGuard>
+        )}
+      </Route>
       <Route path="/inbox" component={InboxPage} />
       <Route path="/kanban" component={KanbanPage} />
       <Route path="/login" component={LoginPage} />
