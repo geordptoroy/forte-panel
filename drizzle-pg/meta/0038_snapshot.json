@@ -4531,7 +4531,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"whatsappInstances\".\"provider\"::text = 'baileys'",
+          "where": "\"whatsappInstances\".\"provider\" NOT IN ('papi', 'meta_cloud_api')",
           "concurrently": false,
           "method": "btree",
           "with": {}

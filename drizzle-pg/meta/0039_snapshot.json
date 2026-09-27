@@ -4531,7 +4531,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"whatsappInstances\".\"provider\"::text = 'baileys'",
+          "where": "\"whatsappInstances\".\"provider\" NOT IN ('papi', 'meta_cloud_api')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4547,7 +4547,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"whatsappInstances\".\"provider\"::text = 'baileys' AND \"whatsappInstances\".\"active\" = 1 AND \"whatsappInstances\".\"isDefault\" = 1",
+          "where": "\"whatsappInstances\".\"provider\" NOT IN ('papi', 'meta_cloud_api') AND \"whatsappInstances\".\"active\" = 1 AND \"whatsappInstances\".\"isDefault\" = 1",
           "concurrently": false,
           "method": "btree",
           "with": {}
