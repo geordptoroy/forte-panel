@@ -344,12 +344,21 @@ a { color: inherit; text-decoration: none; }
 .ai-section-intro { max-width: 700px; margin: -5px 0 0; color: #777; font-size: 10px; line-height: 1.5; }
 .ai-route-card { display: grid; grid-template-columns: 38px minmax(150px, .7fr) minmax(300px, 1.3fr); gap: 14px; align-items: center; }
 .ai-route-card-expanded { display: block; }
+.ai-route-card.is-configured { border-color: rgba(86,214,138,.22); background: linear-gradient(135deg, rgba(86,214,138,.045), rgba(255,255,255,.018)); }
+.ai-route-card.is-incomplete { border-color: rgba(233,180,94,.16); }
 .ai-route-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 15px; }
 .ai-route-top .ai-toggle { margin-left: auto; }
 .ai-connection-label { margin-left: auto; color: #626262; font-size: 8px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.ai-route-status { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 8px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.ai-route-status > span { width: 6px; height: 6px; border-radius: 99px; background: var(--amber); }
+.ai-route-status.is-ready { color: var(--green); }
+.ai-route-status.is-ready > span { background: var(--green); box-shadow: 0 0 0 3px rgba(86,214,138,.08); }
+.ai-route-status.is-pending { color: var(--amber); }
 .ai-route-fields-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .ai-route-fields-four .form-field { min-width: 0; }
 .ai-route-number { color: #83ae92; font-size: 10px; font-weight: 900; letter-spacing: .1em; }
+.ai-route-number { display: grid; justify-items: center; gap: 5px; color: #83ae92; }
+.ai-route-number span { color: #586d5e; font-size: 8px; }
 .ai-route-fields { gap: 9px; }
 .ai-recommendation { margin-top: 14px; margin-bottom: 0; }
 .ai-prompt-field { margin-top: 18px; }

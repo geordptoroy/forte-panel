@@ -9,6 +9,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 3. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
 4. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual consolidado de operação do beta, migrations, quotas e segurança.
 5. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão completa do que funciona, como funciona, plano do console admin e pendências antes do beta.
+6. [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) — auditoria de divergências e roadmap canônico por fases.
 
 ## Produto e tenancy
 
@@ -16,6 +17,8 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 - [`ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`](./ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md) — estratégia de produto público multi-tenant.
 - [`FASE-1-SEGURANCA-CONTENCAO.md`](./FASE-1-SEGURANCA-CONTENCAO.md) — regras de contenção e segurança da primeira fase.
 - [`AUDITORIA-TECNICA-E-ROADMAP.md`](./AUDITORIA-TECNICA-E-ROADMAP.md) — auditoria, prioridades e riscos técnicos.
+
+> Para decisões atuais, use o roadmap datado acima. Os planos intermediários e handoffs continuam como histórico de execução e não substituem a fonte de verdade atual.
 
 ## API, agente e integrações
 

@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Info, Save, Sparkles } from "lucide-react";
+import {
+  CheckCircle2,
+  FileText,
+  Image as ImageIcon,
+  Info,
+  MessageSquareText,
+  Mic,
+  Save,
+  Sparkles,
+} from "lucide-react";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 
@@ -40,32 +49,36 @@ const initialConfig: AgentConfig = {
       openai_compatible: { enabled: false, baseUrl: "", apiKey: "" },
     },
     routing: {
-      text: { provider: "nvidia_nim", model: "meta/llama-3.1-70b-instruct" },
-      vision: { provider: "google_gemini", model: "gemini-2.0-flash" },
-      audio: { provider: "google_gemini", model: "gemini-2.0-flash" },
-      document: { provider: "google_gemini", model: "gemini-2.0-flash" },
+      text: { provider: "openai_compatible", model: "" },
+      vision: { provider: "openai_compatible", model: "" },
+      audio: { provider: "openai_compatible", model: "" },
+      document: { provider: "openai_compatible", model: "" },
     },
   },
 };
 const capabilityLabels: Record<
   Capability,
-  { title: string; description: string }
+  { title: string; description: string; icon: typeof MessageSquareText }
 > = {
   text: {
     title: "API de texto",
     description: "Conversa, ferramentas, agenda e respostas de texto.",
+    icon: MessageSquareText,
   },
   vision: {
     title: "API de imagem",
     description: "Fotos, comprovantes e imagens do WhatsApp.",
+    icon: ImageIcon,
   },
   audio: {
     title: "API de áudio",
     description: "Mensagens de voz recebidas.",
+    icon: Mic,
   },
   document: {
     title: "API de documento",
     description: "PDFs e arquivos recebidos.",
+    icon: FileText,
   },
 };
 
@@ -134,8 +147,8 @@ export default function AiConfigPage() {
         <div className="demo-banner">
           <Info size={14} />
           <span>
-            A chave é compartilhada por todas as operações que usam o mesmo
-            serviço. Ela aparece em cada card de propósito e fica criptografada
+            Cada API é independente. Preencha URL, chave e modelo apenas nas
+            operações que você pretende ativar; as chaves ficam criptografadas
             no workspace.
           </span>
         </div>
@@ -147,25 +160,34 @@ export default function AiConfigPage() {
               const routeBaseUrl = route.baseUrl ?? provider.baseUrl;
               const routeApiKey = route.apiKey ?? provider.apiKey;
               const info = capabilityLabels[capability];
+              const Icon = info.icon;
+              const isConfigured = Boolean(
+                routeBaseUrl.trim() && routeApiKey.trim() && route.model.trim()
+              );
               return (
                 <article
-                  className="ai-route-card ai-route-card-expanded"
+                  className={`ai-route-card ai-route-card-expanded ${isConfigured ? "is-configured" : "is-incomplete"}`}
                   key={capability}
                 >
                   <div className="ai-route-top">
                     <div className="ai-route-number">
-                      {String(
-                        ["text", "vision", "audio", "document"].indexOf(
-                          capability
-                        ) + 1
-                      ).padStart(2, "0")}
+                      <Icon size={16} strokeWidth={1.8} />
+                      <span>
+                        {String(
+                          ["text", "vision", "audio", "document"].indexOf(
+                            capability
+                          ) + 1
+                        ).padStart(2, "0")}
+                      </span>
                     </div>
                     <div className="ai-route-copy">
                       <h2>{info.title}</h2>
                       <p>{info.description}</p>
                     </div>
-                    <span className="ai-connection-label">
-                      Conexão configurada
+                    <span
+                      className={`ai-route-status ${isConfigured ? "is-ready" : "is-pending"}`}
+                    >
+                      <span /> {isConfigured ? "Pronta" : "Incompleta"}
                     </span>
                   </div>
                   <div className="ai-route-fields ai-route-fields-four">
