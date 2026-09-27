@@ -82,6 +82,31 @@ async function requireSession(
   return session;
 }
 
+const providerConfigInput = z.object({
+  enabled: z.boolean(),
+  baseUrl: z.string().trim().max(500),
+  apiKey: z.string().max(4_000),
+});
+const routingConfigInput = z.object({
+  provider: z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]),
+  model: z.string().trim().min(1).max(200),
+  baseUrl: z.string().trim().max(500).optional(),
+  apiKey: z.string().max(4_000).optional(),
+});
+const globalLlmInput = z.object({
+  providers: z.object({
+    nvidia_nim: providerConfigInput,
+    google_gemini: providerConfigInput,
+    openai_compatible: providerConfigInput,
+  }),
+  routing: z.object({
+    text: routingConfigInput,
+    vision: routingConfigInput,
+    audio: routingConfigInput,
+    document: routingConfigInput,
+  }),
+});
+
 export const platformRouter = router({
   access: requirePlatform.query(({ ctx }) => ({
     id: ctx.platformAdmin.id,
@@ -103,6 +128,7 @@ export const platformRouter = router({
         model: z.string().trim().min(1).max(200),
         systemPrompt: z.string().max(30_000),
         maxSteps: z.number().int().min(1).max(8),
+        llm: globalLlmInput,
       })
     )
     .mutation(async ({ input, ctx }) => {
