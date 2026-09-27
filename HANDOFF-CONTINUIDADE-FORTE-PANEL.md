@@ -1815,7 +1815,7 @@ Próximo passo recomendado: aplicar as migrations em PostgreSQL/staging, validar
 ---
 ## Atualização do handoff — 2026-09-27 — ambiente Docker local para validação
 
-Foi preparado o fluxo local reproduzível em `LOCAL-DOCKER-TESTE.md`. O Compose canônico para a máquina é `docker-compose.local.yml`, com PostgreSQL 16, Redis 7, painel, worker e gateway WhatsApp. O PostgreSQL agora publica somente em `127.0.0.1:${PANEL_POSTGRES_PORT:-5432}` para que os testes de integração possam rodar pelo host sem exposição pública.
+Foi preparado o fluxo local reproduzível em `LOCAL-DOCKER-TESTE.md`. O Compose canônico para a máquina agora é `docker-compose.yml` (com `docker-compose.local.yml` mantido como compatibilidade), com PostgreSQL 16, Redis 7, painel, worker e gateway WhatsApp. O PostgreSQL agora publica somente em `127.0.0.1:${PANEL_POSTGRES_PORT:-5432}` para que os testes de integração possam rodar pelo host sem exposição pública.
 
 Novos artefatos: `.env.docker.example`, `scripts/docker-init-local.sh`, `scripts/docker-up-local.sh` e `scripts/docker-reset-all-local.sh`. O init gera `.env` com segredos aleatórios locais sem sobrescrever arquivo existente; o up baixa as imagens e sobe a stack; o reset exige `FORTE_DOCKER_RESET_CONFIRM=APAGAR-TUDO` e remove containers, volumes, imagens, redes e cache Docker não utilizados globalmente. O reset não foi executado nesta sessão.
 

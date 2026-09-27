@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root_dir"
-compose_file="${COMPOSE_FILE:-docker-compose.local.yml}"
+compose_file="${COMPOSE_FILE:-docker-compose.yml}"
 env_file="${ENV_FILE:-.env}"
 
 cat >&2 <<'WARNING'

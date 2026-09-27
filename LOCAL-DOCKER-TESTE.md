@@ -1,6 +1,6 @@
 # Teste local do Forte Panel com Docker
 
-Este fluxo usa `docker-compose.local.yml` com PostgreSQL 16, Redis 7, painel, worker e gateway WhatsApp. O banco e os volumes ficam isolados na rede Docker; as migrations são executadas pelo container do painel com `RUN_MIGRATIONS=true`.
+Este fluxo usa `docker-compose.yml` como Compose local principal, com PostgreSQL 16, Redis 7, painel, worker e gateway WhatsApp. `docker-compose.local.yml` permanece compatível para quem preferir selecionar o nome explícito. O banco e os volumes ficam isolados na rede Docker; as migrations são executadas pelo container do painel com `RUN_MIGRATIONS=true`.
 
 ## Pré-requisitos
 
@@ -30,19 +30,19 @@ Comandos úteis:
 
 ```bash
 # acompanhar painel e worker
-docker compose --env-file .env -f docker-compose.local.yml logs -f forte-panel forte-panel-worker
+docker compose --env-file .env -f docker-compose.yml logs -f forte-panel forte-panel-worker
 
 # status
-docker compose --env-file .env -f docker-compose.local.yml ps
+docker compose --env-file .env -f docker-compose.yml ps
 
 # parar sem apagar banco, Redis ou sessões WhatsApp
-docker compose --env-file .env -f docker-compose.local.yml stop
+docker compose --env-file .env -f docker-compose.yml stop
 
 # iniciar novamente sem baixar imagens
 FORTE_PULL=0 ./scripts/docker-up-local.sh
 
 # remover containers, mas preservar volumes
-docker compose --env-file .env -f docker-compose.local.yml down
+docker compose --env-file .env -f docker-compose.yml down
 ```
 
 > O painel aplica migrations automaticamente na inicialização. Não use `db:push` para substituir migrations versionadas.

@@ -1,58 +1,57 @@
 services:
   postgres_panel:
     image: postgres:16-alpine
-    container_name: forte_media_postgres
+    container_name: forte_postgres_panel
     restart: unless-stopped
     environment:
-      POSTGRES_USER: forte_panel
-      POSTGRES_PASSWORD: forte_panel_local
-      POSTGRES_DB: forte_panel
+      POSTGRES_DB: ${PANEL_POSTGRES_DB:-forte_panel}
+      POSTGRES_USER: ${PANEL_POSTGRES_USER:-forte_panel}
+      POSTGRES_PASSWORD: ${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${PANEL_POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_panel_data:/var/lib/postgresql/data
-    networks:
-      - forte-media-network
+      - forte_postgres_panel_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U forte_panel -d forte_panel"]
+      test: ["CMD-SHELL", "pg_isready -U $${PANEL_POSTGRES_USER:-forte_panel} -d $${PANEL_POSTGRES_DB:-forte_panel}"]
       interval: 10s
       timeout: 5s
       retries: 10
+    networks: [panel-network]
 
   redis_panel:
     image: redis:7-alpine
-    container_name: forte_media_redis
+    container_name: forte_redis_panel
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - redis_panel_data:/data
-    networks:
-      - forte-media-network
+      - forte_redis_panel_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 10
+    networks: [panel-network]
 
   forte-panel:
     image: ghcr.io/geordptoroy/forte-panel:latest
-    container_name: forte_media_panel
+    pull_policy: always
+    container_name: forte_panel
     restart: unless-stopped
-    ports:
-      - "3002:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
-      DEMO_MODE: "false"
+      DEMO_MODE: ${DEMO_MODE:-false}
       LOCAL_AUTH_ENABLED: "true"
       LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:-admin@fortepanel.local}
-      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:-trocar-esta-senha}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?LOCAL_ADMIN_PASSWORD is required}
       PLATFORM_ADMIN_OPEN_IDS: ${PLATFORM_ADMIN_OPEN_IDS:-local_admin}
-      JWT_SECRET: ${JWT_SECRET:-troque-por-uma-chave-jwt-com-mais-de-32-caracteres}
-      FORTE_API_KEY: ${FORTE_API_KEY:-troque-esta-chave-do-painel}
-      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:-troque-este-segredo-do-painel}
-      DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      FORTE_API_KEY: ${FORTE_API_KEY:?FORTE_API_KEY is required}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
+      DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
       REDIS_URL: redis://redis_panel:6379/0
+      FORTE_API_WORKSPACE_ID: ${FORTE_API_WORKSPACE_ID:-}
       RUN_MIGRATIONS: "true"
-      FORTE_API_WORKSPACE_ID: ${FORTE_API_WORKSPACE_ID:-1}
       BAILEYS_BASE_URL: http://forte-whatsapp:3010
       BAILEYS_API_KEY: ${BAILEYS_API_KEY:?BAILEYS_API_KEY is required}
       BAILEYS_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:?BAILEYS_WEBHOOK_SECRET is required}
@@ -60,33 +59,30 @@ services:
       META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
       META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
       META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
+    ports: ["${PANEL_PORT:-3002}:3000"]
     depends_on:
-      postgres_panel:
-        condition: service_healthy
-      redis_panel:
-        condition: service_healthy
-    networks:
-      - forte-media-network
+      postgres_panel: { condition: service_healthy }
+      redis_panel: { condition: service_healthy }
+    networks: [panel-network, whatsapp-network]
 
   forte-panel-worker:
     image: ghcr.io/geordptoroy/forte-panel:latest
-    container_name: forte_media_worker
+    pull_policy: always
+    container_name: forte_panel_worker
     restart: unless-stopped
     command: ["./docker-entrypoint.sh", "worker"]
     environment:
       NODE_ENV: production
-      PORT: 3000
-      DEMO_MODE: "false"
+      DEMO_MODE: ${DEMO_MODE:-false}
       LOCAL_AUTH_ENABLED: "true"
       LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:-admin@fortepanel.local}
-      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:-trocar-esta-senha}
-      JWT_SECRET: ${JWT_SECRET:-troque-por-uma-chave-jwt-com-mais-de-32-caracteres}
-      FORTE_API_KEY: ${FORTE_API_KEY:-troque-esta-chave-do-painel}
-      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:-troque-este-segredo-do-painel}
-      DATABASE_URL: postgresql://forte_panel:forte_panel_local@postgres_panel:5432/forte_panel
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?LOCAL_ADMIN_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      FORTE_API_KEY: ${FORTE_API_KEY:?FORTE_API_KEY is required}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
+      DATABASE_URL: postgresql://${PANEL_POSTGRES_USER:-forte_panel}:${PANEL_POSTGRES_PASSWORD}@postgres_panel:5432/${PANEL_POSTGRES_DB:-forte_panel}
       REDIS_URL: redis://redis_panel:6379/0
       RUN_MIGRATIONS: "false"
-      FORTE_API_WORKSPACE_ID: ${FORTE_API_WORKSPACE_ID:-1}
       BAILEYS_BASE_URL: http://forte-whatsapp:3010
       BAILEYS_API_KEY: ${BAILEYS_API_KEY:?BAILEYS_API_KEY is required}
       BAILEYS_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:?BAILEYS_WEBHOOK_SECRET is required}
@@ -94,24 +90,21 @@ services:
       META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
       META_WHATSAPP_ACCESS_TOKEN: ${META_WHATSAPP_ACCESS_TOKEN:-}
       META_WHATSAPP_PHONE_NUMBER_ID: ${META_WHATSAPP_PHONE_NUMBER_ID:-}
-      WORKER_INTERVAL_MS: "1500"
-      WORKER_BATCH_SIZE: "10"
-      WORKER_MAX_ATTEMPTS: "3"
-      EVENT_WORKER_BATCH_SIZE: "10"
-      EVENT_WORKER_MAX_ATTEMPTS: "5"
+      WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS:-1500}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-10}
+      WORKER_MAX_ATTEMPTS: ${WORKER_MAX_ATTEMPTS:-3}
+      EVENT_WORKER_BATCH_SIZE: ${EVENT_WORKER_BATCH_SIZE:-10}
+      EVENT_WORKER_MAX_ATTEMPTS: ${EVENT_WORKER_MAX_ATTEMPTS:-5}
     depends_on:
-      postgres_panel:
-        condition: service_healthy
-      redis_panel:
-        condition: service_healthy
-      forte-panel:
-        condition: service_started
-    networks:
-      - forte-media-network
+      postgres_panel: { condition: service_healthy }
+      redis_panel: { condition: service_healthy }
+      forte-whatsapp: { condition: service_started }
+    networks: [panel-network, whatsapp-network]
 
   forte-whatsapp:
     image: ghcr.io/geordptoroy/forte-whatsapp:latest
-    container_name: forte_media_whatsapp
+    pull_policy: always
+    container_name: forte_whatsapp
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -121,21 +114,19 @@ services:
       WHATSAPP_INSTANCE_ID: ${BAILEYS_INSTANCE_ID:-default}
       WHATSAPP_WEBHOOK_URL: http://forte-panel:3000/api/v1/webhooks/providers/baileys
       WHATSAPP_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:?BAILEYS_WEBHOOK_SECRET is required}
-    ports:
-      - "127.0.0.1:${BAILEYS_PORT_PUBLIC:-3010}:3010"
-    volumes:
-      - forte_whatsapp_sessions:/app/sessions
+    ports: ["127.0.0.1:${BAILEYS_PORT_PUBLIC:-3010}:3010"]
+    volumes: ["forte_whatsapp_sessions:/app/sessions"]
     depends_on:
-      forte-panel:
-        condition: service_started
-    networks:
-      - forte-media-network
+      forte-panel: { condition: service_started }
+    networks: [whatsapp-network]
 
 networks:
-  forte-media-network:
-    driver: bridge
+  panel-network:
+    name: forte-panel-network
+  whatsapp-network:
+    name: ${COMPOSE_PROJECT_NAME:-forte-local}_whatsapp-network
 
 volumes:
-  postgres_panel_data:
-  redis_panel_data:
+  forte_postgres_panel_data:
+  forte_redis_panel_data:
   forte_whatsapp_sessions:
