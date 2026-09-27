@@ -7,9 +7,39 @@ type LoginBucket = {
   blockedUntil: number;
 };
 
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_BLOCK_MS = 15 * 60 * 1000;
-const LOGIN_MAX_FAILURES = 5;
+function positiveEnvInt(name: string, fallback: number) {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+const LOGIN_WINDOW_MS = positiveEnvInt(
+  "FORTE_LOGIN_RATE_LIMIT_WINDOW_MS",
+  15 * 60 * 1000
+);
+const LOGIN_BLOCK_STAGES = [
+  {
+    failures: positiveEnvInt("FORTE_LOGIN_RATE_LIMIT_STAGE_1_FAILURES", 5),
+    blockMs: positiveEnvInt(
+      "FORTE_LOGIN_RATE_LIMIT_STAGE_1_BLOCK_MS",
+      60 * 1000
+    ),
+  },
+  {
+    failures: positiveEnvInt("FORTE_LOGIN_RATE_LIMIT_STAGE_2_FAILURES", 10),
+    blockMs: positiveEnvInt(
+      "FORTE_LOGIN_RATE_LIMIT_STAGE_2_BLOCK_MS",
+      3 * 60 * 1000
+    ),
+  },
+  {
+    failures: positiveEnvInt("FORTE_LOGIN_RATE_LIMIT_STAGE_3_FAILURES", 15),
+    blockMs: positiveEnvInt(
+      "FORTE_LOGIN_RATE_LIMIT_STAGE_3_BLOCK_MS",
+      15 * 60 * 1000
+    ),
+  },
+].sort((left, right) => left.failures - right.failures);
+const LOGIN_MAX_FAILURES = LOGIN_BLOCK_STAGES.at(-1)?.failures ?? 5;
 const SIGNUP_WINDOW_MS = 15 * 60 * 1000;
 const SIGNUP_BLOCK_MS = 30 * 60 * 1000;
 const SIGNUP_MAX_ATTEMPTS = 3;
@@ -19,6 +49,14 @@ const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 const loginBuckets = new Map<string, LoginBucket>();
 const signupBuckets = new Map<string, LoginBucket>();
 const passwordResetBuckets = new Map<string, LoginBucket>();
+
+function loginBlockMsForFailures(failures: number) {
+  let blockMs = 0;
+  for (const stage of LOGIN_BLOCK_STAGES) {
+    if (failures >= stage.failures) blockMs = stage.blockMs;
+  }
+  return blockMs;
+}
 
 function getForwardedValue(value: string | string[] | undefined) {
   if (!value) return undefined;
@@ -111,9 +149,8 @@ export function recordLoginFailure(
       blockedUntil: 0,
     };
     bucket.failures += 1;
-    if (bucket.failures >= LOGIN_MAX_FAILURES) {
-      bucket.blockedUntil = now + LOGIN_BLOCK_MS;
-    }
+    const blockMs = loginBlockMsForFailures(bucket.failures);
+    if (blockMs > 0) bucket.blockedUntil = now + blockMs;
     loginBuckets.set(key, bucket);
   }
 }
@@ -224,7 +261,8 @@ export function resetLoginRateLimitForTests() {
 
 export const loginRateLimitConfig = {
   windowMs: LOGIN_WINDOW_MS,
-  blockMs: LOGIN_BLOCK_MS,
+  stages: LOGIN_BLOCK_STAGES,
+  blockMs: LOGIN_BLOCK_STAGES.at(-1)?.blockMs ?? 15 * 60 * 1000,
   maxFailures: LOGIN_MAX_FAILURES,
 };
 

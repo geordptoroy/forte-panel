@@ -71,7 +71,6 @@ describe("request security", () => {
     const req = request();
     const email = "owner@example.com";
     for (let i = 0; i < loginRateLimitConfig.maxFailures; i += 1) {
-      assertLoginAllowed(req, email, 1_000);
       recordLoginFailure(req, email, 1_000 + i);
     }
     expect(() => assertLoginAllowed(req, email, 2_000)).toThrow(
@@ -83,12 +82,39 @@ describe("request security", () => {
     const email = "owner@example.com";
     for (let i = 0; i < loginRateLimitConfig.maxFailures; i += 1) {
       const req = request({ ip: `203.0.113.${i + 20}` });
-      assertLoginAllowed(req, email, 1_000);
       recordLoginFailure(req, email, 1_000 + i);
     }
     expect(() => assertLoginAllowed(request(), email, 2_000)).toThrow(
       "Muitas tentativas de login"
     );
+  });
+
+  it("uses progressively longer blocks as failures accumulate", () => {
+    const req = request();
+    const email = "owner@example.com";
+    const [firstStage, secondStage, thirdStage] = loginRateLimitConfig.stages;
+
+    for (let i = 0; i < firstStage.failures; i += 1) {
+      recordLoginFailure(req, email, 1_000 + i);
+    }
+    const firstStageLastFailureAt = 1_000 + firstStage.failures - 1;
+    expect(() =>
+      assertLoginAllowed(req, email, firstStageLastFailureAt + firstStage.blockMs - 1)
+    ).toThrow("Muitas tentativas de login");
+    expect(() =>
+      assertLoginAllowed(req, email, firstStageLastFailureAt + firstStage.blockMs + 1)
+    ).not.toThrow();
+
+    for (let i = firstStage.failures; i < secondStage.failures; i += 1) {
+      recordLoginFailure(req, email, 62_000 + i);
+    }
+    const secondStageLastFailureAt = 62_000 + secondStage.failures - 1;
+    expect(() =>
+      assertLoginAllowed(req, email, secondStageLastFailureAt + secondStage.blockMs - 1)
+    ).toThrow("Muitas tentativas de login");
+
+    expect(thirdStage.failures).toBeGreaterThan(secondStage.failures);
+    expect(thirdStage.blockMs).toBeGreaterThan(secondStage.blockMs);
   });
 
   it("clears the failure bucket after a successful login", () => {

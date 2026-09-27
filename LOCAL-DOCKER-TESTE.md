@@ -47,6 +47,22 @@ docker compose --env-file .env -f docker-compose.yml down
 
 > O painel aplica migrations automaticamente na inicialização. Não use `db:push` para substituir migrations versionadas.
 
+## Rate limit do login local
+
+O login usa bloqueio progressivo por IP e e-mail, dentro de uma janela padrão de 15 minutos:
+
+| Falhas acumuladas | Bloqueio padrão |
+|---:|---:|
+| 5 | 1 minuto |
+| 10 | 3 minutos |
+| 15 | 15 minutos |
+
+Os valores são configuráveis no `.env` em milissegundos (`FORTE_LOGIN_RATE_LIMIT_*`). Depois de editar o `.env`, recrie o painel para carregar a configuração:
+
+```powershell
+docker compose --env-file .env -f docker-compose.yml up -d --force-recreate forte-panel
+```
+
 ## Testar a publicação versionada
 
 Depois de entrar no painel e completar/confirmar os quatro blocos obrigatórios:
