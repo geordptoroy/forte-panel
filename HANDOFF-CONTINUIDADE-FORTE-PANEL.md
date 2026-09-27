@@ -1473,3 +1473,28 @@ A entrega automática por e-mail ainda não está conectada: o backend não reto
 ### Próximo passo
 
 Conectar o provider de e-mail/entrega transacional atrás de configuração segura e mover o onboarding/configuração histórica de `platform_admin` para owner/admin. O signup e o reset não devem ser abertos em produção antes da validação PostgreSQL/staging e revisão legal.
+
+
+---
+## Atualização do handoff — 2026-09-27 12:42 — adapter de e-mail preparado sem envio
+
+A decisão desta etapa foi **preparar sem envio agora**. Foi adicionado um adapter provider-agnostic em `server/_core/email.ts`, com montagem do assunto/texto e URL `/reset-password?token=...`, sem dependência de fornecedor e sem chamada de rede.
+
+### Configuração
+
+- `EMAIL_DELIVERY_ENABLED=false` por padrão.
+- `EMAIL_PROVIDER=none` por padrão; valores previstos: `smtp`, `resend`, `postmark` e `sendgrid`.
+- `EMAIL_FROM` e `PUBLIC_APP_URL` documentados.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER` e `SMTP_PASSWORD` reservados para a opção SMTP, sem valores reais no repositório.
+- Providers desconhecidos são normalizados para `none` e nunca ficam prontos por acidente.
+- A camada de preparação não é uma entrega: o reset público continua sem devolver token e nenhum segredo é impresso em logs.
+
+### Validação
+
+```text
+pnpm check ✅
+pnpm test — 94 aprovados, 35 ignorados; adapter ✅
+`git diff --check` ✅
+```
+
+O próximo bloco é mover onboarding/configuração histórica de `platform_admin` para owner/admin. A ativação do e-mail ficará para quando o provider, domínio, remetente e secrets forem escolhidos e configurados; a integração efetiva deve consumir o token internamente, chamar o provider e manter a resposta pública genérica.

@@ -439,3 +439,11 @@ O próximo corte é **recuperação de senha one-time** sem expor token ou segre
 Foi entregue a base segura de reset: migration `0027_password_reset_tokens`, hash SHA-256, expiração de 30 minutos, revogação de tokens anteriores, lock transacional, consumo único, rotação de `sessionVersion`, auditoria e rate limit por IP/e-mail. As rotas públicas são `auth.requestPasswordReset` e `auth.resetPassword`; as telas são `/forgot-password` e `/reset-password`.
 
 A solicitação pública responde genericamente e não retorna token. A entrega transacional por e-mail continua pendente até configurar provider, domínio, remetente e secrets. O próximo corte é integrar esse provider sem imprimir token em logs e depois liberar o onboarding de negócio para owner/admin, mantendo o console de plataforma separado.
+
+
+---
+## Etapa seguinte — adapter de e-mail preparado sem envio — 2026-09-27
+
+A opção escolhida foi preparar sem envio agora. O projeto recebeu `server/_core/email.ts`, configuração segura em `env.ts` e documentação no `.env.local.example`. O adapter monta o conteúdo e a URL do reset, mas não tem dependência de rede, não chama provider e permanece atrás de `EMAIL_DELIVERY_ENABLED=false`/`EMAIL_PROVIDER=none`.
+
+O próximo bloco funcional é mover onboarding/configuração histórica para owner/admin. Quando um provider for escolhido, a entrega deve ser conectada sem devolver tokens na API, sem logs sensíveis e com `PUBLIC_APP_URL`/remetente/domínio validados.
