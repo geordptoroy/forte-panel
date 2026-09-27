@@ -80,6 +80,7 @@ import {
   pauseOnboardingSession,
   claimOnboardingAudioTranscription,
   persistOnboardingAudioTranscription,
+  persistOnboardingStepAnswerProposal,
   saveOnboardingProfile,
   startOnboardingSession,
   setContactAi,
@@ -97,6 +98,7 @@ import {
   validateOnboardingAudioMetadata,
 } from "./onboarding-audio";
 import { transcribeAudioForWorkspace } from "./_core/voiceTranscription";
+import { extractOnboardingStructuredProposal } from "./onboarding-structured";
 import {
   invokeConfiguredLLM,
   type AgentCapability,
@@ -1343,6 +1345,51 @@ export const appRouter = router({
           throw error;
         }
       }),
+    extractProposal: requireOnboardingEditor
+      .input(
+        z.object({
+          stepKey: z.enum(["identity", "offering", "operations", "guardrails", "voice"]),
+          text: z.string().trim().min(1).max(12_000),
+          language: z.string().trim().min(2).max(16).default("pt-BR"),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const workspaceId = ctx.workspace.workspaceId;
+        try {
+          await assertOnboardingSourceConsent(workspaceId, "llm");
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith("ONBOARDING_SOURCE_CONSENT_REQUIRED:"))
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Conceda o consentimento para processamento por IA antes de estruturar a resposta.",
+            });
+          throw error;
+        }
+        try {
+          const proposal = await extractOnboardingStructuredProposal(input);
+          const saved = await persistOnboardingStepAnswerProposal({
+            workspaceId,
+            stepKey: input.stepKey,
+            answer: proposal.answer,
+            source: "llm",
+            confidence: proposal.confidence,
+            missing: proposal.missing,
+            conflicts: proposal.conflicts,
+            updatedBy: ctx.user.id,
+          });
+          await logWorkspaceAction({
+            workspaceId,
+            actorUserId: ctx.user.id,
+            action: "onboarding_structured_proposal_created",
+            summary: `Proposta estruturada criada como rascunho para o bloco ${input.stepKey}`,
+          });
+          return saved;
+        } catch (error) {
+          if (error instanceof Error && error.message === "ONBOARDING_PROPOSAL_TEXT_REQUIRED")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma correção antes de estruturar a resposta." });
+          throw new TRPCError({ code: "BAD_GATEWAY", message: "Não foi possível estruturar a resposta agora. Revise o texto ou use o formulário." });
+        }
+      }),
   }),
 
   voice: router({
@@ -1353,6 +1400,7 @@ export const appRouter = router({
           stepKey: z.enum(["identity", "offering", "operations", "guardrails", "voice"]),
           mimeType: z.string().trim().min(1).max(120),
           durationMs: z.number().int().positive().max(120_000).optional(),
+          correction: z.boolean().default(false),
           audioBase64: z.string().min(1).max(23_000_000),
         })
       )
@@ -1376,6 +1424,11 @@ export const appRouter = router({
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "Formato ou duração do áudio não suportado.",
+          });
+        if (input.correction && (!input.durationMs || input.durationMs > 30_000))
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "A correção curta deve ter no máximo 30 segundos.",
           });
 
         let audioBuffer: Buffer;
@@ -1425,8 +1478,10 @@ export const appRouter = router({
         await logWorkspaceAction({
           workspaceId: ctx.workspace.workspaceId,
           actorUserId: ctx.user.id,
-          action: "onboarding_audio_uploaded",
-          summary: `Áudio recebido para o bloco ${input.stepKey}`,
+          action: input.correction
+            ? "onboarding_audio_correction_uploaded"
+            : "onboarding_audio_uploaded",
+          summary: `${input.correction ? "Correção curta recebida" : "Áudio recebido"} para o bloco ${input.stepKey}`,
         });
         return {
           assetId: asset.id,

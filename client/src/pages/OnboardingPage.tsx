@@ -150,6 +150,8 @@ export default function OnboardingPage() {
   const [voiceUrl, setVoiceUrl] = useState("");
   const [voiceTranscript, setVoiceTranscript] = useState("");
   const [voiceError, setVoiceError] = useState("");
+  const [voiceCorrectionMode, setVoiceCorrectionMode] = useState(false);
+  const [proposalMessage, setProposalMessage] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
@@ -175,6 +177,13 @@ export default function OnboardingPage() {
       setVoiceStatus("error");
       setVoiceError(error.message);
     },
+  });
+  const extractProposal = trpc.onboarding.extractProposal.useMutation({
+    onSuccess: result => {
+      setProposalMessage(`Rascunho estruturado salvo com ${result.confidence}% de confiança. Revise o bloco antes de confirmar.`);
+      void utils.onboarding.profile.invalidate();
+    },
+    onError: error => setProposalMessage(error.message),
   });
 
   useEffect(() => {
@@ -224,7 +233,7 @@ export default function OnboardingPage() {
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   };
 
-  const startRecording = async () => {
+  const startRecording = async (correction = voiceCorrectionMode) => {
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
       setVoiceStatus("error");
       setVoiceError("Este navegador não oferece gravação de áudio. Responda por texto ou use um navegador atualizado.");
@@ -232,6 +241,8 @@ export default function OnboardingPage() {
     }
     setVoiceError("");
     setVoiceTranscript("");
+    setProposalMessage("");
+    setVoiceCorrectionMode(correction);
     setVoiceBlob(null);
     if (voiceUrl) {
       URL.revokeObjectURL(voiceUrl);
@@ -255,7 +266,7 @@ export default function OnboardingPage() {
       recorder.onstop = () => {
         if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
         stream.getTracks().forEach(track => track.stop());
-        const durationMs = Math.min(120_000, Date.now() - recordingStartedAtRef.current);
+        const durationMs = Math.min(correction ? 30_000 : 120_000, Date.now() - recordingStartedAtRef.current);
         const mimeType = (recorder.mimeType || supported || "audio/webm").split(";", 1)[0];
         const blob = new Blob(voiceChunksRef.current, { type: mimeType });
         setVoiceDurationMs(durationMs);
@@ -271,8 +282,8 @@ export default function OnboardingPage() {
       recorder.start(250);
       recordingTimerRef.current = window.setInterval(() => {
         const elapsed = Date.now() - recordingStartedAtRef.current;
-        setVoiceDurationMs(Math.min(120_000, elapsed));
-        if (elapsed >= 120_000) stopRecording();
+        setVoiceDurationMs(Math.min(correction ? 30_000 : 120_000, elapsed));
+        if (elapsed >= (correction ? 30_000 : 120_000)) stopRecording();
       }, 250);
     } catch {
       setVoiceStatus("error");
@@ -288,6 +299,8 @@ export default function OnboardingPage() {
     setVoiceTranscript("");
     setVoiceError("");
     setVoiceDurationMs(0);
+    setVoiceCorrectionMode(false);
+    setProposalMessage("");
     setVoiceStatus("idle");
   };
 
@@ -302,12 +315,23 @@ export default function OnboardingPage() {
         stepKey: voiceStepKey,
         mimeType: voiceMimeType,
         durationMs: Math.max(1, Math.round(voiceDurationMs)),
+        correction: voiceCorrectionMode,
         audioBase64,
       });
     } catch (error) {
       setVoiceStatus("error");
       setVoiceError(error instanceof Error ? error.message : "Não foi possível preparar o áudio.");
     }
+  };
+
+  const extractStructuredProposal = () => {
+    if (!voiceTranscript.trim()) return;
+    setProposalMessage("");
+    extractProposal.mutate({
+      stepKey: voiceStepKey,
+      text: voiceTranscript.trim(),
+      language: "pt-BR",
+    });
   };
 
   const insertTranscriptIntoFaq = () => {
@@ -429,7 +453,7 @@ export default function OnboardingPage() {
         <SectionTitle
           eyebrow="Entrada por voz"
           title="Responda falando, revise antes de usar"
-          action={<span className="muted" style={{ fontSize: 10 }}>até 02:00 · 16 MB</span>}
+          action={<span className="muted" style={{ fontSize: 10 }}>{voiceCorrectionMode ? "correção curta · 00:30" : "até 02:00 · 16 MB"}</span>}
         />
         <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11, lineHeight: 1.5 }}>
           Grave uma resposta curta para este bloco. O áudio será enviado de forma privada, transcrito e mostrado como rascunho; nada publica automaticamente.
@@ -451,11 +475,16 @@ export default function OnboardingPage() {
             <button
               className={voiceStatus === "recording" ? "btn-secondary" : "btn-primary"}
               disabled={!transcriptionConsentGranted || !sessionQuery.data?.id || voiceStatus === "uploading" || voiceStatus === "transcribing"}
-              onClick={() => voiceStatus === "recording" ? stopRecording() : void startRecording()}
+              onClick={() => voiceStatus === "recording" ? stopRecording() : void startRecording(false)}
               title={!transcriptionConsentGranted ? "Conceda o consentimento de transcrição acima antes de gravar" : undefined}
             >
               {voiceStatus === "recording" ? <><Square size={13} /> Parar gravação</> : <><Mic size={13} /> Gravar resposta</>}
             </button>
+            {voiceTranscript && voiceStatus === "completed" && (
+              <button className="btn-secondary" onClick={() => void startRecording(true)} disabled={!transcriptionConsentGranted}>
+                <Mic size={13} /> Regravar correção curta
+              </button>
+            )}
             {voiceBlob && voiceStatus !== "recording" && (
               <button className="btn-secondary" onClick={discardRecording} disabled={voiceStatus === "uploading" || voiceStatus === "transcribing"}>
                 <RotateCcw size={13} /> Gravar novamente
@@ -470,7 +499,7 @@ export default function OnboardingPage() {
         )}
         {voiceStatus === "recording" && (
           <div className="operational-banner" style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 14, padding: "10px 12px", fontSize: 10 }} aria-live="polite">
-            <Volume2 size={14} /> Gravando {formatRecordingDuration(voiceDurationMs)} de 02:00. Fale naturalmente e pare quando terminar.
+            <Volume2 size={14} /> Gravando {formatRecordingDuration(voiceDurationMs)} de {voiceCorrectionMode ? "00:30" : "02:00"}. Fale naturalmente e pare quando terminar.
           </div>
         )}
         {voiceUrl && (
@@ -496,7 +525,21 @@ export default function OnboardingPage() {
                 Usar no FAQ como rascunho
               </button>
             </div>
-            <p style={{ margin: "9px 0 0", color: "#bcbcbc", fontSize: 11, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{voiceTranscript}</p>
+            <textarea
+              className="input-control"
+              value={voiceTranscript}
+              onChange={event => setVoiceTranscript(event.target.value)}
+              rows={5}
+              aria-label="Transcrição corrigível"
+              style={{ marginTop: 9, minHeight: 100, resize: "vertical", lineHeight: 1.55 }}
+            />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
+              <button className="btn-primary" onClick={extractStructuredProposal} disabled={!voiceTranscript.trim() || extractProposal.isPending}>
+                {extractProposal.isPending ? <><Loader2 size={13} className="animate-spin" /> Estruturando...</> : <><Sparkles size={13} /> Salvar proposta estruturada</>}
+              </button>
+              <span className="muted" style={{ alignSelf: "center", fontSize: 10 }}>A proposta fica em draft e exige revisão/confirmação.</span>
+            </div>
+            {proposalMessage && <div className="operational-banner" style={{ marginTop: 9, fontSize: 10 }}><Sparkles size={13} /> {proposalMessage}</div>}
           </div>
         )}
         {voiceError && (

@@ -310,7 +310,7 @@ Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
 ### P0 — fundação segura
 
 - [ ] Separar núcleo obrigatório curto de perguntas condicionais e aprofundamento; permitir áudio, texto, “não se aplica”, “decidir depois” e retomada.
-- [ ] Definir schemas por bloco, estados `draft/confirmed/published` e campos `missing/conflict/source/confidence`. (blocos, draft/confirmed, `missing/conflicts/source/confidence`, política de fontes/confiança e resolução auditável já persistidos; published separado e retenção de dados automáticos ainda pendentes)
+- [ ] Definir schemas por bloco, estados `draft/confirmed/published` e campos `missing/conflict/source/confidence`. (blocos, draft/confirmed, `missing/conflicts/source/confidence`, política de fontes/confiança, retenção e resolução auditável já persistidos; published separado ainda pendente)
 - [ ] Mostrar após cada resposta/bloco apenas a regra curta daquela área; manter o prompt completo recolhido e opcional.
 - [x] Definir confirmação humana obrigatória antes de publicar prompt ou regra operacional. (quatro blocos obrigatórios exigem `onboarding.confirmStep` e o backend repete o gate)
 - [x] Persistir histórico imutável de revisões por bloco e permitir confirmação explícita opcional do bloco `voice`; publicação continua exigindo somente os blocos essenciais.
@@ -326,7 +326,7 @@ Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
 
 ### P2 — áudio assistido
 - [x] Conectar captura/upload privado à transcrição tenant-aware, preservando original, fonte, trecho e confiança. (OnboardingPage agora oferece MediaRecorder, preview, upload, transcrição e retry; a transcrição permanece revisável e o formulário continua como fallback)
-- [ ] Permitir correção por texto ou áudio curto e pergunta de acompanhamento para ambiguidade.
+- [x] Permitir correção por texto ou áudio curto e proposta estruturada com pergunta implícita de revisão para ambiguidade. (textarea editável, regravação de até 30s, consentimento `llm`, schema JSON estrito, `missing/conflicts/confidence`, persistência como `draft` e revisão imutável; pergunta de acompanhamento dedicada ainda pendente)
 - [x] Tornar processamento idempotente, com status, retry e fallback textual/humano. (claim por asset, estados `uploaded/processing/completed/failed` e retry da UI)
 - [ ] Medir custo, duração, taxa de correção e abandono antes de ampliar áudio para toda a base.
 

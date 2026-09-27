@@ -600,3 +600,14 @@ O storage Forge configurado não expõe endpoint de delete físico no template. 
 Foi adicionada cobertura PostgreSQL para dry-run sem deleção, política derivada por workspace e isolamento: um workspace com política curta é limpo, enquanto outro workspace com asset/transcrição equivalentes permanece intacto.
 
 Validação desta etapa: `pnpm check` ✅; `pnpm test` ✅ — 106 aprovados, 39 skipped por dependências externas/PostgreSQL; `git diff --check` e build final ainda devem ser executados antes do commit/push.
+
+
+---
+## Etapa seguinte — correção e proposta estruturada — 2026-09-27
+A tela de onboarding agora permite corrigir a transcrição diretamente em uma textarea e iniciar uma regravação curta de até 30 segundos. O modo curto é enviado no mesmo storage privado, mas o backend aplica o teto independentemente do cliente (`voice.upload` com `correction=true`). A correção continua sujeita ao consentimento de transcrição e o áudio original permanece preservado conforme a retenção.
+
+Foi adicionada `onboarding.extractProposal`. Ela exige consentimento vigente para `llm`, recebe somente o bloco e o texto revisado, chama o helper server-side `invokeLLM` com saída JSON Schema estrita e aplica guardrails para não inventar preço, prazo, disponibilidade, serviço, política ou promessa. A saída contém apenas os campos permitidos do bloco, `missing`, `conflicts` e confiança de 0–100. O resultado é persistido por workspace/sessão como `draft`, com `source=llm` e nova revisão imutável; não confirma bloco nem publica prompt.
+
+A UI exibe a confiança retornada e exige revisão explícita. O formulário textual continua sendo a fonte de fallback. A pergunta de acompanhamento dedicada para cada campo ausente/ambíguo e a publicação versionada permanecem pendentes.
+
+Validação desta etapa: `pnpm check` ✅; `pnpm test` ✅ — 109 aprovados, 39 skipped por dependências externas/PostgreSQL; `pnpm build` ✅; journal JSON e `git diff --check` ✅.

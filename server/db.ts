@@ -2430,6 +2430,95 @@ export async function confirmOnboardingStep(
   return answer;
 }
 
+export async function persistOnboardingStepAnswerProposal(input: {
+  workspaceId: number;
+  stepKey: (typeof confirmableOnboardingStepKeys)[number];
+  answer: Record<string, string>;
+  source: OnboardingAnswerSource;
+  confidence: number;
+  missing: string[];
+  conflicts: string[];
+  updatedBy: number;
+}) {
+  const db = await getDb();
+  const session = await getOnboardingSession(input.workspaceId);
+  if (!db || !session) throw new Error("ONBOARDING_SESSION_NOT_FOUND");
+  const quality = validateOnboardingAnswerMetadata(input);
+  if (!quality.valid)
+    throw new Error(`ONBOARDING_ANSWER_METADATA_INVALID:${quality.errors.join(",")}`);
+  const serializedAnswer = JSON.stringify(input.answer);
+  const existing = (
+    await db
+      .select({ id: onboardingStepAnswers.id, answer: onboardingStepAnswers.answer })
+      .from(onboardingStepAnswers)
+      .where(
+        and(
+          eq(onboardingStepAnswers.sessionId, session.id),
+          eq(onboardingStepAnswers.workspaceId, input.workspaceId),
+          eq(onboardingStepAnswers.stepKey, input.stepKey)
+        )
+      )
+      .limit(1)
+  )[0];
+  const now = new Date();
+  const [saved] = await db
+    .insert(onboardingStepAnswers)
+    .values({
+      sessionId: session.id,
+      workspaceId: input.workspaceId,
+      stepKey: input.stepKey,
+      answer: serializedAnswer,
+      source: input.source,
+      confidence: input.confidence,
+      missing: JSON.stringify(input.missing),
+      conflicts: JSON.stringify(input.conflicts),
+      status: "draft",
+      updatedBy: input.updatedBy,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [onboardingStepAnswers.sessionId, onboardingStepAnswers.stepKey],
+      set: {
+        answer: serializedAnswer,
+        source: input.source,
+        confidence: input.confidence,
+        missing: JSON.stringify(input.missing),
+        conflicts: JSON.stringify(input.conflicts),
+        status: "draft",
+        updatedBy: input.updatedBy,
+        updatedAt: now,
+      },
+    })
+    .returning({ id: onboardingStepAnswers.id });
+  const answerId = existing?.id ?? saved?.id;
+  if (answerId && (!existing || existing.answer !== serializedAnswer))
+    await db.insert(onboardingStepAnswerRevisions).values({
+      answerId,
+      sessionId: session.id,
+      workspaceId: input.workspaceId,
+      stepKey: input.stepKey,
+      answer: serializedAnswer,
+      source: input.source,
+      confidence: input.confidence,
+      missing: JSON.stringify(input.missing),
+      conflicts: JSON.stringify(input.conflicts),
+      status: "draft",
+      changedBy: input.updatedBy,
+    });
+  return {
+    id: answerId,
+    sessionId: session.id,
+    workspaceId: input.workspaceId,
+    stepKey: input.stepKey,
+    answer: input.answer,
+    source: input.source,
+    confidence: input.confidence,
+    missing: input.missing,
+    conflicts: input.conflicts,
+    status: "draft" as const,
+  };
+}
+
 export type OnboardingConflictResolutionDecision = "accepted_current" | "dismissed";
 
 export async function resolveOnboardingConflict(

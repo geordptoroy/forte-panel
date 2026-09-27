@@ -1756,3 +1756,17 @@ A rotina é tenant-aware e usa lote máximo de 500 por ciclo, com teto de 2.000 
 A suíte adicionou `server/onboarding-audio-retention.test.ts`, que valida dry-run sem deleção, políticas diferentes por workspace e preservação do segundo tenant. Nesta sandbox sem `DATABASE_URL`, os dois testes PostgreSQL são skipped; o typecheck e os 106 testes unitários aprovados passaram. Antes do beta, executar migrations e a suíte completa no CI/staging, verificar auditoria do worker e confirmar o lifecycle do bucket.
 
 Próximo passo recomendado: permitir correção por texto/áudio curto e extração estruturada para `onboardingStepAnswers`, mantendo revisão/confiança e sem publicação automática.
+
+
+---
+## Atualização do handoff — 2026-09-27 — correção e proposta estruturada
+
+A próxima fatia do onboarding assistido foi implementada. `OnboardingPage` transforma a transcrição concluída em textarea editável e permite enviar uma proposta estruturada explicitamente. O operador também pode iniciar `Regravar correção curta`; a gravação usa o mesmo fluxo privado e fica limitada a 30 segundos no cliente e no servidor (`voice.upload` recebe `correction=true`). O upload/transcrição continuam consent-gated e a UI não confirma nem publica automaticamente.
+
+`server/onboarding-structured.ts` define os campos permitidos por bloco (`identity`, `offering`, `operations`, `guardrails`, `voice`) e chama `invokeLLM` somente no servidor com saída JSON Schema estrita. O prompt instrui a não inventar preço, prazo, disponibilidade, serviço, política ou promessa. A normalização filtra campos fora do bloco, deriva `missing`, limita `conflicts`, valida confiança entre 0 e 100 e falha fechado para resposta inválida.
+
+A procedure `onboarding.extractProposal` exige consentimento `llm`, recebe `stepKey`, texto revisado e idioma, persiste a proposta com `source=llm`, `status=draft`, confiança, missing/conflicts e uma nova linha em `onboardingStepAnswerRevisions`. O upsert é tenant-aware por sessão/workspace/bloco. Mesmo que existisse uma resposta confirmada, a nova proposta fica em draft e exige confirmação posterior; não existe publicação silenciosa.
+
+Foram adicionados testes unitários de campos permitidos, missing derivado e falha de confiança/shape. No sandbox: 109 testes passaram, 39 foram skipped por PostgreSQL/dependências externas; `pnpm check`, `pnpm build`, journal JSON e `git diff --check` passaram. A validação real da procedure LLM e os testes PostgreSQL devem rodar em CI/staging com consentimento e credenciais configurados; não enviar conteúdo de cliente para o LLM sem o consentimento `llm` vigente.
+
+Próximo passo recomendado: adicionar perguntas de acompanhamento explícitas para cada campo `missing`/`conflicts`, medir correção/custo/abandono e só depois criar publicação versionada do rascunho estruturado.
