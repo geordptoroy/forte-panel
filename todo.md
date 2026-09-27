@@ -59,7 +59,7 @@
 - [x] Permitir rollback de qualquer versão arquivada, publicando uma nova versão e preservando o histórico.
 - [x] Atualizar a aba do agente após salvar, simular, publicar ou fazer rollback, sem exigir recarregamento manual.
 - [ ] **P0 antes dos convites beta:** validar no ambiente real pausar/reativar IA, suspender/reativar conta e notas de suporte com motivo, sem revelar senha ou segredo bruto.
-- [ ] **P0 antes dos convites beta:** executar testes de autorização que provem que owner/member não acessa o console da plataforma e que uma sessão de suporte não cruza workspace.
+- [x] Cobertura local prova que owner/member e `users.role = admin` sem registro em `platformAdmins` não acessam o console; falta executar em PostgreSQL a prova de sessão de suporte expirada/revogada e sem cruzamento de workspace.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.
