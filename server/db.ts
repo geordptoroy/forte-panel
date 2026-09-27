@@ -46,6 +46,7 @@ import {
 import type { WhatsappProvider } from "./integrations/contracts";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
+import { resolveReplyRoute } from "./_core/message-routing";
 import {
   assertWithinWorkingHours,
   getLocalDayBounds,
@@ -3117,15 +3118,8 @@ export async function sendManualMessage(
   if (!contact) throw new Error("Contact not found");
   const conversation = await getConversationByContact(workspaceId, contactId);
   if (!conversation) throw new Error("Conversation not found");
-  const provider = await getDefaultWhatsappProvider(workspaceId);
-  const defaultPapiWebhook =
-    provider === "papi" ? await getDefaultPapiWebhook(workspaceId) : undefined;
-  if (provider === "papi" && !defaultPapiWebhook?.instanceId)
-    throw new Error(
-      "Associe uma instância PAPI em Canais conectados para enviar mensagens manuais pelo painel"
-    );
   const latestInbound = await db
-    .select({ metadata: messages.metadata })
+    .select({ metadata: messages.metadata, provider: messages.provider })
     .from(messages)
     .where(
       and(
@@ -3135,17 +3129,24 @@ export async function sendManualMessage(
     )
     .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(1);
-  const inboundJid =
-    typeof latestInbound[0]?.metadata?.jid === "string"
-      ? latestInbound[0].metadata.jid
-      : undefined;
+  const defaultProvider = await getDefaultWhatsappProvider(workspaceId);
+  const defaultPapiWebhook =
+    defaultProvider === "papi" ? await getDefaultPapiWebhook(workspaceId) : undefined;
+  const route = resolveReplyRoute({
+    latestInbound: latestInbound[0],
+    defaultProvider,
+    defaultInstanceId: defaultPapiWebhook?.instanceId,
+  });
+  if (route.provider === "papi" && !route.instanceId)
+    throw new Error(
+      "Associe uma instância PAPI à origem da conversa ou configure uma instância padrão para mensagens legadas"
+    );
   const createdAt = new Date();
-  const manualInstanceId =
-    provider === "papi" ? defaultPapiWebhook?.instanceId : undefined;
   const metadata = {
-    ...(inboundJid ? { jid: inboundJid } : {}),
-    ...(manualInstanceId ? { instanceId: manualInstanceId } : {}),
     ...(messageMetadata ?? {}),
+    ...(route.jid ? { jid: route.jid } : {}),
+    ...(route.instanceId ? { instanceId: route.instanceId } : {}),
+    ...(route.usedLegacyFallback ? { routingSource: "legacy_default" } : { routingSource: "inbound_origin" }),
   };
   await db.insert(messages).values({
     conversationId: conversation.id,
@@ -3158,7 +3159,7 @@ export async function sendManualMessage(
         : String(messageMetadata?.fileName ?? `[${messageType}]`),
     metadata: Object.keys(metadata).length ? metadata : undefined,
     status: "queued",
-    provider,
+    provider: route.provider,
     createdAt,
   });
   await db
@@ -3188,7 +3189,7 @@ export async function sendManualMessage(
     actorUserId,
     contactId,
     action: "manual_message_queued",
-    summary: `Mensagem manual enfileirada para ${provider}`,
+    summary: `Mensagem manual enfileirada para ${route.provider}`,
   });
   const result = await db
     .select()

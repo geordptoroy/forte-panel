@@ -1298,3 +1298,8 @@ O administrador da plataforma terá acesso de suporte a respostas originais, tra
 ### Ajuste de UX da revisão do prompt — 2026-09-27
 
 Correção de produto: não mostrar um prompt completo longo como etapa 10 do cadastro. Depois de cada resposta/bloco, a IA deve mostrar somente a regra curta daquela área, com um exemplo e ações rápidas para confirmar, corrigir ou deixar para depois. No fim, mostrar um resumo curto das decisões, lacunas e conflitos; o prompt consolidado completo fica disponível apenas por link/accordion opcional. A publicação continua exigindo confirmação, mas a leitura integral não é obrigatória.
+
+
+### Roteamento de resposta pela origem da conversa — 2026-09-27
+
+O próximo slice técnico foi concluído: `sendManualMessage` agora lê o provider e os metadados da mensagem inbound mais recente, preserva `instanceId` e JID, e grava `routingSource=inbound_origin`. O `defaultPapiWebhook` só é consultado quando a conversa é legada e não possui origem registrada; nesse caso a mensagem fica marcada como `routingSource=legacy_default`. Metadados enviados pelo operador não podem sobrescrever a rota validada. Foram adicionados testes puros para provider/instância/JID e para o fallback legado.
