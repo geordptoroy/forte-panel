@@ -1200,3 +1200,17 @@ O bloco P0 foi implementado e validado no sandbox.
 ### Limitação ainda pendente
 
 A prova de dois tenants, workspace suspenso e billing cruzado ainda precisa rodar em PostgreSQL real/staging. O próximo passo é adicionar/ativar essa cobertura de integração e fazer validação browser do console, incluindo suspensão → logout → novo login → reativação.
+
+
+---
+## Execução P1.1 — Conexão WhatsApp/QR — 2026-09-27
+
+A aba de integrações foi reorganizada para ser exclusivamente a área de **Conexão WhatsApp**. A seleção de múltiplos provedores foi retirada da experiência comum e o texto agora deixa explícito que há uma única instância por workspace. O bloco duplicado de configuração foi removido; a tela concentra conexão, QR e consumo do workspace.
+
+O card de QR agora exibe `updatedAt`, contador de expiração de 60 segundos, estado de QR stale/expirado, retry manual, mensagens de erro, foco/rolagem para o QR quando ele chega e ações dimensionadas para mobile. O QR continua sendo consultado apenas enquanto o gateway informa estado `qr`; resposta 404 de QR transitório não vira erro fatal na interface.
+
+No gateway, `POST /connect` passou a usar `reconnect()`, encerrando a sessão atual e iniciando outra para renovar um QR que não foi lido. Foi adicionada proteção para que a reconexão automática não seja disparada depois de uma desconexão manual. O proxy agora repassa `updatedAt` e aceita `phone`/`phoneNumber`.
+
+Validação concluída: TypeScript do painel aprovado; build do painel aprovado com o alerta já conhecido de bundle inicial grande; TypeScript direto do gateway aprovado; testes HTTP, auth e sessão do gateway aprovados com 15 testes. O wrapper `pnpm --dir forte-whatsapp` tentou reinstalar dependências e foi bloqueado pelo policy de scripts ignorados, então a validação do gateway foi executada diretamente pelos binários locais, sem alterar dependências versionadas.
+
+Ainda falta validação browser real com Docker e um número de teste. O próximo gate é confirmar o ciclo `desconectado → conectar → QR → atualizar QR → conectado → desconectar/logout`, inclusive em largura mobile.

@@ -173,3 +173,13 @@ A validação local passou em `pnpm check`, `pnpm build` e nos 62 testes execut�
 ### Próximo bloco imediato
 
 Adicionar/ativar testes PostgreSQL para: (a) platform-only abrir workspace suspenso, sair e reativar; (b) operador de workspace A não ler nem mutar quotes de B; (c) manager versus agent no billing; e (d) smoke browser de todas as rotas da sidebar. Em seguida iniciar o P1.1 de QR/Conexão WhatsApp.
+
+
+---
+## Execução P1.1 — Conexão WhatsApp/QR
+
+A prioridade de conexão WhatsApp avançou: a experiência comum agora é focada em uma única instância; o QR possui contador de expiração, estado stale, retry explícito e foco mobile; e o gateway renova a sessão por `reconnect()` em vez de ignorar o clique quando já existe um QR.
+
+A cobertura automatizada do gateway está verde: TypeScript direto e 15 testes passaram. O painel também passou em TypeScript e build. O alerta de chunk acima de 500 kB permanece backlog de performance P1. O gate operacional desta etapa continua dependente de Docker/staging com um número de teste, pois somente esse ambiente comprova o QR real, a persistência da sessão e o webhook inbound.
+
+Próximo passo: smoke browser no fluxo completo e, se aprovado, seguir para P1.2 de Inbox/dados de atendimento e KPIs por workspace.

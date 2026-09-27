@@ -44,6 +44,7 @@ export class InstanceManager {
   };
   private starting = false;
   private sessionLock?: SessionLock;
+  private suppressReconnectUntil = 0;
 
   getStatus(): InstanceSnapshot {
     return { ...this.snapshot };
@@ -90,6 +91,7 @@ export class InstanceManager {
   }
 
   async stop(logout = false): Promise<void> {
+    this.suppressReconnectUntil = Date.now() + 5_000;
     if (!this.socket) {
       await this.releaseSessionLock();
       return;
@@ -99,6 +101,12 @@ export class InstanceManager {
     this.socket = undefined;
     this.set({ status: logout ? "logged_out" : "disconnected", qr: undefined });
     await this.releaseSessionLock();
+  }
+
+  async reconnect(): Promise<void> {
+    await this.stop(false);
+    this.suppressReconnectUntil = 0;
+    await this.start();
   }
 
   private async releaseSessionLock() {
@@ -219,7 +227,8 @@ export class InstanceManager {
         status: loggedOut ? "logged_out" : "disconnected",
         qr: undefined,
       });
-      if (!loggedOut) setTimeout(() => void this.start(), 3000);
+      if (!loggedOut && Date.now() >= this.suppressReconnectUntil)
+        setTimeout(() => void this.start(), 3000);
     }
   }
 

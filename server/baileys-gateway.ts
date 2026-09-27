@@ -15,7 +15,9 @@ async function gatewayRequest(path: string, init?: RequestInit) {
   });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(body || `Gateway WhatsApp respondeu ${response.status}`);
+    throw new Error(
+      `${body || "Gateway WhatsApp respondeu"} (HTTP ${response.status})`
+    );
   }
   return response;
 }
@@ -34,21 +36,30 @@ export async function getBaileysStatus() {
   const body = (await response.json()) as {
     status?: string;
     phoneNumber?: string;
+    phone?: string;
     lastError?: string;
+    updatedAt?: string;
   };
   return {
     configured: true,
     instanceId: instanceId(),
     status: body.status ?? "unknown",
-    phoneNumber: body.phoneNumber ?? null,
+    phoneNumber: body.phoneNumber ?? body.phone ?? null,
     qrAvailable: body.status === "qr",
     lastError: body.lastError ?? null,
+    updatedAt: body.updatedAt ?? null,
   };
 }
 
 export async function getBaileysQr() {
   const id = encodeURIComponent(instanceId());
-  const response = await gatewayRequest(`/api/instances/${id}/qr`);
+  let response: Response | null;
+  try {
+    response = await gatewayRequest(`/api/instances/${id}/qr`);
+  } catch (error) {
+    if (error instanceof Error && /\b404\b/.test(error.message)) return null;
+    throw error;
+  }
   if (!response) return null;
   const body = (await response.json()) as { imageDataUrl?: string };
   return body.imageDataUrl ?? null;

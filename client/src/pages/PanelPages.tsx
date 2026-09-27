@@ -118,63 +118,96 @@ function ChannelStatusBanner({
 
 function BaileysConnectionCard() {
   const utils = trpc.useUtils();
+  const cardRef = useRef<HTMLElement>(null);
+  const qrRef = useRef<HTMLDivElement>(null);
+  const [now, setNow] = useState(() => Date.now());
   const status = trpc.workspace.baileysStatus.useQuery(undefined, {
     refetchInterval: 4_000,
   });
+  const current = status.data;
+  const waitingQr = current?.status === "qr";
+  const qrIssuedAt = current?.updatedAt ? Date.parse(current.updatedAt) : NaN;
+  const qrExpiresAt = Number.isFinite(qrIssuedAt) ? qrIssuedAt + 60_000 : NaN;
+  const qrExpired = waitingQr && Number.isFinite(qrExpiresAt) && now >= qrExpiresAt;
+  const remainingSeconds = Number.isFinite(qrExpiresAt)
+    ? Math.max(0, Math.ceil((qrExpiresAt - now) / 1000))
+    : null;
   const qr = trpc.workspace.baileysQr.useQuery(undefined, {
-    enabled: status.data?.status === "qr",
-    refetchInterval: 4_000,
+    enabled: waitingQr && !qrExpired,
+    refetchInterval: 3_000,
+    retry: false,
   });
   const connect = trpc.workspace.connectBaileys.useMutation({
     onSuccess: async () => {
-      await utils.workspace.baileysStatus.invalidate();
-      await utils.workspace.baileysQr.invalidate();
+      await Promise.all([
+        utils.workspace.baileysStatus.invalidate(),
+        utils.workspace.baileysQr.invalidate(),
+      ]);
     },
   });
   const disconnect = trpc.workspace.disconnectBaileys.useMutation({
     onSuccess: async () => {
-      await utils.workspace.baileysStatus.invalidate();
-      await utils.workspace.baileysQr.invalidate();
+      await Promise.all([
+        utils.workspace.baileysStatus.invalidate(),
+        utils.workspace.baileysQr.invalidate(),
+      ]);
     },
   });
-  const current = status.data;
-  const connected = current?.status === "connected";
-  const waitingQr = current?.status === "qr";
+  useEffect(() => {
+    if (!waitingQr) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [waitingQr]);
+  useEffect(() => {
+    if (!waitingQr || !current?.updatedAt) return;
+    const timer = window.setTimeout(() => {
+      qrRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      qrRef.current?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [waitingQr, current?.updatedAt]);
   const labels: Record<string, string> = {
     unconfigured: "Gateway não configurado",
     idle: "Aguardando conexão",
     connecting: "Iniciando conexão",
-    qr: "Aguardando leitura do QR Code",
+    qr: qrExpired ? "QR expirado" : "Aguardando leitura do QR Code",
     connected: "WhatsApp conectado",
     disconnected: "Desconectado",
     logged_out: "Sessão encerrada",
     error: "Erro na conexão",
   };
+  const connected = current?.status === "connected";
+  const retrying = connect.isPending || current?.status === "connecting";
   return (
-    <section className="surface" style={{ marginTop: 20, padding: 20 }}>
+    <section
+      ref={cardRef}
+      className="surface whatsapp-connection-card"
+      aria-labelledby="whatsapp-connection-title"
+    >
       <SectionTitle
-        eyebrow="Conexão do número"
-        title="WhatsApp via QR Code"
+        eyebrow="Conexão WhatsApp"
+        title="Conecte uma única instância"
         action={
-          <StatusBadge tone={connected ? "green" : waitingQr ? "amber" : "neutral"}>
+          <StatusBadge tone={connected ? "green" : waitingQr && !qrExpired ? "amber" : current?.status === "error" ? "red" : "neutral"}>
             {labels[current?.status ?? "idle"] ?? current?.status ?? "Verificando"}
           </StatusBadge>
         }
       />
+      <h2 id="whatsapp-connection-title" className="sr-only">Conexão WhatsApp</h2>
       {status.isLoading ? (
-        <div className="muted">Consultando o gateway...</div>
+        <div className="muted" role="status">Consultando o gateway...</div>
       ) : status.error ? (
-        <div className="form-error">{status.error.message}</div>
+        <div className="form-error" role="alert">{status.error.message}</div>
       ) : !current?.configured ? (
         <div className="demo-banner" style={{ marginBottom: 0 }}>
           <Info size={14} /> Configure o gateway no ambiente do servidor para habilitar a conexão.
         </div>
       ) : (
         <div className="qr-connection-layout">
-          <div>
+          <div className="whatsapp-connection-copy">
             <p className="muted">
-              Clique em conectar e leia o código em WhatsApp → Dispositivos conectados → Conectar dispositivo.
-              O QR é renovado automaticamente.
+              Esta conta usa uma instância WhatsApp por vez. Abra o WhatsApp no
+              celular, vá em <strong>Dispositivos conectados</strong> e leia o QR.
             </p>
             <div className="form-grid" style={{ marginTop: 14 }}>
               <div className="form-field">
@@ -186,10 +219,15 @@ function BaileysConnectionCard() {
                 <input className="input-control" value={current.phoneNumber ?? "Aguardando leitura"} readOnly />
               </div>
             </div>
-            <div className="page-actions" style={{ marginTop: 16 }}>
+            <div className="qr-actions" style={{ marginTop: 16 }}>
               {!connected && (
-                <button className="btn-primary" disabled={connect.isPending || current.status === "connecting"} onClick={() => connect.mutate()}>
-                  <RefreshCw size={14} /> {connect.isPending ? "Iniciando..." : "Gerar QR Code"}
+                <button
+                  className="btn-primary"
+                  disabled={retrying}
+                  onClick={() => connect.mutate()}
+                >
+                  <RefreshCw size={14} />
+                  {connect.isPending ? "Gerando novo QR..." : current.status === "qr" ? "Atualizar QR Code" : "Conectar WhatsApp"}
                 </button>
               )}
               {connected && (
@@ -203,23 +241,38 @@ function BaileysConnectionCard() {
                 </button>
               )}
             </div>
-            {current.lastError && <div className="form-error" style={{ marginTop: 14 }}>{current.lastError}</div>}
+            {connect.error && <div className="form-error" role="alert">{connect.error.message}</div>}
+            {disconnect.error && <div className="form-error" role="alert">{disconnect.error.message}</div>}
+            {current.lastError && <div className="form-error" role="alert">{current.lastError}</div>}
           </div>
-          <div className="qr-code-panel">
-            {waitingQr && qr.data ? (
-              <img src={qr.data} alt="QR Code para conectar o WhatsApp" />
-            ) : waitingQr ? (
+          <div
+            ref={qrRef}
+            className={`qr-code-panel ${qrExpired ? "is-expired" : ""}`}
+            tabIndex={-1}
+            aria-live="polite"
+            aria-label="Estado do QR Code do WhatsApp"
+          >
+            {waitingQr && !qrExpired && qr.data ? (
+              <>
+                <img src={qr.data} alt="QR Code para conectar o WhatsApp" />
+                <small className="qr-expiry">Expira em {remainingSeconds ?? "—"} s</small>
+              </>
+            ) : waitingQr && !qrExpired ? (
               <div className="muted"><QrCode size={28} /> Gerando QR Code...</div>
+            ) : qrExpired ? (
+              <div className="muted"><QrCode size={28} /> QR expirado. Gere um novo código.</div>
+            ) : connected ? (
+              <div className="muted"><CheckCircle2 size={28} /> Número conectado.</div>
             ) : (
-              <div className="muted"><QrCode size={28} /> O QR Code aparecerá aqui</div>
+              <div className="muted"><QrCode size={28} /> O QR Code aparecerá aqui.</div>
             )}
+            {qr.error && !qrExpired && <small className="qr-error">QR aguardando atualização do gateway.</small>}
           </div>
         </div>
       )}
     </section>
   );
 }
-
 function StatCard({
   label,
   value,
@@ -2263,29 +2316,12 @@ export function BillingPage() {
 
 export function IntegrationsPage() {
   const channelsQuery = trpc.workspace.channels.useQuery();
-  const defaultChannelQuery = trpc.workspace.defaultChannel.useQuery();
   const usageQuery = trpc.workspace.usage.useQuery(undefined, {
     refetchInterval: 30_000,
-  });
-  const [savingProvider, setSavingProvider] = useState<string | null>(null);
-  const setDefaultMutation = trpc.workspace.setDefaultChannel.useMutation({
-    onSuccess: async () => {
-      await Promise.all([
-        defaultChannelQuery.refetch(),
-        channelsQuery.refetch(),
-      ]);
-      setSavingProvider(null);
-    },
-    onError: () => setSavingProvider(null),
   });
   const channels = channelsQuery.data ?? [];
   const usage = usageQuery.data;
   const baileys = channels.find(channel => channel.provider === "baileys");
-  const meta = channels.find(channel => channel.provider === "meta_cloud_api");
-  const providerLabel = (provider: string) =>
-    provider === "meta_cloud_api"
-      ? "WhatsApp Cloud API oficial"
-      : "Baileys nativo · WhatsApp Web";
   const usageMetrics = usage
     ? (
         [
@@ -2297,103 +2333,14 @@ export function IntegrationsPage() {
     : [];
   const usagePercent = (used: number, limit: number) =>
     limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const selectProvider = (provider: "baileys" | "meta_cloud_api") => {
-    setSavingProvider(provider);
-    setDefaultMutation.mutate({ provider });
-  };
   return (
     <PanelLayout
-      eyebrow="Sistema / Conectividade"
-      title="WhatsApp e integrações"
-      description="O canal local do Forte Panel usa o gateway Baileys nativo, com sessão persistente e QR Code."
+      eyebrow="Conexão WhatsApp"
+      title="Conecte seu WhatsApp"
+      description="Gerencie uma única instância WhatsApp por workspace, com QR Code e sessão persistente."
     >
       <DemoBanner />
-      <section className="surface" style={{ marginTop: 20, padding: 20 }}>
-        <SectionTitle eyebrow="Canal de atendimento" title="WhatsApp padrão" />
-        <p className="muted">
-          Escolha qual canal será usado quando uma mensagem não informar um
-          provedor. O Baileys é o canal recomendado para a operação local.
-        </p>
-        <div className="channel-grid">
-          {[baileys, meta].filter(Boolean).map(channel => {
-            const item = channel!;
-            const selected = defaultChannelQuery.data === item.provider;
-            const enabled = item.configured;
-            return (
-              <button
-                type="button"
-                key={item.id}
-                disabled={!enabled || setDefaultMutation.isPending}
-                className={`channel-option ${selected ? "is-selected" : ""}`}
-                onClick={() =>
-                  selectProvider(item.provider as "baileys" | "meta_cloud_api")
-                }
-              >
-                <div className="channel-option-top">
-                  <div className="integration-icon">
-                    <MessageCircle size={16} />
-                  </div>
-                  <StatusBadge
-                    tone={selected ? "green" : enabled ? "neutral" : "amber"}
-                  >
-                    {selected ? "Padrão" : enabled ? "Configurado" : "Pendente"}
-                  </StatusBadge>
-                </div>
-                <strong>{providerLabel(item.provider)}</strong>
-                <small>
-                  {item.provider === "baileys"
-                    ? "Gateway próprio, sessão conectada por QR Code e mensagens multimídia."
-                    : "Canal oficial opcional; credenciais permanecem no servidor."}
-                </small>
-                {savingProvider === item.provider && (
-                  <span className="channel-saving">Salvando seleção...</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </section>
       <BaileysConnectionCard />
-      <section className="surface" style={{ marginTop: 20, padding: 20 }}>
-        <SectionTitle
-          eyebrow="Baileys nativo"
-          title="Conexão do número"
-          action={
-            <StatusBadge tone={baileys?.configured ? "green" : "amber"}>
-              {baileys?.configured
-                ? "Gateway configurado"
-                : "Configuração pendente"}
-            </StatusBadge>
-          }
-        />
-        <div className="form-grid">
-          <div className="form-field">
-            <label>Serviço</label>
-            <input className="input-control" value="forte-whatsapp" readOnly />
-          </div>
-          <div className="form-field">
-            <label>Instância</label>
-            <input
-              className="input-control"
-              value={import.meta.env.VITE_BAILEYS_INSTANCE_ID ?? "default"}
-              readOnly
-            />
-          </div>
-        </div>
-        <div className="demo-banner" style={{ marginTop: 16, marginBottom: 0 }}>
-          <Info size={14} />
-          <span>
-            O gateway inicia automaticamente e disponibiliza o QR Code em sua
-            API interna. Conecte o número uma vez; a sessão é persistida no
-            volume do serviço e reconecta após reinício.
-          </span>
-        </div>
-        <p className="muted" style={{ marginTop: 14 }}>
-          Envios suportados pelo canal: texto, áudio/voz, imagem, vídeo,
-          documento e botões. O Inbox registra o tipo, mídia e JID original da
-          mensagem.
-        </p>
-      </section>
       <section className="surface" style={{ marginTop: 20, padding: 20 }}>
         <SectionTitle
           eyebrow="Consumo do workspace"

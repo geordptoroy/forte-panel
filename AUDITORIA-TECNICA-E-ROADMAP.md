@@ -399,3 +399,10 @@ A auditoria de produto concluiu que catálogo operacional, assinatura SaaS, rate
 Foram corrigidos os quatro bloqueios imediatos priorizados: retorno inadequado do console, suporte a workspace suspenso, rota `/kanban` ausente e billing/quotes dependente do workspace demo. A regra agora é que o controle-plane pode consultar uma entidade suspensa por `getWorkspaceById`, enquanto as operações normais continuam usando o filtro de workspace ativo. Quotes exigem `requireManager` e recebem o tenant do contexto tRPC em leitura e mutação.
 
 A implementação não elimina a necessidade de PostgreSQL real: o sandbox executou 62 testes e pulou 31 cenários dependentes de banco. Também permanece o alerta de bundle inicial grande. Esses itens seguem como gates de staging e P1 de performance, respectivamente.
+
+
+## P1.1 técnico — QR e lifecycle Baileys
+
+O contrato de status agora leva `updatedAt`, e o proxy trata `phone` e `phoneNumber`. O endpoint de conexão deixa de chamar `start()` idempotente quando já existe uma sessão em QR e passa a executar `reconnect()`, permitindo gerar um novo código. O InstanceManager suprime o auto-reconnect durante uma parada manual e libera-o após retry explícito.
+
+Na UI, o QR é consultado apenas no estado apropriado, exibe expiração, retry e mensagens acessíveis. A seleção de provedor foi retirada da aba comum para reduzir ambiguidade enquanto a política operacional permite apenas uma instância WhatsApp por conta.

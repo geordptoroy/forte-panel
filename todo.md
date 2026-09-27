@@ -190,3 +190,16 @@ Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
 - [ ] Rodar a prova equivalente em PostgreSQL/staging com dois workspaces; 31 testes dependentes de banco continuam skipped no sandbox sem `DATABASE_URL`.
 - [ ] Fazer smoke browser do console: platform-only, workspace suspenso, refresh/back/forward e reativação.
 - [ ] Iniciar P1.1: QR/Conexão WhatsApp em primeira dobra e validação real em Docker.
+
+
+## Execução P1.1 — 2026-09-27
+
+- [x] Aba comum reorganizada para Conexão WhatsApp, sem seleção de múltiplos provedores na experiência do usuário.
+- [x] Regra de uma instância por workspace explicitada na interface.
+- [x] QR com timestamp, expiração em 60 segundos, estado stale, retry e foco/rolagem mobile.
+- [x] Gateway com `reconnect()` para renovar QR sem ignorar o clique quando já há uma sessão.
+- [x] Desconexão manual não dispara reconexão automática indevida.
+- [x] Proxy repassa `updatedAt`, aceita `phone`/`phoneNumber` e trata 404 transitório do QR.
+- [x] TypeScript do painel e gateway aprovados; build do painel aprovado; 15 testes do gateway aprovados.
+- [ ] Validar com Docker e número real: conectar, ler QR, atualizar QR expirado, reiniciar serviço, desconectar e logout.
+- [ ] Validar webhook inbound e status no Inbox depois da conexão real.

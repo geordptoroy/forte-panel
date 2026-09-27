@@ -5,6 +5,7 @@ import type { InstanceManager } from "./instance-manager.js";
 type FakeManager = {
   getStatus: () => Record<string, unknown>;
   start: () => Promise<void>;
+  reconnect: () => Promise<void>;
   stop: (logout?: boolean) => Promise<void>;
   sendMessage: (
     phone: string,
@@ -19,6 +20,7 @@ type CreateServer = (manager: InstanceManager) => Server;
 let createServer: CreateServer;
 let server: Server;
 let baseUrl = "";
+let reconnectCalls = 0;
 
 beforeAll(async () => {
   process.env.WHATSAPP_API_KEY = "gateway-test-key";
@@ -32,6 +34,9 @@ beforeAll(async () => {
       qr: null,
     }),
     start: async () => undefined,
+    reconnect: async () => {
+      reconnectCalls += 1;
+    },
     stop: async () => undefined,
     sendMessage: async (
       phone: string,
@@ -80,6 +85,16 @@ describe("Baileys gateway HTTP contract", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "unauthorized",
     });
+  });
+
+  it("uses reconnect for an explicit QR retry", async () => {
+    const before = reconnectCalls;
+    const response = await fetch(
+      `${baseUrl}/api/instances/test-instance/connect`,
+      { method: "POST", headers: { Authorization: "Bearer gateway-test-key" } }
+    );
+    expect(response.status).toBe(202);
+    expect(reconnectCalls).toBe(before + 1);
   });
 
   it.each([

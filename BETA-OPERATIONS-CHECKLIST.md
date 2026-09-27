@@ -239,3 +239,10 @@ O primeiro bloco de correções foi concluído. O retorno do console permanece n
 Os comandos locais `pnpm check`, `pnpm build`, `pnpm test -- --runInBand` e `git diff --check` foram executados. O resultado foi 62 testes aprovados, 31 skipped por ausência de `DATABASE_URL`, build aprovado com alerta conhecido de bundle grande e nenhum erro de TypeScript.
 
 O gate ainda não é considerado totalmente fechado até executar PostgreSQL/staging com dois workspaces, validar quotes sem cruzamento de tenant e rodar smoke browser no ciclo workspace suspenso → logout → novo login → reativação. Depois desse gate, a próxima frente é QR/Conexão WhatsApp.
+
+
+## 23. P1.1 — Conexão WhatsApp/QR
+
+A interface comum agora é uma área dedicada à conexão WhatsApp, com uma instância por workspace. O QR apresenta expiração, retry, tratamento de QR stale e foco mobile. O gateway possui reconnect explícito e mantém a proteção de sessão já implementada.
+
+O gate automatizado passou: painel em TypeScript/build e gateway em TypeScript/15 testes. Antes do beta controlado, executar com Docker e número de teste o ciclo completo de conexão, leitura, expiração/atualização, reinício, desconexão e logout. Confirmar também que uma mensagem inbound chega ao Inbox pelo webhook assinado.

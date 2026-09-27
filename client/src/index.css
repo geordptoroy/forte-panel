@@ -555,3 +555,19 @@ a { color: inherit; text-decoration: none; }
 .qr-code-panel img { display: block; width: 210px; height: 210px; image-rendering: pixelated; }
 .qr-code-panel .muted { display: grid; justify-items: center; gap: 10px; color: #555; text-align: center; }
 @media (max-width: 760px) { .qr-connection-layout { grid-template-columns: 1fr; } }
+
+.whatsapp-connection-card { margin-top: 20px; padding: 20px; scroll-margin-top: 24px; }
+.whatsapp-connection-copy { min-width: 0; }
+.qr-code-panel { position: relative; min-height: 280px; }
+.qr-code-panel.is-expired { background: rgba(233,180,94,.06); border-color: rgba(233,180,94,.32); }
+.qr-code-panel img { width: min(100%, 240px); height: auto; aspect-ratio: 1; }
+.qr-expiry { position: absolute; right: 10px; bottom: 9px; color: #666; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.qr-error { display: block; margin-top: 8px; color: #9c7e4c; font-size: 9px; text-align: center; }
+.qr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 760px) {
+  .whatsapp-connection-card { padding: 15px; }
+  .qr-code-panel { min-height: 250px; }
+  .qr-actions { display: grid; grid-template-columns: 1fr; }
+  .qr-actions .btn-primary, .qr-actions .btn-secondary, .qr-actions .btn-ghost { width: 100%; }
+}

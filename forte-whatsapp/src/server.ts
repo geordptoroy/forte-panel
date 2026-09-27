@@ -36,7 +36,7 @@ export function createServer(manager: InstanceManager) {
       req.method === "POST" &&
       url.pathname === `/api/instances/${config.instanceId}/connect`
     ) {
-      await manager.start();
+      await manager.reconnect();
       return json(res, 202, manager.getStatus());
     }
     if (
