@@ -64,7 +64,7 @@ describe.skipIf(!hasDatabase)("onboarding published versions", () => {
   afterAll(async () => {
     const db = await getDb();
     if (!db) return;
-    await db.delete(onboardingPublishedVersions).where(eqWorkspace(workspaceId));
+    await db.delete(onboardingPublishedVersions).where(eqWorkspace(onboardingPublishedVersions.workspaceId, workspaceId));
     await db.delete(workspaceSettings).where(eqWorkspace(workspaceSettings.workspaceId, workspaceId));
     await db.delete(onboardingConflictResolutions).where(eqWorkspace(onboardingConflictResolutions.workspaceId, workspaceId));
     await db.delete(onboardingStepAnswerRevisions).where(eqWorkspace(onboardingStepAnswerRevisions.workspaceId, workspaceId));
