@@ -187,6 +187,37 @@ function MetricCard({
   );
 }
 
+type AiProviderId = "nvidia_nim" | "google_gemini" | "openai_compatible";
+type AiCapability = "text" | "vision" | "audio" | "document";
+type GlobalLlmDraft = {
+  providers: Record<AiProviderId, { enabled: boolean; baseUrl: string; apiKey: string }>;
+  routing: Record<AiCapability, { provider: AiProviderId; model: string; baseUrl?: string; apiKey?: string }>;
+};
+const aiProviderLabels: Record<AiProviderId, string> = {
+  nvidia_nim: "NVIDIA NIM",
+  google_gemini: "Google Gemini",
+  openai_compatible: "OpenAI-compatible",
+};
+const aiCapabilityLabels: Record<AiCapability, string> = {
+  text: "Resposta no chat",
+  vision: "Visão",
+  audio: "Transcrição de áudio",
+  document: "Documentos/PDF",
+};
+const defaultGlobalLlm: GlobalLlmDraft = {
+  providers: {
+    nvidia_nim: { enabled: false, baseUrl: "https://integrate.api.nvidia.com/v1", apiKey: "" },
+    google_gemini: { enabled: false, baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: "" },
+    openai_compatible: { enabled: false, baseUrl: "", apiKey: "" },
+  },
+  routing: {
+    text: { provider: "nvidia_nim", model: "meta/llama-3.1-70b-instruct" },
+    vision: { provider: "google_gemini", model: "gemini-2.0-flash" },
+    audio: { provider: "google_gemini", model: "gemini-2.0-flash" },
+    document: { provider: "google_gemini", model: "gemini-2.0-flash" },
+  },
+};
+
 function GlobalAiPolicyCard({ canMutate }: { canMutate: boolean }) {
   const global = trpc.platform.globalAiConfig.useQuery();
   const [enabled, setEnabled] = useState(true);
@@ -194,12 +225,14 @@ function GlobalAiPolicyCard({ canMutate }: { canMutate: boolean }) {
   const [prompt, setPrompt] = useState("");
   const [maxSteps, setMaxSteps] = useState(6);
   const [reason, setReason] = useState("Política global inicial do agente");
+  const [llm, setLlm] = useState<GlobalLlmDraft>(defaultGlobalLlm);
   useEffect(() => {
     if (!global.data) return;
     setEnabled(global.data.enabled);
     setModel(global.data.model);
     setPrompt(global.data.systemPrompt);
     setMaxSteps(global.data.maxSteps);
+    setLlm(global.data.llm as GlobalLlmDraft);
   }, [global.data]);
   const save = trpc.platform.saveGlobalAiConfig.useMutation({
     onSuccess: result => {
@@ -207,11 +240,16 @@ function GlobalAiPolicyCard({ canMutate }: { canMutate: boolean }) {
       setModel(result.model);
       setPrompt(result.systemPrompt);
       setMaxSteps(result.maxSteps);
+      setLlm(result.llm as GlobalLlmDraft);
       void global.refetch();
       toast.success("Política global da IA salva");
     },
     onError: error => toast.error(error.message),
   });
+  const updateProvider = (provider: AiProviderId, field: "enabled" | "baseUrl" | "apiKey", value: boolean | string) =>
+    setLlm(current => ({ ...current, providers: { ...current.providers, [provider]: { ...current.providers[provider], [field]: value } } }));
+  const updateRoute = (capability: AiCapability, field: "provider" | "model" | "baseUrl", value: string) =>
+    setLlm(current => ({ ...current, routing: { ...current.routing, [capability]: { ...current.routing[capability], [field]: value } } }));
   return (
     <section className="platform-card" style={{ marginBottom: 20 }}>
       <div className="platform-card-title">
@@ -221,42 +259,35 @@ function GlobalAiPolicyCard({ canMutate }: { canMutate: boolean }) {
         </div>
         <Bot size={18} />
       </div>
-      <p className="platform-muted">
-        Esta política vira fallback operacional para todos os workspaces. Um
-        override local continua possível e os segredos dos provedores nunca são
-        exibidos neste console.
-      </p>
+      <p className="platform-muted">A política é global por tipo de interação. Chaves ficam criptografadas no servidor e aparecem mascaradas depois de salvas.</p>
       <div className="platform-form-grid">
-        <label className="platform-field">
-          <span>Estado global</span>
-          <select className="select-control" value={enabled ? "enabled" : "paused"} onChange={event => setEnabled(event.target.value === "enabled")}>
-            <option value="enabled">Ativa</option>
-            <option value="paused">Pausada</option>
-          </select>
-        </label>
-        <label className="platform-field">
-          <span>Modelo lógico</span>
-          <input className="input-control" value={model} onChange={event => setModel(event.target.value)} />
-        </label>
-        <label className="platform-field">
-          <span>Máximo de etapas</span>
-          <input className="input-control" type="number" min={1} max={8} value={maxSteps} onChange={event => setMaxSteps(Number(event.target.value))} />
-        </label>
-        <label className="platform-field full">
-          <span>System prompt global</span>
-          <textarea className="textarea-control agent-prompt-editor" value={prompt} onChange={event => setPrompt(event.target.value)} />
-        </label>
-        <label className="platform-field full">
-          <span>Motivo obrigatório</span>
-          <input className="input-control" value={reason} onChange={event => setReason(event.target.value)} />
-        </label>
+        <label className="platform-field"><span>Estado global</span><select className="select-control" value={enabled ? "enabled" : "paused"} onChange={event => setEnabled(event.target.value === "enabled")}><option value="enabled">Ativa</option><option value="paused">Pausada</option></select></label>
+        <label className="platform-field"><span>Modelo lógico padrão</span><input className="input-control" value={model} onChange={event => setModel(event.target.value)} /></label>
+        <label className="platform-field"><span>Máximo de etapas do agente</span><input className="input-control" type="number" min={1} max={8} value={maxSteps} onChange={event => setMaxSteps(Number(event.target.value))} /></label>
       </div>
-      <div className="platform-form-actions">
-        <button className="btn-primary" disabled={!canMutate || save.isPending || reason.trim().length < 3 || model.trim().length < 1} onClick={() => save.mutate({ enabled, model: model.trim(), systemPrompt: prompt, maxSteps, reason })}>
-          <Sparkles size={14} /> {save.isPending ? "Salvando…" : "Salvar política global"}
-        </button>
-        {!canMutate && <small className="platform-muted">Sua permissão de plataforma é somente leitura.</small>}
+      <div className="platform-ai-provider-grid">
+        {(Object.keys(aiProviderLabels) as AiProviderId[]).map(provider => (
+          <div className="platform-ai-provider" key={provider}>
+            <div className="platform-card-title"><strong>{aiProviderLabels[provider]}</strong><label><input type="checkbox" checked={llm.providers[provider].enabled} onChange={event => updateProvider(provider, "enabled", event.target.checked)} /> Ativo</label></div>
+            <label className="platform-field"><span>URL base do provedor</span><input className="input-control" value={llm.providers[provider].baseUrl} onChange={event => updateProvider(provider, "baseUrl", event.target.value)} placeholder="https://api.exemplo.com/v1" /></label>
+            <label className="platform-field"><span>API key</span><input className="input-control" type="password" value={llm.providers[provider].apiKey} onChange={event => updateProvider(provider, "apiKey", event.target.value)} placeholder="Deixe mascarada para manter a atual" /></label>
+          </div>
+        ))}
       </div>
+      <div className="platform-card-title"><div><span className="eyebrow">Roteamento</span><h3>Modelo global por capacidade</h3></div><Sparkles size={16} /></div>
+      <div className="platform-ai-routing-grid">
+        {(Object.keys(aiCapabilityLabels) as AiCapability[]).map(capability => (
+          <div className="platform-ai-route" key={capability}>
+            <strong>{aiCapabilityLabels[capability]}</strong>
+            <select className="select-control" value={llm.routing[capability].provider} onChange={event => updateRoute(capability, "provider", event.target.value)}>{(Object.keys(aiProviderLabels) as AiProviderId[]).map(provider => <option key={provider} value={provider}>{aiProviderLabels[provider]}</option>)}</select>
+            <input className="input-control" value={llm.routing[capability].model} onChange={event => updateRoute(capability, "model", event.target.value)} placeholder="Nome do modelo" />
+            <input className="input-control" value={llm.routing[capability].baseUrl ?? ""} onChange={event => updateRoute(capability, "baseUrl", event.target.value)} placeholder="URL específica opcional" />
+          </div>
+        ))}
+      </div>
+      <label className="platform-field full"><span>System prompt global</span><textarea className="textarea-control agent-prompt-editor" value={prompt} onChange={event => setPrompt(event.target.value)} /></label>
+      <label className="platform-field full"><span>Motivo obrigatório</span><input className="input-control" value={reason} onChange={event => setReason(event.target.value)} /></label>
+      <div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || save.isPending || !llm || reason.trim().length < 3 || model.trim().length < 1} onClick={() => save.mutate({ enabled, model: model.trim(), systemPrompt: prompt, maxSteps, reason, llm })}><Sparkles size={14} /> {save.isPending ? "Salvando…" : "Salvar política global"}</button>{!canMutate && <small className="platform-muted">Sua permissão de plataforma é somente leitura.</small>}</div>
       {global.error && <div className="form-error">{global.error.message}</div>}
     </section>
   );
