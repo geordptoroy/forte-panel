@@ -4,11 +4,11 @@
 
 A API versionada permite que sites e integrações autorizadas operem o CRM sem acessar o banco. O Forte Panel continua sendo a fonte de verdade para contatos, agenda, funil e auditoria.
 
-## Provedores WhatsApp
+## Canais WhatsApp
 
-O domínio usa um contrato único `WhatsappAdapter`. O workspace pode manter um canal PAPI, um canal Meta Cloud API oficial ou os dois simultaneamente. Cada mensagem enfileirada registra o provedor escolhido; o worker selecionará o adapter correspondente sem alterar Inbox, contatos ou agenda.
+O domínio usa um contrato único `WhatsappAdapter`. O canal local oficial do Forte Panel é o **Baileys nativo**, executado pelo gateway `forte-whatsapp`; a Meta Cloud API permanece como alternativa oficial. PAPI aparece somente em código/documentação histórica de compatibilidade e não deve ser configurada no Compose oficial.
 
-O adapter PAPI usa `PAPI_BASE_URL` e `PAPI_API_KEY`. O adapter Meta usa `META_GRAPH_API_VERSION`, `META_WHATSAPP_ACCESS_TOKEN` e `META_WHATSAPP_PHONE_NUMBER_ID`, sempre no servidor. A documentação oficial da Meta confirma que a Cloud API envia mensagens e recebe webhooks de mensagens e status [Cloud API Get Started](https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started) e [Webhooks overview](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview).
+Cada mensagem enfileirada registra o canal escolhido; o worker seleciona o adapter sem alterar Inbox, contatos ou agenda. O adapter Baileys usa `BAILEYS_BASE_URL`, `BAILEYS_API_KEY`, `BAILEYS_WEBHOOK_SECRET` e `BAILEYS_INSTANCE_ID`. O adapter Meta usa `META_GRAPH_API_VERSION`, `META_WHATSAPP_ACCESS_TOKEN` e `META_WHATSAPP_PHONE_NUMBER_ID`, sempre no servidor.
 
 ## Autenticação
 
@@ -57,21 +57,24 @@ O evento deve conter `eventId`, `phone`, `content` e `receivedAt`; `name`, `mess
 
 Use o Forte Panel como fonte única para CRM, anotações e agenda; não mantenha uma segunda base privada de estado do lead. A API disponível para clientes autorizados é `POST /api/v1/lead-memory`, que aceita `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota` com `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`.
 
-Mensagens enviadas por `POST /api/v1/messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio. Toda mutação exige `Idempotency-Key`; retries iguais retornam a resposta original e o mesmo key com body diferente conflita. O payload aceita `contactId` ou `phone`, `provider`, `senderType: "ai" | "human"` (padrão `human`), `messageType` e `instanceId`. Para PAPI, o fluxo repassa o `instanceId` recebido pelo webhook ou usa a instância PAPI padrão configurada no workspace; não há fallback global entre tenants. Mensagens `ai` não desligam `aiEnabled` nem ativam `humanControlled`; mensagens `human` mantêm o comportamento de takeover do painel.
+Mensagens enviadas por `POST /api/v1/messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio. Toda mutação exige `Idempotency-Key`; retries iguais retornam a resposta original e o mesmo key com body diferente conflita. O payload aceita `contactId` ou `phone`, `provider`, `senderType: "ai" | "human"` (padrão `human`), `messageType`, `instanceId` e `metadata`. Para Baileys, o fluxo preserva o JID completo recebido no webhook e usa a instância do workspace; não há fallback global entre tenants. Mensagens `ai` não desligam `aiEnabled` nem ativam `humanControlled`; mensagens `human` mantêm o comportamento de takeover do painel.
 
-PAPI suporta estes formatos no worker:
+O gateway Baileys suporta estes formatos no worker:
 
-| `messageType` | `content` | `metadata` | Operação PAPI |
+| `messageType` | `content` | `metadata` | Operação Baileys |
 |---|---|---|---|
-| `text` (padrão) | Texto da mensagem | Opcional | `POST /api/instances/:instanceId/send-text` |
-| `audio` | URL acessível ao serviço PAPI | `{ "ptt": true }` (padrão) | `POST /api/instances/:instanceId/send-audio` |
-| `button` | Texto do corpo | `buttons` (1–3 objetos `{ "id", "displayText" }`), `footer?`, `headerType?` | `POST /api/instances/:instanceId/send-buttons` |
+| `text` (padrão) | Texto da mensagem | Opcional | `POST /api/instances/:instanceId/send` |
+| `audio` | URL ou conteúdo compatível | `{ "ptt": true, "mimetype": "audio/ogg" }` | `POST /api/instances/:instanceId/send` |
+| `image` | URL ou conteúdo compatível | `caption?`, `mimetype?` | `POST /api/instances/:instanceId/send` |
+| `video` | URL ou conteúdo compatível | `caption?`, `mimetype?`, `ptv?` | `POST /api/instances/:instanceId/send` |
+| `document` | URL ou conteúdo compatível | `fileName`, `mimetype?` | `POST /api/instances/:instanceId/send` |
+| `button`/interativo | Texto do corpo | `buttons`, `footer?` e payload compatível | `POST /api/instances/:instanceId/send` |
 
-O adapter usa o cabeçalho `x-api-key`, conforme o contrato da API PAPI. Outros tipos não textuais não são aceitos pela Meta Cloud API neste worker e retornam `422` no enqueue. O worker recupera jobs presos após reinício e tenta novamente até `WORKER_MAX_ATTEMPTS` antes de marcar `failed`. A chave idempotente protege a fila do painel; a confirmação final de entrega depende da resposta do provedor.
+O gateway usa `Authorization: Bearer <BAILEYS_API_KEY>`. Tipos avançados devem ser enviados no payload genérico e só podem ser apresentados na interface quando houver suporte comprovado no canal selecionado. O worker recupera jobs presos após reinício e tenta novamente até `WORKER_MAX_ATTEMPTS` antes de marcar `failed`. A chave idempotente protege a fila do painel; a confirmação final de entrega depende da resposta do canal.
 
 ```json
 {
-  "eventId": "papi-msg-123",
+  "eventId": "baileys-msg-123",
   "phone": "5511999999999",
   "content": "Olá, gostaria de agendar",
   "messageType": "text",
@@ -107,17 +110,16 @@ As cotas são persistidas em `workspaceUsageBuckets` e `workspaceUserUsageBucket
 O worker registra um heartbeat JSON periódico, controlado por `WORKER_HEARTBEAT_MS` (padrão de 60 segundos), com `event`, `service`, quantidade de ciclos, intervalo, último tipo de erro e timestamp. Os eventos de operação continuam usando os campos `processadas`, `limitadas`, `alertasCota` e `bucketsRemovidos`.
 
 
-## Provider Baileys próprio — em implementação
+## Baileys nativo — estado atual
 
-O Forte Panel terá um provider interno `baileys`, servido pelo gateway `forte-whatsapp`. Ele preserva o contrato `WhatsappAdapter` e não altera a fonte de verdade do CRM.
+O gateway `forte-whatsapp` preserva o contrato `WhatsappAdapter` e não altera a fonte de verdade do CRM. Ele já possui:
 
-No primeiro MVP, o gateway suportará:
-
-- `GET /health` e `GET /ready`;
-- status/QR de uma instância;
+- `GET /health`, `GET /ready`, status e QR autenticados;
 - `POST /api/instances/:instanceId/send-text`;
-- recebimento de texto via webhook assinado no Panel;
-- sessão persistente em volume Docker;
-- chave interna de servidor, nunca exposta ao browser.
+- `POST /api/instances/:instanceId/send` com `messageType` ou `payload` genérico `AnyMessageContent`;
+- recebimento de texto, imagem, áudio, vídeo e documento via webhook assinado;
+- download de mídia e entrega multimodal ao agente;
+- eventos de chamadas recebidas;
+- sessão persistente em volume Docker e chave interna nunca exposta ao browser.
 
-A PAPI continua como provider legado e a Meta Cloud API continua como alternativa oficial durante a migração. O gateway próprio não deve copiar código da PAPI nem tentar remover sua validação de licença.
+Ainda são pendências de produção: storage privado de mídia com URL assinada, store de sessão durável/criptografado, lifecycle multi-instância e E2E real em staging. Iniciar chamada não é tratado como envio normal de mensagem; requer signaling próprio.

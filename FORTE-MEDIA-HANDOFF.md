@@ -3,7 +3,7 @@
 **Data:** 2026-09-26  
 **Repositório:** `geordptoroy/forte-panel`  
 **Branch:** `main`  
-**Último commit:** `5a965a2`
+**Último commit:** `5f9846a`
 
 ## Objetivo do projeto
 
@@ -15,6 +15,8 @@ Construir um CRM multi-tenant para beta testers, com Inbox e agentes, removendo 
 A PAPI não faz parte do Compose oficial atual.
 
 ## Estado atual confirmado
+
+> **Atualização 2026-09-26:** o gateway Baileys nativo é o caminho local atual. O commit `4c5c483` adicionou mídia recebida, conteúdo multimodal, envio genérico e eventos de chamadas; o commit `5f9846a` refinou a interface de APIs por operação e alinhou o roadmap. As seções históricas abaixo preservam evidências antigas, mas não substituem o contrato atual em `API_CONTRACT.md`.
 
 ### Docker local do usuário
 

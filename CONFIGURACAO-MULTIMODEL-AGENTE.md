@@ -1,59 +1,72 @@
-# Configuração multimodelo do agente
+# Configuração da IA por operação
 
-O agente do Forte Panel não coloca chaves de modelos no `.env`. O `.env` fica reservado para a infraestrutura, Baileys, banco, autenticação e segredos de webhook. As credenciais de IA são cadastradas em **Sistema → Configuração da empresa → Agente nativo**.
+**Estado:** configuração atual do Forte Panel
+**Tela:** `Sistema → APIs por operação`
 
-## Provedores disponíveis
+## Princípio
 
-### NVIDIA NIM
-Use principalmente para conversa e geração de texto, aproveitando o free tier da NVIDIA quando disponível.
+As credenciais de IA não ficam no `.env` do cliente. O `.env` é reservado para infraestrutura, banco, autenticação, Baileys e segredos de webhook.
 
-- Provedor: `NVIDIA NIM`
-- URL padrão: `https://integrate.api.nvidia.com/v1`
-- Chave: sua chave da NVIDIA
-- Modelo: o ID exato exibido pela NVIDIA, por exemplo `meta/llama-3.1-70b-instruct`
+A interface não impõe NVIDIA, Gemini, OpenAI ou qualquer outro catálogo. Cada operação recebe três valores livres:
 
-### Google Gemini
-Use para imagens, áudio e documentos/PDFs. O Panel usa o endpoint compatível com OpenAI e mantém a chave somente no PostgreSQL criptografada com o `JWT_SECRET` da instalação.
+1. **URL da API**;
+2. **API key**;
+3. **Modelo**.
 
-- Provedor: `Google Gemini`
-- URL padrão: `https://generativelanguage.googleapis.com/v1beta/openai`
-- Chave: sua chave da API Google AI
-- Modelo: o ID disponível na sua conta, por exemplo `gemini-2.0-flash`
+O endpoint precisa aceitar o contrato de chat usado pelo agente, normalmente `/v1/chat/completions`, além do formato multimodal necessário à operação.
 
-### Outro OpenAI-compatible
-Serve para OpenAI, OpenRouter, Azure-compatible ou outro endpoint que aceite `/v1/chat/completions`.
+## Operações disponíveis
 
-- Provedor: `Outro OpenAI-compatible`
-- URL base: endpoint do provedor
-- Chave: chave desse provedor
-- Modelo: ID exato do modelo
-
-## Roteamento por capacidade
-
-A interface possui um modelo separado para cada tipo de entrada:
-
-| Capacidade | Uso | Exemplo de escolha |
+| Tela | Uso | Conteúdo enviado ao modelo |
 |---|---|---|
-| Texto | Conversa normal e respostas | NVIDIA NIM + Llama |
-| Imagem | Fotos enviadas pelo cliente | Google Gemini |
-| Áudio | Áudios/voz recebidos | Google Gemini ou transcrição dedicada |
-| Documentos | PDFs e documentos | Google Gemini |
+| **API de texto** | Conversa, ferramentas, agenda e respostas | Mensagens de texto e histórico |
+| **API de imagem** | Fotos, comprovantes e imagens recebidas | Texto + `image_url` |
+| **API de áudio** | Mensagens de voz | Texto + `file_url` ou transcrição, conforme o endpoint |
+| **API de documento** | PDFs e arquivos | Texto + `file_url` |
 
-O worker identifica o `messageType` recebido pelo Baileys e escolhe automaticamente a rota correspondente. Assim, não é necessário usar o mesmo modelo para tudo.
+Cada rota é independente. Uma API de imagem quebrada não deve substituir silenciosamente a API de texto nem gerar uma resposta inventada.
+
+## Como o runtime escolhe a operação
+
+1. O Baileys recebe a mensagem.
+2. O gateway identifica `messageType`.
+3. O Panel persiste a mensagem e seus metadados.
+4. O worker escolhe a rota correspondente:
+   - `text` → API de texto;
+   - `image` → API de imagem;
+   - `audio` → API de áudio;
+   - `document`/`pdf` → API de documento.
+5. A resposta do agente entra na fila outbound e retorna pelo canal WhatsApp ativo.
 
 ## Segurança
 
-- A chave não é devolvida à interface em texto aberto.
-- O formulário mostra apenas uma versão mascarada da chave existente.
-- Se o campo mascarado não for alterado, a chave criptografada anterior é preservada.
-- As credenciais ficam por workspace na tabela `workspaceSettings`.
-- O `JWT_SECRET` deve ser forte e permanente: se ele for trocado, os segredos criptografados antigos não poderão ser descriptografados.
-- O `.env` não recebe chaves de NVIDIA, Google ou outros modelos.
+- API keys são criptografadas em repouso com AES-256-GCM.
+- A interface recebe apenas uma versão mascarada.
+- Se uma chave mascarada não for alterada, a chave criptografada anterior é preservada.
+- As credenciais pertencem ao workspace.
+- `JWT_SECRET` deve ser forte e permanente; trocá-lo impede a leitura dos segredos antigos.
+- API keys nunca entram no prompt, no bundle do navegador, em logs ou em auditoria sem sanitização.
 
-## Comportamento quando uma capacidade não está configurada
+## Requisitos por endpoint
 
-A mensagem continua sendo registrada no PostgreSQL. O worker marca o processamento como falho e aplica retry; não inventa resposta nem envia conteúdo por outro provedor sem que isso esteja configurado. Portanto, configure cada rota que pretende usar antes de ativar mensagens multimodais.
+O operador deve confirmar, para cada URL:
 
-## Documentação do projeto
+- autenticação `Bearer` ou equivalente;
+- rota de chat compatível;
+- suporte ao modelo escolhido;
+- suporte a imagem, áudio ou documento quando aplicável;
+- limite de tamanho e formato de arquivo;
+- timeout e política de retenção do serviço.
 
-As decisões de arquitetura e os comandos de atualização continuam documentados em `ATUALIZACAO-STACK-DESENVOLVIMENTO.md`. Esta separação permite adicionar futuramente transcrição dedicada, OCR, embeddings, busca semântica e modelos especializados mantendo o processamento no agente nativo.
+O Forte Panel não valida a existência do modelo remoto antes de salvar a configuração. A validação operacional deve ser uma etapa explícita de **testar conexão** — ainda pendente na próxima fase do roadmap.
+
+## Pendências conhecidas
+
+- Teste de conexão por operação na interface.
+- Estados de erro acionáveis quando uma rota está incompleta ou indisponível.
+- Transcrição dedicada para endpoints que não aceitam áudio diretamente.
+- OCR e extração de documentos com limites de tamanho.
+- Storage privado de mídia com URL assinada; o MVP atual transporta mídia em data URL.
+- Versionamento, publicação e rollback da configuração do agente.
+
+Consulte [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) para a sequência completa de implementação.

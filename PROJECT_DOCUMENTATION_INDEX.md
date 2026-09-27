@@ -51,12 +51,13 @@ Ao concluir um bloco técnico:
 
 ## Estado atual resumido
 
-- Tenancy explícito nas superfícies CRM, Inbox, onboarding, agente, PAPI, idempotência, eventos e auditoria.
-- Segredos PAPI/webhook criptografados em repouso e mascarados nas respostas.
+- Tenancy explícito nas superfícies CRM, Inbox, onboarding, agente, Baileys, idempotência, eventos e auditoria.
+- Segredos de IA e webhook criptografados em repouso e mascarados nas respostas.
 - Quotas por workspace e usuário com janela de um minuto.
 - Painel de consumo em Integrações.
 - Worker protegido para IA e outbound.
 - Alertas in-app de 70% e 90% para gestores.
 - Retenção de buckets, readiness `/api/v1/ready` e heartbeat JSON do worker.
 - Validação PostgreSQL local aprovada: 21 arquivos e 74 testes passaram; staging real ainda pendente.
-- Console interno de plataforma e configuração versionada do agente por workspace ainda não implementados; são P0 antes dos convites beta.
+- Console interno de plataforma possui código, migration e UI; falta validar a operação completa em PostgreSQL/staging.
+- Configuração básica da IA existe por operação; versionamento, simulação e rollback completos continuam P0 antes dos convites beta.

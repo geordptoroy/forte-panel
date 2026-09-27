@@ -1,7 +1,9 @@
 # Migração de PAPI para Baileys nativo
 
 **Data:** 2026-09-26  
-**Status:** Baileys é o canal WhatsApp local ativo do Forte Panel.
+**Status:** Baileys é o canal WhatsApp local ativo do Forte Panel. A migração operacional foi concluída; hardening de produção e paridade de interface continuam em andamento.
+
+> Este documento descreve o estado atual do código. Para a sequência de produto, gates e pendências por fase, consulte `AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`.
 
 ## Decisão
 
@@ -73,7 +75,9 @@ O contrato interno do worker é `OutboundMessageCommand`. O campo `messageType` 
 | `image` | URL da imagem | `caption`, `mimetype` |
 | `video` | URL do vídeo | `caption`, `mimetype`, `ptv` |
 | `document` | URL do arquivo | `fileName`, `mimetype` |
-| `button` | Texto do corpo | `buttons`, `footer` |
+| `button`/interativo | Texto do corpo ou payload Baileys | `buttons`, `footer` e campos compatíveis |
+
+O gateway também aceita o payload genérico compatível com `AnyMessageContent` para tipos avançados. A interface ainda precisa oferecer composer específico para todos esses tipos; “payload aceito no gateway” não significa que a experiência completa já esteja disponível no Inbox.
 
 O endpoint genérico do gateway é:
 
@@ -139,6 +143,8 @@ Os JIDs completos são preservados em `metadata.jid`, incluindo endereços `@lid
 ```
 
 O provider padrão do workspace agora é `baileys` quando nenhuma seleção explícita válida existe. A fila grava o provider, o tipo, o JID e os metadados antes do envio. O worker só marca a mensagem como `sent` depois da confirmação do gateway.
+
+Chamadas recebidas são registradas como eventos inbound com metadata de chamada. Iniciar uma chamada não é tratado como mensagem comum e continua fora do contrato de envio até existir um fluxo de signaling próprio.
 
 ## Interface
 

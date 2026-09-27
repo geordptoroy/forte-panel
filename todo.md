@@ -1,7 +1,7 @@
 # Forte Panel — acompanhamento do produto público
 
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
-**Fase de código atual:** migrar queries e mutações de negócio para `workspaceId` explícito, domínio por domínio. **Não começar pela integração Baileys.**
+**Fase de código atual:** consolidar Baileys nativo, multimídia, interface operacional e validação em staging. A migração inicial do canal já foi executada; o foco agora é hardening, E2E e produto.
 
 ## Concluído até aqui no MVP
 
@@ -10,7 +10,7 @@
 - Pausar/reativar IA, enviar mensagem humana e takeover com auditoria.
 - Agenda nativa com serviços, profissionais, jornada semanal por fuso, conflitos, locks para reservas concorrentes e portal do profissional.
 - API v1 inicial para contatos, memória, disponibilidade, agendamentos, mensagens e webhooks; autenticação, idempotência e outbox de eventos.
-- Adapters de WhatsApp PAPI e Meta Cloud API, seleção de canal por workspace e worker separado.
+- Gateway Baileys nativo com QR, webhook assinado, mídia multimodal, envio genérico e worker separado; Meta Cloud API permanece como alternativa oficial.
 - Multiusuário interno com hash de senha, memberships e papéis base; telas iniciais de Equipe/Configurações e notificações internas.
 - Ledger idempotente das tools de agente e melhorias de leases do worker.
 - Compose, migrations, documentação local e infraestrutura registrados nos docs existentes.
@@ -54,10 +54,10 @@
 - [ ] Repetir a mesma validação no PostgreSQL do ambiente de staging/produção antes do beta.
 - **Atenção:** ainda não abrir cadastro público de empresa; o banco local foi efêmero e serve apenas para validação automatizada.
 - Próxima fatia: repetir migrations/testes no staging real e conectar os sinais de readiness/heartbeat ao monitoramento; depois revisar planos comerciais a partir do consumo observado.
-- [ ] **P0 antes dos convites beta:** implementar console interno `platform_admin` para listar contas/workspaces, consultar saúde/uso, prestar suporte read-only e registrar auditoria.
+- [x] Estrutura inicial do console interno `platform_admin` criada para listar workspaces, consultar saúde/uso, prestar suporte escopado e registrar auditoria; falta validar em PostgreSQL/staging.
 - [ ] **P0 antes dos convites beta:** implementar configuração versionada do agente por workspace: rascunho, simulação sem envio externo, publicação, histórico e rollback.
-- [ ] **P0 antes dos convites beta:** permitir pausar/reativar IA, suspender/reativar conta e adicionar notas de suporte com motivo, sem revelar senha ou segredo bruto.
-- [ ] **P0 antes dos convites beta:** criar testes de autorização que provem que owner/member não acessa o console da plataforma e que uma sessão de suporte não cruza workspace.
+- [ ] **P0 antes dos convites beta:** validar no ambiente real pausar/reativar IA, suspender/reativar conta e notas de suporte com motivo, sem revelar senha ou segredo bruto.
+- [ ] **P0 antes dos convites beta:** executar testes de autorização que provem que owner/member não acessa o console da plataforma e que uma sessão de suporte não cruza workspace.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.
@@ -76,10 +76,11 @@
 - Estados de erro/vazio/loading com explicações simples e configuração de canal sem termos técnicos.
 - Perfil do agente estruturado, simulável, revisado e publicado pelo owner.
 
-### 4. Uma conexão WhatsApp por empresa (primeira entrega)
-
-- Escolher provider estável, autenticação por tenant, vínculo de webhook/instância, estados de QR/pareamento e health.
-- Validar inbound/outbound, `fromMe`, idempotência, takeover humano, rate limits e operação em staging.
+### 4. Uma conexão WhatsApp por empresa (Baileys atual)
+- [x] Gateway Baileys próprio, autenticação interna, webhook assinado, QR/pareamento e health básicos.
+- [x] Inbound/outbound de texto, mídia multimodal, JID, idempotência e takeover humano em nível de código.
+- [ ] Validar imagem, áudio, vídeo, documento e tipos interativos em Docker/staging com número de teste.
+- [ ] Store de sessão durável/criptografado, storage privado de mídia e lifecycle de instância por tenant.
 - Preservar adapter para troca reversível de provider e manter opção oficial da Meta documentada.
 
 ### 5. Operação, beta e lançamento
