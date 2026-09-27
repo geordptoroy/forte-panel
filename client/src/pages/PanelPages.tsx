@@ -794,6 +794,7 @@ export function InboxPage() {
     dataUrl: string;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const markedReadRef = useRef(new Set<string>());
   const contactsQuery = trpc.inbox.contacts.useQuery();
   const channelsQuery = trpc.workspace.channels.useQuery();
   const remoteContacts = contactsQuery.data ?? [];
@@ -821,6 +822,24 @@ export function InboxPage() {
   const threadQuery = trpc.inbox.thread.useQuery(threadInput, {
     enabled: selectedNumericId > 0,
   });
+  const latestMessageId =
+    threadQuery.data?.messages?.[threadQuery.data.messages.length - 1]?.id ?? "";
+  const markReadMutation = trpc.inbox.markRead.useMutation({
+    onSuccess: () => contactsQuery.refetch(),
+  });
+  useEffect(() => {
+    if (selectedNumericId <= 0 || !selected || selected.unread <= 0 || !latestMessageId)
+      return;
+    const key = `${selectedNumericId}:${latestMessageId}`;
+    if (markedReadRef.current.has(key)) return;
+    markedReadRef.current.add(key);
+    markReadMutation.mutate(
+      { contactId: selectedNumericId },
+      {
+        onError: () => markedReadRef.current.delete(key),
+      }
+    );
+  }, [latestMessageId, selected, selectedNumericId]);
   const refresh = async () => {
     await Promise.all([contactsQuery.refetch(), threadQuery.refetch()]);
   };

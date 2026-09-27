@@ -408,7 +408,7 @@ export default function PanelLayout({
   const { data: workspace } = trpc.workspace.current.useQuery();
   const { data: access } = trpc.auth.access.useQuery();
   const { data: inboxContacts } = trpc.inbox.contacts.useQuery(undefined, {
-    enabled: Boolean(access?.canSeeFullAgenda),
+    enabled: access?.canUseInbox === true,
   });
   const notificationsQuery = trpc.workspace.inAppNotifications.useQuery(
     undefined,

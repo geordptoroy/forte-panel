@@ -712,6 +712,33 @@ export const conversations = pgTable(
   table => [uniqueIndex("conversations_contact_unique_idx").on(table.contactId)]
 );
 
+/** Per-operator read cursor; the shared unread counters remain legacy data. */
+export const conversationReads = pgTable(
+  "conversationReads",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    conversationId: integer("conversationId").notNull(),
+    userId: integer("userId").notNull(),
+    lastReadMessageId: integer("lastReadMessageId"),
+    readAt: timestamp("readAt").defaultNow().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("conversation_reads_user_unique_idx").on(
+      table.workspaceId,
+      table.conversationId,
+      table.userId
+    ),
+    index("conversation_reads_workspace_user_idx").on(
+      table.workspaceId,
+      table.userId,
+      table.updatedAt
+    ),
+  ]
+);
+
 export const messages = pgTable(
   "messages",
   {
@@ -934,6 +961,8 @@ export type ContactNote = typeof contactNotes.$inferSelect;
 export type InsertContactNote = typeof contactNotes.$inferInsert;
 export type Conversation = typeof conversations.$inferSelect;
 export type InsertConversation = typeof conversations.$inferInsert;
+export type ConversationRead = typeof conversationReads.$inferSelect;
+export type InsertConversationRead = typeof conversationReads.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = typeof messages.$inferInsert;
 export type Service = typeof services.$inferSelect;

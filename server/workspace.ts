@@ -28,6 +28,9 @@ export type WorkspaceAccess = {
   bootstrapOwner: boolean;
   canManageTeam: boolean;
   canManageCatalog: boolean;
+  canUseInbox: boolean;
+  canSendMessages: boolean;
+  canManageInbox: boolean;
   canSeeFullAgenda: boolean;
   restrictedToOwnAgenda: boolean;
 };
@@ -68,6 +71,12 @@ export async function resolveWorkspaceAccess(
   const memberActive = true;
   const manager = isManagerRole(role) && memberActive;
   const professionalName = options.professionalName ?? (await getActiveProfessionalName(membership.workspaceId, professionalId));
+  // Assignment/fila ainda não existe no modelo. Até esse bloco, a política
+  // aprovada é caixa compartilhada: todo membro ativo opera a Inbox, enquanto
+  // a capability fica explícita para o próximo corte de escopo por equipe.
+  const canUseInbox = memberActive;
+  const canSendMessages = memberActive;
+  const canManageInbox = memberActive;
 
   return {
     userId: user.id,
@@ -81,6 +90,9 @@ export async function resolveWorkspaceAccess(
     bootstrapOwner: false,
     canManageTeam: isAdministratorRole(role) && memberActive,
     canManageCatalog: manager,
+    canUseInbox,
+    canSendMessages,
+    canManageInbox,
     canSeeFullAgenda: manager,
     restrictedToOwnAgenda: !manager && operationalRole === "professional",
   };

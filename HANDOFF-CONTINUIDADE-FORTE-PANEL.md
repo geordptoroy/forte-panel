@@ -1372,3 +1372,37 @@ Foi criada `GUIA-UX-CLAREZA-E-FACILIDADE.md` com a revisão de produto para clie
 Também foram priorizados: linguagem de negócio no lugar de provider/webhook/prompt; estados vazios e erros com explicação e ação; ajuda contextual por campo; navegação inicial por papel; preview curto e simulação antes de publicar; clareza de que recebimento manual não é gateway nem confirmação bancária; separação visual entre original, transcrição, fatos, regra redigida, regra confirmada e prompt publicado.
 
 Essa auditoria é de produto/UX e não alterou comportamento de código neste slice. O próximo bloco funcional continua sendo capabilities/escopos server-side e leitura transacional da Inbox; o checklist de primeiro acesso entra como P0 de UX antes do onboarding público completo.
+
+
+---
+## Atualização do handoff — 2026-09-27 12:17 — leitura transacional da Inbox
+
+O bloco seguinte ao contrato `awaitingResponse` foi implementado. A Inbox não usa mais os contadores globais `contacts.unreadCount`/`conversations.unreadCount` para representar a leitura individual do operador autenticado.
+
+### Implementado
+
+- Migration `drizzle-pg/0025_conversation_reads.sql` e registro no journal PostgreSQL.
+- Tabela `conversationReads` com cursor por `workspaceId + conversationId + userId`, `lastReadMessageId`, `readAt` e `updatedAt`.
+- `listInboxContacts(workspaceId, viewerUserId)` calcula `unreadCount` contando apenas mensagens inbound posteriores ao cursor daquele operador.
+- `markConversationRead` grava o maior ID de mensagem da conversa dentro de uma transação e valida a conversa pelo workspace do contato.
+- Procedure `inbox.markRead`, com `NOT_FOUND` para conversa inexistente ou fora do tenant.
+- A thread aberta no painel marca a conversa como lida uma vez por última mensagem; se uma nova inbound chegar, um novo cursor é necessário e o badge reaparece.
+- O contador da Inbox no shell agora também funciona para membros não-gerentes que possuem a capability de operação.
+- Capabilities server-side explícitas `canUseInbox`, `canSendMessages` e `canManageInbox` foram adicionadas ao contexto e ao contrato `auth.access`. Como assignment/fila ainda não existe, a política atual continua sendo caixa compartilhada para todo membro ativo.
+- Procedures da Inbox passaram a usar guards de capability em vez de `protectedProcedure` diretamente.
+- Teste PostgreSQL `server/inbox-read-state.test.ts` cobre leitura independente por dois operadores, isolamento entre workspaces e mensagens novas após a leitura; o teste de contrato cobre input inválido de `markRead`.
+
+### Validação
+
+```text
+pnpm check ✅
+pnpm test ✅ — 87 aprovados, 32 ignorados por dependências externas/PostgreSQL
+pnpm build ✅ — warning conhecido de bundle inicial acima de 500 kB
+git diff --check ✅
+```
+
+O teste de integração ainda está corretamente ignorado neste sandbox sem `DATABASE_URL`; é necessário aplicar a migration e executá-lo em PostgreSQL/staging antes de considerar o gate de isolamento concluído.
+
+### Próximo passo
+
+Implementar o signup público inicial e recuperação de senha preparada, mantendo confirmação de e-mail e OAuth atrás de feature flags desligadas, ou antecipar assignment/fila se a decisão de caixa compartilhada mudar. A matriz completa de escopos por equipe/profissional continua pendente e não deve ser presumida pela capability-base deste bloco.

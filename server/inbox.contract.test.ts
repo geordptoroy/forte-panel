@@ -20,6 +20,7 @@ describe("inbox procedures", () => {
   it("rejects invalid contact identifiers", async () => {
     const caller = appRouter.createCaller(createContext());
     await expect(caller.inbox.toggleAi({ contactId: 0, enabled: true })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.inbox.markRead({ contactId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("does not mutate or audit a contact outside the resolved workspace", async () => {

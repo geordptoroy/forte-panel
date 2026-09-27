@@ -54,6 +54,7 @@ import {
   listInAppNotifications,
   listWorkspaceInvites,
   markAllInAppNotificationsRead,
+  markConversationRead,
   markInAppNotificationRead,
   moveContactStage,
   sendManualMessage,
@@ -210,6 +211,14 @@ const requireActiveMember = withAccess(
   () => true,
   "Seu acesso está desativado neste workspace"
 );
+const requireInbox = withAccess(
+  access => access.canUseInbox,
+  "Seu perfil não possui acesso à Inbox deste workspace"
+);
+const requireInboxMessaging = withAccess(
+  access => access.canSendMessages,
+  "Seu perfil não pode enviar mensagens neste workspace"
+);
 
 export const appRouter = router({
   system: systemRouter,
@@ -229,6 +238,9 @@ export const appRouter = router({
         memberActive: access.memberActive,
         canManageTeam: access.canManageTeam,
         canManageCatalog: access.canManageCatalog,
+        canUseInbox: access.canUseInbox,
+        canSendMessages: access.canSendMessages,
+        canManageInbox: access.canManageInbox,
         canSeeFullAgenda: access.canSeeFullAgenda,
         restrictedToOwnAgenda: access.restrictedToOwnAgenda,
         platform: Boolean(platformAdmin),
@@ -1628,11 +1640,14 @@ export const appRouter = router({
   }),
 
   inbox: router({
-    contacts: protectedProcedure.query(async ({ ctx }) => {
-      const items = await listInboxContacts(ctx.workspace.workspaceId);
+    contacts: requireInbox.query(async ({ ctx }) => {
+      const items = await listInboxContacts(
+        ctx.workspace.workspaceId,
+        ctx.user.id
+      );
       return items.map(mapContact);
     }),
-    createContact: protectedProcedure
+    createContact: requireInbox
       .input(
         z.object({
           name: z.string().trim().min(2).max(160),
@@ -1649,7 +1664,7 @@ export const appRouter = router({
         );
         return contact ? mapContact(contact) : null;
       }),
-    thread: protectedProcedure
+    thread: requireInbox
       .input(contactIdInput)
       .query(async ({ input, ctx }) => {
         const contact = await getContactById(
@@ -1682,7 +1697,7 @@ export const appRouter = router({
           notes,
         };
       }),
-    addNote: protectedProcedure
+    addNote: requireInbox
       .input(
         contactIdInput.extend({ content: z.string().trim().min(2).max(2000) })
       )
@@ -1694,7 +1709,7 @@ export const appRouter = router({
           ctx.user.id
         );
       }),
-    toggleAi: protectedProcedure
+    toggleAi: requireInbox
       .input(contactIdInput.extend({ enabled: z.boolean() }))
       .mutation(async ({ input, ctx }) => {
         const existing = await getContactById(
@@ -1719,7 +1734,7 @@ export const appRouter = router({
         );
         return contact ? mapContact(contact) : null;
       }),
-    sendMessage: protectedProcedure
+    sendMessage: requireInboxMessaging
       .input(
         contactIdInput.extend({
           content: z.string().trim().min(1).max(12_000_000),
@@ -1757,7 +1772,7 @@ export const appRouter = router({
             }
           : null;
       }),
-    moveStage: protectedProcedure
+    moveStage: requireInbox
       .input(contactIdInput.extend({ stage: z.string().min(1).max(80) }))
       .mutation(async ({ input, ctx }) => {
         const existing = await getContactById(
@@ -1782,7 +1797,26 @@ export const appRouter = router({
         );
         return contact ? mapContact(contact) : null;
       }),
-    seed: protectedProcedure.mutation(async () => {
+    markRead: requireInbox
+      .input(contactIdInput)
+      .mutation(async ({ input, ctx }) => {
+        const marked = await markConversationRead(
+          ctx.workspace.workspaceId,
+          ctx.user.id,
+          input.contactId
+        );
+        if (!marked)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Conversa não encontrada neste workspace",
+          });
+        return {
+          conversationId: marked.conversationId,
+          lastReadMessageId: marked.lastReadMessageId,
+          readAt: marked.readAt.toISOString(),
+        };
+      }),
+    seed: requireInbox.mutation(async () => {
       await ensureDemoInbox();
       return { success: true } as const;
     }),

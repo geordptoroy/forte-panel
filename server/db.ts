@@ -25,6 +25,7 @@ import {
   contactNotes,
   contacts,
   conversations,
+  conversationReads,
   domainEvents,
   messages,
   notifications,
@@ -3234,9 +3235,26 @@ export async function createAgendaAppointment(
   return createdAppointment;
 }
 
-export async function listInboxContacts(workspaceId: number) {
+export async function listInboxContacts(workspaceId: number, viewerUserId?: number) {
   const db = await getDb();
   if (!db) return [];
+  const readRows = viewerUserId === undefined
+    ? []
+    : await db
+        .select({
+          conversationId: conversationReads.conversationId,
+          lastReadMessageId: conversationReads.lastReadMessageId,
+        })
+        .from(conversationReads)
+        .where(
+          and(
+            eq(conversationReads.workspaceId, workspaceId),
+            eq(conversationReads.userId, viewerUserId)
+          )
+        );
+  const readCursorByConversation = new Map(
+    readRows.map(row => [row.conversationId, row.lastReadMessageId ?? 0])
+  );
   const contactRows = await db
     .select()
     .from(contacts)
@@ -3245,6 +3263,7 @@ export async function listInboxContacts(workspaceId: number) {
   const messageRows = await db
     .select({
       contactId: conversations.contactId,
+      conversationId: conversations.id,
       id: messages.id,
       direction: messages.direction,
       status: messages.status,
@@ -3256,15 +3275,89 @@ export async function listInboxContacts(workspaceId: number) {
     .where(eq(contacts.workspaceId, workspaceId))
     .orderBy(asc(messages.createdAt), asc(messages.id));
   const activitiesByContact = new Map<number, ConversationActivity[]>();
+  const unreadByContact = new Map<number, number>();
   for (const row of messageRows) {
     const activities = activitiesByContact.get(row.contactId) ?? [];
     activities.push(row);
     activitiesByContact.set(row.contactId, activities);
+    if (
+      viewerUserId !== undefined &&
+      row.direction === "inbound" &&
+      row.id > (readCursorByConversation.get(row.conversationId) ?? 0)
+    ) {
+      unreadByContact.set(
+        row.contactId,
+        (unreadByContact.get(row.contactId) ?? 0) + 1
+      );
+    }
   }
   return contactRows.map(contact => ({
     ...contact,
+    unreadCount:
+      viewerUserId === undefined
+        ? contact.unreadCount
+        : (unreadByContact.get(contact.id) ?? 0),
     ...deriveConversationState(activitiesByContact.get(contact.id) ?? []),
   }));
+}
+
+export async function markConversationRead(
+  workspaceId: number,
+  userId: number,
+  contactId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx => {
+    const conversation = (
+      await tx
+        .select({ id: conversations.id })
+        .from(conversations)
+        .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+        .where(
+          and(
+            eq(conversations.contactId, contactId),
+            eq(contacts.workspaceId, workspaceId)
+          )
+        )
+        .limit(1)
+    )[0];
+    if (!conversation) return undefined;
+    const latestMessage = (
+      await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(eq(messages.conversationId, conversation.id))
+        .orderBy(desc(messages.id))
+        .limit(1)
+    )[0];
+    if (!latestMessage) return undefined;
+    const readAt = new Date();
+    const saved = await tx
+      .insert(conversationReads)
+      .values({
+        workspaceId,
+        conversationId: conversation.id,
+        userId,
+        lastReadMessageId: latestMessage.id,
+        readAt,
+        updatedAt: readAt,
+      })
+      .onConflictDoUpdate({
+        target: [
+          conversationReads.workspaceId,
+          conversationReads.conversationId,
+          conversationReads.userId,
+        ],
+        set: {
+          lastReadMessageId: latestMessage.id,
+          readAt,
+          updatedAt: readAt,
+        },
+      })
+      .returning();
+    return saved[0];
+  });
 }
 
 export async function getConversationByContact(

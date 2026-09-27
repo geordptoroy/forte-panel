@@ -413,3 +413,13 @@ Foi adicionada a camada `forte-whatsapp/src/encrypted-auth-state.ts`, compatíve
 ## Atualização de execução — 2026-09-26 23:54
 
 Antes do teste na máquina do usuário, foram entregues três blocos verificáveis sem staging: `scripts/backup-restore.sh` com backup/verify/restore protegido por confirmação e hashes; `server/media-storage.ts` com storage privado opcional, limite por arquivo, referência por workspace e URL assinada para o agente; e suporte REST/DB para tipos estruturados Baileys com `metadata.payload`. O Inbox agora consulta os canais do workspace e mostra claramente se o canal está pronto ou ainda precisa de configuração. A validação local passou com typecheck, 62 testes aprovados, build web/backend e 14 testes/build do gateway. Ficam para staging real: ativar storage privado, validar backup restaurado, usar número WhatsApp controlado e agendar cópia externa.
+
+
+---
+## Etapa seguinte — leitura transacional da Inbox por operador — 2026-09-27
+
+Foi implementada a separação entre **mensagem inbound não lida pelo operador** e `awaitingResponse`. A migration `drizzle-pg/0025_conversation_reads.sql` cria `conversationReads`, com cursor por workspace, conversa e usuário. A listagem da Inbox recebe o usuário autenticado e deriva o unread a partir das mensagens posteriores ao cursor; a procedure `inbox.markRead` grava o último ID visto em transação e não atravessa o workspace do contato.
+
+O frontend marca a conversa como lida ao abrir a thread e o shell passou a exibir o contador para qualquer membro ativo com `canUseInbox`. Também foram formalizadas capabilities server-side (`canUseInbox`, `canSendMessages`, `canManageInbox`) e guards nas procedures da Inbox. A política atual segue caixa compartilhada até existir modelo de assignment/fila; portanto isso não é ainda a matriz final de escopo por equipe/profissional.
+
+Cobertura adicionada em `server/inbox-read-state.test.ts`: dois operadores independentes, dois workspaces, rejeição de contato cruzado e nova mensagem após leitura. Sem `DATABASE_URL`, a suíte PostgreSQL fica skipped; o typecheck, suíte local, build e diff check passaram.

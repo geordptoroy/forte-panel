@@ -248,7 +248,7 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Formalizar se a operação é caixa compartilhada; caso não seja, implementar assignment/equipe/ACL por contato e mídia.
 - [x] Definir semanticamente `awaiting_response` separado de unread: a última atividade outbound aceita aguarda o lead; a última inbound precisa de operador; outbound `failed` não conta. (contrato puro e testes adicionados)
 - [x] Integrar `awaiting_response` às consultas da Inbox/Dashboard; o KPI agora usa a última mensagem outbound `sent`, e `unread` continua separado. (leitura transacional por usuário permanece pendente)
-- [ ] Implementar leitura transacional por operador e atualizar `unreadCount` sem misturar com `awaitingResponse`.
+- [x] Implementar leitura transacional por operador e atualizar `unreadCount` sem misturar com `awaitingResponse`. (migration `0025_conversation_reads`, cursor por conversa/usuário, mutation `inbox.markRead` e teste PostgreSQL; assignment/ACL continua pendente)
 - [ ] Exibir status `queued/processing/sent/failed`, erro e retry na Inbox; invalidar após webhook/worker.
 - [ ] Corrigir KPIs `daysNoReply`/`receivedMonthCents`, usar consultas server-side e timezone do workspace.
 - [ ] Persistir histórico de stages (from/to, ator, motivo, timestamp, SLA, open/won/lost) e tratar Sem retorno/Perdido como estados terminais.
