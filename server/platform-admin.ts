@@ -731,6 +731,29 @@ export async function listPlatformAuditLogs(workspaceId: number, limit = 100) {
   return rows.map(row => ({ ...row, createdAt: row.createdAt.toISOString() }));
 }
 
+export async function listPlatformGlobalAuditLogs(limit = 100) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: platformAuditLogs.id,
+      action: platformAuditLogs.action,
+      summary: platformAuditLogs.summary,
+      reason: platformAuditLogs.reason,
+      scope: platformAuditLogs.scope,
+      result: platformAuditLogs.result,
+      actorName: users.name,
+      createdAt: platformAuditLogs.createdAt,
+    })
+    .from(platformAuditLogs)
+    .leftJoin(platformAdmins, eq(platformAdmins.id, platformAuditLogs.platformAdminId))
+    .leftJoin(users, eq(users.id, platformAdmins.userId))
+    .where(isNull(platformAuditLogs.workspaceId))
+    .orderBy(desc(platformAuditLogs.createdAt), desc(platformAuditLogs.id))
+    .limit(Math.min(Math.max(limit, 1), 200));
+  return rows.map(row => ({ ...row, createdAt: row.createdAt.toISOString() }));
+}
+
 async function listWorkspaceAuditSafe(workspaceId: number, limit = 100) {
   const db = await getDb();
   if (!db) return [];
