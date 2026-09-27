@@ -346,3 +346,21 @@ registrar contrato e scaffold
 ```
 
 Critério de aceite do primeiro bloco: `forte-whatsapp` sobe sem PAPI, responde health/readiness, mantém a estrutura de sessão em volume e oferece contratos internos testáveis; nenhuma credencial real deve entrar no Git ou nos exemplos.
+
+
+## Atualização de execução — 2026-09-26 21:28
+
+A revisão do handoff foi retomada no commit `929c467`, com typecheck, testes e build inicialmente aprovados. O console interno `platform_admin` já possui configuração versionada do agente por workspace, incluindo rascunho, simulação local sem provider externo, publicação, histórico e rollback.
+
+Foi corrigido um bloqueio operacional na aba do agente: versões arquivadas agora podem ser selecionadas para rollback; o backend publica o conteúdo como uma nova versão, preservando a cadeia histórica. Após salvar rascunho, simular, publicar ou executar rollback, a tela atualiza o snapshot protegido do workspace e mantém os campos editados sincronizados.
+
+Validação após a correção:
+
+```text
+pnpm check ✅
+pnpm test ✅ — 57 aprovados, 24 ignorados por dependências externas
+pnpm build ✅
+git diff --check ✅
+```
+
+Próxima etapa ainda pendente antes do beta: validar as mutações do console e o isolamento de autorização no PostgreSQL/staging real, sem abrir cadastro público nem executar smoke test Cloud.

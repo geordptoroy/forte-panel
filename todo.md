@@ -55,7 +55,9 @@
 - **Atenção:** ainda não abrir cadastro público de empresa; o banco local foi efêmero e serve apenas para validação automatizada.
 - Próxima fatia: repetir migrations/testes no staging real e conectar os sinais de readiness/heartbeat ao monitoramento; depois revisar planos comerciais a partir do consumo observado.
 - [x] Estrutura inicial do console interno `platform_admin` criada para listar workspaces, consultar saúde/uso, prestar suporte escopado e registrar auditoria; falta validar em PostgreSQL/staging.
-- [ ] **P0 antes dos convites beta:** implementar configuração versionada do agente por workspace: rascunho, simulação sem envio externo, publicação, histórico e rollback.
+- [x] **P0 antes dos convites beta:** implementar configuração versionada do agente por workspace: rascunho, simulação sem envio externo, publicação, histórico e rollback.
+- [x] Permitir rollback de qualquer versão arquivada, publicando uma nova versão e preservando o histórico.
+- [x] Atualizar a aba do agente após salvar, simular, publicar ou fazer rollback, sem exigir recarregamento manual.
 - [ ] **P0 antes dos convites beta:** validar no ambiente real pausar/reativar IA, suspender/reativar conta e notas de suporte com motivo, sem revelar senha ou segredo bruto.
 - [ ] **P0 antes dos convites beta:** executar testes de autorização que provem que owner/member não acessa o console da plataforma e que uma sessão de suporte não cruza workspace.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.

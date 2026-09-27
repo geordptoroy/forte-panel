@@ -700,6 +700,7 @@ function PlatformWorkspaceDetail({ workspaceId }: { workspaceId: number }) {
         <AgentTab
           item={item}
           input={detailInput}
+          onRefresh={() => void detail.refetch()}
           canMutate={
             Boolean(access.data?.canMutate) && item.session.mode === "operator"
           }
@@ -1005,10 +1006,12 @@ function SupportTab({
 function AgentTab({
   item,
   input,
+  onRefresh,
   canMutate,
 }: {
   item: any;
   input: { workspaceId: number; sessionId: number };
+  onRefresh: () => void;
   canMutate: boolean;
 }) {
   const agent = item.agent;
@@ -1029,19 +1032,43 @@ function AgentTab({
     "Olá, gostaria de saber mais sobre os serviços."
   );
   const save = trpc.platform.saveAgentDraft.useMutation({
-    onSuccess: () => toast.success("Rascunho salvo"),
+    onSuccess: result => {
+      setEnabled(result.config.enabled);
+      setModel(result.config.model);
+      setPrompt(result.config.systemPrompt);
+      setMaxSteps(result.config.maxSteps);
+      toast.success("Rascunho salvo");
+      onRefresh();
+    },
     onError: error => toast.error(error.message),
   });
   const publish = trpc.platform.publishAgentDraft.useMutation({
-    onSuccess: () => toast.success("Versão publicada"),
+    onSuccess: result => {
+      setEnabled(result.config.enabled);
+      setModel(result.config.model);
+      setPrompt(result.config.systemPrompt);
+      setMaxSteps(result.config.maxSteps);
+      toast.success("Versão publicada");
+      onRefresh();
+    },
     onError: error => toast.error(error.message),
   });
   const simulate = trpc.platform.simulateAgent.useMutation({
-    onSuccess: () => toast.success("Simulação concluída"),
+    onSuccess: () => {
+      toast.success("Simulação concluída");
+      onRefresh();
+    },
     onError: error => toast.error(error.message),
   });
   const rollback = trpc.platform.rollbackAgent.useMutation({
-    onSuccess: () => toast.success("Rollback publicado como nova versão"),
+    onSuccess: result => {
+      setEnabled(result.config.enabled);
+      setModel(result.config.model);
+      setPrompt(result.config.systemPrompt);
+      setMaxSteps(result.config.maxSteps);
+      toast.success("Rollback publicado como nova versão");
+      onRefresh();
+    },
     onError: error => toast.error(error.message),
   });
   const currentVersion = agent.versions.find(
@@ -1205,7 +1232,6 @@ function AgentTab({
                     disabled={
                       !canMutate ||
                       rollback.isPending ||
-                      version.status !== "published" ||
                       version.id === currentVersion?.id
                     }
                     onClick={() =>
