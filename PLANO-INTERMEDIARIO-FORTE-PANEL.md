@@ -377,3 +377,10 @@ Foi criada a suíte `server/platform-support-session.test.ts`, condicionada a Po
 - rejeição de tentativa de usar uma sessão em outro workspace.
 
 No sandbox sem `DATABASE_URL`/Docker, a suíte fica corretamente marcada como ignorada; os testes locais de autorização continuam aprovados. A execução contra staging PostgreSQL permanece o próximo gate operacional antes dos convites beta.
+
+
+## Atualização de execução — 2026-09-26 21:40
+
+Foi criado `.github/workflows/postgres-integration.yml`. O workflow inicia PostgreSQL 16, aplica a árvore versionada `drizzle-pg`, executa as suítes críticas de isolamento e falha se qualquer uma for ignorada. Ele roda em pull requests, pushes na `main` e execução manual.
+
+A validação local confirmou a formatação do YAML e `git diff --check`. A execução efetiva depende do runner GitHub Actions, pois o sandbox atual não possui Docker nem PostgreSQL.

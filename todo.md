@@ -88,7 +88,8 @@
 
 ### 5. Operação, beta e lançamento
 
-- CI com PostgreSQL, suites de isolamento/integration/E2E, health/readiness, logs/alertas e correlation IDs.
+- [x] CI com PostgreSQL 16, migrations limpas e suites de isolamento; o workflow falha se uma suite crítica for ignorada.
+- CI com suites E2E, health/readiness, logs/alertas e correlation IDs.
 - Backups off-host e restauração testada; exportação/encerramento de empresa; limites antiabuso.
 - Revisar privacidade, termos, retenção e suporte antes de cadastro público aberto.
 - Decidir planos/cobrança depois de validar uso/custo e jornada do produto.

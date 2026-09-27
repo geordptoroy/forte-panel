@@ -1,0 +1,77 @@
+name: PostgreSQL integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: forte_panel_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d forte_panel_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/forte_panel_test
+      JWT_SECRET: integration-test-secret
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply versioned migrations
+        run: pnpm exec drizzle-kit migrate
+
+      - name: Run PostgreSQL isolation suites
+        run: |
+          set -o pipefail
+          pnpm exec vitest run \
+            server/agenda-workspace-isolation.test.ts \
+            server/notifications.test.ts \
+            server/platform-support-session.test.ts \
+            server/professional-isolation.test.ts \
+            server/workspace-domain-isolation.test.ts \
+            server/workspace-key-isolation.test.ts \
+            server/workspace-quota-alerts.test.ts \
+            server/workspace-quota-policy.test.ts \
+            server/workspace-usage-retention.test.ts \
+            server/workspace-usage.test.ts \
+            --reporter=verbose 2>&1 | tee /tmp/postgres-vitest.log
+          if grep -qE '\[skipped\]|[0-9]+ skipped' /tmp/postgres-vitest.log; then
+            echo 'A PostgreSQL integration suite was skipped unexpectedly.' >&2
+            exit 1
+          fi
+
+      - name: Verify migration journal is tracked
+        run: test -s drizzle-pg/meta/_journal.json
