@@ -31,6 +31,7 @@ import {
   messages,
   notifications,
   onboardingSessions,
+  onboardingConflictResolutions,
   onboardingStepAnswers,
   onboardingStepAnswerRevisions,
   passwordResetTokens,
@@ -2423,6 +2424,76 @@ export async function confirmOnboardingStep(
     changedBy: updatedBy,
   });
   return answer;
+}
+
+export type OnboardingConflictResolutionDecision = "accepted_current" | "dismissed";
+
+export async function resolveOnboardingConflict(
+  workspaceId: number,
+  stepKey: string,
+  conflictKey: string,
+  resolution: OnboardingConflictResolutionDecision,
+  note: string,
+  resolvedBy: number
+) {
+  const db = await getDb();
+  const session = await getOnboardingSession(workspaceId);
+  if (!db || !session) throw new Error("ONBOARDING_SESSION_NOT_FOUND");
+  const [answer] = await db
+    .select({
+      id: onboardingStepAnswers.id,
+      sessionId: onboardingStepAnswers.sessionId,
+      workspaceId: onboardingStepAnswers.workspaceId,
+      stepKey: onboardingStepAnswers.stepKey,
+      answer: onboardingStepAnswers.answer,
+      source: onboardingStepAnswers.source,
+      confidence: onboardingStepAnswers.confidence,
+      missing: onboardingStepAnswers.missing,
+      conflicts: onboardingStepAnswers.conflicts,
+    })
+    .from(onboardingStepAnswers)
+    .where(
+      and(
+        eq(onboardingStepAnswers.workspaceId, workspaceId),
+        eq(onboardingStepAnswers.sessionId, session.id),
+        eq(onboardingStepAnswers.stepKey, stepKey)
+      )
+    )
+    .limit(1);
+  if (!answer) throw new Error("ONBOARDING_STEP_NOT_FOUND");
+  const conflicts = JSON.parse(answer.conflicts) as string[];
+  if (!conflicts.includes(conflictKey)) throw new Error("ONBOARDING_CONFLICT_NOT_FOUND");
+  const remainingConflicts = conflicts.filter(item => item !== conflictKey);
+  const now = new Date();
+  await db
+    .update(onboardingStepAnswers)
+    .set({ conflicts: JSON.stringify(remainingConflicts), status: "draft", updatedBy: resolvedBy, updatedAt: now })
+    .where(eq(onboardingStepAnswers.id, answer.id));
+  await db.insert(onboardingConflictResolutions).values({
+    answerId: answer.id,
+    sessionId: answer.sessionId,
+    workspaceId: answer.workspaceId,
+    stepKey: answer.stepKey,
+    conflictKey,
+    resolution,
+    note: note.trim(),
+    answerSnapshot: answer.answer,
+    resolvedBy,
+  });
+  await db.insert(onboardingStepAnswerRevisions).values({
+    answerId: answer.id,
+    sessionId: answer.sessionId,
+    workspaceId: answer.workspaceId,
+    stepKey: answer.stepKey,
+    answer: answer.answer,
+    source: answer.source,
+    confidence: answer.confidence,
+    missing: answer.missing,
+    conflicts: JSON.stringify(remainingConflicts),
+    status: "draft",
+    changedBy: resolvedBy,
+  });
+  return { stepKey, conflictKey, resolution, remainingConflicts, status: "draft" as const };
 }
 
 function buildBusinessPrompt(profile: OnboardingProfile, version: number) {

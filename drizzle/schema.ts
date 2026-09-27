@@ -300,6 +300,34 @@ export const onboardingStepAnswerRevisions = pgTable(
   ]
 );
 
+export const onboardingConflictResolutions = pgTable(
+  "onboardingConflictResolutions",
+  {
+    id: serial("id").primaryKey(),
+    answerId: integer("answerId").notNull(),
+    sessionId: integer("sessionId").notNull(),
+    workspaceId: integer("workspaceId").notNull(),
+    stepKey: varchar("stepKey", { length: 80 }).notNull(),
+    conflictKey: varchar("conflictKey", { length: 160 }).notNull(),
+    resolution: varchar("resolution", { length: 32 }).notNull(),
+    note: text("note").notNull(),
+    answerSnapshot: text("answerSnapshot").notNull(),
+    resolvedBy: integer("resolvedBy").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("onboarding_conflict_resolutions_answer_idx").on(
+      table.answerId,
+      table.createdAt
+    ),
+    index("onboarding_conflict_resolutions_workspace_idx").on(
+      table.workspaceId,
+      table.stepKey,
+      table.createdAt
+    ),
+  ]
+);
+
 export const workspaces = pgTable("workspaces", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 160 }).notNull(),
@@ -1052,6 +1080,8 @@ export type OnboardingStepAnswer = typeof onboardingStepAnswers.$inferSelect;
 export type InsertOnboardingStepAnswer = typeof onboardingStepAnswers.$inferInsert;
 export type OnboardingStepAnswerRevision = typeof onboardingStepAnswerRevisions.$inferSelect;
 export type InsertOnboardingStepAnswerRevision = typeof onboardingStepAnswerRevisions.$inferInsert;
+export type OnboardingConflictResolution = typeof onboardingConflictResolutions.$inferSelect;
+export type InsertOnboardingConflictResolution = typeof onboardingConflictResolutions.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;
 export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

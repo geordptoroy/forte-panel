@@ -527,3 +527,11 @@ Próximo corte: especificar valores permitidos de `source`, política de confian
 As fontes aceitas são `human_form`, `transcription`, `llm` e `import`; a confiança é validada entre 0 e 100, com formulário humano fixado em 100. Conflicts impedem confirmação e publicação dos blocos obrigatórios. A regra está no backend e não depende apenas do frontend.
 
 Próximo corte: definir o contrato de resolução de conflitos e a política de retenção/consentimento caso uma fonte automática seja conectada.
+
+
+---
+## Etapa seguinte — resolução auditável de conflitos — 2026-09-27
+
+A resolução agora aceita `accepted_current` ou `dismissed`, exige nota, preserva snapshot e registra ator/tempo em `onboardingConflictResolutions`. Qualquer decisão rebaixa o bloco para `draft` e exige nova confirmação antes da publicação.
+
+Próximo corte: definir retenção e consentimento para dados de fontes automáticas, mantendo o mesmo fluxo de revisão humana.

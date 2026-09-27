@@ -68,6 +68,7 @@ import {
   PUBLIC_PRIVACY_VERSION,
   PUBLIC_TERMS_VERSION,
   resetPasswordWithToken,
+  resolveOnboardingConflict,
   sendManualMessage,
   pauseOnboardingSession,
   saveOnboardingProfile,
@@ -1161,6 +1162,36 @@ export const appRouter = router({
         } catch (error) {
           if (error instanceof Error && error.message === "ONBOARDING_CONFLICTS_UNRESOLVED")
             throw new TRPCError({ code: "BAD_REQUEST", message: "Resolva os conflitos deste bloco antes de confirmar." });
+          throw error;
+        }
+      }),
+    resolveConflict: requireOnboardingEditor
+      .input(z.object({
+        stepKey: z.enum(["identity", "offering", "operations", "guardrails", "voice"]),
+        conflictKey: z.string().trim().min(1).max(160),
+        resolution: z.enum(["accepted_current", "dismissed"]),
+        note: z.string().trim().min(1).max(1000),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const result = await resolveOnboardingConflict(
+            ctx.workspace.workspaceId,
+            input.stepKey,
+            input.conflictKey,
+            input.resolution,
+            input.note,
+            ctx.user.id
+          );
+          await logWorkspaceAction({
+            workspaceId: ctx.workspace.workspaceId,
+            actorUserId: ctx.user.id,
+            action: "onboarding_conflict_resolved",
+            summary: `Conflito resolvido no bloco ${input.stepKey}: ${input.resolution}`,
+          });
+          return result;
+        } catch (error) {
+          if (error instanceof Error && error.message === "ONBOARDING_CONFLICT_NOT_FOUND")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Este conflito já foi resolvido ou não existe mais." });
           throw error;
         }
       }),

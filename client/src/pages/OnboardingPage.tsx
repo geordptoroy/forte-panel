@@ -85,6 +85,9 @@ export default function OnboardingPage() {
   const confirmStep = trpc.onboarding.confirmStep.useMutation({
     onSuccess: () => void utils.onboarding.profile.invalidate(),
   });
+  const resolveConflict = trpc.onboarding.resolveConflict.useMutation({
+    onSuccess: () => void utils.onboarding.profile.invalidate(),
+  });
   const saveMutation = trpc.onboarding.save.useMutation({
     onSuccess: result => {
       setPublished(result.published);
@@ -231,7 +234,27 @@ export default function OnboardingPage() {
                         <span className="muted">Origem: {step.source === "human_form" ? "formulário" : step.source}</span>
                         {step.confidence !== null && <span className="muted">Confiança: {step.confidence}%</span>}
                         {step.missing.length > 0 && <span style={{ color: "var(--amber)" }}>Ausentes: {step.missing.map(key => fieldTitles[key] ?? key).join(", ")}</span>}
-                        {step.conflicts.length > 0 && <span style={{ color: "var(--red)" }}>Conflitos: {step.conflicts.join(", ")}</span>}
+                        {step.conflicts.length > 0 && (
+                          <div style={{ display: "grid", gap: 5, color: "var(--red)" }}>
+                            {step.conflicts.map(conflict => (
+                              <div key={conflict} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                                <span>Conflito: {conflict}</span>
+                                <button
+                                  className="btn-secondary"
+                                  style={{ padding: "3px 6px", fontSize: 9 }}
+                                  disabled={resolveConflict.isPending}
+                                  onClick={() => resolveConflict.mutate({ stepKey: step.stepKey as "identity" | "offering" | "operations" | "guardrails" | "voice", conflictKey: conflict, resolution: "accepted_current", note: "Valor atual revisado e aceito pelo operador." })}
+                                >Aceitar valor atual</button>
+                                <button
+                                  className="btn-secondary"
+                                  style={{ padding: "3px 6px", fontSize: 9 }}
+                                  disabled={resolveConflict.isPending}
+                                  onClick={() => resolveConflict.mutate({ stepKey: step.stepKey as "identity" | "offering" | "operations" | "guardrails" | "voice", conflictKey: conflict, resolution: "dismissed", note: "Conflito revisado e descartado pelo operador." })}
+                                >Descartar conflito</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: "grid", gap: 5, marginTop: 9 }}>
                         {Object.entries(step.answer).map(([key, value]) => (
@@ -269,7 +292,7 @@ export default function OnboardingPage() {
               );
             })}
           </div>
-          {confirmStep.error && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} /> {confirmStep.error.message}</div>}
+          {(confirmStep.error || resolveConflict.error) && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} /> {(confirmStep.error || resolveConflict.error)?.message}</div>}
         </section>
       )}
       <section className="surface" style={{ padding: 22 }}>

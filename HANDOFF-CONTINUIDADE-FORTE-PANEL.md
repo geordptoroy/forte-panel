@@ -1680,3 +1680,13 @@ O contrato agora está preparado para futuras fontes (`transcription`, `llm`, im
 Foi fechada a política de qualidade antes de conectar fontes automáticas. As fontes permitidas agora são `human_form`, `transcription`, `llm` e `import`. A confiança é opcional, mas deve ser inteira entre 0 e 100; entradas de formulário humano exigem confiança 100. Ausências e conflitos precisam ser arrays de strings válidos.
 
 A confirmação de um bloco é recusada enquanto houver conflitos. A publicação também bloqueia conflitos nos blocos obrigatórios, mesmo que o usuário tente chamar a API diretamente. O erro é traduzido para uma mensagem acionável no router. Testes cobrem fonte desconhecida, confiança fora do intervalo, confiança humana inconsistente e campos inválidos.
+
+
+---
+## Atualização do handoff — 2026-09-27 — resolução de conflitos
+
+Foi criada a migration `0032_onboarding_conflict_resolutions`. Owner/admin com acesso ao onboarding podem resolver um conflito usando `accepted_current` ou `dismissed`, sempre com nota obrigatória.
+
+Cada decisão preserva o snapshot anterior do bloco, o conflito original, a decisão, a nota, o usuário e o timestamp. O bloco é rebaixado para `draft`, recebe uma nova revisão e precisa ser confirmado novamente. A procedure é tenant-aware e registra também uma ação de workspace. Conflitos inexistentes ou já resolvidos retornam erro acionável.
+
+A UI exibe as ações diretamente no card do bloco. O gate de publicação continua impedindo publicação enquanto conflitos obrigatórios permanecerem abertos.
