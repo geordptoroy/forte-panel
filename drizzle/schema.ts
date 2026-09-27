@@ -241,6 +241,32 @@ export const onboardingSessions = pgTable(
   ]
 );
 
+export const onboardingStepAnswers = pgTable(
+  "onboardingStepAnswers",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("sessionId").notNull(),
+    workspaceId: integer("workspaceId").notNull(),
+    stepKey: varchar("stepKey", { length: 80 }).notNull(),
+    answer: text("answer").notNull(),
+    source: varchar("source", { length: 24 }).notNull().default("form"),
+    status: varchar("status", { length: 24 }).notNull().default("draft"),
+    updatedBy: integer("updatedBy"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("onboarding_step_answers_session_step_idx").on(
+      table.sessionId,
+      table.stepKey
+    ),
+    index("onboarding_step_answers_workspace_idx").on(
+      table.workspaceId,
+      table.updatedAt
+    ),
+  ]
+);
+
 export const workspaces = pgTable("workspaces", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 160 }).notNull(),
@@ -989,6 +1015,8 @@ export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;
 export type OnboardingSession = typeof onboardingSessions.$inferSelect;
 export type InsertOnboardingSession = typeof onboardingSessions.$inferInsert;
+export type OnboardingStepAnswer = typeof onboardingStepAnswers.$inferSelect;
+export type InsertOnboardingStepAnswer = typeof onboardingStepAnswers.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;
 export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

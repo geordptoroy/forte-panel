@@ -1628,3 +1628,15 @@ O dashboard agora consulta a sessão de onboarding somente para perfis administr
 - Atendentes e profissionais não recebem a query protegida nem veem o cartão.
 
 Validação do slice: `pnpm check`, `pnpm test` (98 aprovados, 35 ignorados) e `git diff --check` passaram.
+
+
+---
+## Atualização do handoff — 2026-09-27 13:16 — respostas estruturadas por bloco
+
+Foi criada a fundação de `onboardingStepAnswers` sem remover o perfil JSON compatível.
+
+A migration `0029_onboarding_step_answers` vincula cada resposta a `sessionId`, `workspaceId` e `stepKey`, guardando `answer` como JSON textual, `source`, `status`, `updatedBy` e timestamps. O perfil atual é projetado deterministicamente em cinco blocos: `identity`, `offering`, `operations`, `guardrails` e `voice`.
+
+Autosave e salvamento manual fazem upsert desses blocos; publicação marca as respostas como `confirmed`, enquanto rascunhos permanecem `draft`. `onboarding.profile` também retorna `stepAnswers` para a próxima UI bloco a bloco. A chave única por sessão/bloco impede duplicação.
+
+A fonte de compatibilidade continua sendo `onboarding_profile`; não há ainda editor separado por bloco, ingestão de áudio ou extração por LLM. Testes cobrem a ordem e o conteúdo do mapeamento, além da autorização tenant-aware.

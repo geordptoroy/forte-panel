@@ -31,6 +31,7 @@ import {
   messages,
   notifications,
   onboardingSessions,
+  onboardingStepAnswers,
   passwordResetTokens,
   professionals,
   professionalServices,
@@ -2134,6 +2135,103 @@ async function touchOnboardingSession(workspaceId: number, nextStep: string | nu
     .where(eq(onboardingSessions.workspaceId, workspaceId));
 }
 
+export type OnboardingStepAnswerPayload = {
+  stepKey: "identity" | "offering" | "operations" | "guardrails" | "voice";
+  answer: Record<string, string>;
+};
+
+export function buildOnboardingStepAnswers(profile: OnboardingProfile): OnboardingStepAnswerPayload[] {
+  return [
+    {
+      stepKey: "identity",
+      answer: {
+        businessName: profile.businessName,
+        segment: profile.segment,
+        description: profile.description,
+      },
+    },
+    { stepKey: "offering", answer: { services: profile.services } },
+    {
+      stepKey: "operations",
+      answer: { serviceArea: profile.serviceArea, businessHours: profile.businessHours },
+    },
+    {
+      stepKey: "guardrails",
+      answer: {
+        forbiddenWords: profile.forbiddenWords,
+        humanHandoffRules: profile.humanHandoffRules,
+      },
+    },
+    {
+      stepKey: "voice",
+      answer: {
+        toneOfVoice: profile.toneOfVoice,
+        faq: profile.faq,
+        cancellationPolicy: profile.cancellationPolicy,
+        qualificationRules: profile.qualificationRules,
+      },
+    },
+  ];
+}
+
+async function listOnboardingStepAnswers(workspaceId: number) {
+  const db = await getDb();
+  const session = await getOnboardingSession(workspaceId);
+  if (!db || !session) return [];
+  return db
+    .select({
+      stepKey: onboardingStepAnswers.stepKey,
+      answer: onboardingStepAnswers.answer,
+      source: onboardingStepAnswers.source,
+      status: onboardingStepAnswers.status,
+      updatedAt: onboardingStepAnswers.updatedAt,
+    })
+    .from(onboardingStepAnswers)
+    .where(
+      and(
+        eq(onboardingStepAnswers.workspaceId, workspaceId),
+        eq(onboardingStepAnswers.sessionId, session.id)
+      )
+    )
+    .orderBy(onboardingStepAnswers.id);
+}
+
+async function persistOnboardingStepAnswers(
+  workspaceId: number,
+  profile: OnboardingProfile,
+  updatedBy: number | undefined,
+  confirmed: boolean
+) {
+  const db = await getDb();
+  const session = await getOnboardingSession(workspaceId);
+  if (!db || !session) return;
+  const now = new Date();
+  for (const payload of buildOnboardingStepAnswers(profile)) {
+    await db
+      .insert(onboardingStepAnswers)
+      .values({
+        sessionId: session.id,
+        workspaceId,
+        stepKey: payload.stepKey,
+        answer: JSON.stringify(payload.answer),
+        source: "form",
+        status: confirmed ? "confirmed" : "draft",
+        updatedBy,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [onboardingStepAnswers.sessionId, onboardingStepAnswers.stepKey],
+        set: {
+          answer: JSON.stringify(payload.answer),
+          source: "form",
+          status: confirmed ? "confirmed" : "draft",
+          updatedBy,
+          updatedAt: now,
+        },
+      });
+  }
+}
+
 function buildBusinessPrompt(profile: OnboardingProfile, version: number) {
   return `Você atende clientes da empresa ${profile.businessName || "da empresa configurada"}, do segmento ${profile.segment}. Este é o prompt operacional publicado v${version}.\n\nDescrição do negócio:\n${profile.description || "Não informada."}\n\nServiços, duração e preços:\n${profile.services || "Consultar a equipe antes de prometer preço ou prazo."}\n\nÁrea de atendimento:\n${profile.serviceArea || "Não informada."}\n\nHorários:\n${profile.businessHours || "Consultar disponibilidade real na agenda."}\n\nTom de voz:\n${profile.toneOfVoice || emptyOnboardingProfile.toneOfVoice}\n\nPalavras e condutas proibidas:\n${profile.forbiddenWords || "Não inventar informações, preços, horários ou confirmações."}\n\nPerguntas frequentes e respostas aprovadas:\n${profile.faq || "Não cadastradas."}\n\nPolítica de cancelamento, reagendamento e sinal:\n${profile.cancellationPolicy || "Escalar para atendimento humano quando não houver regra publicada."}\n\nSempre transferir para humano quando:\n${profile.humanHandoffRules || "o cliente pedir humano, houver reclamação, risco, dúvida fora do cadastro ou negociação especial."}\n\nCritérios de qualificação e follow-up:\n${profile.qualificationRules || "Identificar serviço, localização, urgência e próximo passo."}`;
 }
@@ -2180,6 +2278,7 @@ export async function getOnboardingProfile(workspaceId: number) {
       prompt: "",
       published: false,
       checklist: getOnboardingChecklist(emptyOnboardingProfile, false),
+      stepAnswers: [],
     };
   const profileSetting = await getWorkspaceSetting(
     workspace.id,
@@ -2199,19 +2298,22 @@ export async function getOnboardingProfile(workspaceId: number) {
     ? (JSON.parse(promptSetting.value) as { version: number; prompt: string })
     : undefined;
   const checklist = getOnboardingChecklist(profile, Boolean(published?.prompt));
+  const stepAnswers = await listOnboardingStepAnswers(workspaceId);
   return {
     profile,
     version: published?.version ?? 0,
     prompt: published?.prompt ?? "",
     published: Boolean(published?.prompt),
     checklist,
+    stepAnswers,
   };
 }
 
 export async function saveOnboardingProfile(
   workspaceId: number,
   input: OnboardingProfile,
-  publish: boolean
+  publish: boolean,
+  updatedBy?: number
 ) {
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
@@ -2236,6 +2338,7 @@ export async function saveOnboardingProfile(
     "onboarding_profile",
     JSON.stringify(input)
   );
+  await persistOnboardingStepAnswers(workspaceId, input, updatedBy, publish);
   const prompt = buildBusinessPrompt(input, nextVersion);
   if (publish)
     await upsertWorkspaceSetting(
@@ -2247,12 +2350,14 @@ export async function saveOnboardingProfile(
         publishedAt: new Date().toISOString(),
       })
     );
+  const stepAnswers = await listOnboardingStepAnswers(workspaceId);
   return {
     profile: input,
     version: publish ? nextVersion : current.version,
     prompt: publish ? prompt : current.prompt,
     published: nextPublished,
     checklist: nextChecklist,
+    stepAnswers,
   };
 }
 

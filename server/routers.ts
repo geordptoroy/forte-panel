@@ -1161,7 +1161,7 @@ export const appRouter = router({
         })
       )
       .mutation(({ input, ctx }) =>
-        saveOnboardingProfile(ctx.workspace.workspaceId, input.profile, false)
+        saveOnboardingProfile(ctx.workspace.workspaceId, input.profile, false, ctx.user.id)
       ),
     save: requireOnboardingEditor
       .input(
@@ -1188,7 +1188,8 @@ export const appRouter = router({
           const result = await saveOnboardingProfile(
             ctx.workspace.workspaceId,
             input.profile,
-            input.publish
+            input.publish,
+            ctx.user.id
           );
           await logWorkspaceAction({
             workspaceId: ctx.workspace.workspaceId,

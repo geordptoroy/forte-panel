@@ -487,3 +487,11 @@ As respostas ainda vivem no perfil estruturado atual. O próximo passo é adicio
 Sessões administrativas `active` ou `paused` agora aparecem no dashboard com o próximo `currentStep` e CTA direto para `/onboarding`. Sessões concluídas ficam ocultas e perfis sem `canManageTeam` não executam a query protegida.
 
 Próxima decisão: modelar respostas por bloco (`onboardingStepAnswers`) ou adicionar lembrete/retomada mais rica; áudio e LLM continuam depois da modelagem do dado estruturado.
+
+
+---
+## Etapa seguinte — respostas estruturadas por bloco — 2026-09-27
+
+A migration `0029_onboarding_step_answers` adiciona respostas tenant-aware por sessão e bloco. O autosave e o salvamento manual fazem upsert de identidade, oferta, operações, guardrails e voz; publicação confirma os blocos. O perfil JSON continua sendo a fonte compatível enquanto a UI bloco a bloco não é criada.
+
+Próximo corte: usar `stepAnswers` em uma revisão por bloco com confirmação humana, ou adicionar áudio apenas depois de definir consentimento, retenção e confiança por campo.

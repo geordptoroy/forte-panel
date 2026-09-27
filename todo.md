@@ -269,7 +269,7 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 
 ## Funil de cadastro com respostas em áudio — planejado
 
-- [ ] Modelar `onboardingSessions`, `onboardingStepAnswers`, `onboardingAudioAssets`, `onboardingChecklistItems`, `consentRecords`.
+- [ ] Modelar `onboardingSessions`, `onboardingStepAnswers`, `onboardingAudioAssets`, `onboardingChecklistItems`, `consentRecords`. (`onboardingSessions`, `onboardingStepAnswers` e `consentRecords` já persistidos; áudio/checklist independente ainda pendentes)
 - [ ] Definir os 10 blocos do funil (identidade, oferta, execução, agenda, atendimento/IA, política comercial, recebimento, canal, revisão/publicação) com pergunta falada, campos e destino.
 - [ ] Criar endpoint de upload de áudio com URL assinada e storage privado por workspace.
 - [ ] Ligar `voice.transcribe` tenant-aware ao serviço de transcrição já existente e hoje desconectado.

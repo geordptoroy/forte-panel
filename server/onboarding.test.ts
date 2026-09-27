@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getOnboardingChecklist, type OnboardingProfile } from "./db";
+import {
+  buildOnboardingStepAnswers,
+  getOnboardingChecklist,
+  type OnboardingProfile,
+} from "./db";
 
 const completeProfile: OnboardingProfile = {
   businessName: "Clínica Vida Plena",
@@ -33,5 +37,18 @@ describe("onboarding checklist", () => {
     const published = getOnboardingChecklist(completeProfile, true);
     expect(published.completionPercent).toBe(100);
     expect(published.nextStep).toBeNull();
+  });
+
+  it("maps the profile into stable, block-scoped answers", () => {
+    const answers = buildOnboardingStepAnswers(completeProfile);
+    expect(answers.map(answer => answer.stepKey)).toEqual([
+      "identity",
+      "offering",
+      "operations",
+      "guardrails",
+      "voice",
+    ]);
+    expect(answers[0].answer).toMatchObject({ businessName: "Clínica Vida Plena" });
+    expect(answers[2].answer).toMatchObject({ businessHours: "Segunda a sexta, 8h às 18h" });
   });
 });
