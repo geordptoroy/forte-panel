@@ -448,6 +448,13 @@ export async function createPublicSignup(input: {
       role: "owner",
       active: 1,
     });
+    await tx.insert(whatsappChannels).values({
+      workspaceId: workspace.id,
+      provider: "baileys",
+      name: "WhatsApp Comercial",
+      credentialsRef: "BAILEYS_API_KEY",
+      active: 1,
+    });
     await tx.insert(consentRecords).values({
       userId: user.id,
       workspaceId: workspace.id,
@@ -1577,6 +1584,7 @@ export async function ensureDemoWhatsappChannels() {
 export async function listWhatsappChannels(workspaceId: number) {
   const db = await getDb();
   if (!db) return [];
+  await ensureBaileysChannel(workspaceId);
   return db
     .select()
     .from(whatsappChannels)
@@ -1588,12 +1596,59 @@ export async function listWhatsappChannels(workspaceId: number) {
     );
 }
 
+export async function ensureBaileysChannel(workspaceId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const existing = await db
+    .select()
+    .from(whatsappChannels)
+    .where(
+      and(
+        eq(whatsappChannels.workspaceId, workspaceId),
+        eq(whatsappChannels.provider, "baileys")
+      )
+    )
+    .limit(1);
+  if (existing[0]) return existing[0];
+  const created = await db
+    .insert(whatsappChannels)
+    .values({
+      workspaceId,
+      provider: "baileys",
+      name: "WhatsApp Comercial",
+      credentialsRef: "BAILEYS_API_KEY",
+      active: 1,
+    })
+    .returning();
+  if (!created[0]) throw new Error("Não foi possível criar o canal Baileys");
+  return created[0];
+}
+
 export async function updateBaileysChannelName(workspaceId: number, name: string) {
   const db = await getDb();
   if (!db) throw new Error("Banco indisponível");
   const normalized = name.trim();
   if (normalized.length < 2 || normalized.length > 120)
     throw new Error("O nome da instância deve ter entre 2 e 120 caracteres");
+  const existing = await db
+    .select({ id: whatsappChannels.id })
+    .from(whatsappChannels)
+    .where(
+      and(
+        eq(whatsappChannels.workspaceId, workspaceId),
+        eq(whatsappChannels.provider, "baileys")
+      )
+    )
+    .limit(1);
+  if (!existing[0]) {
+    await db.insert(whatsappChannels).values({
+      workspaceId,
+      provider: "baileys",
+      name: normalized,
+      credentialsRef: "BAILEYS_API_KEY",
+      active: 1,
+    });
+  }
   const updated = await db
     .update(whatsappChannels)
     .set({ name: normalized })

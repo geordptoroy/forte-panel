@@ -112,6 +112,7 @@ export class InstanceManager {
   async stop(logout = false): Promise<void> {
     this.suppressReconnectUntil = Date.now() + 5_000;
     if (!this.socket) {
+      this.set({ status: logout ? "logged_out" : "disconnected", qr: undefined });
       await this.webhookOutbox.stop();
       await this.releaseSessionLock();
       return;
