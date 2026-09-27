@@ -8,9 +8,11 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   assertLoginAllowed,
+  assertPasswordResetAllowed,
   assertSignupAllowed,
   recordLoginFailure,
   recordLoginSuccess,
+  recordPasswordResetAttempt,
   recordSignupAttempt,
 } from "./_core/request-security";
 import { ScheduleError } from "./schedule";
@@ -56,12 +58,14 @@ import {
   listQuotes,
   listInAppNotifications,
   listWorkspaceInvites,
+  issuePasswordResetToken,
   markAllInAppNotificationsRead,
   markConversationRead,
   markInAppNotificationRead,
   moveContactStage,
   PUBLIC_PRIVACY_VERSION,
   PUBLIC_TERMS_VERSION,
+  resetPasswordWithToken,
   sendManualMessage,
   saveOnboardingProfile,
   setContactAi,
@@ -447,6 +451,47 @@ export const appRouter = router({
           if (error instanceof Error && /já existe uma conta/i.test(error.message))
             throw new TRPCError({ code: "CONFLICT", message: error.message });
           throw error;
+        }
+      }),
+    requestPasswordReset: publicProcedure
+      .input(z.object({ email: z.string().email() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ENV.localAuthEnabled) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Recuperação local não configurada",
+          });
+        }
+        const email = input.email.trim().toLowerCase();
+        assertPasswordResetAllowed(ctx.req, email);
+        recordPasswordResetAttempt(ctx.req, email);
+        // The future mail provider consumes the internal token; the public
+        // response intentionally never reveals whether the email exists.
+        await issuePasswordResetToken(email);
+        return { success: true } as const;
+      }),
+    resetPassword: publicProcedure
+      .input(
+        z.object({
+          token: z.string().min(40).max(100),
+          password: z.string().min(8).max(128),
+        })
+      )
+      .mutation(async ({ input }) => {
+        if (!ENV.localAuthEnabled) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Recuperação local não configurada",
+          });
+        }
+        try {
+          await resetPasswordWithToken(input.token, input.password);
+          return { success: true } as const;
+        } catch {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Token de recuperação inválido ou expirado",
+          });
         }
       }),
     acceptInvite: publicProcedure

@@ -431,3 +431,11 @@ Cobertura adicionada em `server/inbox-read-state.test.ts`: dois operadores indep
 Foi entregue `auth.signup` com hash de senha, rate limit por IP/e-mail, consentimento versionado e criação transacional de workspace `onboarding`, usuário owner, membership, auditoria e sessão automática. A migration é `0026_consent_records`; a UI pública está em `/signup` e o fluxo só é habilitado quando `LOCAL_AUTH_ENABLED=true`. O segredo `LOCAL_ADMIN_PASSWORD` continua exclusivo do bootstrap do administrador de plataforma e não é necessário para o login posterior de owners públicos.
 
 O próximo corte é **recuperação de senha one-time** sem expor token ou segredo na API, seguido da migração do onboarding/configuração histórica para owner/admin. O cadastro não deve ser aberto em produção antes de aplicar migrations em PostgreSQL/staging, revisar termos/privacidade e validar antiabuso.
+
+
+---
+## Etapa seguinte — recuperação de senha one-time — 2026-09-27
+
+Foi entregue a base segura de reset: migration `0027_password_reset_tokens`, hash SHA-256, expiração de 30 minutos, revogação de tokens anteriores, lock transacional, consumo único, rotação de `sessionVersion`, auditoria e rate limit por IP/e-mail. As rotas públicas são `auth.requestPasswordReset` e `auth.resetPassword`; as telas são `/forgot-password` e `/reset-password`.
+
+A solicitação pública responde genericamente e não retorna token. A entrega transacional por e-mail continua pendente até configurar provider, domínio, remetente e secrets. O próximo corte é integrar esse provider sem imprimir token em logs e depois liberar o onboarding de negócio para owner/admin, mantendo o console de plataforma separado.

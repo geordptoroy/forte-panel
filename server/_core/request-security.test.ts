@@ -3,13 +3,16 @@ import type { Request } from "express";
 import {
   assertLoginAllowed,
   assertSameOrigin,
+  assertPasswordResetAllowed,
   assertSignupAllowed,
   loginRateLimitConfig,
   recordLoginFailure,
   recordLoginSuccess,
+  recordPasswordResetAttempt,
   recordSignupAttempt,
   resetLoginRateLimitForTests,
   signupRateLimitConfig,
+  passwordResetRateLimitConfig,
 } from "./request-security";
 
 function request(overrides: Partial<Request> = {}) {
@@ -105,6 +108,18 @@ describe("request security", () => {
     }
     expect(() => assertSignupAllowed(req, email, 2_000)).toThrow(
       "Muitas tentativas de cadastro"
+    );
+  });
+
+  it("blocks repeated password reset requests without depending on account existence", () => {
+    const req = request();
+    const email = "owner@example.com";
+    for (let i = 0; i < passwordResetRateLimitConfig.maxAttempts; i += 1) {
+      assertPasswordResetAllowed(req, email, 1_000);
+      recordPasswordResetAttempt(req, email, 1_000 + i);
+    }
+    expect(() => assertPasswordResetAllowed(req, email, 2_000)).toThrow(
+      "Muitas solicitações"
     );
   });
 });

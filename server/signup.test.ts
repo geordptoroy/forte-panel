@@ -40,4 +40,11 @@ describe("public signup", () => {
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+
+  it("rejects malformed reset tokens at the public boundary", async () => {
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(
+      caller.auth.resetPassword({ token: "short", password: "nova-senha-123" })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });

@@ -30,6 +30,7 @@ import {
   domainEvents,
   messages,
   notifications,
+  passwordResetTokens,
   professionals,
   professionalServices,
   quotes,
@@ -56,6 +57,12 @@ import {
   isInviteExpired,
   normalizeInviteEmail,
 } from "./_core/invites";
+import {
+  createPasswordResetToken,
+  hashPasswordResetToken,
+  isPasswordResetExpired,
+  PASSWORD_RESET_TTL_MS,
+} from "./_core/password-reset";
 import { resolveReplyRoute } from "./_core/message-routing";
 import { normalizeContactPhone, normalizeWhatsappJid } from "./_core/phone";
 import {
@@ -362,6 +369,9 @@ export async function createPublicSignup(input: {
   const workspaceName = input.workspaceName.trim();
   const now = new Date();
   return db.transaction(async tx => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${email}))`
+    );
     const existing = await tx
       .select({ id: users.id })
       .from(users)
@@ -422,6 +432,119 @@ export async function createPublicSignup(input: {
       createdAt: now,
     });
     return { user, workspace };
+  });
+}
+
+export async function issuePasswordResetToken(emailInput: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const email = emailInput.trim().toLowerCase();
+  const user = (
+    await db
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email}`)
+      .limit(1)
+  )[0];
+  if (!user) return undefined;
+  const token = createPasswordResetToken();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + PASSWORD_RESET_TTL_MS);
+  await db.transaction(async tx => {
+    await tx
+      .update(passwordResetTokens)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(passwordResetTokens.userId, user.id),
+          isNull(passwordResetTokens.usedAt),
+          isNull(passwordResetTokens.revokedAt)
+        )
+      );
+    await tx.insert(passwordResetTokens).values({
+      userId: user.id,
+      tokenHash: hashPasswordResetToken(token),
+      expiresAt,
+      createdAt: now,
+    });
+  });
+  return { userId: user.id, token, expiresAt };
+}
+
+export async function resetPasswordWithToken(tokenInput: string, password: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const tokenHash = hashPasswordResetToken(tokenInput);
+  return db.transaction(async tx => {
+    const candidate = (
+      await tx
+        .select()
+        .from(passwordResetTokens)
+        .where(eq(passwordResetTokens.tokenHash, tokenHash))
+        .limit(1)
+    )[0];
+    if (
+      !candidate ||
+      candidate.usedAt ||
+      candidate.revokedAt ||
+      isPasswordResetExpired(candidate.expiresAt)
+    ) {
+      throw new Error("Token de recuperação inválido ou expirado");
+    }
+    await tx.execute(
+      sql`SELECT "id" FROM "passwordResetTokens" WHERE "id" = ${candidate.id} FOR UPDATE`
+    );
+    const now = new Date();
+    await tx
+      .update(passwordResetTokens)
+      .set({ usedAt: now })
+      .where(
+        and(
+          eq(passwordResetTokens.id, candidate.id),
+          isNull(passwordResetTokens.usedAt),
+          isNull(passwordResetTokens.revokedAt)
+        )
+      );
+    await tx
+      .update(passwordResetTokens)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(passwordResetTokens.userId, candidate.userId),
+          ne(passwordResetTokens.id, candidate.id),
+          isNull(passwordResetTokens.usedAt),
+          isNull(passwordResetTokens.revokedAt)
+        )
+      );
+    await tx
+      .update(users)
+      .set({
+        passwordHash: hashLocalPassword(password),
+        sessionVersion: sql`${users.sessionVersion} + 1`,
+        updatedAt: now,
+      })
+      .where(eq(users.id, candidate.userId));
+    const memberships = await tx
+      .select({ workspaceId: workspaceMembers.workspaceId })
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.userId, candidate.userId),
+          eq(workspaceMembers.active, 1)
+        )
+      );
+    if (memberships.length > 0) {
+      await tx.insert(auditLogs).values(
+        memberships.map(membership => ({
+          workspaceId: membership.workspaceId,
+          actorUserId: candidate.userId,
+          action: "password_reset_completed",
+          summary: "Senha redefinida por token one-time",
+          createdAt: now,
+        }))
+      );
+    }
+    return { userId: candidate.userId };
   });
 }
 

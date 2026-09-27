@@ -13,8 +13,12 @@ const LOGIN_MAX_FAILURES = 5;
 const SIGNUP_WINDOW_MS = 15 * 60 * 1000;
 const SIGNUP_BLOCK_MS = 30 * 60 * 1000;
 const SIGNUP_MAX_ATTEMPTS = 3;
+const PASSWORD_RESET_WINDOW_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_BLOCK_MS = 30 * 60 * 1000;
+const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 const loginBuckets = new Map<string, LoginBucket>();
 const signupBuckets = new Map<string, LoginBucket>();
+const passwordResetBuckets = new Map<string, LoginBucket>();
 
 function getForwardedValue(value: string | string[] | undefined) {
   if (!value) return undefined;
@@ -165,9 +169,57 @@ export function recordSignupAttempt(
   }
 }
 
+function prunePasswordResetBucket(key: string, now: number) {
+  const bucket = passwordResetBuckets.get(key);
+  if (!bucket) return undefined;
+  if (
+    now - bucket.firstFailureAt > PASSWORD_RESET_WINDOW_MS &&
+    bucket.blockedUntil <= now
+  ) {
+    passwordResetBuckets.delete(key);
+    return undefined;
+  }
+  return bucket;
+}
+
+export function assertPasswordResetAllowed(
+  req: Request,
+  email: string,
+  now = Date.now()
+) {
+  for (const key of bucketKeys(req, email)) {
+    const bucket = prunePasswordResetBucket(key, now);
+    if (bucket?.blockedUntil && bucket.blockedUntil > now)
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message: "Muitas solicitações. Tente novamente mais tarde.",
+      });
+  }
+}
+
+export function recordPasswordResetAttempt(
+  req: Request,
+  email: string,
+  now = Date.now()
+) {
+  for (const key of bucketKeys(req, email)) {
+    const existing = prunePasswordResetBucket(key, now);
+    const bucket: LoginBucket = existing ?? {
+      failures: 0,
+      firstFailureAt: now,
+      blockedUntil: 0,
+    };
+    bucket.failures += 1;
+    if (bucket.failures >= PASSWORD_RESET_MAX_ATTEMPTS)
+      bucket.blockedUntil = now + PASSWORD_RESET_BLOCK_MS;
+    passwordResetBuckets.set(key, bucket);
+  }
+}
+
 export function resetLoginRateLimitForTests() {
   loginBuckets.clear();
   signupBuckets.clear();
+  passwordResetBuckets.clear();
 }
 
 export const loginRateLimitConfig = {
@@ -180,4 +232,10 @@ export const signupRateLimitConfig = {
   windowMs: SIGNUP_WINDOW_MS,
   blockMs: SIGNUP_BLOCK_MS,
   maxAttempts: SIGNUP_MAX_ATTEMPTS,
+};
+
+export const passwordResetRateLimitConfig = {
+  windowMs: PASSWORD_RESET_WINDOW_MS,
+  blockMs: PASSWORD_RESET_BLOCK_MS,
+  maxAttempts: PASSWORD_RESET_MAX_ATTEMPTS,
 };

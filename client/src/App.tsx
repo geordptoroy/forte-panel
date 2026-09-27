@@ -25,6 +25,8 @@ import AiPromptPage from "./pages/AiPromptPage";
 import BillingPage from "./pages/BillingPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import {
   PlatformAdminHome,
@@ -42,6 +44,8 @@ function Router() {
       <Route path="/kanban" component={KanbanPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/invite/:token" component={InviteAcceptPage} />
       <Route path="/platform-admin" component={PlatformAdminHome} />
       <Route path="/platform-admin/workspaces" component={PlatformAdminHome} />
@@ -128,6 +132,8 @@ function AuthenticatedRouter() {
   const [location] = useLocation();
   if (location === "/login") return <LoginPage />;
   if (location === "/signup") return <SignupPage />;
+  if (location === "/forgot-password") return <ForgotPasswordPage />;
+  if (location.startsWith("/reset-password")) return <ResetPasswordPage />;
   if (location.startsWith("/invite/")) return <Router />;
   if (isLoading)
     return (

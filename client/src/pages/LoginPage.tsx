@@ -35,6 +35,7 @@ export default function LoginPage() {
           <label className="form-field"><span>Senha</span><input className="input-control" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
           <button className="btn-primary auth-submit" type="submit" disabled={login.isPending}><LogIn size={14} /> {login.isPending ? "Entrando..." : "Entrar"}</button>
         </form>
+        <p className="auth-switch"><Link href="/forgot-password">Esqueci minha senha</Link></p>
         <small className="auth-footnote">Cada pessoa acessa com o próprio e-mail e senha. A visão do painel muda conforme o papel e o perfil operacional.</small>
         <p className="auth-switch">Ainda não tem empresa? <Link href="/signup">Criar cadastro</Link></p>
       </section>

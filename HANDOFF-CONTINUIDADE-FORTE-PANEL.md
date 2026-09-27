@@ -1439,3 +1439,37 @@ O teste PostgreSQL de signup ainda fica skipped sem `DATABASE_URL`. O cadastro t
 ### Limite conhecido e próximo bloco
 
 A tela `/onboarding` e as procedures de configuração histórica ainda estão guardadas para `platform_admin`; portanto o owner recém-cadastrado entra no dashboard, mas a migração do onboarding de negócio para owner/admin continua pendente. O próximo bloco deve preparar recuperação de senha one-time e, em seguida, mover onboarding/configuração para o owner sem reabrir segredos de plataforma.
+
+
+---
+## Atualização do handoff — 2026-09-27 12:34 — recuperação de senha one-time
+
+Foi implementada a base completa de recuperação de senha sem expor token, hash ou existência de conta pela API pública.
+
+### Implementado
+
+- Migration `drizzle-pg/0027_password_reset_tokens.sql` e journal atualizado.
+- Tabela `passwordResetTokens` com hash SHA-256 único, expiração de 30 minutos, `usedAt`, `revokedAt` e índices de consulta.
+- `auth.requestPasswordReset` aceita e-mail normalizado, aplica rate limit independente e sempre retorna `{ success: true }` quando o recurso está habilitado, sem revelar se a conta existe.
+- `auth.resetPassword` aceita apenas token com formato válido e senha forte; respostas de token inválido, usado, revogado ou expirado são genéricas.
+- Solicitar novo token revoga tokens pendentes anteriores para a mesma conta.
+- Consumo do token acontece em transação com lock; após sucesso, a senha é atualizada com `scrypt`, tokens anteriores são revogados, `sessionVersion` é incrementado e sessões existentes deixam de ser válidas.
+- Auditoria `password_reset_completed` é criada para cada workspace ativo do usuário.
+- Telas `/forgot-password` e `/reset-password`; login agora oferece o link de recuperação.
+- Rate limit de recuperação: 5 solicitações em 15 minutos por IP/e-mail, bloqueio de 30 minutos.
+- Testes PostgreSQL cobrem revogação do token anterior, uso único, troca de senha e invalidação de sessões; os testes puros cobrem o limite de abuso.
+
+### Validação
+
+```text
+pnpm check ✅
+pnpm test ✅ — 92 aprovados, 35 ignorados por dependências externas/PostgreSQL
+pnpm build ✅ — warning conhecido de bundle inicial acima de 500 kB
+`git diff --check` ✅
+```
+
+A entrega automática por e-mail ainda não está conectada: o backend não retorna o token e a tela informa que o provedor precisa estar configurado. Para produção, conectar um provider transacional que consuma internamente o token e gere `/reset-password?token=...`; não imprimir o token em logs nem devolvê-lo em `requestPasswordReset`.
+
+### Próximo passo
+
+Conectar o provider de e-mail/entrega transacional atrás de configuração segura e mover o onboarding/configuração histórica de `platform_admin` para owner/admin. O signup e o reset não devem ser abertos em produção antes da validação PostgreSQL/staging e revisão legal.
