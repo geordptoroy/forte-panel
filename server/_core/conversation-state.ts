@@ -1,6 +1,6 @@
 export type ConversationActivity = {
   id: number;
-  direction: "inbound" | "outbound";
+  direction: "inbound" | "outbound" | "system";
   status: "queued" | "processing" | "sent" | "received" | "failed";
   createdAt: Date | string;
 };
