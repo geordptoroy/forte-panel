@@ -1,7 +1,7 @@
 # Forte Panel — melhorias encontradas, cadastro com onboarding por áudio e pagamentos
 
 **Data:** 2026-09-27
-**Estado:** planejamento aprovado para execução; nenhuma alteração de código nesta etapa
+**Estado:** planejamento aprovado; primeira fatia backend de áudio implementada em `0034_onboarding_audio_assets`, UI e retenção efetiva continuam pendentes
 **Escopo:** lacunas restantes da base, funil de cadastro/onboarding com respostas em áudio, e modelo completo de orçamento, meios de pagamento e conciliação.
 **Documentos relacionados:** [`PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`](./PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md) (P0–P3 em execução), [`PRODUCT_SCOPE.md`](./PRODUCT_SCOPE.md), [`ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`](./ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md), [`API_CONTRACT.md`](./API_CONTRACT.md), [`todo.md`](./todo.md).
 

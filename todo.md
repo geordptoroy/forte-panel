@@ -268,15 +268,14 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Remover bloco duplicado de `BAILEYS_*` em `.env.local.example`.
 
 ## Funil de cadastro com respostas em áudio — planejado
-
-- [ ] Modelar `onboardingSessions`, `onboardingStepAnswers`, `onboardingAudioAssets`, `onboardingChecklistItems`, `consentRecords`. (`onboardingSessions`, `onboardingStepAnswers` e `consentRecords` já persistidos; áudio/checklist independente ainda pendentes)
+- [x] Modelar `onboardingSessions`, `onboardingStepAnswers`, `onboardingAudioAssets`, `onboardingChecklistItems`, `consentRecords`. (`onboardingSessions`, `onboardingStepAnswers`, `consentRecords`, `onboardingAudioAssets` e `onboardingTranscriptions` persistidos; checklist independente ainda pendente)
 - [ ] Definir os 10 blocos do funil (identidade, oferta, execução, agenda, atendimento/IA, política comercial, recebimento, canal, revisão/publicação) com pergunta falada, campos e destino.
-- [ ] Criar endpoint de upload de áudio com URL assinada e storage privado por workspace.
-- [ ] Ligar `voice.transcribe` tenant-aware ao serviço de transcrição já existente e hoje desconectado. (adaptador `transcribeAudioForWorkspace` agora exige consentimento `transcription`; rota segura e upload privado ainda pendentes)
+- [x] Criar procedure `voice.upload` com base64 limitado, MIME/duração/tamanho validados, storage privado e ownership por workspace/sessão. (migration `0034_onboarding_audio_assets`)
+- [x] Ligar `voice.transcribe` tenant-aware ao serviço de transcrição já existente. A procedure recebe somente `assetId`, gera URL assinada internamente, exige consentimento vigente, usa claim idempotente e persiste resultado/erro.
 - [ ] Estruturar transcrição em JSON validado por schema, com confiança por campo e pergunta de acompanhamento.
 - [ ] Pré-preencher catálogo, agenda, equipe e perfil da IA em rascunho, sem efeito colateral.
 - [ ] Manter formulário como caminho garantido quando o áudio falhar; áudio nunca é a única via.
-- [ ] Implementar consentimento de voz e retenção do áudio bruto. (guard genérico para `transcription`/`llm` e política de retenção já entregues; ingestão de áudio e expiração efetiva ainda pendentes)
+- [ ] Implementar consentimento de voz e retenção do áudio bruto. (guard, upload com consentimento e `expiresAt` por workspace entregues; worker de expiração/remoção efetiva ainda pendente)
 - [ ] Usar `workspaces.status = onboarding` de verdade e só promover para `active` com checklist obrigatório fechado.
 - [ ] Separar onboarding do negócio (empresário) de `leadIntake` conversacional (lead do WhatsApp); não reutilizar `OnboardingPage` como questionário do lead.
 - [ ] Modelar `leadIntakeSessions`, `leadIntakeQuestions`, `leadIntakeAnswers`, `leadConsents`, `mediaAssets`, `transcriptions` e `conversationHandoffs`.

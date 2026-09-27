@@ -30,12 +30,14 @@ import {
   domainEvents,
   messages,
   notifications,
+  onboardingAudioAssets,
   onboardingSessions,
   onboardingConflictResolutions,
   onboardingSourceConsents,
   onboardingRetentionPolicies,
   onboardingStepAnswers,
   onboardingStepAnswerRevisions,
+  onboardingTranscriptions,
   passwordResetTokens,
   professionals,
   professionalServices,
@@ -2605,6 +2607,229 @@ export async function saveOnboardingRetentionPolicy(
   return getOnboardingGovernance(workspaceId);
 }
 
+export type OnboardingAudioTranscriptionResult =
+  | {
+      ok: true;
+      provider: string;
+      model: string;
+      language: string;
+      text: string;
+      segments: unknown[];
+    }
+  | { ok: false; errorCode: string };
+
+export async function createOnboardingAudioAsset(input: {
+  sessionId: number;
+  workspaceId: number;
+  stepKey: "identity" | "offering" | "operations" | "guardrails" | "voice";
+  storageKey: string;
+  mimeType: string;
+  sizeBytes: number;
+  durationMs?: number;
+  sha256: string;
+  createdByUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_UNAVAILABLE");
+  const session = (
+    await db
+      .select({ id: onboardingSessions.id })
+      .from(onboardingSessions)
+      .where(
+        and(
+          eq(onboardingSessions.id, input.sessionId),
+          eq(onboardingSessions.workspaceId, input.workspaceId)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!session) throw new Error("ONBOARDING_SESSION_NOT_FOUND");
+
+  const existing = (
+    await db
+      .select()
+      .from(onboardingAudioAssets)
+      .where(
+        and(
+          eq(onboardingAudioAssets.sessionId, input.sessionId),
+          eq(onboardingAudioAssets.sha256, input.sha256)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (existing) return existing;
+
+  const governance = await getOnboardingGovernance(input.workspaceId);
+  const expiresAt = new Date(
+    Date.now() + governance.retention.rawArtifactDays * 24 * 60 * 60 * 1000
+  );
+  const inserted = await db
+    .insert(onboardingAudioAssets)
+    .values({
+      ...input,
+      expiresAt,
+      transcriptStatus: "uploaded",
+      updatedAt: new Date(),
+    })
+    .onConflictDoNothing({
+      target: [onboardingAudioAssets.sessionId, onboardingAudioAssets.sha256],
+    })
+    .returning();
+  return inserted[0] ?? (
+    await db
+      .select()
+      .from(onboardingAudioAssets)
+      .where(
+        and(
+          eq(onboardingAudioAssets.sessionId, input.sessionId),
+          eq(onboardingAudioAssets.sha256, input.sha256)
+        )
+      )
+      .limit(1)
+  )[0];
+}
+
+export async function getOnboardingAudioAssetForWorkspace(
+  workspaceId: number,
+  assetId: number
+) {
+  const db = await getDb();
+  if (!db) return undefined;
+  return (
+    await db
+      .select()
+      .from(onboardingAudioAssets)
+      .where(
+        and(
+          eq(onboardingAudioAssets.id, assetId),
+          eq(onboardingAudioAssets.workspaceId, workspaceId)
+        )
+      )
+      .limit(1)
+  )[0];
+}
+
+export async function getOnboardingAudioTranscription(
+  workspaceId: number,
+  assetId: number
+) {
+  const db = await getDb();
+  if (!db) return undefined;
+  return (
+    await db
+      .select()
+      .from(onboardingTranscriptions)
+      .where(
+        and(
+          eq(onboardingTranscriptions.assetId, assetId),
+          eq(onboardingTranscriptions.workspaceId, workspaceId)
+        )
+      )
+      .limit(1)
+  )[0];
+}
+
+export async function claimOnboardingAudioTranscription(
+  workspaceId: number,
+  assetId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_UNAVAILABLE");
+  const asset = await getOnboardingAudioAssetForWorkspace(workspaceId, assetId);
+  if (!asset) throw new Error("ONBOARDING_AUDIO_NOT_FOUND");
+  if (asset.transcriptStatus === "completed")
+    return { asset, claimed: false as const, reason: "completed" as const };
+  if (
+    asset.transcriptStatus === "processing" &&
+    asset.updatedAt > new Date(Date.now() - 5 * 60 * 1000)
+  )
+    return { asset, claimed: false as const, reason: "processing" as const };
+
+  const [claimed] = await db
+    .update(onboardingAudioAssets)
+    .set({ transcriptStatus: "processing", updatedAt: new Date() })
+    .where(
+      and(
+        eq(onboardingAudioAssets.id, assetId),
+        eq(onboardingAudioAssets.workspaceId, workspaceId),
+        or(
+          eq(onboardingAudioAssets.transcriptStatus, "uploaded"),
+          eq(onboardingAudioAssets.transcriptStatus, "failed"),
+          and(
+            eq(onboardingAudioAssets.transcriptStatus, "processing"),
+            lt(onboardingAudioAssets.updatedAt, new Date(Date.now() - 5 * 60 * 1000))
+          )
+        )
+      )
+    )
+    .returning();
+  return claimed
+    ? { asset: claimed, claimed: true as const, reason: "claimed" as const }
+    : { asset, claimed: false as const, reason: "processing" as const };
+}
+
+export async function persistOnboardingAudioTranscription(
+  workspaceId: number,
+  assetId: number,
+  result: OnboardingAudioTranscriptionResult
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_UNAVAILABLE");
+  const asset = await getOnboardingAudioAssetForWorkspace(workspaceId, assetId);
+  if (!asset) throw new Error("ONBOARDING_AUDIO_NOT_FOUND");
+  const now = new Date();
+  const previous = await getOnboardingAudioTranscription(workspaceId, assetId);
+  const retryCount = (previous?.retryCount ?? 0) + (result.ok ? 0 : 1);
+
+  await db.transaction(async tx => {
+    await tx
+      .update(onboardingAudioAssets)
+      .set({
+        transcriptStatus: result.ok ? "completed" : "failed",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(onboardingAudioAssets.id, assetId),
+          eq(onboardingAudioAssets.workspaceId, workspaceId)
+        )
+      );
+    await tx
+      .insert(onboardingTranscriptions)
+      .values({
+        assetId,
+        sessionId: asset.sessionId,
+        workspaceId,
+        status: result.ok ? "completed" : "failed",
+        provider: result.ok ? result.provider : null,
+        model: result.ok ? result.model : null,
+        language: result.ok ? result.language : null,
+        text: result.ok ? result.text : null,
+        segments: result.ok ? result.segments : null,
+        errorCode: result.ok ? null : result.errorCode,
+        retryCount,
+        completedAt: result.ok ? now : null,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: onboardingTranscriptions.assetId,
+        set: {
+          status: result.ok ? "completed" : "failed",
+          provider: result.ok ? result.provider : null,
+          model: result.ok ? result.model : null,
+          language: result.ok ? result.language : null,
+          text: result.ok ? result.text : null,
+          segments: result.ok ? result.segments : null,
+          errorCode: result.ok ? null : result.errorCode,
+          retryCount,
+          completedAt: result.ok ? now : null,
+          updatedAt: now,
+        },
+      });
+  });
+  return getOnboardingAudioTranscription(workspaceId, assetId);
+}
+
 function buildBusinessPrompt(profile: OnboardingProfile, version: number) {
   return `Você atende clientes da empresa ${profile.businessName || "da empresa configurada"}, do segmento ${profile.segment}. Este é o prompt operacional publicado v${version}.\n\nDescrição do negócio:\n${profile.description || "Não informada."}\n\nServiços, duração e preços:\n${profile.services || "Consultar a equipe antes de prometer preço ou prazo."}\n\nÁrea de atendimento:\n${profile.serviceArea || "Não informada."}\n\nHorários:\n${profile.businessHours || "Consultar disponibilidade real na agenda."}\n\nTom de voz:\n${profile.toneOfVoice || emptyOnboardingProfile.toneOfVoice}\n\nPalavras e condutas proibidas:\n${profile.forbiddenWords || "Não inventar informações, preços, horários ou confirmações."}\n\nPerguntas frequentes e respostas aprovadas:\n${profile.faq || "Não cadastradas."}\n\nPolítica de cancelamento, reagendamento e sinal:\n${profile.cancellationPolicy || "Escalar para atendimento humano quando não houver regra publicada."}\n\nSempre transferir para humano quando:\n${profile.humanHandoffRules || "o cliente pedir humano, houver reclamação, risco, dúvida fora do cadastro ou negociação especial."}\n\nCritérios de qualificação e follow-up:\n${profile.qualificationRules || "Identificar serviço, localização, urgência e próximo passo."}`;
 }
@@ -3268,6 +3493,12 @@ export async function resetWorkspaceDevelopmentData(workspaceId?: number) {
       .delete(notifications)
       .where(eq(notifications.workspaceId, workspace.id));
     await tx.delete(auditLogs).where(eq(auditLogs.workspaceId, workspace.id));
+    await tx
+      .delete(onboardingTranscriptions)
+      .where(eq(onboardingTranscriptions.workspaceId, workspace.id));
+    await tx
+      .delete(onboardingAudioAssets)
+      .where(eq(onboardingAudioAssets.workspaceId, workspace.id));
     await tx
       .delete(contactNotes)
       .where(eq(contactNotes.workspaceId, workspace.id));

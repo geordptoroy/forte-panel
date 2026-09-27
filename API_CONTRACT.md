@@ -20,6 +20,12 @@ As requisições privadas usam `Authorization: Bearer <FORTE_API_KEY>`. A chave 
 
 Toda operação mutável aceita `Idempotency-Key`. A mesma chave não pode executar duas vezes a mesma ação. O servidor guarda a resposta associada à chave e devolve a resposta original em retries.
 
+## Onboarding e voz (tRPC)
+
+O onboarding de negócio é protegido por membership/capability e não aceita URL de áudio arbitrária do browser. `voice.upload` recebe `sessionId`, `stepKey`, `mimeType`, `durationMs` opcional e `audioBase64`; o servidor exige consentimento vigente para `transcription`, valida MIME/duração/tamanho real (máximo de 16 MB e 120 segundos), confirma que a sessão pertence ao workspace e guarda o arquivo em storage sob chave privada. A resposta retorna apenas `assetId` e metadados operacionais.
+
+`voice.transcribe` recebe somente `assetId`, verifica ownership pelo `workspaceId`, exige consentimento novamente, obtém uma URL assinada internamente e chama o adaptador de transcrição. O resultado é persistido em `onboardingTranscriptions` com status, idioma, segmentos, provider/modelo e código de erro; o claim condicional impede processamento concorrente e falhas podem ser tentadas novamente. Sem consentimento, o backend não busca o áudio nem chama o provedor. O formulário textual continua sendo o fallback quando o serviço de voz falhar.
+
 ## Endpoints da primeira versão
 
 | Método  | Endpoint                              | Uso                                                                          |

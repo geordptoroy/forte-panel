@@ -239,6 +239,13 @@
       "when": 1790460000000,
       "tag": "0033_onboarding_governance",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790461000000,
+      "tag": "0034_onboarding_audio_assets",
+      "breakpoints": true
     }
   ]
 }

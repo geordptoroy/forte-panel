@@ -19,7 +19,9 @@ import { ScheduleError } from "./schedule";
 import {
   ensureDemoInbox,
   acceptWorkspaceInvite,
+  assertOnboardingSourceConsent,
   createPublicSignup,
+  createOnboardingAudioAsset,
   ensureDemoWorkspace,
   createLocalWorkspaceMember,
   createWorkspaceInvite,
@@ -70,10 +72,14 @@ import {
   resetPasswordWithToken,
   resolveOnboardingConflict,
   getOnboardingGovernance,
+  getOnboardingAudioAssetForWorkspace,
+  getOnboardingAudioTranscription,
   saveOnboardingRetentionPolicy,
   setOnboardingSourceConsent,
   sendManualMessage,
   pauseOnboardingSession,
+  claimOnboardingAudioTranscription,
+  persistOnboardingAudioTranscription,
   saveOnboardingProfile,
   startOnboardingSession,
   setContactAi,
@@ -82,6 +88,15 @@ import {
   verifyLocalPassword,
   updateQuotePayment,
 } from "./db";
+import { storageGetSignedUrl, storagePut } from "./storage";
+import {
+  buildOnboardingAudioStorageKey,
+  decodeOnboardingAudioBase64,
+  ONBOARDING_AUDIO_MAX_BYTES,
+  sha256ForOnboardingAudio,
+  validateOnboardingAudioMetadata,
+} from "./onboarding-audio";
+import { transcribeAudioForWorkspace } from "./_core/voiceTranscription";
 import {
   invokeConfiguredLLM,
   type AgentCapability,
@@ -1326,6 +1341,206 @@ export const appRouter = router({
               message: "Resolva os conflitos dos blocos obrigatórios antes de publicar.",
             });
           throw error;
+        }
+      }),
+  }),
+
+  voice: router({
+    upload: requireOnboardingEditor
+      .input(
+        z.object({
+          sessionId: z.number().int().positive(),
+          stepKey: z.enum(["identity", "offering", "operations", "guardrails", "voice"]),
+          mimeType: z.string().trim().min(1).max(120),
+          durationMs: z.number().int().positive().max(120_000).optional(),
+          audioBase64: z.string().min(1).max(23_000_000),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        try {
+          await assertOnboardingSourceConsent(ctx.workspace.workspaceId, "transcription");
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith("ONBOARDING_SOURCE_CONSENT_REQUIRED:"))
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Conceda o consentimento para transcrição antes de enviar um áudio.",
+            });
+          throw error;
+        }
+
+        const validation = validateOnboardingAudioMetadata({
+          mimeType: input.mimeType,
+          durationMs: input.durationMs,
+        });
+        if (!validation.valid)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Formato ou duração do áudio não suportado.",
+          });
+
+        let audioBuffer: Buffer;
+        try {
+          audioBuffer = decodeOnboardingAudioBase64(input.audioBase64, validation.mimeType);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          const userMessage = message === "ONBOARDING_AUDIO_TOO_LARGE"
+            ? `O áudio ultrapassa o limite de ${Math.floor(ONBOARDING_AUDIO_MAX_BYTES / (1024 * 1024))} MB.`
+            : "O arquivo de áudio é inválido ou está vazio.";
+          throw new TRPCError({ code: "BAD_REQUEST", message: userMessage });
+        }
+
+        const session = await getOnboardingSession(ctx.workspace.workspaceId);
+        if (!session || session.id !== input.sessionId)
+          throw new TRPCError({ code: "NOT_FOUND", message: "Sessão de onboarding não encontrada." });
+
+        const storageKey = buildOnboardingAudioStorageKey(
+          ctx.workspace.workspaceId,
+          session.id,
+          validation.mimeType
+        );
+        let uploaded: { key: string };
+        try {
+          uploaded = await storagePut(storageKey, audioBuffer, validation.mimeType);
+        } catch {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Não foi possível guardar o áudio com segurança. Tente novamente.",
+          });
+        }
+
+        const asset = await createOnboardingAudioAsset({
+          sessionId: session.id,
+          workspaceId: ctx.workspace.workspaceId,
+          stepKey: input.stepKey,
+          storageKey: uploaded.key,
+          mimeType: validation.mimeType,
+          sizeBytes: audioBuffer.length,
+          durationMs: input.durationMs,
+          sha256: sha256ForOnboardingAudio(audioBuffer),
+          createdByUserId: ctx.user.id,
+        });
+        if (!asset)
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível registrar o áudio." });
+
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: "onboarding_audio_uploaded",
+          summary: `Áudio recebido para o bloco ${input.stepKey}`,
+        });
+        return {
+          assetId: asset.id,
+          sessionId: asset.sessionId,
+          stepKey: asset.stepKey,
+          mimeType: asset.mimeType,
+          sizeBytes: asset.sizeBytes,
+          durationMs: asset.durationMs,
+          transcriptStatus: asset.transcriptStatus,
+          expiresAt: asset.expiresAt,
+        };
+      }),
+    transcribe: requireOnboardingEditor
+      .input(
+        z.object({
+          assetId: z.number().int().positive(),
+          language: z.string().trim().min(2).max(16).default("pt"),
+          prompt: z.string().trim().max(500).optional(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const workspaceId = ctx.workspace.workspaceId;
+        try {
+          await assertOnboardingSourceConsent(workspaceId, "transcription");
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith("ONBOARDING_SOURCE_CONSENT_REQUIRED:"))
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Conceda o consentimento para transcrição antes de processar o áudio.",
+            });
+          throw error;
+        }
+
+        const asset = await getOnboardingAudioAssetForWorkspace(workspaceId, input.assetId);
+        if (!asset)
+          throw new TRPCError({ code: "NOT_FOUND", message: "Áudio não encontrado neste workspace." });
+        const existing = await getOnboardingAudioTranscription(workspaceId, input.assetId);
+        if (asset.transcriptStatus === "completed" && existing?.status === "completed")
+          return {
+            assetId: asset.id,
+            status: "completed" as const,
+            language: existing.language,
+            text: existing.text ?? "",
+            segments: existing.segments ?? [],
+          };
+
+        const claim = await claimOnboardingAudioTranscription(workspaceId, input.assetId);
+        if (!claim.claimed) {
+          if (claim.reason === "completed" && existing?.status === "completed")
+            return {
+              assetId: asset.id,
+              status: "completed" as const,
+              language: existing.language,
+              text: existing.text ?? "",
+              segments: existing.segments ?? [],
+            };
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Este áudio já está sendo processado. Aguarde alguns segundos e tente novamente.",
+          });
+        }
+
+        try {
+          const signedUrl = await storageGetSignedUrl(claim.asset.storageKey);
+          const result = await transcribeAudioForWorkspace(workspaceId, {
+            audioUrl: signedUrl,
+            language: input.language,
+            prompt: input.prompt,
+          });
+          if ("error" in result) {
+            await persistOnboardingAudioTranscription(workspaceId, input.assetId, {
+              ok: false,
+              errorCode: result.code,
+            });
+            if (result.code === "CONSENT_REQUIRED")
+              throw new TRPCError({ code: "BAD_REQUEST", message: "O consentimento para transcrição não está ativo." });
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Não foi possível transcrever este áudio. Você pode tentar novamente ou responder por texto.",
+            });
+          }
+
+          const transcription = await persistOnboardingAudioTranscription(workspaceId, input.assetId, {
+            ok: true,
+            provider: "builtin_whisper",
+            model: "whisper-1",
+            language: result.language,
+            text: result.text,
+            segments: result.segments,
+          });
+          await logWorkspaceAction({
+            workspaceId,
+            actorUserId: ctx.user.id,
+            action: "onboarding_audio_transcribed",
+            summary: `Áudio transcrito para o bloco ${claim.asset.stepKey}`,
+          });
+          return {
+            assetId: claim.asset.id,
+            status: "completed" as const,
+            language: transcription?.language ?? result.language,
+            text: transcription?.text ?? result.text,
+            segments: transcription?.segments ?? result.segments,
+            duration: result.duration,
+          };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          await persistOnboardingAudioTranscription(workspaceId, input.assetId, {
+            ok: false,
+            errorCode: "SERVICE_ERROR",
+          });
+          throw new TRPCError({
+            code: "BAD_GATEWAY",
+            message: "O serviço de transcrição está indisponível. Tente novamente ou responda por texto.",
+          });
         }
       }),
   }),

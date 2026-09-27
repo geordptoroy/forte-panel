@@ -1712,3 +1712,19 @@ O adaptador `server/_core/voiceTranscription.ts` agora exporta `transcribeAudioF
 O comportamento é fail-closed: sem consentimento ou com falha de verificação de infraestrutura, retorna `CONSENT_REQUIRED` e não envia a URL de áudio ao provedor. Foi adicionado teste unitário que verifica explicitamente a ausência de chamada remota.
 
 Ainda não foi criada uma procedure pública `voice.transcribe`: o repositório ainda não possui endpoint de upload privado/URL assinada nem modelo de `onboardingAudioAssets`/`transcriptions`. Não expor uma rota que aceite URL arbitrária evita SSRF, vazamento entre workspaces e processamento sem retenção definida. Próxima fatia segura: modelar os artefatos tenant-aware, implementar upload privado com ownership e só então adicionar a procedure usando `transcribeAudioForWorkspace`.
+
+
+---
+## Atualização do handoff — 2026-09-27 — assets de áudio e transcrição tenant-aware
+
+A próxima fatia segura depois do gate de consentimento foi implementada. O repositório agora possui a migration `drizzle-pg/0034_onboarding_audio_assets.sql`, que cria `onboardingAudioAssets` e `onboardingTranscriptions`. O asset é vinculado a `workspaceId`, `sessionId` e `stepKey`, guarda hash SHA-256, MIME, tamanho, duração, status de transcrição e expiração calculada pela política de retenção do workspace. A transcrição fica separada para permitir retry, status e histórico de resultado sem sobrescrever o arquivo bruto.
+
+As procedures tRPC são `voice.upload` e `voice.transcribe`, ambas protegidas por `requireOnboardingEditor`. O upload exige consentimento vigente para `transcription`, sessão pertencente ao workspace ativo, MIME de áudio suportado, duração de até 120 segundos e tamanho real de até 16 MB. O cliente não informa uma URL de storage: envia somente base64 limitado, o backend valida/decodifica e grava com `storagePut` em uma chave opaca sob o workspace/sessão. A resposta retorna apenas o `assetId` e metadados operacionais, não o `storageKey`.
+
+A transcrição recebe apenas `assetId`, verifica ownership por workspace, exige consentimento novamente, obtém a URL assinada internamente e chama `transcribeAudioForWorkspace`. O claim condicional impede duas execuções simultâneas; assets presos em `processing` por mais de cinco minutos podem ser reassumidos. Texto, idioma, segmentos, provider/modelo, status e códigos de erro são persistidos. Falhas deixam o asset em `failed` para retry e respostas/auditoria não carregam conteúdo bruto ou a URL assinada. O reset de desenvolvimento autorizado limpa os registros novos; a camada de storage não expõe remoção de objetos, então expiração física continua pendente.
+
+Foram adicionados `server/onboarding-audio.ts`, testes unitários de limites/MIME/base64/hash/chave opaca e `server/onboarding-audio-db.test.ts`, que valida isolamento entre workspaces, deduplicação por sessão/hash, claim único e persistência do resultado em PostgreSQL quando o banco estiver disponível.
+
+Validação no sandbox: `pnpm check` passou; `pnpm test` passou com 106 testes aprovados e 37 skipped por dependências externas/PostgreSQL; `pnpm build` passou com o warning conhecido de bundle inicial acima de 500 kB; `git diff --check` e journal JSON passaram. Não há PostgreSQL local nem `DATABASE_URL` nesta sandbox, portanto a migration e o teste de integração ainda precisam ser aplicados/executados em CI/staging.
+
+Próximo bloco recomendado: adicionar captura `MediaRecorder` na `OnboardingPage`, player/status/retry e integração com `voice.upload`; em seguida criar rotina/worker de expiração com dry-run e auditoria, e só depois estruturar transcrições em JSON por bloco com revisão/confiança antes de tocar `onboardingStepAnswers`. O formulário textual continua sendo o fallback obrigatório. Não abrir lead intake público nem ativar processamento sem consentimento.

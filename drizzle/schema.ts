@@ -363,6 +363,69 @@ export const onboardingRetentionPolicies = pgTable(
   },
   table => [
     index("onboarding_retention_policies_workspace_idx").on(table.workspaceId),
+  ],
+);
+
+export const onboardingAudioAssets = pgTable(
+  "onboardingAudioAssets",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("sessionId").notNull(),
+    workspaceId: integer("workspaceId").notNull(),
+    stepKey: varchar("stepKey", { length: 80 }).notNull(),
+    storageKey: varchar("storageKey", { length: 512 }).notNull().unique(),
+    mimeType: varchar("mimeType", { length: 120 }).notNull(),
+    sizeBytes: integer("sizeBytes").notNull(),
+    durationMs: integer("durationMs"),
+    sha256: varchar("sha256", { length: 64 }).notNull(),
+    transcriptStatus: varchar("transcriptStatus", { length: 24 }).notNull().default("uploaded"),
+    expiresAt: timestamp("expiresAt").notNull(),
+    createdByUserId: integer("createdByUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("onboarding_audio_assets_session_hash_idx").on(
+      table.sessionId,
+      table.sha256
+    ),
+    index("onboarding_audio_assets_workspace_idx").on(
+      table.workspaceId,
+      table.createdAt
+    ),
+    index("onboarding_audio_assets_session_idx").on(
+      table.sessionId,
+      table.stepKey,
+      table.createdAt
+    ),
+  ]
+);
+
+export const onboardingTranscriptions = pgTable(
+  "onboardingTranscriptions",
+  {
+    id: serial("id").primaryKey(),
+    assetId: integer("assetId").notNull().unique(),
+    sessionId: integer("sessionId").notNull(),
+    workspaceId: integer("workspaceId").notNull(),
+    status: varchar("status", { length: 24 }).notNull().default("pending"),
+    provider: varchar("provider", { length: 80 }),
+    model: varchar("model", { length: 80 }),
+    language: varchar("language", { length: 16 }),
+    text: text("text"),
+    segments: jsonb("segments").$type<unknown[]>(),
+    errorCode: varchar("errorCode", { length: 48 }),
+    retryCount: integer("retryCount").notNull().default(0),
+    completedAt: timestamp("completedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    index("onboarding_transcriptions_workspace_idx").on(
+      table.workspaceId,
+      table.createdAt
+    ),
+    index("onboarding_transcriptions_asset_idx").on(table.assetId),
   ]
 );
 
@@ -1124,6 +1187,10 @@ export type OnboardingSourceConsent = typeof onboardingSourceConsents.$inferSele
 export type InsertOnboardingSourceConsent = typeof onboardingSourceConsents.$inferInsert;
 export type OnboardingRetentionPolicy = typeof onboardingRetentionPolicies.$inferSelect;
 export type InsertOnboardingRetentionPolicy = typeof onboardingRetentionPolicies.$inferInsert;
+export type OnboardingAudioAsset = typeof onboardingAudioAssets.$inferSelect;
+export type InsertOnboardingAudioAsset = typeof onboardingAudioAssets.$inferInsert;
+export type OnboardingTranscription = typeof onboardingTranscriptions.$inferSelect;
+export type InsertOnboardingTranscription = typeof onboardingTranscriptions.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;
 export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

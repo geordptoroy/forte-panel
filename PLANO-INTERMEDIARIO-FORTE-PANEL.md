@@ -553,3 +553,26 @@ Próximo corte: implementar job/rotina de expiração que respeite `rawArtifactD
 O adaptador de voz agora possui `transcribeAudioForWorkspace`, que verifica `transcription` antes de qualquer chamada remota e falha fechado quando o consentimento não existe ou a verificação do banco falha.
 
 A procedure pública continua deliberadamente pendente: antes dela, criar `onboardingAudioAssets`/`transcriptions`, upload privado por workspace, ownership, MIME/tamanho/duração, URLs assinadas curtas e política de expiração. Não aceitar `audioUrl` arbitrária diretamente do cliente.
+
+---
+## Etapa seguinte — assets de áudio e transcrição tenant-aware — 2026-09-27
+A fundação de áudio do onboarding foi conectada sem aceitar URL arbitrária do cliente.
+
+### Implementado
+
+- Migration `0034_onboarding_audio_assets.sql` e journal atualizado com `onboardingAudioAssets` e `onboardingTranscriptions`.
+- O asset guarda `workspaceId`, `sessionId`, bloco, `storageKey`, MIME, tamanho, duração, hash SHA-256, status e `expiresAt` derivado da política de retenção do workspace.
+- `voice.upload` exige o guard de onboarding, consentimento vigente para `transcription`, sessão do próprio workspace, MIME permitido (`webm`, `mp3`, `wav`, `ogg`, `m4a`), duração máxima de 120 segundos e tamanho real máximo de 16 MB. O cliente envia apenas base64 limitado; o servidor decodifica e grava em storage sob chave opaca `workspaces/{workspaceId}/onboarding-audio/{sessionId}/...`.
+- `voice.transcribe` recebe somente `assetId`. O backend valida ownership, exige consentimento novamente, obtém URL assinada internamente, chama `transcribeAudioForWorkspace` e persiste texto, idioma, segmentos, provider/modelo e status. A URL de storage não é recebida do browser nem vai para o provedor sem consentimento.
+- Claim condicional evita duas transcrições concorrentes do mesmo asset; erro deixa o asset em `failed` para retry e processamento preso há mais de cinco minutos pode ser reassumido.
+- Upload e transcrição geram auditoria sem conteúdo bruto. O reset autorizado de desenvolvimento limpa os registros novos; objetos órfãos de storage continuam sem referência porque a camada de storage não expõe remoção.
+- Testes unitários cobrem MIME, duração, base64, limite, hash e chave opaca. `server/onboarding-audio-db.test.ts` cobre isolamento entre workspaces, deduplicação por sessão/hash, claim único e persistência do resultado em PostgreSQL quando `DATABASE_URL` estiver disponível.
+
+### Limitações e próximo corte
+
+- A UI ainda não captura `MediaRecorder` nem exibe player/status do asset; o formulário textual continua sendo o fallback obrigatório.
+- O worker de retenção ainda precisa expirar/remover assets e dados derivados conforme `rawArtifactDays`/`derivedDataDays`, com dry-run e auditoria.
+- Estruturação por LLM, confiança por campo, pergunta de acompanhamento e projeção para `onboardingStepAnswers` continuam bloqueadas até revisão humana.
+- A migration foi validada como SQL/JSON e por typecheck/build; o teste PostgreSQL ficou skipped nesta sandbox porque não há `DATABASE_URL`/PostgreSQL local. Aplicar `0034` e executar a suíte de integração no CI/staging antes de beta.
+
+Validação desta etapa: `pnpm check` ✅; `pnpm test` ✅ — 106 aprovados, 37 skipped por dependências externas/PostgreSQL; `pnpm build` ✅; `git diff --check` ✅; journal JSON ✅.
