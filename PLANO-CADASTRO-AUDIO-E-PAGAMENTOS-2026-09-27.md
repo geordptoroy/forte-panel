@@ -291,7 +291,7 @@ Os sete valores atuais (`orcamento`, `aguardando_aprovacao`, `aprovado`, `sinal_
 | `quotes` (evoluir)         | cabeçalho do orçamento          | manter `workspaceId`, `contactId`, `status`, `dueDate`; adicionar `quoteNumber`, `currency`, `validUntil`, `subtotalCents`, `discountCents`, `discountReason`, `totalCents`, `paymentPlanType`, `depositCents`, `installments`, `executionWindow`, `termsSnapshot`, `approvedAt`, `sentAt`, `createdByUserId` |
 | `quoteItems`               | itens do orçamento              | `quoteId`, `workspaceId`, `serviceId`, `description`, `quantity`, `unitCents`, `durationMinutes`, `position`                                                                                                                                                                                                  |
 | `quoteInstallments`        | plano de pagamento previsto     | `quoteId`, `workspaceId`, `sequence`, `dueDate`, `amountCents`, `kind` (`sinal`/`parcela`/`saldo`), `status`                                                                                                                                                                                                  |
-| `quotePayments`            | ledger de recebimentos efetivos | `quoteId`, `workspaceId`, `installmentId`, `amountCents`, `method` (`pix`/`dinheiro`/`debito`/`credito`/`transferencia`/`boleto`/`link`), `paidAt`, `externalRef`, `providerId`, `feeCents`, `notes`, `receiptId`, `recordedByUserId`                                                                         |
+| `quotePayments`            | registro manual de recebimento | `quoteId`, `workspaceId`, `installmentId`, `amountCents`, `method` (`pix`/`maquininha`/`dinheiro`/`debito`/`credito`/`transferencia`/`outro`), `paidAt`, `externalRef`, `notes`, `receiptId`, `recordedByUserId` |
 | `paymentReceipts`          | recibo emitido                  | `workspaceId`, `quoteId`, `paymentId`, `number`, `issuedAt`, `issuedByUserId`, `snapshot`                                                                                                                                                                                                                     |
 | `workspacePaymentSettings` | dados exibidos para recebimento manual         | `workspaceId`, `acceptedMethods` (jsonb), `pixKeyType`, `encryptedPixKey`, `holderName`, `holderDocument`, `legalName`, `defaultDepositPercent`, `maxInstallments`, `installmentInterestPercent`, `defaultValidityDays`, `receiptFooter`, `termsText`                                                         |
 
@@ -309,13 +309,13 @@ Regras:
 - Follow-up de vencido: lembrete ao cliente e alerta interno (respeitando política anti-spam).
 - Lançamento manual de pagamento gera recibo e pode disparar mensagem de agradecimento opcional; não há confirmação automática de liquidação.
 
-### 4.5 Provedor de pagamento (faseamento explícito)
+### 4.5 Limite de escopo financeiro
 
-1. **Fase 1 — Manual + Pix estático (agora).** Sem PSP. Registro manual, Pix copia e cola, recibo e extrato. Nenhuma cobrança real, nenhum dado de cartão.
-2. **Fase 2 — somente se houver decisão futura de produto.** Qualquer integração com PSP/gateway fica fora do roadmap atual e não deve ser construída por antecipação.
+1. **Escopo atual — manual + Pix estático.** Registro manual, Pix copia e cola, recibo e extrato interno. Nenhuma cobrança real, nenhum dado de cartão e nenhuma confirmação automática de liquidação.
+2. **Futuro não contratado.** Qualquer integração com PSP/gateway fica fora do roadmap atual e só poderia existir após uma decisão de produto separada; não criar abstrações, adapters ou webhooks de provider agora.
 3. **Cobrança do próprio SaaS.** É um assunto separado do financeiro do cliente: `saasProducts`, `planPrices`, `workspaceSubscriptions`, `invoices`, `usageLedger`, conforme já previsto em P2.3. O rate limit por minuto continua sendo técnico, nunca faturamento.
 
-Decisões registradas: o Forte Panel **não é instituição de pagamento e não retém valores**; o dinheiro vai direto para o workspace (chave Pix própria ou PSP contratado por ele); emissão de documento fiscal (NF-e/NFS-e) está **fora do escopo** desta fase — os campos `invoiceRequired` e `fiscalDocNumber` ficam reservados, sem promessa ao cliente.
+Decisões registradas: o Forte Panel **não é instituição de pagamento, não cobra o cliente final, não oferece gateway, não integra maquininha e não retém valores**; o dinheiro vai diretamente para o empresário/equipe por maquininha, dinheiro ou Pix próprio, e o painel registra o que foi informado. A emissão de documento fiscal (NF-e/NFS-e) está **fora do escopo** desta fase — os campos `invoiceRequired` e `fiscalDocNumber` ficam reservados, sem promessa ao cliente.
 
 ## 5. Parte 4 — Ordem de execução proposta
 
