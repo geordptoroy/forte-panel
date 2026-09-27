@@ -17,6 +17,45 @@ Três conclusões:
 
 Regra de sequência mantida: **nada de cadastro público aberto antes de P0 fechado e do gate de staging**, conforme já registrado no plano de auditoria. Este documento adiciona blocos P1/P2 próprios, sem antecipar o lançamento.
 
+
+### 1.1 Reconciliando a auditoria anexada: dois onboardings diferentes
+
+A auditoria anexada trouxe uma distinção essencial que precisa ficar explícita:
+
+- **Onboarding do negócio/cliente da plataforma:** o empresário configura empresa, catálogo, equipe, agenda, políticas e comportamento da IA. É o fluxo descrito na Parte 2 anterior.
+- **Onboarding conversacional do lead:** o cliente final do empresário entra pelo WhatsApp, dá consentimento e responde a uma entrevista de qualificação, por áudio ou texto. Esse lead não cria uma conta na plataforma nem configura o negócio.
+
+O fluxo do lead deve ser modelado separadamente como `leadIntakeSessions`, `leadIntakeQuestions`, `leadIntakeAnswers`, `leadConsents`, `mediaAssets`, `transcriptions` e `conversationHandoffs`. O `OnboardingPage` atual é do primeiro tipo e não deve ser reaproveitado como se fosse a entrevista do lead.
+
+Fluxo correto do lead:
+
+```text
+inbound WhatsApp texto/áudio
+→ criar/atualizar contact + conversation de modo idempotente
+→ consent_pending (se houver áudio/IA/transcrição)
+→ aviso sobre finalidade, retenção, provedor e opção humana
+→ uma pergunta por turno, áudio pré-gravado/TTS quando suportado, texto sempre como fallback
+→ resposta armazenada em mídia privada
+→ transcrição assíncrona
+→ mostrar transcrição/origem/confiança
+→ confirmação explícita do valor
+→ próxima pergunta ou handoff humano
+→ projeção dos fatos confirmados no CRM
+```
+
+Regras herdadas da auditoria anexada:
+
+- Estados de consentimento: `consent_pending`, `accepted`, `denied`, `withdrawn`, `expired`. Sem `accepted`, nenhum job de STT/LLM é criado. Recusa ou revogação interrompe áudio/IA e oferece texto/humano.
+- O áudio real precisa ser validado no payload Baileys: não basta `messageType = audio`; o sistema precisa receber bytes/URL, MIME, tamanho e, se disponível, duração. Falha de download, MIME não suportado ou arquivo vazio nunca pode virar texto inventado.
+- `FORTE_MEDIA_PRIVATE_STORAGE_ENABLED=false` hoje deixa data URL no `metadata` JSONB. Para produção, mídia deve ser privada por padrão, com ownership `workspace + message`, hash, retenção, URL assinada curta e autorização no proxy.
+- `instanceId`/canal precisam ter ownership relacional verificável. Não basta `FORTE_API_WORKSPACE_ID` fixo no processo; `event.instanceId`, segredo do webhook, canal e workspace devem corresponder ao mesmo registro.
+- O booleano `contact.aiEnabled`/`conversation.humanControlled` não basta para handoff. O worker precisa de `handoffId`, estado, responsável e `controlVersion`/fencing token, revalidando a versão imediatamente antes do outbound. Se o humano assumir enquanto o LLM processa, a resposta da IA é cancelada.
+- Contato, mensagem, consentimento inicial e evento de transcrição devem ser atômicos ou protegidos por outbox transacional; retries concorrentes do mesmo áudio não podem duplicar mensagem, job ou resposta.
+- O Inbox precisa expor consentimento, player privado, status de transcrição, confiança/proveniência, correção, Assumir/Devolver/Retomar e fallback textual. A gravação enviada pelo operador também não deve trafegar como data URL exposta.
+- O questionário do lead deve ser versionado e ter `expectedType`, `validationSchema`, `required`, `retryLimit` e ordem. `qualificationRules` em texto livre não pode ser usado como máquina de estados.
+
+Essa separação evita misturar os dados do empresário com os fatos do lead e deixa claro que o áudio de entrada acontece no canal WhatsApp, não na tela de criação de conta do empresário.
+
 ## 2. Parte 1 — O que mais pode ser melhorado na base
 
 ### 2.1 Prioridade imediata (P0 de produto, antes de convites)
@@ -63,6 +102,24 @@ Regra de sequência mantida: **nada de cadastro público aberto antes de P0 fech
 ### 2.4 Não refazer
 
 Continuam válidos e não devem ser reabertos: tenancy com `workspaceId` do contexto, quotas por workspace/usuário com janela de minuto, worker outbound com `queued`, alertas de 70%/90%, console interno com sessão escopada e auditoria, prompt versionado com rollback, criptografia de segredos em repouso, lock de sessão Baileys e backup/restore local. O trabalho aqui é **adicionar produto por cima**, não reescrever a fundação.
+
+## 2.5 Achados adicionais reutilizáveis da auditoria de CRM e atendimento
+
+A segunda auditoria anexada complementa a primeira com pontos de operação que não estavam explícitos no documento original:
+
+- **Efeito colateral de auditoria cross-tenant:** `moveContactStage`/`setContactAi` podem não alterar nenhuma linha quando recebem um `contactId` de outro workspace, mas ainda assim gravar `auditLogs` com o ID recebido. Toda mutação deve conferir `rowCount` antes de gerar evento.
+- **Integridade relacional incompleta:** `conversations` não carrega `workspaceId` próprio e `messages` depende do join via conversation/contact. Além de `contacts.workspaceId NOT NULL`, criar FKs/constraints e decidir se `workspaceId` redundante em conversation/message/media será usado como barreira adicional.
+- **Telefone não normalizado:** formatos `+55`, `55`, pontuação e JID podem criar contatos duplicados. Normalizar E.164/JID antes do upsert e testar o mesmo telefone em formatos diferentes.
+- **Canal de resposta pode estar errado:** `sendManualMessage` resolve instância por `defaultPapiWebhook`, em vez de usar a instância de origem da conversa/última mensagem. Toda resposta deve sair pelo `channelId/instanceId` validado da conversa.
+- **Caixa compartilhada versus ACL:** hoje todo membro ativo pode listar, enviar, pausar IA, adicionar notas e mover contatos. Isso pode ser uma decisão válida para caixa compartilhada, mas precisa ser registrada; se não for, implementar assignment, equipe e ACL por contato/mídia.
+- **`awaiting_response` não é unread:** deve ser derivado da última inbound versus última outbound válida, separadamente de leitura por usuário (`lastReadMessageId`/cursor). Abrir a thread deve marcar leitura de forma transacional, sem alterar a lógica de resposta pendente.
+- **Estados da mensagem precisam aparecer:** `queued`, `processing`, `sent` e `failed` hoje podem parecer apenas um Check na UI. Inbox deve mostrar estado, erro sanitizado e retry, além de invalidar/refrescar após webhook e worker.
+- **Métricas ainda artificiais:** `daysNoReply = 0`, `receivedMonthCents = 0`, snapshots em memória e limites de hoje/mês pelo timezone do processo. KPIs devem ser agregados server-side a partir de mensagens/contatos/orçamentos/agendamentos, usando `workspace.timezone`.
+- **Funil precisa de histórico:** além de validar os 11 estágios, persistir `fromStage`, `toStage`, ator, motivo, timestamp, duração/SLA e terminalidade `open/won/lost`. `Sem retorno` e `Perdido` não devem ser tratados como etapas abertas comuns.
+- **Contato precisa de ciclo de vida e proveniência:** separar lead/cliente, origem, responsável, opt-out, data de conversão e vínculo com `services` em vez de manter `serviceRequested` como texto livre sem origem.
+- **Testes obrigatórios adicionais:** cross-tenant audit side effect, mesmo telefone em formatos diferentes, resposta pela mesma instância, unread/read/awaiting, timezone, status outbound, stage desconhecido e concorrência de webhook.
+
+Esses pontos devem entrar no B1/B2 antes de liberar o lead intake por áudio em beta ampliado.
 
 ## 3. Parte 2 — Funil de cadastro e onboarding por áudio
 
@@ -141,6 +198,19 @@ Guardas obrigatórios:
 | `onboardingChecklistItems` | checklist visível de pendências  | `workspaceId`, `key`, `required`, `status`, `blockedReason`, `completedAt`                                                                                      |
 | `consentRecords`           | consentimento versionado         | `workspaceId`, `subjectUserId`, `document` (`terms`/`privacy`/`voice`), `documentVersion`, `purpose`, `legalBasis`, `acceptedAt`, `ip`, `userAgent`             |
 
+
+Para o **lead intake conversacional**, não reutilizar essas tabelas como se fossem o cadastro do empresário:
+
+| Tabela | Papel | Campos principais |
+| --- | --- | --- |
+| `leadIntakeSessions` | entrevista ativa por conversa | `workspaceId`, `contactId`, `conversationId`, `channelId`, `instanceId`, `version`, `status`, `currentQuestionId`, `consentId`, `controlVersion`, `startedAt`, `lastActivityAt`, `completedAt`, `expiresAt` |
+| `leadIntakeQuestions` | roteiro versionado | `workspaceId`, `version`, `key`, `sequence`, `promptText`, `promptAudioStorageKey`, `fallbackText`, `expectedType`, `validationSchema`, `required`, `retryLimit`, `enabled` |
+| `leadIntakeAnswers` | resposta confirmável | `workspaceId`, `sessionId`, `questionId`, `sourceMessageId`, `transcriptId`, `normalizedValue`, `fieldKey`, `confidence`, `confirmationStatus`, `confirmedAt`, `correctedByUserId` |
+| `leadConsents` | consentimento por finalidade | `workspaceId`, `contactId`, `sessionId`, `purpose`, `legalBasis`, `policyVersion`, `noticeTextHash`, `channel`, `sourceMessageId`, `decision`, `grantedAt`, `withdrawnAt`, `expiresAt` |
+| `mediaAssets` | arquivo privado de áudio/mídia | `workspaceId`, `messageId`, `storageKey`, `privateState`, `mimeType`, `sizeBytes`, `durationMs`, `sha256`, `instanceId`, `retentionUntil`, `deletedAt` |
+| `transcriptions` | resultado assíncrono do STT | `workspaceId`, `mediaAssetId`, `messageId`, `status`, `provider`, `model`, `language`, `text`, `segments`, `confidence`, `errorCode`, `retryCount`, `retentionUntil` |
+| `conversationHandoffs` | máquina de controle humano/IA | `workspaceId`, `contactId`, `conversationId`, `sessionId`, `state`, `reasonCode`, `assignee`, `controlVersion`, `acceptedAt`, `resolvedAt` |
+
 Complementos necessários:
 
 - `workspaces.status = "onboarding"` passa a ser usado de verdade: empresa nasce em onboarding e só vira `active` quando o checklist obrigatório fecha (ou por liberação manual auditada do suporte).
@@ -163,7 +233,7 @@ Complementos necessários:
 
 ### 4.1 Situação atual
 
-A tela de faturamento cria um orçamento com contato, nome do serviço, valor, descrição e vencimento, além de permitir trocar status e marcar como pago; existe uma lista de status de sete valores e um total simples. Não há itens, plano de pagamento, meio de pagamento, entrada, parcelamento, histórico, recibo, validade, desconto, dados de recebimento nem conciliação. O próprio texto da tela assume "controle manual, sem gateway de pagamento".
+A tela de faturamento cria um orçamento com contato, nome do serviço, valor, descrição e vencimento, além de permitir trocar status e marcar como pago; existe uma lista de status de sete valores e um total simples. Não há itens, validade, desconto, histórico, recibo, nem registro estruturado de como o cliente final pagou. O texto da tela assume corretamente "controle manual, sem gateway de pagamento". A decisão de produto desta etapa é manter assim: o Forte Panel **não cobra o cliente final, não processa cartão, não cria checkout e não terá gateway para cobrança do cliente do empresário**. Ele apenas permite enviar a chave Pix do próprio empresário pelo WhatsApp e registrar manualmente o recebimento informado pelo empresário ou por seus funcionários, seja por Pix, maquininha, dinheiro, transferência ou outro meio usado na loja.
 
 Referências: `client/src/pages/BillingPage.tsx`, `server/routers.ts:1125`, `server/db.ts:3438`, `server/db.ts:3508`, `drizzle/schema.ts:795`.
 
@@ -176,24 +246,22 @@ Referências: `client/src/pages/BillingPage.tsx`, `server/routers.ts:1125`, `ser
 - Validade da proposta ("válida até"), prazo de execução, escopo/endereço e observações de materiais.
 - Soma automática de total, sinal e saldo, sem permitir divergência entre itens e total.
 
-**Plano de pagamento (a escolha central que hoje não existe)**
+**Condição comercial registrada no orçamento**
 
-- **Modelo:** pagamento único, sinal/entrada + saldo, parcelado com ou sem entrada, pagamento na entrega ou na conclusão, recorrência (futuro).
-- **Sinal:** percentual ou valor fixo, com prazo ("sinal em até 48h para reservar a data").
-- **Parcelas:** quantidade (1x a 12x), valor por parcela, primeira data e periodicidade, com regra de juros por workspace.
-- **Vencimentos:** data de cada movimento, tolerância e alerta de vencido.
-- **Condição especial:** desconto para pagamento à vista, taxa para parcelamento longo, aprovação obrigatória do gerente acima de um limite.
+O sistema não monta uma cobrança nem cobra o cliente final. Ele registra a condição combinada para organização interna e para o follow-up:
 
-**Meios aceitos (escolha por workspace e por orçamento)**
+- pagamento antes do procedimento, no dia, depois do procedimento ou sinal combinado;
+- valor esperado, data combinada e observação livre;
+- desconto autorizado, quando houver;
+- opcionalmente, parcelas/promessas internas para acompanhamento — sem gerar checkout, boleto, cobrança automática ou link de pagamento.
 
-- Pix (chave estática do workspace, com opção de gerar código "copia e cola" e QR sem PSP).
-- Dinheiro.
-- Cartão de débito.
-- Cartão de crédito (à vista ou parcelado).
-- Transferência bancária.
-- Boleto.
-- Link de pagamento (quando houver provedor conectado).
-- Nesta primeira fase: **registro manual** do recebimento, com o meio informado; nenhuma cobrança automática.
+**Meios informativos e registro manual**
+
+- Pix: chave do workspace que pode ser copiada e enviada pela conversa do WhatsApp; o sistema não confirma automaticamente que o Pix caiu.
+- Maquininha: registrar bandeira/forma apenas como informação opcional, sem integração com a máquina.
+- Dinheiro, transferência, débito, crédito ou outro: registrar manualmente o meio informado pelo empresário/funcionário.
+- O lançamento exige `paidAt`, valor, meio, responsável pelo registro e observação; pode anexar referência/recibo externo, mas não captura dados de cartão.
+- Não haverá boleto, link de pagamento, checkout, recorrência, cobrança automática, split, conciliação bancária ou webhook de PSP nesta fase.
 
 **Status financeiro mais granular**
 
@@ -214,7 +282,7 @@ Os sete valores atuais (`orcamento`, `aguardando_aprovacao`, `aprovado`, `sinal_
 - Toda mutação financeira auditada com `actorUserId` e motivo.
 - Estorno com referência ao recebimento original.
 - Permissões: visualizar, registrar recebimento, conceder desconto acima do limite e cancelar com valores.
-- Nenhum dado de cartão trafega ou é armazenado pelo Forte Panel: quando houver PSP, a captura ocorre no provedor.
+- Nenhum dado de cartão trafega ou é armazenado pelo Forte Panel; não existe PSP nesta fase.
 
 ### 4.3 Modelo de dados proposto
 
@@ -225,7 +293,7 @@ Os sete valores atuais (`orcamento`, `aguardando_aprovacao`, `aprovado`, `sinal_
 | `quoteInstallments`        | plano de pagamento previsto     | `quoteId`, `workspaceId`, `sequence`, `dueDate`, `amountCents`, `kind` (`sinal`/`parcela`/`saldo`), `status`                                                                                                                                                                                                  |
 | `quotePayments`            | ledger de recebimentos efetivos | `quoteId`, `workspaceId`, `installmentId`, `amountCents`, `method` (`pix`/`dinheiro`/`debito`/`credito`/`transferencia`/`boleto`/`link`), `paidAt`, `externalRef`, `providerId`, `feeCents`, `notes`, `receiptId`, `recordedByUserId`                                                                         |
 | `paymentReceipts`          | recibo emitido                  | `workspaceId`, `quoteId`, `paymentId`, `number`, `issuedAt`, `issuedByUserId`, `snapshot`                                                                                                                                                                                                                     |
-| `workspacePaymentSettings` | como o workspace recebe         | `workspaceId`, `acceptedMethods` (jsonb), `pixKeyType`, `encryptedPixKey`, `holderName`, `holderDocument`, `legalName`, `defaultDepositPercent`, `maxInstallments`, `installmentInterestPercent`, `defaultValidityDays`, `receiptFooter`, `termsText`                                                         |
+| `workspacePaymentSettings` | dados exibidos para recebimento manual         | `workspaceId`, `acceptedMethods` (jsonb), `pixKeyType`, `encryptedPixKey`, `holderName`, `holderDocument`, `legalName`, `defaultDepositPercent`, `maxInstallments`, `installmentInterestPercent`, `defaultValidityDays`, `receiptFooter`, `termsText`                                                         |
 
 Regras:
 
@@ -236,16 +304,16 @@ Regras:
 ### 4.4 Integração com o atendimento
 
 - A IA e o operador podem montar o orçamento a partir do catálogo e enviar ao cliente com itens, validade e plano de pagamento.
-- Mensagem de orçamento com resumo e opções de pagamento; na fase manual, o Pix "copia e cola" gerado da chave do workspace.
-- Link entre orçamento e conversa para rastrear envio, aprovação e cobrança.
+- Mensagem de orçamento com resumo da condição combinada; quando solicitado, enviar a chave Pix/copia e cola do workspace.
+- Link entre orçamento e conversa para rastrear envio, aprovação e follow-up interno.
 - Follow-up de vencido: lembrete ao cliente e alerta interno (respeitando política anti-spam).
-- Confirmação de pagamento recebido gera recibo e mensagem de agradecimento opcional.
+- Lançamento manual de pagamento gera recibo e pode disparar mensagem de agradecimento opcional; não há confirmação automática de liquidação.
 
 ### 4.5 Provedor de pagamento (faseamento explícito)
 
 1. **Fase 1 — Manual + Pix estático (agora).** Sem PSP. Registro manual, Pix copia e cola, recibo e extrato. Nenhuma cobrança real, nenhum dado de cartão.
-2. **Fase 2 — Porta de provider.** Interface `PaymentProvider` (`createCharge`, `getCharge`, `refund`, `verifyWebhook`) com adapters (Mercado Pago, Asaas, Pagar.me) atrás de feature flag por workspace, reutilizando `webhookEvents` para idempotência e assinatura de webhook.
-3. **Fase 3 — Cobrança do próprio SaaS.** Separada do financeiro do cliente: `saasProducts`, `planPrices`, `workspaceSubscriptions`, `invoices`, `usageLedger`, conforme já previsto em P2.3. O rate limit por minuto continua sendo técnico, nunca faturamento.
+2. **Fase 2 — somente se houver decisão futura de produto.** Qualquer integração com PSP/gateway fica fora do roadmap atual e não deve ser construída por antecipação.
+3. **Cobrança do próprio SaaS.** É um assunto separado do financeiro do cliente: `saasProducts`, `planPrices`, `workspaceSubscriptions`, `invoices`, `usageLedger`, conforme já previsto em P2.3. O rate limit por minuto continua sendo técnico, nunca faturamento.
 
 Decisões registradas: o Forte Panel **não é instituição de pagamento e não retém valores**; o dinheiro vai direto para o workspace (chave Pix própria ou PSP contratado por ele); emissão de documento fiscal (NF-e/NFS-e) está **fora do escopo** desta fase — os campos `invoiceRequired` e `fiscalDocNumber` ficam reservados, sem promessa ao cliente.
 
@@ -261,7 +329,7 @@ Nada abaixo antecipa o lançamento público; P0 do plano de auditoria continua s
 | B3    | Onboarding estruturado (sem áudio): sessões, blocos, checklist, `workspaces.status = onboarding`                                                                                  | B2         | Empresa nova sai do onboarding sem banco manual                              |
 | B4    | Onboarding por áudio: upload, transcrição tenant-aware, estruturação com schema, acompanhamento de campos, retenção e consentimento de voz                                        | B3         | Fluxo por áudio concluído ponta a ponta com fallback por formulário          |
 | B5    | Autoatendimento do dono: mover onboarding, configuração de IA e prompt de `requirePlatformAdministrator` para owner/gerente, com console de plataforma restrito a suporte         | B3         | Owner configura e publica sem operador da plataforma                         |
-| B6    | Financeiro: itens, plano de pagamento, meios, ledger de recebimentos, recibo, extrato, `workspacePaymentSettings`, Pix copia e cola                                               | B3         | Orçamento com sinal e parcelas registrado, recibo emitido e extrato coerente |
+| B6    | Financeiro: itens, condição comercial, chave Pix, registro manual de recebimentos, recibo, extrato e `workspacePaymentSettings` | B3         | Orçamento com condição registrada, Pix enviado pela conversa, lançamento manual e extrato coerente |
 | B7    | Higiene: lint + `check`/`build` em PR, config pnpm migrada, remoção de artefatos de template e árvore drizzle legada, README/licença, branding por tenant                         | paralelo   | CI bloqueando regressão; raiz do repositório limpa                           |
 | B8    | Observabilidade e LGPD: correlation ID, logging estruturado, retenção/exclusão/exportação e política publicada                                                                    | B2/B6      | Gate de lançamento satisfeito                                                |
 

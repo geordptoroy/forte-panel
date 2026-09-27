@@ -1259,7 +1259,7 @@ O áudio é entrada opcional e o dado estruturado confirmado pelo dono é a font
 
 ### Planejamento financeiro
 
-Hoje o faturamento é um contador manual por orçamento. O plano evolui `quotes` com numeração, validade, escopo, subtotal, desconto e total coerentes; cria `quoteItems`, `quoteInstallments`, `quotePayments` como ledger imutável, `paymentReceipts` e `workspacePaymentSettings`. As escolhas que faltam passam a existir: modelo de pagamento (único, sinal + saldo, parcelado com ou sem entrada, na conclusão), sinal em percentual ou valor, parcelas de 1x a 12x com juros por workspace, vencimentos, meios aceitos (Pix, dinheiro, débito, crédito, transferência, boleto, link quando houver provedor) e desconto com limite de aprovação. Fase 1 é manual com Pix copia e cola, extrato, CSV e recibo, sem PSP e sem armazenamento de cartão; a fase 2 define a porta `PaymentProvider` com adapters atrás de flag; a fase 3 trata a cobrança do próprio SaaS separada do financeiro do cliente. Documento fiscal fica fora do escopo, com campos reservados.
+Hoje o faturamento é um contador manual por orçamento. O plano foi corrigido para tratar isso como controle operacional interno: cria `quoteItems`, condição comercial, `quotePayments` como registro manual imutável, `paymentReceipts` e `workspacePaymentSettings` para enviar a chave Pix. O empresário ou funcionário informa valor, data e meio (Pix, maquininha, dinheiro, transferência ou outro) depois/antes do procedimento; o Forte Panel não cobra o cliente final, não oferece gateway, checkout, boleto, link, integração com maquininha ou confirmação automática de liquidação. A cobrança do próprio SaaS continua separada e documento fiscal fica fora do escopo.
 
 ### Validação executada nesta etapa
 
@@ -1271,3 +1271,16 @@ Hoje o faturamento é um contador manual por orçamento. O plano evolui `quotes`
 ### Próximo passo
 
 Fechar P0 vigente e provar dois tenants, workspace suspenso e billing em PostgreSQL/staging (B0), depois atacar B1 de segurança de identidade (rate limit, origem, unread/leitura, índices, deduplicação por tenant e `contacts.workspaceId NOT NULL`), antes de começar B2 de cadastro e B3 de onboarding estruturado.
+
+
+### Reconciliamento da auditoria anexada — 2026-09-27
+
+A auditoria recebida após o primeiro plano acrescentou uma distinção reutilizável: **onboarding do negócio** (empresário configura catálogo, equipe, agenda e IA) é diferente do **lead intake conversacional** (cliente final responde no WhatsApp). O `OnboardingPage` atual pertence ao primeiro fluxo; o segundo precisa de `leadIntakeSessions`, perguntas versionadas, respostas com proveniência, consentimento, mídia, transcrição e handoff.
+
+Foram incorporados ao plano os achados adicionais: consentimento `consent_pending` antes de STT/LLM; validação de áudio real do Baileys em vez de aceitar placeholder; remoção de data URL do `metadata` produtivo; entidade de mídia com hash/retenção/ownership; `instanceId` relacional e validação de channel/secret/workspace; pipeline assíncrono com status; outbox/idempotência para retries concorrentes; handoff com `controlVersion`/fencing token para cancelar resposta de IA quando humano assumir; questionário versionado uma pergunta por turno; auditoria de ouvir/baixar/corrigir/exportar/excluir; e fallback textual/humano acionável.
+
+### Correção de escopo financeiro
+
+A orientação do produto foi corrigida: o cliente do empresário **não será cobrado pela plataforma**. O Forte Panel não terá gateway, checkout, boleto, link de pagamento, integração com maquininha, cobrança automática ou armazenamento de cartão nesta fase. O empresário ou seus funcionários recebem diretamente na loja, por maquininha, Pix, dinheiro ou outro meio e apenas lançam manualmente o recebimento no painel. A plataforma pode enviar a chave Pix do workspace pelo WhatsApp; ela não confirma automaticamente a liquidação. O modelo financeiro agora é operacional: condição combinada, chave Pix, registro manual, recibo/extrato e auditoria.
+
+A mesma auditoria de CRM acrescentou: impedir `auditLogs` quando a mutação cross-tenant não alterou linha; normalizar telefone/JID; responder pela instância de origem; formalizar caixa compartilhada versus ACL; separar `awaiting_response` de unread; exibir estados queued/processing/sent/failed; corrigir `daysNoReply` e timezone dos KPIs; registrar histórico/SLA de stages; e definir ciclo de vida/proveniência de lead. Esses itens foram adicionados ao B1/B2 e ao `todo.md`.

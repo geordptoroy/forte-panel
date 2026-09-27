@@ -4,7 +4,7 @@
 **Estado:** pré-staging, antes de novos convites beta
 **Escopo:** console da plataforma, operação do workspace, WhatsApp/QR, UX mobile, métricas, catálogo, planos, LGPD e lançamento público.
 
-> Continuação: a auditoria de melhoria contínua de 27/09 acrescentou 26 achados novos e planeja o funil de cadastro com respostas em áudio, além do financeiro completo do cliente, em [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md). Este documento continua sendo a fila P0–P3 em execução; o novo documento é a próxima camada de produto e não substitui os gates daqui.
+> Continuação: a auditoria de melhoria contínua de 27/09 acrescentou achados novos e planeja o funil de cadastro com respostas em áudio, além do controle operacional de orçamento, chave Pix e recebimentos manuais, em [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md). Este documento continua sendo a fila P0–P3 em execução; o novo documento é a próxima camada de produto e não substitui os gates daqui.
 
 ## Resumo executivo
 
@@ -132,7 +132,7 @@ Criar página **Assinatura e consumo** com cards de planos, plano atual, consumo
 
 Modelo futuro separado do CRM: `saas_products`, `plan_prices`, `plan_entitlements`, `workspace_subscriptions`, `trials`, `usage_ledger`, `invoices` e eventos idempotentes. O rate limit por minuto não deve ser tratado como faturamento mensal.
 
-O financeiro **do cliente** (orçamento com itens, plano de pagamento, meios de recebimento, ledger, recibo e conciliação) é distinto da cobrança do próprio SaaS e está detalhado em [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md).
+O financeiro **operacional do cliente** (orçamento com itens, condição combinada, chave Pix, registro manual de recebimentos e recibo) é distinto da cobrança do próprio SaaS e está detalhado em [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md). Não inclui gateway, checkout ou integração com maquininha.
 
 ## Prioridade P3 — lançamento público e governança
 

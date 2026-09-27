@@ -231,6 +231,16 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Alinhar o rótulo da sidebar "Canais conectados" com a tela "Conexão WhatsApp".
 - [ ] Remover a segunda `BillingPage` com dados fictícios e o código de demonstração ainda importado.
 - [ ] Criar índices de leitura: `quotes(workspaceId, createdAt)` e `messages(conversationId, createdAt)`.
+- [ ] Impedir `auditLogs` falsos: só registrar evento após confirmar que a mutação alterou uma linha do próprio workspace.
+- [ ] Adicionar FKs/constraints para conversations/messages/notes/quotes e decidir barreira redundante de `workspaceId` nas entidades derivadas.
+- [ ] Normalizar telefones/JIDs (E.164) antes do upsert e testar formatos equivalentes.
+- [ ] Responder pela instância/canal de origem da conversa, não por `defaultPapiWebhook`.
+- [ ] Formalizar se a operação é caixa compartilhada; caso não seja, implementar assignment/equipe/ACL por contato e mídia.
+- [ ] Separar `awaiting_response` de unread: derivar por última inbound/outbound e implementar leitura transacional por usuário.
+- [ ] Exibir status `queued/processing/sent/failed`, erro e retry na Inbox; invalidar após webhook/worker.
+- [ ] Corrigir KPIs `daysNoReply`/`receivedMonthCents`, usar consultas server-side e timezone do workspace.
+- [ ] Persistir histórico de stages (from/to, ator, motivo, timestamp, SLA, open/won/lost) e tratar Sem retorno/Perdido como estados terminais.
+- [ ] Separar ciclo de vida lead/cliente, origem, responsável, opt-out, conversão e serviço vinculado.
 
 ### P2 — engenharia e higiene
 
@@ -254,6 +264,14 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Manter formulário como caminho garantido quando o áudio falhar; áudio nunca é a única via.
 - [ ] Implementar consentimento de voz e retenção do áudio bruto.
 - [ ] Usar `workspaces.status = onboarding` de verdade e só promover para `active` com checklist obrigatório fechado.
+- [ ] Separar onboarding do negócio (empresário) de `leadIntake` conversacional (lead do WhatsApp); não reutilizar `OnboardingPage` como questionário do lead.
+- [ ] Modelar `leadIntakeSessions`, `leadIntakeQuestions`, `leadIntakeAnswers`, `leadConsents`, `mediaAssets`, `transcriptions` e `conversationHandoffs`.
+- [ ] Definir consentimento `consent_pending/accepted/denied/withdrawn/expired`; sem `accepted`, não iniciar STT/LLM.
+- [ ] Validar áudio real do Baileys (bytes/URL, MIME, tamanho/duração); placeholder de mídia ou payload vazio deve cair em texto/humano, nunca em texto inventado.
+- [ ] Tornar mídia privada por padrão: sem data URL em `metadata` produtivo, com ownership por workspace+message, hash, retenção, signed URL curta e auditoria de acesso.
+- [ ] Persistir `channelId/instanceId` com ownership relacional e validar correspondência entre instância, segredo do webhook e workspace.
+- [ ] Substituir handoff booleano por estado com `handoffId`, responsável, motivo e `controlVersion`/fencing token; cancelar outbound de IA quando humano assumir.
+- [ ] Tornar contato/mensagem/consentimento/evento de transcrição atômicos ou usar outbox; testar retries concorrentes do mesmo áudio.
 
 ## Orçamentos, meios de pagamento e conciliação — planejado
 
@@ -266,6 +284,7 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Oferecer as escolhas que faltam: modelo de pagamento, sinal, parcelamento com/sem entrada, vencimentos e desconto com limite de aprovação.
 - [ ] Migrar os sete status atuais para o status financeiro granular, com mapa explícito e histórico preservado.
 - [ ] Gerar Pix copia e cola, extrato por período, CSV e recibo simples (sem PSP nesta fase).
-- [ ] Definir a porta `PaymentProvider` com adapters atrás de flag, reutilizando `webhookEvents` para idempotência.
+- [ ] Enviar a chave Pix do workspace pela conversa do WhatsApp, sem confirmar automaticamente a liquidação.
+- [ ] Registrar manualmente pagamentos informados pelo empresário/funcionários (Pix, maquininha, dinheiro, transferência ou outro), com valor, data, meio, responsável e observação.
+- [ ] Deixar explícito: sem gateway, checkout, boleto, link de pagamento, integração com maquininha, armazenamento de cartão ou retenção de valores; documento fiscal fora do escopo.
 - [ ] Manter cobrança do próprio SaaS separada (`saasProducts`, `workspaceSubscriptions`, `invoices`, `usageLedger`).
-- [ ] Deixar explícito: sem armazenamento de cartão, sem retenção de valores pela plataforma, documento fiscal fora do escopo.
