@@ -4531,7 +4531,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"whatsappInstances\".\"provider\" = 'baileys'",
+          "where": "\"whatsappInstances\".\"provider\"::text = 'baileys'",
           "concurrently": false,
           "method": "btree",
           "with": {}

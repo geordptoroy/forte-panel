@@ -850,11 +850,11 @@ export const whatsappInstances = pgTable(
     ),
     uniqueIndex("whatsapp_instances_baileys_instance_global_unique_idx")
       .on(table.instanceId)
-      .where(sql`${table.provider} = 'baileys'`),
+      .where(sql`${table.provider}::text = 'baileys'`),
     uniqueIndex("whatsapp_instances_baileys_workspace_default_unique_idx")
       .on(table.workspaceId)
       .where(
-        sql`${table.provider} = 'baileys' AND ${table.active} = 1 AND ${table.isDefault} = 1`
+        sql`${table.provider}::text = 'baileys' AND ${table.active} = 1 AND ${table.isDefault} = 1`
       ),
     index("whatsapp_instances_workspace_idx").on(
       table.workspaceId,
