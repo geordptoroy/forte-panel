@@ -3482,6 +3482,95 @@ export async function cleanupWorkspaceUsageBuckets(
   };
 }
 
+export type OnboardingAudioRetentionCleanupResult = {
+  skipped: boolean;
+  dryRun: boolean;
+  limit: number;
+  assetsExpired: number;
+  transcriptionsExpired: number;
+  workspaces: Record<string, { assets: number; transcriptions: number }>;
+};
+
+export async function cleanupOnboardingAudioRetention(options: {
+  dryRun?: boolean;
+  limit?: number;
+  now?: Date;
+} = {}): Promise<OnboardingAudioRetentionCleanupResult> {
+  const db = await getDb();
+  const dryRun = options.dryRun === true;
+  const limit = Number.isFinite(options.limit)
+    ? Math.max(1, Math.min(Math.floor(options.limit as number), 2_000))
+    : 500;
+  if (!db)
+    return {
+      skipped: true,
+      dryRun,
+      limit,
+      assetsExpired: 0,
+      transcriptionsExpired: 0,
+      workspaces: {},
+    };
+
+  const now = options.now ?? new Date();
+  const candidates = await db
+    .select({
+      id: onboardingTranscriptions.id,
+      workspaceId: onboardingTranscriptions.workspaceId,
+      updatedAt: onboardingTranscriptions.updatedAt,
+    })
+    .from(onboardingTranscriptions)
+    .where(
+      lt(
+        onboardingTranscriptions.updatedAt,
+        new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+      )
+    )
+    .orderBy(asc(onboardingTranscriptions.id))
+    .limit(limit);
+  const policies = await db.select().from(onboardingRetentionPolicies);
+  const derivedDaysByWorkspace = new Map(
+    policies.map(policy => [policy.workspaceId, policy.derivedDataDays])
+  );
+  const expiredTranscriptions = candidates.filter(row => {
+    const derivedDays = derivedDaysByWorkspace.get(row.workspaceId) ?? 180;
+    return row.updatedAt < new Date(now.getTime() - derivedDays * 24 * 60 * 60 * 1000);
+  });
+
+  const expiredAssets = await db
+    .select({ id: onboardingAudioAssets.id, workspaceId: onboardingAudioAssets.workspaceId })
+    .from(onboardingAudioAssets)
+    .where(lt(onboardingAudioAssets.expiresAt, now))
+    .orderBy(asc(onboardingAudioAssets.id))
+    .limit(limit);
+  const workspaces: Record<string, { assets: number; transcriptions: number }> = {};
+  const addWorkspaceCount = (workspaceId: number, kind: "assets" | "transcriptions") => {
+    const key = String(workspaceId);
+    workspaces[key] ??= { assets: 0, transcriptions: 0 };
+    workspaces[key][kind] += 1;
+  };
+  expiredAssets.forEach(row => addWorkspaceCount(row.workspaceId, "assets"));
+  expiredTranscriptions.forEach(row => addWorkspaceCount(row.workspaceId, "transcriptions"));
+
+  if (!dryRun) {
+    if (expiredTranscriptions.length > 0)
+      await db.delete(onboardingTranscriptions).where(
+        inArray(onboardingTranscriptions.id, expiredTranscriptions.map(row => row.id))
+      );
+    if (expiredAssets.length > 0)
+      await db.delete(onboardingAudioAssets).where(
+        inArray(onboardingAudioAssets.id, expiredAssets.map(row => row.id))
+      );
+  }
+  return {
+    skipped: false,
+    dryRun,
+    limit,
+    assetsExpired: expiredAssets.length,
+    transcriptionsExpired: expiredTranscriptions.length,
+    workspaces,
+  };
+}
+
 export async function resetWorkspaceDevelopmentData(workspaceId?: number) {
   const db = await getDb();
   const workspace = workspaceId

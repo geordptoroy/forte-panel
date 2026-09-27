@@ -587,3 +587,16 @@ O cliente envia o blob serializado em base64 para `voice.upload`; depois do uplo
 Também foram adicionados descarte/regravação, preview local com `URL.createObjectURL`, encerramento automático em 120 segundos, parada das tracks do microfone e revogação das URLs no cleanup. Formatos suportados são negociados com `MediaRecorder` (`webm`, `mp4` ou `ogg`) e normalizados antes do envio.
 
 Validação: `pnpm check` ✅; `pnpm test` ✅ — 106 aprovados, 37 skipped; `pnpm build` ✅; `git diff --check` ✅. O warning conhecido de bundle inicial acima de 500 kB permanece. A próxima etapa é expiração real dos assets, depois correção/extração por bloco com revisão e confiança.
+
+
+---
+## Etapa seguinte — retenção automática de áudio — 2026-09-27
+A política de retenção do onboarding agora é executada pelo worker em ciclo diário. `cleanupOnboardingAudioRetention` considera `expiresAt` dos assets brutos e `derivedDataDays` da política do próprio workspace para transcrições, com fallback seguro de 180 dias quando não há política explícita.
+
+A rotina aceita `dryRun`, `now` injetável para testes e lote limitado a 500 registros por ciclo (máximo configurável de 2.000). No modo real remove somente as linhas expiradas de `onboardingAudioAssets` e `onboardingTranscriptions`; no modo dry-run não altera dados e retorna a contagem agrupada por workspace. O worker registra auditoria sem operador humano (`actorUserId` ausente), usando ações separadas para simulação e limpeza aplicada, e emite log operacional com os totais.
+
+O storage Forge configurado não expõe endpoint de delete físico no template. Por isso, a limpeza remove a referência privada do banco, que é a única forma de alcançar o objeto pela aplicação; não foi inventada uma chamada destrutiva não documentada ao provedor. O arquivo deixa de ser servido pelo fluxo do produto, enquanto a remoção física fica dependente do lifecycle/retention do próprio storage.
+
+Foi adicionada cobertura PostgreSQL para dry-run sem deleção, política derivada por workspace e isolamento: um workspace com política curta é limpo, enquanto outro workspace com asset/transcrição equivalentes permanece intacto.
+
+Validação desta etapa: `pnpm check` ✅; `pnpm test` ✅ — 106 aprovados, 39 skipped por dependências externas/PostgreSQL; `git diff --check` e build final ainda devem ser executados antes do commit/push.

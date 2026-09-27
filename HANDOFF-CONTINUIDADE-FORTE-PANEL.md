@@ -1742,3 +1742,17 @@ A UI diferencia `recording`, `recorded`, `uploading`, `transcribing`, `completed
 Validação após a alteração: `pnpm check` passou; `pnpm test` passou com 106 aprovados e 37 skipped por dependências externas/PostgreSQL; `pnpm build` passou; `git diff --check` passou. O bundle inicial cresceu para aproximadamente 738 kB e mantém o warning de code splitting acima de 500 kB.
 
 Próximo bloco recomendado: rotina/worker de expiração física de assets e limpeza de transcrições derivadas conforme `rawArtifactDays`/`derivedDataDays`, com dry-run e auditoria. Depois, permitir correção por texto/áudio curto e extração estruturada para `onboardingStepAnswers` somente após revisão/confiança. Não ativar expansão pública de áudio antes da execução da migration 0034 e da suíte PostgreSQL em CI/staging.
+
+
+---
+## Atualização do handoff — 2026-09-27 — retenção automática de áudio
+
+A retenção configurável de onboarding deixou de ser apenas metadado. `server/db.ts` agora expõe `cleanupOnboardingAudioRetention({ dryRun, limit, now })`. Assets brutos expirados são identificados por `onboardingAudioAssets.expiresAt`; transcrições derivadas são candidatas após 30 dias e só são removidas quando ultrapassam `derivedDataDays` da política do workspace, com fallback de 180 dias. O resultado informa `assetsExpired`, `transcriptionsExpired` e contagens por workspace.
+
+`server/worker.ts` executa essa limpeza uma vez por dia (intervalo ajustável por `FORTE_ONBOARDING_RETENTION_SWEEP_MS`, mínimo de 60 segundos para operação controlada). `FORTE_ONBOARDING_RETENTION_DRY_RUN=true` faz simulação sem deletar linhas. O padrão é executar a limpeza real. Cada workspace afetado recebe auditoria `onboarding_audio_retention_cleanup` ou `onboarding_audio_retention_dry_run`, sem `actorUserId`, e o worker registra os totais agregados.
+
+A rotina é tenant-aware e usa lote máximo de 500 por ciclo, com teto de 2.000 quando chamada diretamente. Não há delete físico implementado porque `server/storage.ts`/Forge não expõem endpoint de remoção documentado; remover a linha revoga a referência privada e impede que o produto sirva o objeto. Não inventar uma API destrutiva do storage. Se o lifecycle físico for requisito de produção, configurar/validar a política de retenção no provedor ou substituir o adapter de storage com operação autorizada.
+
+A suíte adicionou `server/onboarding-audio-retention.test.ts`, que valida dry-run sem deleção, políticas diferentes por workspace e preservação do segundo tenant. Nesta sandbox sem `DATABASE_URL`, os dois testes PostgreSQL são skipped; o typecheck e os 106 testes unitários aprovados passaram. Antes do beta, executar migrations e a suíte completa no CI/staging, verificar auditoria do worker e confirmar o lifecycle do bucket.
+
+Próximo passo recomendado: permitir correção por texto/áudio curto e extração estruturada para `onboardingStepAnswers`, mantendo revisão/confiança e sem publicação automática.

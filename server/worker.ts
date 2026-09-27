@@ -1,5 +1,6 @@
-import { cleanupWorkspaceUsageBuckets, processDailySummaryNotificationsOnce, processDomainEventsOnce, processQueuedMessagesOnce, processWorkspaceQuotaAlertsOnce, recoverProcessingDomainEvents, recoverProcessingMessages } from "./db";
+import { cleanupOnboardingAudioRetention, cleanupWorkspaceUsageBuckets, processDailySummaryNotificationsOnce, processDomainEventsOnce, processQueuedMessagesOnce, processWorkspaceQuotaAlertsOnce, recoverProcessingDomainEvents, recoverProcessingMessages } from "./db";
 import { recordWorkerHeartbeat } from "./platform-admin";
+import { logWorkspaceAction } from "./workspace";
 
 const intervalMs = Number(process.env.WORKER_INTERVAL_MS ?? 1500);
 const batchSize = Number(process.env.WORKER_BATCH_SIZE ?? 10);
@@ -11,6 +12,7 @@ let stopping = false;
 let nextDailySummarySweepAt = 0;
 let nextQuotaAlertSweepAt = 0;
 let nextUsageCleanupAt = 0;
+let nextOnboardingAudioCleanupAt = 0;
 let nextHeartbeatAt = 0;
 let tickCount = 0;
 let lastError: string | null = null;
@@ -40,6 +42,29 @@ async function tick() {
       const cleanup = await cleanupWorkspaceUsageBuckets();
       if (cleanup.workspaceBuckets > 0 || cleanup.userBuckets > 0) {
         console.log(`[forte-worker] bucketsRemovidos workspace=${cleanup.workspaceBuckets} usuarios=${cleanup.userBuckets}`);
+      }
+    }
+    if (Date.now() >= nextOnboardingAudioCleanupAt) {
+      const sweepIntervalMs = Math.max(
+        60_000,
+        Number(process.env.FORTE_ONBOARDING_RETENTION_SWEEP_MS ?? 24 * 60 * 60_000)
+      );
+      nextOnboardingAudioCleanupAt = Date.now() + sweepIntervalMs;
+      const cleanup = await cleanupOnboardingAudioRetention({
+        dryRun: process.env.FORTE_ONBOARDING_RETENTION_DRY_RUN === "true",
+      });
+      for (const [workspaceId, counts] of Object.entries(cleanup.workspaces)) {
+        if (counts.assets === 0 && counts.transcriptions === 0) continue;
+        await logWorkspaceAction({
+          workspaceId: Number(workspaceId),
+          action: cleanup.dryRun
+            ? "onboarding_audio_retention_dry_run"
+            : "onboarding_audio_retention_cleanup",
+          summary: `${cleanup.dryRun ? "Dry-run" : "Limpeza"} de retenção: ${counts.assets} assets brutos e ${counts.transcriptions} transcrições derivadas`,
+        });
+      }
+      if (cleanup.assetsExpired > 0 || cleanup.transcriptionsExpired > 0) {
+        console.log(`[forte-worker] onboardingAudioRetencao=${cleanup.dryRun ? "dry-run" : "aplicada"} assets=${cleanup.assetsExpired} transcricoes=${cleanup.transcriptionsExpired}`);
       }
     }
     if (Date.now() >= nextHeartbeatAt) {

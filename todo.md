@@ -275,7 +275,7 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Estruturar transcrição em JSON validado por schema, com confiança por campo e pergunta de acompanhamento.
 - [ ] Pré-preencher catálogo, agenda, equipe e perfil da IA em rascunho, sem efeito colateral.
 - [ ] Manter formulário como caminho garantido quando o áudio falhar; áudio nunca é a única via.
-- [ ] Implementar consentimento de voz e retenção do áudio bruto. (guard, upload com consentimento e `expiresAt` por workspace entregues; worker de expiração/remoção efetiva ainda pendente)
+- [x] Implementar consentimento de voz e retenção do áudio bruto. (guard, upload com consentimento, `expiresAt`, rotina diária tenant-aware, `dryRun`, limite por lote e auditoria entregues; o storage configurado não expõe delete físico, então a remoção revoga a referência privada)
 - [ ] Usar `workspaces.status = onboarding` de verdade e só promover para `active` com checklist obrigatório fechado.
 - [ ] Separar onboarding do negócio (empresário) de `leadIntake` conversacional (lead do WhatsApp); não reutilizar `OnboardingPage` como questionário do lead.
 - [ ] Modelar `leadIntakeSessions`, `leadIntakeQuestions`, `leadIntakeAnswers`, `leadConsents`, `mediaAssets`, `transcriptions` e `conversationHandoffs`.
