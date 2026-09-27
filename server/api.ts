@@ -12,6 +12,8 @@ import {
   getContactById,
   getActiveWorkspaceById,
   getDefaultWhatsappProvider,
+  getCorePipelineSnapshot,
+  getNativeAgentRuntimeConfig,
   getPublishedAiPrompt,
   findQueuedBatchMessage,
   ingestInboundWhatsApp,
@@ -363,6 +365,60 @@ api.get("/ready", async (_req, res) => {
     checks: { database: database.status },
     timestamp: new Date().toISOString(),
   });
+});
+
+api.get("/core/diagnostics", async (req, res) => {
+  if (!requireApiKey(req, res)) return;
+  const workspaceId = Number(process.env.FORTE_API_WORKSPACE_ID);
+  const configuredWorkspace = Number.isSafeInteger(workspaceId) && workspaceId > 0;
+  const config = {
+    workspaceConfigured: configuredWorkspace,
+    baileysWebhookSecretConfigured: Boolean(process.env.BAILEYS_WEBHOOK_SECRET?.trim()),
+    forteApiKeyConfigured: Boolean(process.env.FORTE_API_KEY?.trim()),
+  };
+  if (!configuredWorkspace)
+    return res.status(503).json({
+      status: "blocked",
+      reason: "api_workspace_not_configured",
+      config,
+    });
+  try {
+    const [pipeline, agent] = await Promise.all([
+      getCorePipelineSnapshot(workspaceId),
+      getNativeAgentRuntimeConfig(workspaceId),
+    ]);
+    const agentCapabilities = Object.fromEntries(
+      Object.entries(agent.llm.routing).map(([capability, route]) => {
+        const provider = agent.llm.providers[route.provider];
+        return [
+          capability,
+          {
+            provider: route.provider,
+            model: route.model,
+            ready: Boolean(
+              route.model &&
+                (route.baseUrl || provider?.baseUrl) &&
+                (route.apiKey || provider?.apiKey) &&
+                (provider?.enabled || (route.baseUrl && route.apiKey))
+            ),
+          },
+        ];
+      })
+    );
+    return res.json({
+      status: "ok",
+      config,
+      agent: { enabled: agent.enabled, capabilities: agentCapabilities },
+      pipeline,
+    });
+  } catch (error) {
+    return fail(
+      res,
+      500,
+      error instanceof Error ? error.message : "Falha no diagnóstico do core",
+      "internal_error"
+    );
+  }
 });
 
 api.get("/channels", async (req, res) => {
