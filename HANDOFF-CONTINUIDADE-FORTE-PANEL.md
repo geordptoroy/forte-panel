@@ -1076,3 +1076,10 @@ forte-whatsapp/
 O MVP inicial terá uma instância, QR/status, sessão persistente em volume Docker, envio/recebimento de texto, webhook assinado, API interna autenticada e health/readiness. Depois o provider `baileys` será adicionado ao `WhatsappAdapter` do Panel, sem reescrever Inbox, CRM, IA, agenda, quotas ou auditoria.
 
 A PAPI Cloud não deve ser ativada nem receber token durante essa fase. A migração precisa ser reversível: PAPI e Meta Cloud permanecem disponíveis até o gateway próprio passar pelos testes de integração.
+
+
+## Atualização de continuidade — 2026-09-26 23:36
+
+A fonte de verdade documental foi consolidada em `CAPABILITY-MATRIX.md`, que separa capacidade implementada, teste automatizado e ambiente validado. O roadmap foi corrigido para não marcar como ausentes os gates já executados: CI PostgreSQL com migrations limpas, console platform admin, sessões de suporte, mutações auditadas, heartbeat, versionamento/rollback do agente e contrato HTTP do gateway WhatsApp.
+
+Os gates que ainda dependem de coordenação externa permanecem explicitamente pendentes: URL e banco de staging persistente, execução do smoke/E2E manual, número WhatsApp de teste, store de sessão durável com restore, storage privado de mídia, alertas externos e backup/restauração.

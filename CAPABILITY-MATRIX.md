@@ -1,0 +1,31 @@
+# Forte Panel — matriz de capacidade e evidência
+
+**Atualizada em:** 26/09/2026
+
+Esta matriz separa **código existente**, **teste automatizado** e **ambiente onde a capacidade foi realmente validada**. Um teste local ou no CI não é tratado como prova de staging real.
+
+| Capacidade                                             | Código principal                                                          | Evidência automatizada                                                        | Ambiente validado                                            | Estado operacional                                          |
+| ------------------------------------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------- |
+| Isolamento de agenda, CRM, eventos e quotas            | `server/workspace.ts`, `server/agenda.ts`, `server/db.ts`                 | Suítes `workspace-*`, `agenda-*`, `professional-isolation`, `workspace-usage` | PostgreSQL 16 efêmero no CI                                  | **Validado no CI; repetir no staging real**                 |
+| Console `platform_admin` sem fallback por `users.role` | `server/platform-router.ts`, `server/platform-admin.ts`, migration `0019` | `platform-authorization.test.ts`                                              | Testes locais + PostgreSQL limpo no CI                       | **Validado no CI; migration real ainda depende de staging** |
+| Sessão de suporte escopada                             | `server/platform-admin.ts`                                                | `platform-support-session.test.ts`                                            | PostgreSQL 16 no CI                                          | **Validado no CI; repetir em staging**                      |
+| Mutações de IA/workspace e auditoria                   | `server/platform-admin.ts`                                                | `platform-admin-actions.test.ts`                                              | PostgreSQL 16 no CI                                          | **Validado no CI; repetir em staging**                      |
+| Prompt versionado, simulação e rollback                | `server/platform-admin.ts`, `PlatformAdminPage.tsx`                       | `platform-admin.test.ts` + suíte PostgreSQL completa                          | PostgreSQL 16 no CI; UI não validada visualmente neste ciclo | **Código e CI validados; revisão visual/staging pendente**  |
+| Health/readiness da API                                | `server/api.ts`                                                           | `api.contract.test.ts`, `scripts/staging-smoke.sh`                            | Local + PostgreSQL 16 no CI                                  | **Pronto para smoke manual de staging**                     |
+| Heartbeat e estado `healthy/degraded/stale`            | `server/worker.ts`, `server/platform-admin.ts`                            | `worker-heartbeat.test.ts`                                                    | PostgreSQL 16 no CI                                          | **Validado no CI; alertas externos pendentes**              |
+| Gateway WhatsApp health/auth/envio de mídia            | `forte-whatsapp/src/server.ts`                                            | `forte-whatsapp/src/server.test.ts` (8 testes)                                | Node local + build/publicação de imagem no CI                | **Contrato validado; número real pendente**                 |
+| Migrations limpas                                      | `drizzle-pg/`                                                             | `postgres-integration.yml` aplica a árvore completa                           | PostgreSQL 16 efêmero no CI                                  | **Validado; staging real pendente**                         |
+| Smoke de staging                                       | `scripts/staging-smoke.sh`                                                | `.github/workflows/staging-smoke.yml`                                         | Workflow manual, não executado sem URL                       | **Pronto para configurar**                                  |
+| E2E de produto                                         | `scripts/validate-flow.mjs`                                               | `.github/workflows/staging-e2e.yml`                                           | Workflow manual, não executado sem staging autorizado        | **Pronto para configurar; cria dados**                      |
+| Pareamento e fluxo WhatsApp real                       | `forte-whatsapp/src/instance-manager.ts`                                  | Ainda sem E2E com telefone                                                    | Nenhum número real validado nesta sessão                     | **Pendente de staging/número de teste**                     |
+| Store de sessão durável/criptografado e restore        | `forte-whatsapp/src/instance-manager.ts`                                  | Sem teste de restore de sessão                                                | Nenhum ambiente                                              | **Pendente antes de escala**                                |
+| Storage privado de mídia                               | Backend/gateway atual usa payload/data URL em partes do MVP               | Sem prova de storage assinado                                                 | Nenhum ambiente                                              | **Pendente de arquitetura**                                 |
+
+## Gates externos restantes
+
+1. Configurar URL, banco e secrets de staging.
+2. Executar `Staging smoke check`.
+3. Executar `Staging end-to-end` somente com `confirm_disposable_staging=true`.
+4. Repetir migrations e verificar isolamento no staging persistente.
+5. Parear um número de teste separado dos números comerciais e validar recebimento/envio de texto, imagem, áudio e documento.
+6. Registrar evidência de logs, heartbeat, falhas e rollback antes dos convites beta.

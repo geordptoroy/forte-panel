@@ -2,7 +2,7 @@
 
 **Data:** 2026-09-26  
 **Repositório:** `geordptoroy/forte-panel`  
-**Base da auditoria:** branch `main`, commit `4c5c483`
+**Base da auditoria:** branch `main`, commit `c86185b`
 
 ## 1. Resumo executivo
 
@@ -12,17 +12,17 @@ A partir deste documento, o roadmap canônico passa a ser organizado por produto
 
 ### Estado real resumido
 
-| Área                              | Estado real                      | Leitura operacional                                                                                          |
-| --------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Shell visual e páginas principais | Parcialmente pronto              | Existe bastante cobertura, mas há monólitos, estados inconsistentes e acabamento pendente                    |
-| CRM/Inbox/Agenda                  | Funcional em beta técnico        | Precisa de E2E real, observabilidade e refinamento de operação diária                                        |
-| Tenancy                           | Avançado, não encerrado          | Muitos domínios usam `workspaceId`; ainda falta provar todos os limites em staging/produção                  |
-| Baileys nativo                    | Funcional como gateway próprio   | Texto, mídia recebida, envio genérico e eventos de chamada foram adicionados; produção ainda exige hardening |
-| IA multimodelo                    | Funcional em configuração básica | URL, chave e modelo por operação; falta versionamento completo, simulação real e fallback explícito          |
-| Console da plataforma             | Código e documentação existem    | Os documentos antigos ainda dizem que ele não existe; precisam ser corrigidos                                |
-| Cadastro público                  | Não implementado                 | Continua bloqueado até concluir segurança, suporte e operação                                                |
-| Cobrança                          | Não implementada como gateway    | A tela de faturamento é controle operacional, não cobrança SaaS                                              |
-| Documentação                      | Inconsistente                    | Há documentos que ainda descrevem PAPI como caminho ativo e Baileys como futuro                              |
+| Área                              | Estado real                          | Leitura operacional                                                                                                          |
+| --------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Shell visual e páginas principais | Parcialmente pronto                  | Existe bastante cobertura, mas há monólitos, estados inconsistentes e acabamento pendente                                    |
+| CRM/Inbox/Agenda                  | Funcional em beta técnico            | Precisa de E2E real, observabilidade e refinamento de operação diária                                                        |
+| Tenancy                           | Avançado, não encerrado              | Muitos domínios usam `workspaceId`; ainda falta provar todos os limites em staging/produção                                  |
+| Baileys nativo                    | Funcional como gateway próprio       | Texto, mídia recebida, envio genérico e eventos de chamada foram adicionados; produção ainda exige hardening                 |
+| IA multimodelo                    | Configuração versionada no console   | Rascunho, simulação local, publicação, histórico e rollback têm cobertura automatizada; fallback explícito continua pendente |
+| Console da plataforma             | Código, documentação e gates existem | Autorização, sessões, mutações, auditoria e saúde têm cobertura local/PostgreSQL; staging real continua pendente             |
+| Cadastro público                  | Não implementado                     | Continua bloqueado até concluir segurança, suporte e operação                                                                |
+| Cobrança                          | Não implementada como gateway        | A tela de faturamento é controle operacional, não cobrança SaaS                                                              |
+| Documentação                      | Inconsistente                        | Há documentos que ainda descrevem PAPI como caminho ativo e Baileys como futuro                                              |
 
 ## 2. Documentações que estavam desatualizadas
 
@@ -45,7 +45,7 @@ A partir deste documento, o roadmap canônico passa a ser organizado por produto
 - **Calls:** eventos de chamada recebida são registrados. Iniciar chamada não é uma mensagem normal do Baileys e requer um fluxo de signaling próprio; não deve ser documentado como envio já entregue.
 - **Carrossel:** o Baileys expõe conteúdos específicos como álbum e mensagens interativas; “carrossel” precisa de contrato de produto explícito por versão, não apenas de um nome genérico na UI.
 - **Meta Cloud API:** permanece alternativa oficial, mas não possui paridade com todos os tipos Baileys. A interface deve mostrar disponibilidade por canal, não prometer paridade universal.
-- **IA:** falta versionamento completo de configuração por workspace, publicação/rollback integrado ao painel de cliente e simulação real sem envio externo.
+- **IA:** o console interno já cobre rascunho, simulação local, publicação, histórico e rollback; ainda falta levar o fluxo ao staging e definir fallback explícito.
 - **API pública:** o binding por `FORTE_API_WORKSPACE_ID` ainda é controlado por deployment, não uma API pública multiempresa completa.
 - **Beta operacional:** faltam staging real, testes de Docker limpo, E2E de WhatsApp com número de teste, alertas externos, backup/restauração e runbook de incidentes.
 - **Produto comercial:** cadastro público, verificação de e-mail, convite de funcionários, billing, termos, privacidade e retenção final ainda não estão fechados.
@@ -66,12 +66,12 @@ A partir deste documento, o roadmap canônico passa a ser organizado por produto
 **Objetivo:** parar a divergência entre o que o código faz e o que a documentação promete.
 
 - [x] Definir este arquivo como auditoria datada.
-- [ ] Atualizar `todo.md` para o estado Baileys atual.
+- [x] Atualizar `todo.md` para o estado Baileys atual.
 - [ ] Atualizar `API_CONTRACT.md` para Baileys nativo como caminho local principal.
 - [ ] Atualizar `CONFIGURACAO-MULTIMODEL-AGENTE.md` para APIs por função.
 - [ ] Atualizar handoff com commit, validações e limitações reais.
 - [ ] Marcar documentos antigos como históricos ou arquivá-los.
-- [ ] Criar uma matriz `capacidade → código → teste → ambiente validado`.
+- [x] Criar uma matriz `capacidade → código → teste → ambiente validado` em `CAPABILITY-MATRIX.md`.
 
 **Saída:** documentação sem instruções conflitantes.
 
@@ -132,8 +132,8 @@ A partir deste documento, o roadmap canônico passa a ser organizado por produto
 - [x] URL, API key e modelo por operação.
 - [x] Seleção de operação por tipo de mídia.
 - [x] Estado visual real por operação, teste de conexão e erro acionável.
-- [ ] Rascunho, revisão, simulação sem envio e publicação versionada.
-- [ ] Histórico e rollback por workspace.
+- [x] Rascunho, revisão, simulação sem envio e publicação versionada.
+- [x] Histórico e rollback por workspace.
 - [ ] Fallback opcional configurável, nunca silencioso.
 - [ ] Transcrição dedicada para áudio quando o endpoint não aceitar áudio.
 - [ ] OCR/document extraction com limite de tamanho e retenção.
@@ -164,18 +164,18 @@ A partir deste documento, o roadmap canônico passa a ser organizado por produto
 
 - [x] Estrutura inicial do console e migration/documentação existem.
 - [ ] Confirmar migration 0019 em PostgreSQL real.
-- [ ] Confirmar `platformAdmins` sem fallback pelo papel global.
-- [ ] Sessão de suporte read-only escopada com expiração.
-- [ ] Ações mutáveis com motivo, diff sanitizado e auditoria.
-- [ ] Saúde de workspace, canal, IA, worker, quotas e fila.
-- [ ] Notas internas, incidentes e histórico de suporte.
+- [x] Confirmar `platformAdmins` sem fallback pelo papel global em teste automatizado.
+- [x] Sessão de suporte read-only escopada com expiração.
+- [x] Ações mutáveis com motivo, diff sanitizado e auditoria.
+- [x] Saúde de workspace, canal, IA, worker, quotas e fila.
+- [x] Notas internas, incidentes e histórico de suporte.
 - [ ] Playbooks para desconexão Baileys, quota, erro de IA, duplicidade e restore.
 
 **Gate:** suporte consegue investigar uma conta sem conhecer senha ou ver secret bruto.
 
 ### Fase 7 — Confiabilidade e segurança de lançamento
 
-- [ ] CI com PostgreSQL real e migrations limpas.
+- [x] CI com PostgreSQL real efêmero e migrations limpas; staging persistente ainda pendente.
 - [ ] Testes de concorrência de agenda, idempotência, fila e leases.
 - [ ] Backup off-host e restauração ensaiada.
 - [ ] Logs estruturados com correlation ID e redaction.

@@ -10,6 +10,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 4. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual consolidado de operação do beta, migrations, quotas e segurança.
 5. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão completa do que funciona, como funciona, plano do console admin e pendências antes do beta.
 6. [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) — auditoria de divergências e roadmap canônico por fases.
+7. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência de teste e ambiente efetivamente validado.
 
 ## Produto e tenancy
 
@@ -58,6 +59,6 @@ Ao concluir um bloco técnico:
 - Worker protegido para IA e outbound.
 - Alertas in-app de 70% e 90% para gestores.
 - Retenção de buckets, readiness `/api/v1/ready` e heartbeat JSON do worker.
-- Validação PostgreSQL local aprovada: 21 arquivos e 74 testes passaram; staging real ainda pendente.
-- Console interno de plataforma possui código, migration e UI; falta validar a operação completa em PostgreSQL/staging.
-- Configuração básica da IA existe por operação; versionamento, simulação e rollback completos continuam P0 antes dos convites beta.
+- Validação PostgreSQL no CI aprovada com migrations limpas e nenhuma suíte ignorada; staging real ainda pendente.
+- Console interno de plataforma possui código, migration, UI e cobertura de autorização, sessões, mutações, auditoria e saúde; staging real ainda pendente.
+- Configuração da IA possui rascunho, simulação local, publicação, histórico e rollback; validação visual/staging e fallback explícito continuam pendentes.
