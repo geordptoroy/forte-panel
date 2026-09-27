@@ -101,6 +101,7 @@ import {
   type AgentProviderSettings,
 } from "./llm-providers";
 import { persistInboundMedia } from "./media-storage";
+import { onboardingFollowUpFieldKeys } from "./onboarding-followups";
 
 const DOMAIN_EVENT_WORKER_ID =
   process.env.WORKER_ID?.trim() || `worker-${crypto.randomUUID()}`;
@@ -2517,6 +2518,130 @@ export async function persistOnboardingStepAnswerProposal(input: {
     conflicts: input.conflicts,
     status: "draft" as const,
   };
+}
+
+export async function applyOnboardingFollowUpAnswer(input: {
+  workspaceId: number;
+  stepKey: (typeof confirmableOnboardingStepKeys)[number];
+  field: string;
+  value: string;
+  updatedBy: number;
+}) {
+  const db = await getDb();
+  const session = await getOnboardingSession(input.workspaceId);
+  if (!db || !session) throw new Error("ONBOARDING_SESSION_NOT_FOUND");
+  const allowedFields = onboardingFollowUpFieldKeys[input.stepKey] as readonly string[];
+  if (!allowedFields.includes(input.field)) throw new Error("ONBOARDING_FOLLOW_UP_FIELD_INVALID");
+  const [current] = await db
+    .select()
+    .from(onboardingStepAnswers)
+    .where(
+      and(
+        eq(onboardingStepAnswers.workspaceId, input.workspaceId),
+        eq(onboardingStepAnswers.sessionId, session.id),
+        eq(onboardingStepAnswers.stepKey, input.stepKey)
+      )
+    )
+    .limit(1);
+  if (!current) throw new Error("ONBOARDING_STEP_NOT_FOUND");
+  const answer = JSON.parse(current.answer) as Record<string, string>;
+  const missing = JSON.parse(current.missing) as string[];
+  const conflicts = JSON.parse(current.conflicts) as string[];
+  const value = input.value.trim().slice(0, 8_000);
+  if (!value) throw new Error("ONBOARDING_FOLLOW_UP_VALUE_REQUIRED");
+  answer[input.field] = value;
+  const deferred = value.toLocaleLowerCase() === "decidir depois" || value === "";
+  const nextMissing = deferred
+    ? Array.from(new Set([...missing, input.field]))
+    : missing.filter(field => field !== input.field);
+  const now = new Date();
+  await db
+    .update(onboardingStepAnswers)
+    .set({
+      answer: JSON.stringify(answer),
+      source: "human_form",
+      confidence: 100,
+      missing: JSON.stringify(nextMissing),
+      conflicts: JSON.stringify(conflicts),
+      status: "draft",
+      updatedBy: input.updatedBy,
+      updatedAt: now,
+    })
+    .where(eq(onboardingStepAnswers.id, current.id));
+  await db.insert(onboardingStepAnswerRevisions).values({
+    answerId: current.id,
+    sessionId: session.id,
+    workspaceId: input.workspaceId,
+    stepKey: input.stepKey,
+    answer: JSON.stringify(answer),
+    source: "human_form",
+    confidence: 100,
+    missing: JSON.stringify(nextMissing),
+    conflicts: JSON.stringify(conflicts),
+    status: "draft",
+    changedBy: input.updatedBy,
+  });
+  return { stepKey: input.stepKey, field: input.field, value, missing: nextMissing, conflicts, status: "draft" as const };
+}
+
+export async function answerOnboardingConflict(input: {
+  workspaceId: number;
+  stepKey: (typeof confirmableOnboardingStepKeys)[number];
+  conflictKey: string;
+  value: string;
+  resolvedBy: number;
+}) {
+  const db = await getDb();
+  const session = await getOnboardingSession(input.workspaceId);
+  if (!db || !session) throw new Error("ONBOARDING_SESSION_NOT_FOUND");
+  const [current] = await db
+    .select()
+    .from(onboardingStepAnswers)
+    .where(
+      and(
+        eq(onboardingStepAnswers.workspaceId, input.workspaceId),
+        eq(onboardingStepAnswers.sessionId, session.id),
+        eq(onboardingStepAnswers.stepKey, input.stepKey)
+      )
+    )
+    .limit(1);
+  if (!current) throw new Error("ONBOARDING_STEP_NOT_FOUND");
+  const conflicts = JSON.parse(current.conflicts) as string[];
+  if (!conflicts.includes(input.conflictKey)) throw new Error("ONBOARDING_CONFLICT_NOT_FOUND");
+  const value = input.value.trim().slice(0, 2_000);
+  if (!value) throw new Error("ONBOARDING_FOLLOW_UP_VALUE_REQUIRED");
+  const deferred = value.toLocaleLowerCase() === "decidir depois";
+  const remainingConflicts = deferred ? conflicts : conflicts.filter(item => item !== input.conflictKey);
+  const now = new Date();
+  await db
+    .update(onboardingStepAnswers)
+    .set({ conflicts: JSON.stringify(remainingConflicts), status: "draft", updatedBy: input.resolvedBy, updatedAt: now })
+    .where(eq(onboardingStepAnswers.id, current.id));
+  await db.insert(onboardingConflictResolutions).values({
+    answerId: current.id,
+    sessionId: session.id,
+    workspaceId: input.workspaceId,
+    stepKey: input.stepKey,
+    conflictKey: input.conflictKey,
+    resolution: deferred ? "deferred" : "follow_up",
+    note: value,
+    answerSnapshot: current.answer,
+    resolvedBy: input.resolvedBy,
+  });
+  await db.insert(onboardingStepAnswerRevisions).values({
+    answerId: current.id,
+    sessionId: session.id,
+    workspaceId: input.workspaceId,
+    stepKey: input.stepKey,
+    answer: current.answer,
+    source: current.source,
+    confidence: current.confidence,
+    missing: current.missing,
+    conflicts: JSON.stringify(remainingConflicts),
+    status: "draft",
+    changedBy: input.resolvedBy,
+  });
+  return { stepKey: input.stepKey, conflictKey: input.conflictKey, remainingConflicts, status: "draft" as const };
 }
 
 export type OnboardingConflictResolutionDecision = "accepted_current" | "dismissed";

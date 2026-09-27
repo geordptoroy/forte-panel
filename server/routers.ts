@@ -79,6 +79,8 @@ import {
   sendManualMessage,
   pauseOnboardingSession,
   claimOnboardingAudioTranscription,
+  answerOnboardingConflict,
+  applyOnboardingFollowUpAnswer,
   persistOnboardingAudioTranscription,
   persistOnboardingStepAnswerProposal,
   saveOnboardingProfile,
@@ -1259,6 +1261,64 @@ export const appRouter = router({
             actorUserId: ctx.user.id,
             action: "onboarding_conflict_resolved",
             summary: `Conflito resolvido no bloco ${input.stepKey}: ${input.resolution}`,
+          });
+          return result;
+        } catch (error) {
+          if (error instanceof Error && error.message === "ONBOARDING_CONFLICT_NOT_FOUND")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Este conflito já foi resolvido ou não existe mais." });
+          throw error;
+        }
+      }),
+    answerFollowUp: requireOnboardingEditor
+      .input(z.object({
+        stepKey: z.enum(["identity", "offering", "operations", "guardrails", "voice"]),
+        field: z.string().trim().min(1).max(80),
+        value: z.string().max(8_000),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const result = await applyOnboardingFollowUpAnswer({
+            workspaceId: ctx.workspace.workspaceId,
+            stepKey: input.stepKey,
+            field: input.field,
+            value: input.value,
+            updatedBy: ctx.user.id,
+          });
+          await logWorkspaceAction({
+            workspaceId: ctx.workspace.workspaceId,
+            actorUserId: ctx.user.id,
+            action: "onboarding_follow_up_answered",
+            summary: `Pergunta de acompanhamento respondida no bloco ${input.stepKey}`,
+          });
+          return result;
+        } catch (error) {
+          if (error instanceof Error && error.message === "ONBOARDING_FOLLOW_UP_FIELD_INVALID")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Este campo não pertence ao bloco selecionado." });
+          if (error instanceof Error && error.message === "ONBOARDING_FOLLOW_UP_VALUE_REQUIRED")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma resposta ou escreva ‘decidir depois’." });
+          throw error;
+        }
+      }),
+    answerConflict: requireOnboardingEditor
+      .input(z.object({
+        stepKey: z.enum(["identity", "offering", "operations", "guardrails", "voice"]),
+        conflictKey: z.string().trim().min(1).max(160),
+        value: z.string().trim().min(1).max(2_000),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const result = await answerOnboardingConflict({
+            workspaceId: ctx.workspace.workspaceId,
+            stepKey: input.stepKey,
+            conflictKey: input.conflictKey,
+            value: input.value,
+            resolvedBy: ctx.user.id,
+          });
+          await logWorkspaceAction({
+            workspaceId: ctx.workspace.workspaceId,
+            actorUserId: ctx.user.id,
+            action: "onboarding_conflict_follow_up_answered",
+            summary: `Esclarecimento de conflito registrado no bloco ${input.stepKey}`,
           });
           return result;
         } catch (error) {

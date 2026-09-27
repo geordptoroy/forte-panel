@@ -611,3 +611,14 @@ Foi adicionada `onboarding.extractProposal`. Ela exige consentimento vigente par
 A UI exibe a confiança retornada e exige revisão explícita. O formulário textual continua sendo a fonte de fallback. A pergunta de acompanhamento dedicada para cada campo ausente/ambíguo e a publicação versionada permanecem pendentes.
 
 Validação desta etapa: `pnpm check` ✅; `pnpm test` ✅ — 109 aprovados, 39 skipped por dependências externas/PostgreSQL; `pnpm build` ✅; journal JSON e `git diff --check` ✅.
+
+
+---
+## Etapa seguinte — perguntas de acompanhamento — 2026-09-27
+A revisão do onboarding agora cria perguntas explícitas para cada campo `missing` e para cada item de `conflicts`. Campos ausentes podem receber uma resposta manual, ou o responsável pode registrar `decidir depois`; a resposta atualiza somente o bloco em `draft`, troca a proveniência para `human_form`, define confiança 100 e grava nova revisão imutável.
+
+Conflitos possuem um segundo fluxo: o responsável informa qual versão aprovada deve valer. O esclarecimento é registrado em `onboardingConflictResolutions` com `resolution=follow_up`, snapshot da resposta anterior e auditoria; o conflito só sai da lista quando há esclarecimento real. `decidir depois` fica registrado como `deferred` e mantém o conflito aberto para impedir confirmação/publicação prematura.
+
+As procedures `onboarding.answerFollowUp` e `onboarding.answerConflict` são tenant-aware, validam o campo contra o bloco correto, aplicam limites de tamanho e não publicam nem confirmam automaticamente. A UI mostra a pergunta no card de revisão e invalida o perfil após salvar para refletir missing/conflicts e o novo histórico.
+
+Validação desta etapa: `pnpm check` ✅; `pnpm test` ✅ — 112 aprovados, 39 skipped por dependências externas/PostgreSQL; `pnpm build` ✅; journal JSON e `git diff --check` ✅.

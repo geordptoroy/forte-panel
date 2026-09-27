@@ -272,7 +272,7 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Definir os 10 blocos do funil (identidade, oferta, execução, agenda, atendimento/IA, política comercial, recebimento, canal, revisão/publicação) com pergunta falada, campos e destino.
 - [x] Criar procedure `voice.upload` com base64 limitado, MIME/duração/tamanho validados, storage privado e ownership por workspace/sessão. (migration `0034_onboarding_audio_assets`)
 - [x] Ligar `voice.transcribe` tenant-aware ao serviço de transcrição já existente. A procedure recebe somente `assetId`, gera URL assinada internamente, exige consentimento vigente, usa claim idempotente e persiste resultado/erro.
-- [ ] Estruturar transcrição em JSON validado por schema, com confiança por campo e pergunta de acompanhamento.
+- [x] Estruturar transcrição em JSON validado por schema, com confiança por campo e pergunta de acompanhamento. (schema estrito por bloco, `missing/conflicts/confidence`, proposta em `draft` e follow-up manual com revisão imutável)
 - [ ] Pré-preencher catálogo, agenda, equipe e perfil da IA em rascunho, sem efeito colateral.
 - [ ] Manter formulário como caminho garantido quando o áudio falhar; áudio nunca é a única via.
 - [x] Implementar consentimento de voz e retenção do áudio bruto. (guard, upload com consentimento, `expiresAt`, rotina diária tenant-aware, `dryRun`, limite por lote e auditoria entregues; o storage configurado não expõe delete físico, então a remoção revoga a referência privada)
@@ -326,7 +326,7 @@ Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
 
 ### P2 — áudio assistido
 - [x] Conectar captura/upload privado à transcrição tenant-aware, preservando original, fonte, trecho e confiança. (OnboardingPage agora oferece MediaRecorder, preview, upload, transcrição e retry; a transcrição permanece revisável e o formulário continua como fallback)
-- [x] Permitir correção por texto ou áudio curto e proposta estruturada com pergunta implícita de revisão para ambiguidade. (textarea editável, regravação de até 30s, consentimento `llm`, schema JSON estrito, `missing/conflicts/confidence`, persistência como `draft` e revisão imutável; pergunta de acompanhamento dedicada ainda pendente)
+- [x] Permitir correção por texto ou áudio curto e proposta estruturada com pergunta explícita de revisão para ambiguidade. (textarea editável, regravação de até 30s, consentimento `llm`, schema JSON estrito, `missing/conflicts/confidence`, persistência como `draft`, follow-up por campo/conflito e revisão imutável; publicação versionada ainda pendente)
 - [x] Tornar processamento idempotente, com status, retry e fallback textual/humano. (claim por asset, estados `uploaded/processing/completed/failed` e retry da UI)
 - [ ] Medir custo, duração, taxa de correção e abandono antes de ampliar áudio para toda a base.
 

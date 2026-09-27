@@ -133,6 +133,12 @@ export default function OnboardingPage() {
   const resolveConflict = trpc.onboarding.resolveConflict.useMutation({
     onSuccess: () => void utils.onboarding.profile.invalidate(),
   });
+  const answerFollowUp = trpc.onboarding.answerFollowUp.useMutation({
+    onSuccess: () => void utils.onboarding.profile.invalidate(),
+  });
+  const answerConflict = trpc.onboarding.answerConflict.useMutation({
+    onSuccess: () => void utils.onboarding.profile.invalidate(),
+  });
   const saveMutation = trpc.onboarding.save.useMutation({
     onSuccess: result => {
       setPublished(result.published);
@@ -152,6 +158,7 @@ export default function OnboardingPage() {
   const [voiceError, setVoiceError] = useState("");
   const [voiceCorrectionMode, setVoiceCorrectionMode] = useState(false);
   const [proposalMessage, setProposalMessage] = useState("");
+  const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
@@ -185,6 +192,9 @@ export default function OnboardingPage() {
     },
     onError: error => setProposalMessage(error.message),
   });
+  const followUpDraft = (key: string) => followUpDrafts[key] ?? "";
+  const setFollowUpDraft = (key: string, value: string) =>
+    setFollowUpDrafts(current => ({ ...current, [key]: value }));
 
   useEffect(() => {
     if (profileQuery.data) {
@@ -599,6 +609,20 @@ export default function OnboardingPage() {
                             {step.conflicts.map(conflict => (
                               <div key={conflict} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
                                 <span>Conflito: {conflict}</span>
+                                <div style={{ display: "flex", flexBasis: "100%", gap: 6, alignItems: "center" }}>
+                                  <input
+                                    className="input-control"
+                                    value={followUpDraft(`${step.stepKey}:conflict:${conflict}`)}
+                                    onChange={event => setFollowUpDraft(`${step.stepKey}:conflict:${conflict}`, event.target.value)}
+                                    placeholder="Qual versão aprovada deve valer?"
+                                  />
+                                  <button
+                                    className="btn-secondary"
+                                    style={{ padding: "3px 6px", fontSize: 9 }}
+                                    disabled={!followUpDraft(`${step.stepKey}:conflict:${conflict}`).trim() || answerConflict.isPending}
+                                    onClick={() => answerConflict.mutate({ stepKey: step.stepKey as "identity" | "offering" | "operations" | "guardrails" | "voice", conflictKey: conflict, value: followUpDraft(`${step.stepKey}:conflict:${conflict}`) })}
+                                  >Salvar esclarecimento</button>
+                                </div>
                                 <button
                                   className="btn-secondary"
                                   style={{ padding: "3px 6px", fontSize: 9 }}
@@ -616,6 +640,23 @@ export default function OnboardingPage() {
                           </div>
                         )}
                       </div>
+                      {step.missing.length > 0 && (
+                        <div style={{ display: "grid", gap: 8, marginTop: 10, padding: 10, border: "1px solid rgba(240,184,74,.18)", background: "rgba(240,184,74,.035)" }}>
+                          <strong style={{ color: "var(--amber)", fontSize: 10 }}>Perguntas de acompanhamento</strong>
+                          {step.missing.map(field => {
+                            const draftKey = `${step.stepKey}:missing:${field}`;
+                            return (
+                              <div key={field} style={{ display: "grid", gap: 5 }}>
+                                <label style={{ fontSize: 10, color: "#c8c8c8" }}>Qual informação aprovada devemos registrar sobre {fieldTitles[field] ?? field}? <span className="muted">(ou “decidir depois”)</span></label>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  <input className="input-control" value={followUpDraft(draftKey)} onChange={event => setFollowUpDraft(draftKey, event.target.value)} placeholder="Resposta aprovada pelo responsável" />
+                                  <button className="btn-secondary" disabled={!followUpDraft(draftKey).trim() || answerFollowUp.isPending} onClick={() => answerFollowUp.mutate({ stepKey: step.stepKey as "identity" | "offering" | "operations" | "guardrails" | "voice", field, value: followUpDraft(draftKey) })}>Salvar</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                       <div style={{ display: "grid", gap: 5, marginTop: 9 }}>
                         {Object.entries(step.answer).map(([key, value]) => (
                           <div key={key} style={{ fontSize: 10, lineHeight: 1.5 }}>

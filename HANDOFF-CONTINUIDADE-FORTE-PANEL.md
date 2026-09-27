@@ -1770,3 +1770,17 @@ A procedure `onboarding.extractProposal` exige consentimento `llm`, recebe `step
 Foram adicionados testes unitários de campos permitidos, missing derivado e falha de confiança/shape. No sandbox: 109 testes passaram, 39 foram skipped por PostgreSQL/dependências externas; `pnpm check`, `pnpm build`, journal JSON e `git diff --check` passaram. A validação real da procedure LLM e os testes PostgreSQL devem rodar em CI/staging com consentimento e credenciais configurados; não enviar conteúdo de cliente para o LLM sem o consentimento `llm` vigente.
 
 Próximo passo recomendado: adicionar perguntas de acompanhamento explícitas para cada campo `missing`/`conflicts`, medir correção/custo/abandono e só depois criar publicação versionada do rascunho estruturado.
+
+
+---
+## Atualização do handoff — 2026-09-27 — perguntas de acompanhamento
+
+O ciclo de revisão agora possui follow-up explícito. `server/onboarding-followups.ts` mantém o catálogo de campos por bloco e constrói perguntas determinísticas, sempre orientando a não inventar e permitindo `decidir depois`.
+
+A procedure `onboarding.answerFollowUp` recebe `stepKey`, `field` e `value`, valida que o campo pertence ao bloco, atualiza a resposta atual como `source=human_form`, `confidence=100`, status `draft`, remove o campo de `missing` quando há valor e grava uma revisão em `onboardingStepAnswerRevisions`. Campo vazio falha fechado; `decidir depois` mantém o campo ausente.
+
+A procedure `onboarding.answerConflict` recebe `stepKey`, `conflictKey` e o esclarecimento. O backend grava snapshot e nota em `onboardingConflictResolutions` com `resolution=follow_up`, cria revisão e remove o conflito somente quando a resposta não é `decidir depois`. Nesse caso, a resolução é `deferred` e o conflito continua aberto, preservando o bloqueio de confirmação/publicação.
+
+A `OnboardingPage` renderiza textarea/input e ações nos cards de revisão humana; a aplicação invalida o perfil e não publica automaticamente. Foram adicionados testes unitários do catálogo/perguntas. No sandbox: 112 testes aprovados, 39 skipped por PostgreSQL/dependências externas; `pnpm check`, `pnpm build`, journal JSON e `git diff --check` passaram.
+
+Próximo passo recomendado: medir custo, duração, taxa de correção e abandono; depois criar publicação versionada do rascunho somente após todos os blocos obrigatórios estarem confirmados.
