@@ -11,12 +11,13 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 5. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão completa do que funciona, como funciona, plano do console admin e pendências antes do beta.
 6. [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) — auditoria de divergências e roadmap canônico por fases.
 7. [`PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`](./PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md) — plano priorizado P0–P3 para console, operação, QR, UX, produto, planos e LGPD.
-8. [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md) — auditoria de melhoria contínua, funil de cadastro com respostas em áudio e modelo de orçamento, chave Pix e registro manual de recebimentos.
-9. [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md) — perguntas progressivas, entrada por áudio/texto, geração de prompt com confirmação e suporte administrativo auditado.
-10. [`GUIA-CONVITES-E-PERMISSOES.md`](./GUIA-CONVITES-E-PERMISSOES.md) — convite de funcionários, RBAC/ABAC, matriz de visibilidade, escopos de Inbox e critérios de aceite.
-11. [`GUIA-UX-CLAREZA-E-FACILIDADE.md`](./GUIA-UX-CLAREZA-E-FACILIDADE.md) — checklist de primeiro acesso, linguagem para leigos, estados vazios, ajuda contextual, previews e métricas de abandono.
-12. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência de teste e ambiente efetivamente validado.
-13. [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) — reset destrutivo opcional, inicialização Docker, migrations e testes PostgreSQL locais.
+8. [`AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md`](./AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md) — feedback da validação local, auditoria dos dois painéis, refatoração Baileys, IA global, Funil, profissional executor e recebimentos.
+9. [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md) — auditoria de melhoria contínua, funil de cadastro com respostas em áudio e modelo de orçamento, chave Pix e registro manual de recebimentos.
+10. [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md) — perguntas progressivas, entrada por áudio/texto, geração de prompt com confirmação e suporte administrativo auditado.
+11. [`GUIA-CONVITES-E-PERMISSOES.md`](./GUIA-CONVITES-E-PERMISSOES.md) — convite de funcionários, RBAC/ABAC, matriz de visibilidade, escopos de Inbox e critérios de aceite.
+12. [`GUIA-UX-CLAREZA-E-FACILIDADE.md`](./GUIA-UX-CLAREZA-E-FACILIDADE.md) — checklist de primeiro acesso, linguagem para leigos, estados vazios, ajuda contextual, previews e métricas de abandono.
+13. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência de teste e ambiente efetivamente validado.
+14. [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) — reset destrutivo opcional, inicialização Docker, migrations e testes PostgreSQL locais.
 
 ## Produto e tenancy
 
