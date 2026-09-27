@@ -1338,3 +1338,12 @@ A próxima fatia de código, após esta decisão, continua sendo integrar `await
 O contrato `awaitingResponse` foi integrado ao backend: `listInboxContacts` busca as atividades por workspace e deriva o estado pela última mensagem; `getDashboardSnapshot` deixou de usar `unreadCount` como proxy e passa a contar apenas conversas cuja última outbound está `sent`. A API agora expõe `awaitingResponse` e `needsOperatorResponse`, e o rótulo do KPI foi corrigido para “Última resposta enviada”. `unread` continua sendo somente a contagem de inbound não lida; leitura transacional por operador ainda falta.
 
 Também foi formalizado que o cadastro público inicial será e-mail + senha para owner/workspace em `onboarding`. O `platform_admin` permanece separado, com bootstrap por secrets de deployment. Confirmação de e-mail (`EMAIL_VERIFICATION_ENABLED=false`) e Google OAuth ficam planejados e desligados até configurar os provedores. O cadastro público não foi aberto neste slice.
+
+
+### Convites de funcionários e permissões — 2026-09-27
+
+A abordagem aprovada é convite individual por workspace: owner/admin envia link one-time com token armazenado somente como hash; o funcionário aceita pelo e-mail convidado, cria a própria senha e recebe membership com papel/perfil pré-definidos. Convites podem expirar, ser reenviados (invalidando o anterior), revogados e auditados.
+
+A autorização será RBAC + escopo/assignment, aplicada no servidor: owner/admin/manager/agent/professional não são apenas rótulos de UI. Atendente vê o histórico e os dados necessários para responder clientes, além de serviços/preços publicados e agenda operacional, mas não recebe faturamento consolidado, margem, secrets, chave Pix em claro, prompt administrativo, exportação ampla ou gestão de equipe por padrão. Inbox completa só será liberada por decisão explícita do workspace; o padrão recomendado é fila/assignment. A matriz detalhada está em `GUIA-CONVITES-E-PERMISSOES.md`.
+
+Próximos itens: implementar `workspaceInvites`/aceite/revogação, capacidades server-side, escopos de Inbox e testes negativos por papel. Confirmação de e-mail e Google OAuth continuam planejados e desligados até configuração de provedores.

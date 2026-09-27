@@ -56,7 +56,11 @@
 - [ ] Implementar signup público inicial por e-mail + senha, com hash, rate limit, aceite versionado e criação transacional de owner/workspace em `onboarding`.
 - [ ] Preparar `EMAIL_VERIFICATION_ENABLED=false`, tokens e provider de confirmação sem ativar envio; ativar somente após configurar secret, domínio/remetente e testes de entrega.
 - [ ] Planejar Google OAuth e outros provedores atrás de feature flag desligada; não bloquear o signup inicial por essa integração.
-- Próxima fatia de código: integrar `awaitingResponse` às consultas da Inbox/Dashboard e depois criar leitura transacional por operador; staging real continua gate antes de abrir o cadastro.
+- [ ] Implementar convite de funcionário por workspace com token hash, uso único, expiração, revogação, aceite pelo e-mail convidado e criação da própria senha.
+- [ ] Aplicar matriz server-side de capacidades e escopos: owner/admin/manager/agent/professional; esconder faturamento, secrets, prompt administrativo e exportações de quem não precisa.
+- [ ] Definir Inbox compartilhada versus assignment por equipe; atendente vê o histórico necessário para atender, mas não ganha faturamento, secrets ou conversas fora do escopo automaticamente.
+- [ ] Adicionar testes negativos de papel/escopo e auditoria para convite, aceite, reenvio, revogação, mudança de papel e desativação.
+- Próxima fatia de código: criar leitura transacional por operador; depois implementar signup público e convites de funcionários, mantendo staging como gate antes de abrir o cadastro.
 - [x] Estrutura inicial do console interno `platform_admin` criada para listar workspaces, consultar saúde/uso, prestar suporte escopado e registrar auditoria; falta validar em PostgreSQL/staging.
 - [x] API keys, configuração de IA, prompt e reset removidos do painel operacional comum; backend e rotas exigem `platformAdmins`, e o reset está no detalhe do workspace com sessão operadora e auditoria.
 - [x] **P0 antes dos convites beta:** implementar configuração versionada do agente por workspace: rascunho, simulação sem envio externo, publicação, histórico e rollback.
@@ -216,7 +220,7 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 ### P0 de produto — antes de convites
 
 - [ ] Mover onboarding e configuração da IA de `requirePlatformAdministrator` para owner/gerente, deixando o console da plataforma apenas como suporte. Hoje o dono não configura a própria empresa.
-- [ ] Criar cadastro público, verificação de e-mail, convite e recuperação de senha (`workspaceInvites`, `passwordResetTokens`).
+- [ ] Criar signup público inicial por e-mail/senha, convite de funcionário e recuperação de senha (`workspaceInvites`, `passwordResetTokens`); deixar confirmação de e-mail e Google OAuth planejados, feature-flagged e desligados até configurar provedores.
 - [x] Aplicar limite de tentativas e atraso progressivo no login local. (primeiro slice B1: limiter em memória por IP e conta, com testes; auditoria persistida de falhas continua pendente)
 - [x] Adicionar checagem de origem/CSRF nas mutações tRPC (o cookie usa `sameSite: "none"` em HTTPS). (primeiro slice B1: same-origin em mutações HTTP)
 - [ ] Tornar a deduplicação de mensagens por tenant: `messages.externalId` é único globalmente hoje.
