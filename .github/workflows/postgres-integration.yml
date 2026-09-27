@@ -51,21 +51,10 @@ jobs:
       - name: Apply versioned migrations
         run: pnpm exec drizzle-kit migrate
 
-      - name: Run PostgreSQL isolation suites
+      - name: Run complete test suite against PostgreSQL
         run: |
           set -o pipefail
-          pnpm exec vitest run \
-            server/agenda-workspace-isolation.test.ts \
-            server/notifications.test.ts \
-            server/platform-support-session.test.ts \
-            server/professional-isolation.test.ts \
-            server/workspace-domain-isolation.test.ts \
-            server/workspace-key-isolation.test.ts \
-            server/workspace-quota-alerts.test.ts \
-            server/workspace-quota-policy.test.ts \
-            server/workspace-usage-retention.test.ts \
-            server/workspace-usage.test.ts \
-            --reporter=verbose 2>&1 | tee /tmp/postgres-vitest.log
+          pnpm test -- --reporter=verbose 2>&1 | tee /tmp/postgres-vitest.log
           if grep -qE '\[skipped\]|[0-9]+ skipped' /tmp/postgres-vitest.log; then
             echo 'A PostgreSQL integration suite was skipped unexpectedly.' >&2
             exit 1
