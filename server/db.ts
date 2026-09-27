@@ -3723,7 +3723,7 @@ export async function saveNativeAgentConfig(
 }
 
 export async function savePlatformGlobalNativeAgentConfig(
-  input: Pick<NativeAgentConfig, "enabled" | "model" | "systemPrompt" | "maxSteps">
+  input: Pick<NativeAgentConfig, "enabled" | "model" | "systemPrompt" | "maxSteps" | "llm">
 ) {
   const current = await getNativeAgentRuntimeConfig(0);
   const next: NativeAgentConfig = {
@@ -3732,7 +3732,37 @@ export async function savePlatformGlobalNativeAgentConfig(
     model: input.model.trim() || current.model,
     systemPrompt: input.systemPrompt,
     maxSteps: Math.max(1, Math.min(8, Number(input.maxSteps))),
+    llm: mergeAgentProviderSettings(input.llm),
   };
+  const rawSetting = await getWorkspaceSetting(
+    PLATFORM_GLOBAL_AGENT_WORKSPACE_ID,
+    "platform_native_agent_config"
+  );
+  let rawConfig: Partial<NativeAgentConfig> = {};
+  if (rawSetting?.value) {
+    try {
+      rawConfig = JSON.parse(rawSetting.value) as Partial<NativeAgentConfig>;
+    } catch {
+      rawConfig = {};
+    }
+  }
+  const stored = mergeAgentProviderSettings(rawConfig.llm);
+  for (const providerId of Object.keys(next.llm.providers) as Array<keyof typeof next.llm.providers>) {
+    const incoming = next.llm.providers[providerId];
+    const previous = stored.providers[providerId];
+    incoming.apiKey =
+      incoming.apiKey && !incoming.apiKey.startsWith("••••")
+        ? encryptProviderSecret(incoming.apiKey)
+        : previous.apiKey;
+  }
+  for (const capability of Object.keys(next.llm.routing) as Array<keyof typeof next.llm.routing>) {
+    const incoming = next.llm.routing[capability];
+    const previous = stored.routing[capability];
+    incoming.apiKey =
+      incoming.apiKey && !incoming.apiKey.startsWith("••••")
+        ? encryptProviderSecret(incoming.apiKey)
+        : previous.apiKey;
+  }
   await upsertWorkspaceSetting(
     PLATFORM_GLOBAL_AGENT_WORKSPACE_ID,
     "platform_native_agent_config",
