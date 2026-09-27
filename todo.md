@@ -87,6 +87,7 @@
 - [x] Workflow manual E2E criado para o fluxo operacional de staging, com URL e credenciais injetadas por variável/secret do GitHub; não executado automaticamente porque cria dados.
 - [x] E2E protegido por confirmação explícita de staging descartável, concorrência única e timeout de 10 minutos.
 - [x] Lock atômico por diretório impede duas conexões Baileys concorrentes e recupera lock obsoleto com teste automatizado.
+- [x] Diretório de sessão e arquivos persistidos são normalizados para permissões privadas `0700/0600`, com teste automatizado.
 - [ ] Store de sessão durável/criptografado, storage privado de mídia e lifecycle de instância por tenant.
 - Preservar adapter para troca reversível de provider e manter opção oficial da Meta documentada.
 

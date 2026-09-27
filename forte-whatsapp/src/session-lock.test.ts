@@ -53,4 +53,14 @@ describe("Baileys session lock", () => {
     );
     await lock.release();
   });
+
+  it("keeps the session directory and lock private", async () => {
+    const directory = await createSessionDirectory();
+    const lock = await acquireSessionLock(directory);
+    const directoryMode = (await fs.stat(directory)).mode & 0o777;
+    const lockMode = (await fs.stat(lock.lockPath)).mode & 0o777;
+    expect(directoryMode).toBe(0o700);
+    expect(lockMode).toBe(0o600);
+    await lock.release();
+  });
 });

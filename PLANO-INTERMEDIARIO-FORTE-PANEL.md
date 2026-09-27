@@ -401,3 +401,7 @@ O workflow E2E foi endurecido: agora exige confirmação explícita de staging d
 ## Atualização de execução — 2026-09-26 23:40
 
 O gateway recebeu `forte-whatsapp/src/session-lock.ts`, com lock atômico `.session.lock` por instância, detecção de processo ativo, recuperação segura de lock obsoleto e liberação idempotente no ciclo `start/stop`. A suíte `session-lock.test.ts` cobre exclusividade, release e recuperação; `npm test`, `npm run check` e `npm run build` passaram com 10 testes. Isso evita duas conexões concorrentes no mesmo diretório, mas não substitui um store de autenticação durável/criptografado nem um teste de restore.
+
+## Atualização de execução — 2026-09-26 23:42
+
+As sessões Baileys agora normalizam permissões privadas: diretórios `0700` e arquivos `0600`, incluindo o lock, com tratamento recursivo de subdiretórios. A suíte do gateway passou com 11 testes, typecheck e build. Isso reduz exposição acidental no volume, mas não equivale a criptografia em repouso; a troca do `useMultiFileAuthState` por store durável/criptografado e o restore continuam pendentes.

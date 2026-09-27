@@ -28,7 +28,7 @@ O payload genérico permite texto, imagem, áudio, vídeo, documento, sticker, l
 ## Pendências de produção
 
 - substituir `useMultiFileAuthState` por store durável e criptografado;
-- o gateway já usa lock atômico por diretório de instância para impedir duas conexões concorrentes; ainda falta lifecycle de múltiplas instâncias por workspace;
+- o gateway já usa lock atômico por diretório de instância e aplica permissões `0700` ao diretório e `0600` aos arquivos; ainda falta lifecycle de múltiplas instâncias por workspace;
 - mover mídia de data URL para storage privado com URL assinada;
 - executar E2E em Docker/staging com número de teste;
 - adicionar métricas de conexão, download, envio, retry e desconexão.

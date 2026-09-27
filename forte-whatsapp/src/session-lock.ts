@@ -11,6 +11,20 @@ type LockRecord = {
   acquiredAt: string;
 };
 
+export async function ensurePrivateSessionDirectory(sessionPath: string) {
+  await fs.mkdir(sessionPath, { recursive: true, mode: 0o700 });
+  await fs.chmod(sessionPath, 0o700);
+  const entries = await fs.readdir(sessionPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = path.join(sessionPath, entry.name);
+    if (entry.isDirectory()) {
+      await ensurePrivateSessionDirectory(entryPath);
+    } else if (!entry.isSymbolicLink()) {
+      await fs.chmod(entryPath, 0o600);
+    }
+  }
+}
+
 function isProcessAlive(pid: number) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -22,7 +36,7 @@ function isProcessAlive(pid: number) {
 }
 
 export async function acquireSessionLock(sessionPath: string): Promise<SessionLock> {
-  await fs.mkdir(sessionPath, { recursive: true });
+  await ensurePrivateSessionDirectory(sessionPath);
   const lockPath = path.join(sessionPath, ".session.lock");
   const record: LockRecord = {
     pid: process.pid,
