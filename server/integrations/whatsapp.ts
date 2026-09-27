@@ -395,12 +395,21 @@ export function createBaileysAdapter(): BaileysAdapter {
       try {
         const response = await fetch(`${baseUrl.replace(/\/$/, "")}/ready`, {
           headers: { Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(
+            Math.max(1_000, Number(process.env.BAILEYS_REQUEST_TIMEOUT_MS ?? 8_000))
+          ),
         });
+        const payload = (await (typeof response.json === "function"
+          ? response.json().catch(() => ({}))
+          : {})) as { instance?: { status?: string } };
+        const connected = payload.instance?.status === "connected";
         return nowHealth(
           "baileys",
-          response.ok,
+          response.ok && connected,
           response.ok
-            ? "Gateway Baileys disponível"
+            ? connected
+              ? "Gateway Baileys conectado"
+              : `Gateway Baileys online, sessão ${payload.instance?.status ?? "indisponível"}`
             : `Gateway Baileys respondeu ${response.status}`,
           Date.now() - started
         );
@@ -426,6 +435,9 @@ export function createBaileysAdapter(): BaileysAdapter {
             Authorization: `Bearer ${apiKey}`,
             "Idempotency-Key": command.idempotencyKey,
           },
+          signal: AbortSignal.timeout(
+            Math.max(1_000, Number(process.env.BAILEYS_REQUEST_TIMEOUT_MS ?? 8_000))
+          ),
           body: JSON.stringify({
             phone:
               typeof command.metadata?.jid === "string"

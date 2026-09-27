@@ -13,9 +13,11 @@ type MemberForm = {
   role: "admin" | "manager" | "agent";
   operationalRole: "human_attendant" | "ai_attendant" | "professional";
   professionalId: string;
+  jobTitle: string;
+  canRegisterPayments: boolean;
 };
 
-const emptyForm: MemberForm = { name: "", email: "", role: "agent", operationalRole: "human_attendant", professionalId: "" };
+const emptyForm: MemberForm = { name: "", email: "", role: "agent", operationalRole: "human_attendant", professionalId: "", jobTitle: "", canRegisterPayments: false };
 
 /**
  * Team screen: creates real local accounts (email + password), links an access
@@ -26,7 +28,7 @@ export default function TeamPage() {
   const [form, setForm] = useState<MemberForm>(emptyForm);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editDraft, setEditDraft] = useState<{ role: "owner" | "admin" | "manager" | "agent"; operationalRole: "human_attendant" | "ai_attendant" | "professional"; professionalId: string } | null>(null);
+  const [editDraft, setEditDraft] = useState<{ role: "owner" | "admin" | "manager" | "agent"; operationalRole: "human_attendant" | "ai_attendant" | "professional"; professionalId: string; jobTitle: string; canRegisterPayments: boolean } | null>(null);
   const workspaceQuery = trpc.workspace.current.useQuery();
   const accessQuery = trpc.auth.access.useQuery();
   const membersQuery = trpc.workspace.members.useQuery();
@@ -45,7 +47,7 @@ export default function TeamPage() {
       setInviteLink(link);
       try { await navigator.clipboard.writeText(link); } catch { /* manual copy remains available */ }
       await utils.workspace.invites.list.invalidate();
-      toast.success("Convite criado. Copie o link para enviar ao funcionário.");
+      toast.success(result.delivery === "sent" ? "Convite enviado por e-mail." : "Convite criado. Copie o link para enviar ao funcionário.");
     },
     onError: (error) => toast.error(error.message),
   });
@@ -67,7 +69,7 @@ export default function TeamPage() {
   });
 
   const requiresProfessional = form.operationalRole === "professional";
-  const canSubmit = form.name.trim().length >= 2 && form.email.includes("@") && (!requiresProfessional || Boolean(form.professionalId));
+  const canSubmit = form.name.trim().length >= 2 && form.email.includes("@") && (!requiresProfessional || (Boolean(form.professionalId) && form.jobTitle.trim().length >= 2));
 
   return <PanelLayout
     eyebrow="Sistema / Acessos"
@@ -106,11 +108,13 @@ export default function TeamPage() {
             {professionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}
           </select>
         </div>}
+        {requiresProfessional && <div className="form-field"><label>Função</label><input className="input-control" value={form.jobTitle} onChange={(event) => setForm({ ...form, jobTitle: event.target.value })} placeholder="Ex.: Eletricista responsável" /></div>}
+        <label className="auth-consent" style={{ alignSelf: "end" }}><input type="checkbox" checked={form.canRegisterPayments} onChange={(event) => setForm({ ...form, canRegisterPayments: event.target.checked })} /> <span>Pode registrar recebimentos no financeiro</span></label>
       </div>
-      <small className="auth-footnote" style={{ display: "block", marginTop: 12 }}>O funcionário criará a própria senha ao aceitar o link. O envio automático de e-mail ainda está desativado.</small>
+      <small className="auth-footnote" style={{ display: "block", marginTop: 12 }}>O funcionário criará a própria senha ao aceitar o link. Se o email transacional estiver configurado, o convite será enviado automaticamente; caso contrário, copie o link.</small>
       {requiresProfessional && professionals.length === 0 && <div className="demo-banner" style={{ marginTop: 14, marginBottom: 0 }}><ShieldCheck size={14} /> Cadastre um profissional antes de criar um acesso de executor.</div>}
       <div className="form-actions">
-        <button className="btn-primary" disabled={createInvite.isPending || !canSubmit} onClick={() => createInvite.mutate({ email: form.email, inviteeName: form.name, role: form.role, operationalRole: form.operationalRole, professionalId: form.professionalId ? Number(form.professionalId) : undefined })}><UserPlus size={14} /> {createInvite.isPending ? "Criando convite..." : "Criar convite"}</button>
+        <button className="btn-primary" disabled={createInvite.isPending || !canSubmit} onClick={() => createInvite.mutate({ email: form.email, inviteeName: form.name, role: form.role, operationalRole: form.operationalRole, professionalId: form.professionalId ? Number(form.professionalId) : undefined, jobTitle: form.jobTitle.trim() || undefined, canRegisterPayments: form.canRegisterPayments })}><UserPlus size={14} /> {createInvite.isPending ? "Criando convite..." : "Criar convite"}</button>
         <button className="btn-secondary" onClick={() => { setShowInvite(false); setForm(emptyForm); }}>Cancelar</button>
       </div>
     </section>}
@@ -144,7 +148,8 @@ export default function TeamPage() {
           <div className="row-copy" style={{ minWidth: 220 }}>
             <strong>{member.name}</strong>
             <small>{member.email}</small>
-            <small>{operationalLabels[member.operationalRole] ?? member.operationalRole}{member.professionalName ? ` · ${member.professionalName}` : ""}</small>
+            <small>{operationalLabels[member.operationalRole] ?? member.operationalRole}{member.professionalName ? ` · ${member.professionalName}` : ""}{member.jobTitle ? ` · ${member.jobTitle}` : ""}</small>
+            {member.canRegisterPayments && <small className="green">Pode registrar recebimentos</small>}
           </div>
           <span className="team-role">{roleLabels[member.role] ?? member.role}</span>
           <StatusBadge tone={member.active ? "green" : "neutral"}>{member.active ? "Ativo" : "Desativado"}</StatusBadge>
@@ -165,12 +170,16 @@ export default function TeamPage() {
                 <option value="">Selecione o profissional</option>
                 {professionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}
               </select>}
+              {editDraft.operationalRole === "professional" && <input className="input-control" style={{ marginTop: 8 }} value={editDraft.jobTitle} onChange={(event) => setEditDraft({ ...editDraft, jobTitle: event.target.value })} placeholder="Função do profissional" />}
+              <label className="auth-consent" style={{ marginTop: 8 }}><input type="checkbox" checked={editDraft.canRegisterPayments} onChange={(event) => setEditDraft({ ...editDraft, canRegisterPayments: event.target.checked })} /> <span>Pode registrar recebimentos</span></label>
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button className="btn-primary" disabled={updateMember.isPending} onClick={() => updateMember.mutate({
                   memberId: member.id,
                   role: editDraft.role,
                   operationalRole: editDraft.operationalRole,
                   professionalId: editDraft.operationalRole === "professional" && editDraft.professionalId ? Number(editDraft.professionalId) : null,
+                  jobTitle: editDraft.operationalRole === "professional" ? editDraft.jobTitle.trim() || null : null,
+                  canRegisterPayments: editDraft.canRegisterPayments,
                 })}>Salvar</button>
                 <button className="btn-secondary" onClick={() => { setEditingId(null); setEditDraft(null); }}>Cancelar</button>
                 <button className="btn-ghost" disabled={updateMember.isPending} onClick={() => updateMember.mutate({ memberId: member.id, active: !member.active })}>{member.active ? "Desativar acesso" : "Reativar acesso"}</button>
@@ -178,7 +187,7 @@ export default function TeamPage() {
             </div>
             : canManageTeam && <button className="icon-button" aria-label={`Editar ${member.name}`} onClick={() => {
               setEditingId(member.id);
-              setEditDraft({ role: member.role, operationalRole: member.operationalRole, professionalId: member.professionalId ? String(member.professionalId) : "" });
+              setEditDraft({ role: member.role, operationalRole: member.operationalRole, professionalId: member.professionalId ? String(member.professionalId) : "", jobTitle: member.jobTitle ?? "", canRegisterPayments: member.canRegisterPayments });
             }}><Settings2 size={14} /></button>}
         </div>)}</div>}
     </section>

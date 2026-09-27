@@ -4,6 +4,7 @@ import {
   addPlatformWorkspaceNote,
   canPlatformAdminMutate,
   getActiveSupportSession,
+  getPlatformGlobalAgentSnapshot,
   getPlatformAdminAccess,
   getPlatformAgentSnapshot,
   getPlatformWorkspaceDetail,
@@ -16,10 +17,12 @@ import {
   resetPlatformWorkspace,
   rollbackPlatformAgentVersion,
   savePlatformAgentDraft,
+  savePlatformGlobalAgentPolicy,
   setPlatformWorkspaceAi,
   setPlatformWorkspaceStatus,
   simulatePlatformAgent,
   startSupportSession,
+  validateAgentPromptInput,
   type PlatformPermission,
   type SupportSessionMode,
 } from "./platform-admin";
@@ -89,6 +92,28 @@ export const platformRouter = router({
   })),
 
   overview: requirePlatform.query(() => listPlatformWorkspaces()),
+
+  globalAiConfig: requirePlatform.query(() => getPlatformGlobalAgentSnapshot()),
+
+  saveGlobalAiConfig: requirePlatformOperator
+    .input(
+      z.object({
+        reason: reasonInput,
+        enabled: z.boolean(),
+        model: z.string().trim().min(1).max(200),
+        systemPrompt: z.string().max(30_000),
+        maxSteps: z.number().int().min(1).max(8),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const valid = validateAgentPromptInput(input);
+      if (!valid.valid)
+        throw new TRPCError({ code: "BAD_REQUEST", message: valid.reason });
+      return savePlatformGlobalAgentPolicy({
+        ...input,
+        platformAdminId: ctx.platformAdmin.id,
+      });
+    }),
 
   workspaces: requirePlatform
     .input(

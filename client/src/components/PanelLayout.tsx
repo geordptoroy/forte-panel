@@ -239,6 +239,20 @@ const onboardingNav: NavGroup[] = [
   },
 ];
 
+const financialNav: NavGroup[] = [
+  {
+    label: "Financeiro",
+    items: [
+      {
+        href: "/billing",
+        label: "Recebimentos",
+        description: "Registrar valores recebidos",
+        icon: CircleDollarSign,
+      },
+    ],
+  },
+];
+
 type PanelLayoutProps = {
   children: ReactNode;
   eyebrow?: string;
@@ -275,6 +289,7 @@ type AccessProfile =
       restrictedToOwnAgenda?: boolean;
       memberActive?: boolean;
       professionalName?: string | null;
+      canRegisterPayments?: boolean;
     }
   | null
   | undefined;
@@ -283,7 +298,8 @@ function navForAccess(access: AccessProfile): NavGroup[] {
   if (!access) return managementNav;
   if (access.canSeeFullAgenda)
     return access.canManageTeam ? [...managementNav, ...onboardingNav] : managementNav;
-  if (access.operationalRole === "professional") return professionalNav;
+  if (access.operationalRole === "professional")
+    return access.canRegisterPayments ? [...professionalNav, ...financialNav] : professionalNav;
   return attendantNav;
 }
 

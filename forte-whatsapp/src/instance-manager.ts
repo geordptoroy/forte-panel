@@ -15,6 +15,7 @@ import pino from "pino";
 import { config } from "./config.js";
 import { useEncryptedAuthState } from "./encrypted-auth-state.js";
 import { acquireSessionLock, type SessionLock } from "./session-lock.js";
+import { WebhookOutbox } from "./webhook-outbox.js";
 
 export type InstanceStatus =
   | "idle"
@@ -30,6 +31,8 @@ export type InstanceSnapshot = {
   phone?: string;
   qr?: string;
   lastError?: string;
+  webhookOutboxPending?: number;
+  webhookLastError?: string;
   updatedAt: string;
 };
 
@@ -45,9 +48,23 @@ export class InstanceManager {
   private starting = false;
   private sessionLock?: SessionLock;
   private suppressReconnectUntil = 0;
+  private readonly webhookOutbox = new WebhookOutbox({
+    directory: config.webhookOutboxDir,
+    url: config.webhookUrl,
+    secret: config.webhookSecret,
+    maxAttempts: config.webhookMaxAttempts,
+    initialBackoffMs: config.webhookInitialBackoffMs,
+    maxBackoffMs: config.webhookMaxBackoffMs,
+    logger,
+  });
 
   getStatus(): InstanceSnapshot {
-    return { ...this.snapshot };
+    const outbox = this.webhookOutbox.getStatus();
+    return {
+      ...this.snapshot,
+      webhookOutboxPending: outbox.pending,
+      webhookLastError: outbox.lastError,
+    };
   }
 
   async start(): Promise<void> {
@@ -55,6 +72,7 @@ export class InstanceManager {
     this.starting = true;
     this.set({ status: "connecting", qr: undefined, lastError: undefined });
     try {
+      await this.webhookOutbox.start();
       const sessionPath = path.join(config.sessionDir, config.instanceId);
       await fs.mkdir(sessionPath, { recursive: true });
       this.sessionLock ??= await acquireSessionLock(sessionPath);
@@ -93,6 +111,7 @@ export class InstanceManager {
   async stop(logout = false): Promise<void> {
     this.suppressReconnectUntil = Date.now() + 5_000;
     if (!this.socket) {
+      await this.webhookOutbox.stop();
       await this.releaseSessionLock();
       return;
     }
@@ -100,6 +119,7 @@ export class InstanceManager {
     else this.socket.end(undefined);
     this.socket = undefined;
     this.set({ status: logout ? "logged_out" : "disconnected", qr: undefined });
+    await this.webhookOutbox.stop();
     await this.releaseSessionLock();
   }
 
@@ -295,7 +315,7 @@ export class InstanceManager {
       const timestamp = Number(
         message.messageTimestamp ?? Math.floor(Date.now() / 1000)
       );
-      await postWebhook({
+      await this.webhookOutbox.enqueue({
         eventId: message.key.id ?? crypto.randomUUID(),
         instanceId: config.instanceId,
         phone: message.key.remoteJid.replace(/@s\.whatsapp\.net$/, ""),
@@ -322,7 +342,7 @@ export class InstanceManager {
     if (!config.webhookUrl) return;
     for (const call of calls) {
       if (!call.from || call.chatId?.endsWith("@g.us")) continue;
-      await postWebhook({
+      await this.webhookOutbox.enqueue({
         eventId: `call-${call.id}-${call.status}`,
         instanceId: config.instanceId,
         phone: call.from.replace(/@s\.whatsapp\.net$/, ""),
@@ -340,24 +360,4 @@ export class InstanceManager {
       });
     }
   }
-}
-
-async function postWebhook(payload: Record<string, unknown>) {
-  const body = JSON.stringify(payload);
-  const signature = config.webhookSecret
-    ? `sha256=${crypto.createHmac("sha256", config.webhookSecret).update(body).digest("hex")}`
-    : "";
-  const response = await fetch(config.webhookUrl, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(config.webhookSecret
-        ? { "x-webhook-secret": config.webhookSecret }
-        : {}),
-      ...(signature ? { "x-webhook-signature": signature } : {}),
-    },
-    body,
-  });
-  if (!response.ok)
-    logger.warn({ status: response.status }, "inbound webhook rejected");
 }

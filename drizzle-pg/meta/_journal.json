@@ -260,6 +260,13 @@
       "when": 1790463000000,
       "tag": "0036_onboarding_published_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790464000000,
+      "tag": "0037_mvp_team_capabilities",
+      "breakpoints": true
     }
   ]
 }

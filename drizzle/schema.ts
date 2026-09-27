@@ -699,7 +699,9 @@ export const workspaceMembers = pgTable(
     workspaceId: integer("workspaceId").notNull(),
     userId: integer("userId").notNull(),
     role: workspaceMemberRoleEnum("role").default("agent").notNull(),
+    jobTitle: varchar("jobTitle", { length: 160 }),
     professionalId: integer("professionalId"),
+    canRegisterPayments: integer("canRegisterPayments").default(0).notNull(),
     active: integer("active").default(1).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -726,7 +728,9 @@ export const workspaceInvites = pgTable(
     operationalRole: operationalRoleEnum("operationalRole")
       .default("human_attendant")
       .notNull(),
+    jobTitle: varchar("jobTitle", { length: 160 }),
     professionalId: integer("professionalId"),
+    canRegisterPayments: integer("canRegisterPayments").default(0).notNull(),
     scope: varchar("scope", { length: 80 }).default("workspace").notNull(),
     tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
     status: workspaceInviteStatusEnum("status").default("pending").notNull(),

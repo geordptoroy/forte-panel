@@ -3,7 +3,7 @@ import { ShieldAlert } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import PanelLayout, { EmptyState, PageLink } from "@/components/PanelLayout";
 
-type Requirement = "manager" | "administrator" | "fullAgenda";
+type Requirement = "manager" | "administrator" | "fullAgenda" | "financial";
 
 /**
  * Client-side gate for administrative routes. It is a usability layer only:
@@ -16,6 +16,8 @@ export default function AccessGuard({ requirement, children, title }: { requirem
     ? Boolean(access?.canManageTeam)
     : requirement === "fullAgenda"
       ? Boolean(access?.canSeeFullAgenda)
+      : requirement === "financial"
+        ? Boolean(access?.canRegisterPayments)
       : Boolean(access?.canManageCatalog);
 
   if (isLoading) {
@@ -26,7 +28,7 @@ export default function AccessGuard({ requirement, children, title }: { requirem
 
   if (!allowed) {
     return <PanelLayout eyebrow="Acesso restrito" title={title} description="Seu perfil não possui permissão para abrir esta área.">
-      <EmptyState icon={ShieldAlert} title="Área restrita" description="Esta tela é exclusiva de proprietário, administrador ou gerente. Peça a um responsável para liberar o seu acesso." />
+      <EmptyState icon={ShieldAlert} title="Área restrita" description={requirement === "financial" ? "Somente responsáveis autorizados podem consultar e registrar recebimentos." : "Esta tela é exclusiva de proprietário, administrador ou gerente. Peça a um responsável para liberar o seu acesso."} />
       <div style={{ marginTop: 15, textAlign: "center" }}>
         <PageLink href={access?.restrictedToOwnAgenda ? "/my-work" : "/settings"} className="btn-primary">Voltar para a sua área</PageLink>
       </div>

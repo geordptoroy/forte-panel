@@ -967,3 +967,28 @@ Ainda é necessária consulta no ambiente local com `id`, `direction`, `status`,
 ## 18. Resumo executivo para colar em outro chat
 
 > O Forte Panel está no commit `7c0bcdb`, com console administrativo, onboarding por voz/texto, gateway Baileys nativo e Docker. A validação local encontrou que as mensagens do WhatsApp ainda não estão confiáveis de ponta a ponta: o inbound histórico funcionou e o worker processou outbound internamente, mas falta comprovar/implementar entrega física, retry, reconciliação, estados de entrega, assinatura/retry de webhook e preservação rigorosa de `workspaceId`, `instanceId` e `jid`. O próximo agente deve começar reproduzindo inbound/outbound com logs e PostgreSQL, sem apagar volumes. Também precisa refatorar a IA para configuração global no console da plataforma, com quatro capacidades — resposta no chat, transcrição, criação de prompts e visão — sem modelos predefinidos visíveis ou escolha de modelo por cliente. O prompt criado no cliente não aparece hoje porque onboarding e agente nativo usam trilhas de persistência diferentes; é preciso criar uma visão/versionamento unificado. A página `/kanban` deve ser apresentada como **Funil**, com `/funil` canônico e redirect compatível. O profissional executor precisa de função textual, agenda restrita e registro manual de recebimento com ledger/auditoria. Fazer auditoria E2E dos dois painéis, atualizar migrations/contratos/testes/documentação e só considerar beta pronto após PostgreSQL/staging real.
+
+---
+## 7. Continuação executada nesta sessão — estado pós-implementação
+
+A etapa deixou de ser apenas documental e implementou o fechamento pré-teste do MVP. O gateway Baileys agora possui `forte-whatsapp/src/webhook-outbox.ts`: cada evento inbound recebe arquivo durável com escrita atômica, assinatura HMAC `sha256`, headers de autenticação, retry com backoff, quarentena de envelope inválido e retomada depois de reinício. O `InstanceManager` encerra timer e lock com segurança; o adapter do Panel aplica timeout de rede e diferencia gateway vivo de sessão Baileys conectada. A persistência da sessão continua no volume Docker; a criptografia AES-GCM permanece disponível quando `WHATSAPP_SESSION_ENCRYPTION_KEY` for configurada.
+
+O problema histórico da corrida de migrations foi tratado no entrypoint e nos dois composes: `forte-panel-migrations` executa `./docker-entrypoint.sh migrate` uma vez, enquanto web e worker usam `RUN_MIGRATIONS=false` e dependem de `service_completed_successfully`. O pool resiliente e o worker continuam sendo a proteção para restart de PostgreSQL; o teste real dessa recuperação ainda precisa de Docker/PostgreSQL.
+
+A jornada de acesso foi fechada: signup cria owner e sessão, login mantém rate limit e cookie, recovery envia por provider configurável, convite pode ser enviado por e-mail ou copiado manualmente, e o aceite de convite cria sessão imediatamente. O adapter de e-mail suporta Resend, Postmark e SendGrid, com URLs públicas, expiração, resposta indistinguível para contas inexistentes e secrets apenas no servidor. A configuração foi documentada nos exemplos de ambiente e no compose.
+
+A equipe ganhou `jobTitle` e `canRegisterPayments` em membros e convites pela migration `0037_mvp_team_capabilities.sql`. A capability chega ao contexto de autorização, ao roster, à UI e às mutações financeiras sem liberar criação de orçamento para quem só pode registrar recebimentos. No console da plataforma, a política global de IA é persistida no namespace protegido da plataforma, herdada como fallback pelos workspaces e editável com prompt/modelo/limite, preview de herança, motivo obrigatório e auditoria; segredos aparecem mascarados.
+
+### Evidências e limites
+
+| Verificação | Resultado |
+|---|---|
+| TypeScript do painel | Aprovado |
+| TypeScript do gateway | Aprovado |
+| Testes do painel | 113 aprovados; 41 skipped por dependerem de PostgreSQL/ambiente externo |
+| Testes do gateway | 17 aprovados, incluindo outbox, assinatura, persistência e retry |
+| Diff whitespace | Aprovado |
+| Docker/compose | Não executado: Docker CLI ausente neste sandbox |
+| QR, pareamento e telefone real | Ainda não comprovados nesta sessão |
+
+O próximo agente deve preservar a sessão Baileys existente, provisionar secrets reais apenas no ambiente de staging descartável, executar o serviço one-shot de migrations, fazer login/signup/recovery/convite, parear um número de teste e comprovar a cadeia `WhatsApp → Baileys → outbox → webhook → PostgreSQL → Inbox → worker → gateway → telefone`. O gate não deve ser considerado verde apenas por testes locais.

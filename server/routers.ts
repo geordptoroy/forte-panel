@@ -68,6 +68,7 @@ import {
   markAllInAppNotificationsRead,
   markConversationRead,
   markInAppNotificationRead,
+  markWorkspaceInviteSent,
   moveContactStage,
   PUBLIC_PRIVACY_VERSION,
   PUBLIC_TERMS_VERSION,
@@ -96,6 +97,7 @@ import {
   verifyLocalPassword,
   updateQuotePayment,
 } from "./db";
+import { sendInviteEmail, sendPasswordResetEmail } from "./_core/email";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import {
   buildOnboardingAudioStorageKey,
@@ -271,6 +273,10 @@ const requireInboxMessaging = withAccess(
   access => access.canSendMessages,
   "Seu perfil não pode enviar mensagens neste workspace"
 );
+const requireFinancial = withAccess(
+  access => access.canRegisterPayments,
+  "Seu perfil não possui permissão para consultar ou registrar recebimentos"
+);
 
 export const appRouter = router({
   system: systemRouter,
@@ -293,6 +299,7 @@ export const appRouter = router({
         canUseInbox: access.canUseInbox,
         canSendMessages: access.canSendMessages,
         canManageInbox: access.canManageInbox,
+        canRegisterPayments: access.canRegisterPayments,
         canSeeFullAgenda: access.canSeeFullAgenda,
         restrictedToOwnAgenda: access.restrictedToOwnAgenda,
         platform: Boolean(platformAdmin),
@@ -508,9 +515,21 @@ export const appRouter = router({
         const email = input.email.trim().toLowerCase();
         assertPasswordResetAllowed(ctx.req, email);
         recordPasswordResetAttempt(ctx.req, email);
-        // The future mail provider consumes the internal token; the public
-        // response intentionally never reveals whether the email exists.
-        await issuePasswordResetToken(email);
+        // The configured transactional provider consumes the internal token;
+        // the public response intentionally never reveals whether the email exists.
+        const issued = await issuePasswordResetToken(email);
+        if (issued) {
+          try {
+            await sendPasswordResetEmail({
+              to: issued.email,
+              name: issued.name,
+              token: issued.token,
+              expiresAt: issued.expiresAt,
+            });
+          } catch (error) {
+            console.error("[auth] password reset email delivery failed", error);
+          }
+        }
         return { success: true } as const;
       }),
     resetPassword: publicProcedure
@@ -545,16 +564,28 @@ export const appRouter = router({
           password: z.string().min(8).max(128),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
           const result = await acceptWorkspaceInvite(input.token, {
             name: input.name,
             password: input.password,
           });
+          const sessionToken = await sdk.signSession({
+            openId: result.user.openId,
+            appId: "local",
+            name: result.user.name ?? result.user.email ?? input.name,
+            sessionVersion: result.user.sessionVersion,
+          });
+          ctx.res.cookie(COOKIE_NAME, sessionToken, {
+            ...getSessionCookieOptions(ctx.req),
+            maxAge: SESSION_TTL_MS,
+          });
           return {
             success: true,
             email: result.user.email,
             workspaceId: result.workspaceId,
+            role: result.role,
+            operationalRole: result.operationalRole,
           } as const;
         } catch (error) {
           throw new TRPCError({
@@ -566,7 +597,7 @@ export const appRouter = router({
       }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie(COOKIE_NAME, cookieOptions);
       return { success: true } as const;
     }),
   }),
@@ -606,6 +637,8 @@ export const appRouter = router({
               "professional",
             ]),
             professionalId: z.number().int().positive().nullable().optional(),
+            jobTitle: z.string().trim().max(160).optional(),
+            canRegisterPayments: z.boolean().optional(),
             scope: z.string().trim().max(80).optional(),
           })
         )
@@ -615,6 +648,23 @@ export const appRouter = router({
             ctx.user.id,
             input
           );
+          let delivery: "sent" | "manual" = "manual";
+          try {
+            const status = await sendInviteEmail({
+              to: result.invite.email,
+              name: result.invite.inviteeName,
+              token: result.token,
+              expiresAt: result.invite.expiresAt,
+              workspaceName: ctx.workspace.workspaceName,
+              role: input.role,
+            });
+            if (status === "sent") {
+              await markWorkspaceInviteSent(result.invite.id);
+              delivery = "sent";
+            }
+          } catch (error) {
+            console.error("[workspace] invite email delivery failed", error);
+          }
           const { tokenHash: _tokenHash, ...invite } = result.invite;
           return {
             invite: {
@@ -623,6 +673,7 @@ export const appRouter = router({
               createdAt: invite.createdAt.toISOString(),
             },
             token: result.token,
+            delivery,
           };
         }),
       revoke: requireAdministrator
@@ -658,6 +709,8 @@ export const appRouter = router({
           "human_attendant",
         professionalId: member.professionalId,
         professionalName: member.professionalName,
+        jobTitle: member.jobTitle,
+        canRegisterPayments: member.canRegisterPayments === 1,
         active: member.active === 1,
         lastSignedIn: member.lastSignedIn?.toISOString() ?? null,
       }));
@@ -671,6 +724,8 @@ export const appRouter = router({
             .enum(["human_attendant", "ai_attendant", "professional"])
             .optional(),
           professionalId: z.number().int().positive().nullable().optional(),
+          jobTitle: z.string().trim().max(160).nullable().optional(),
+          canRegisterPayments: z.boolean().optional(),
           active: z.boolean().optional(),
         })
       )
@@ -1047,6 +1102,8 @@ export const appRouter = router({
             "professional",
           ]),
           professionalId: z.number().int().positive().optional(),
+          jobTitle: z.string().trim().max(160).optional(),
+          canRegisterPayments: z.boolean().optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1063,6 +1120,8 @@ export const appRouter = router({
             role: input.role,
             operationalRole: input.operationalRole,
             professionalId: input.professionalId ?? null,
+            jobTitle: input.jobTitle,
+            canRegisterPayments: input.canRegisterPayments,
           };
         } catch (error) {
           throw new TRPCError({
@@ -1975,7 +2034,7 @@ export const appRouter = router({
   }),
 
   billing: router({
-    quotes: requireManager.query(async ({ ctx }) => {
+    quotes: requireFinancial.query(async ({ ctx }) => {
       const items = await listQuotes(ctx.workspace.workspaceId);
       return items.map(item => ({
         ...item,
@@ -2010,7 +2069,7 @@ export const appRouter = router({
       .mutation(({ input, ctx }) =>
         createQuote(input, ctx.workspace.workspaceId, ctx.user.id)
       ),
-    updatePayment: requireManager
+    updatePayment: requireFinancial
       .input(
         z.object({
           id: z.number().int().positive(),

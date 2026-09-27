@@ -13,6 +13,7 @@ export const ENV = {
   emailDeliveryEnabled: process.env.EMAIL_DELIVERY_ENABLED === "true",
   emailProvider: process.env.EMAIL_PROVIDER ?? "none",
   emailFrom: process.env.EMAIL_FROM ?? "",
+  emailApiKey: process.env.EMAIL_API_KEY ?? "",
   publicAppUrl: process.env.PUBLIC_APP_URL ?? "http://localhost:3000",
   smtpHost: process.env.SMTP_HOST ?? "",
   smtpPort: Number(process.env.SMTP_PORT ?? 587),

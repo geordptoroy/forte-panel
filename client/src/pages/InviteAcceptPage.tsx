@@ -7,13 +7,15 @@ import { trpc } from "@/lib/trpc";
 export default function InviteAcceptPage() {
   const [, params] = useRoute("/invite/:token");
   const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const accept = trpc.auth.acceptInvite.useMutation({
-    onSuccess: result => {
+    onSuccess: async result => {
       toast.success(`Acesso criado para ${result.email}`);
-      navigate("/login");
+      await Promise.all([utils.auth.me.invalidate(), utils.auth.access.invalidate()]);
+      navigate(result.operationalRole === "professional" && result.role === "agent" ? "/my-work" : "/dashboard");
     },
     onError: error => toast.error(error.message),
   });

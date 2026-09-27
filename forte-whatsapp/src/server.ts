@@ -11,8 +11,14 @@ export function createServer(manager: InstanceManager) {
     );
     if (req.method === "GET" && url.pathname === "/health")
       return json(res, 200, { status: "ok", service: "forte-whatsapp" });
-    if (req.method === "GET" && url.pathname === "/ready")
-      return json(res, 200, { status: "ready", instance: manager.getStatus() });
+    if (req.method === "GET" && url.pathname === "/ready") {
+      const instance = manager.getStatus();
+      const ready = instance.status !== "error";
+      return json(res, ready ? 200 : 503, {
+        status: ready ? "ready" : "not_ready",
+        instance,
+      });
+    }
     if (!authorized(req)) return json(res, 401, { error: "unauthorized" });
     if (req.method === "GET" && url.pathname === "/api/instances")
       return json(res, 200, [manager.getStatus()]);

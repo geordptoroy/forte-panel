@@ -95,7 +95,6 @@ import {
   type NotificationEvent,
 } from "./notification-contract";
 import {
-  defaultAgentProviderSettings,
   decryptProviderSecret,
   encryptProviderSecret,
   maskProviderSecret,
@@ -123,8 +122,22 @@ export async function getDb() {
     /^postgres(ql)?:\/\//i.test(connectionString)
   ) {
     try {
-      _pool = new Pool({ connectionString, max: 10 });
-      _db = drizzle(_pool);
+      const pool = new Pool({
+        connectionString,
+        max: 10,
+        idleTimeoutMillis: 30_000,
+        connectionTimeoutMillis: 5_000,
+      });
+      pool.on("error", error => {
+        console.error("[Database] pool connection error", error);
+        if (_pool === pool) {
+          _db = null;
+          _pool = null;
+          void pool.end().catch(() => undefined);
+        }
+      });
+      _pool = pool;
+      _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -292,6 +305,8 @@ export type WorkspaceMembershipContext = {
   timezone: string;
   memberId: number;
   role: "owner" | "admin" | "manager" | "agent";
+  jobTitle: string | null;
+  canRegisterPayments: boolean;
   professionalId: number | null;
   operationalRole: "human_attendant" | "ai_attendant" | "professional" | null;
 };
@@ -316,6 +331,8 @@ export async function getWorkspaceMembershipContext(
       timezone: workspaces.timezone,
       memberId: workspaceMembers.id,
       role: workspaceMembers.role,
+      jobTitle: workspaceMembers.jobTitle,
+      canRegisterPayments: workspaceMembers.canRegisterPayments,
       professionalId: workspaceMembers.professionalId,
       operationalRole: users.operationalRole,
     })
@@ -331,9 +348,13 @@ export async function getWorkspaceMembershipContext(
     )
     .orderBy(asc(workspaceMembers.id))
     .limit(2);
-  return selectSingleWorkspaceMembership(
-    rows
-  ) as WorkspaceMembershipContext | null;
+  const selected = selectSingleWorkspaceMembership(rows);
+  return selected
+    ? {
+        ...selected,
+        canRegisterPayments: selected.canRegisterPayments === 1,
+      }
+    : null;
 }
 
 export function selectSingleWorkspaceMembership<T>(
@@ -452,7 +473,7 @@ export async function issuePasswordResetToken(emailInput: string) {
   const email = emailInput.trim().toLowerCase();
   const user = (
     await db
-      .select({ id: users.id })
+      .select({ id: users.id, email: users.email, name: users.name })
       .from(users)
       .where(sql`lower(${users.email}) = ${email}`)
       .limit(1)
@@ -479,7 +500,7 @@ export async function issuePasswordResetToken(emailInput: string) {
       createdAt: now,
     });
   });
-  return { userId: user.id, token, expiresAt };
+  return { userId: user.id, email: user.email ?? email, name: user.name, token, expiresAt };
 }
 
 export async function resetPasswordWithToken(tokenInput: string, password: string) {
@@ -589,6 +610,8 @@ export async function createLocalWorkspaceMember(
     role: "owner" | "admin" | "manager" | "agent";
     operationalRole: "human_attendant" | "ai_attendant" | "professional";
     professionalId?: number;
+    jobTitle?: string | null;
+    canRegisterPayments?: boolean;
   },
   actorUserId?: number
 ) {
@@ -602,6 +625,8 @@ export async function createLocalWorkspaceMember(
       "Profissional executor precisa estar vinculado a um profissional cadastrado"
     );
   }
+  if (input.operationalRole === "professional" && !input.jobTitle?.trim())
+    throw new Error("Informe a função do profissional executor");
   if (input.professionalId) {
     const professional = (
       await db
@@ -637,10 +662,12 @@ export async function createLocalWorkspaceMember(
     workspaceId: workspaceId,
     userId: user.id,
     role: input.role,
+    jobTitle: input.jobTitle?.trim() || null,
     professionalId:
       input.operationalRole === "professional"
         ? (input.professionalId ?? null)
         : null,
+    canRegisterPayments: input.canRegisterPayments ? 1 : 0,
   });
   await db.insert(auditLogs).values({
     workspaceId,
@@ -662,6 +689,8 @@ export async function createWorkspaceInvite(
     operationalRole: "human_attendant" | "ai_attendant" | "professional";
     professionalId?: number | null;
     scope?: string;
+    jobTitle?: string | null;
+    canRegisterPayments?: boolean;
   }
 ) {
   const db = await getDb();
@@ -679,6 +708,8 @@ export async function createWorkspaceInvite(
     if (existingUser[0]) throw new Error("Já existe uma conta com este e-mail");
     if (input.operationalRole === "professional" && !input.professionalId)
       throw new Error("Profissional executor precisa estar vinculado a um profissional");
+    if (input.operationalRole === "professional" && !input.jobTitle?.trim())
+      throw new Error("Informe a função do profissional executor");
     if (input.professionalId) {
       const professional = await tx
         .select({ id: professionals.id })
@@ -705,7 +736,9 @@ export async function createWorkspaceInvite(
         inviteeName: input.inviteeName?.trim() || null,
         role: input.role,
         operationalRole: input.operationalRole,
+        jobTitle: input.jobTitle?.trim() || null,
         professionalId: input.professionalId ?? null,
+        canRegisterPayments: input.canRegisterPayments ? 1 : 0,
         scope: input.scope?.trim() || "workspace",
         tokenHash: hashInviteToken(token),
         status: "pending",
@@ -747,7 +780,9 @@ export async function listWorkspaceInvites(workspaceId: number) {
       inviteeName: workspaceInvites.inviteeName,
       role: workspaceInvites.role,
       operationalRole: workspaceInvites.operationalRole,
+      jobTitle: workspaceInvites.jobTitle,
       professionalId: workspaceInvites.professionalId,
+      canRegisterPayments: workspaceInvites.canRegisterPayments,
       scope: workspaceInvites.scope,
       status: workspaceInvites.status,
       expiresAt: workspaceInvites.expiresAt,
@@ -791,6 +826,22 @@ export async function revokeWorkspaceInvite(
   return true;
 }
 
+export async function markWorkspaceInviteSent(inviteId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const updated = await db
+    .update(workspaceInvites)
+    .set({ status: "sent", updatedAt: new Date() })
+    .where(
+      and(
+        eq(workspaceInvites.id, inviteId),
+        eq(workspaceInvites.status, "pending")
+      )
+    )
+    .returning({ id: workspaceInvites.id });
+  return Boolean(updated[0]);
+}
+
 export async function acceptWorkspaceInvite(
   token: string,
   input: { name: string; password: string }
@@ -832,13 +883,21 @@ export async function acceptWorkspaceInvite(
         passwordHash: hashLocalPassword(input.password),
         operationalRole: invite.operationalRole,
       })
-      .returning({ id: users.id, email: users.email, name: users.name });
+      .returning({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        openId: users.openId,
+        sessionVersion: users.sessionVersion,
+      });
     if (!user) throw new Error("Não foi possível criar a conta");
     await tx.insert(workspaceMembers).values({
       workspaceId: invite.workspaceId,
       userId: user.id,
       role: invite.role,
+      jobTitle: invite.jobTitle,
       professionalId: invite.professionalId,
+      canRegisterPayments: invite.canRegisterPayments,
     });
     const updated = await tx
       .update(workspaceInvites)
@@ -852,7 +911,12 @@ export async function acceptWorkspaceInvite(
       action: "member_invite_accepted",
       summary: `Convite ${invite.id} aceito por ${invite.email}`,
     });
-    return { user, workspaceId: invite.workspaceId };
+    return {
+      user,
+      workspaceId: invite.workspaceId,
+      role: invite.role,
+      operationalRole: invite.operationalRole,
+    };
   });
 }
 
@@ -3507,30 +3571,37 @@ export type NativeAgentConfig = {
   llm: AgentProviderSettings;
 };
 
+const PLATFORM_GLOBAL_AGENT_WORKSPACE_ID = 0;
+
+async function readStoredNativeAgentConfig(workspaceId?: number) {
+  const globalSetting = await getWorkspaceSetting(
+    PLATFORM_GLOBAL_AGENT_WORKSPACE_ID,
+    "platform_native_agent_config"
+  );
+  const workspaceSetting = workspaceId
+    ? await getWorkspaceSetting(workspaceId, "native_agent_config")
+    : undefined;
+  const parse = (value?: string | null): Partial<NativeAgentConfig> => {
+    if (!value) return {};
+    try {
+      return JSON.parse(value) as Partial<NativeAgentConfig>;
+    } catch {
+      return {};
+    }
+  };
+  const globalStored = parse(globalSetting?.value);
+  const workspaceStored = parse(workspaceSetting?.value);
+  return {
+    ...globalStored,
+    ...workspaceStored,
+    llm: mergeAgentProviderSettings(workspaceStored.llm ?? globalStored.llm),
+  } as Partial<NativeAgentConfig>;
+}
+
 async function readNativeAgentConfig(
   workspace: { id: number } | undefined
 ): Promise<NativeAgentConfig> {
-  if (!workspace)
-    return {
-      enabled: true,
-      model: process.env.AGENT_MODEL ?? "gpt-5-mini",
-      systemPrompt: "",
-      maxSteps: 6,
-      apiSource: "environment",
-      llm: defaultAgentProviderSettings(),
-    };
-  const setting = await getWorkspaceSetting(
-    workspace.id,
-    "native_agent_config"
-  );
-  let stored: Partial<NativeAgentConfig> = {};
-  if (setting?.value) {
-    try {
-      stored = JSON.parse(setting.value) as Partial<NativeAgentConfig>;
-    } catch {
-      stored = {};
-    }
-  }
+  const stored = await readStoredNativeAgentConfig(workspace?.id);
   const llm = mergeAgentProviderSettings(stored.llm);
   for (const provider of Object.values(llm.providers))
     provider.apiKey = maskProviderSecret(provider.apiKey);
@@ -3568,31 +3639,15 @@ export async function getPlatformNativeAgentConfig(
   return readNativeAgentConfig(workspace);
 }
 
+export async function getPlatformGlobalNativeAgentConfig(): Promise<NativeAgentConfig> {
+  return readNativeAgentConfig(undefined);
+}
+
 export async function getNativeAgentRuntimeConfig(
   workspaceId: number
 ): Promise<NativeAgentConfig> {
   const workspace = await getActiveWorkspaceById(workspaceId);
-  if (!workspace)
-    return {
-      enabled: true,
-      model: process.env.AGENT_MODEL ?? "gpt-5-mini",
-      systemPrompt: "",
-      maxSteps: 6,
-      apiSource: "environment",
-      llm: defaultAgentProviderSettings(),
-    };
-  const setting = await getWorkspaceSetting(
-    workspace.id,
-    "native_agent_config"
-  );
-  let stored: Partial<NativeAgentConfig> = {};
-  if (setting?.value) {
-    try {
-      stored = JSON.parse(setting.value) as Partial<NativeAgentConfig>;
-    } catch {
-      stored = {};
-    }
-  }
+  const stored = await readStoredNativeAgentConfig(workspace?.id);
   return {
     enabled: stored.enabled !== false,
     model: stored.model?.trim() || process.env.AGENT_MODEL || "gpt-5-mini",
@@ -3665,6 +3720,25 @@ export async function saveNativeAgentConfig(
   for (const route of Object.values(response.llm.routing))
     if (route.apiKey) route.apiKey = maskProviderSecret(route.apiKey);
   return response;
+}
+
+export async function savePlatformGlobalNativeAgentConfig(
+  input: Pick<NativeAgentConfig, "enabled" | "model" | "systemPrompt" | "maxSteps">
+) {
+  const current = await getNativeAgentRuntimeConfig(0);
+  const next: NativeAgentConfig = {
+    ...current,
+    enabled: input.enabled,
+    model: input.model.trim() || current.model,
+    systemPrompt: input.systemPrompt,
+    maxSteps: Math.max(1, Math.min(8, Number(input.maxSteps))),
+  };
+  await upsertWorkspaceSetting(
+    PLATFORM_GLOBAL_AGENT_WORKSPACE_ID,
+    "platform_native_agent_config",
+    JSON.stringify(next)
+  );
+  return getPlatformGlobalNativeAgentConfig();
 }
 
 export async function getWorkspaceBySlug(slug: string) {
