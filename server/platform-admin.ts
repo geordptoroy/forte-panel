@@ -233,6 +233,7 @@ export async function savePlatformGlobalAgentPolicy(input: {
   model: string;
   systemPrompt: string;
   maxSteps: number;
+  llm: AgentProviderSettings;
 }) {
   const before = await getPlatformGlobalNativeAgentConfig();
   const saved = await savePlatformGlobalNativeAgentConfig({
@@ -240,6 +241,7 @@ export async function savePlatformGlobalAgentPolicy(input: {
     model: input.model,
     systemPrompt: input.systemPrompt,
     maxSteps: input.maxSteps,
+    llm: input.llm,
   });
   await recordPlatformAudit({
     platformAdminId: input.platformAdminId,
