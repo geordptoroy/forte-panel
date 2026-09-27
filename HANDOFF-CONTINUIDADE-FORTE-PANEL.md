@@ -1640,3 +1640,13 @@ A migration `0029_onboarding_step_answers` vincula cada resposta a `sessionId`, 
 Autosave e salvamento manual fazem upsert desses blocos; publicação marca as respostas como `confirmed`, enquanto rascunhos permanecem `draft`. `onboarding.profile` também retorna `stepAnswers` para a próxima UI bloco a bloco. A chave única por sessão/bloco impede duplicação.
 
 A fonte de compatibilidade continua sendo `onboarding_profile`; não há ainda editor separado por bloco, ingestão de áudio ou extração por LLM. Testes cobrem a ordem e o conteúdo do mapeamento, além da autorização tenant-aware.
+
+
+---
+## Atualização do handoff — 2026-09-27 13:21 — revisão humana por bloco
+
+A tela de onboarding agora apresenta `stepAnswers` em uma revisão visual bloco a bloco. Cada bloco mostra os fatos estruturados e os quatro blocos obrigatórios podem ser confirmados individualmente.
+
+A nova procedure `onboarding.confirmStep` registra usuário, workspace e auditoria. O autosave preserva `confirmed` quando o conteúdo do bloco não mudou; qualquer edição rebaixa somente aquele bloco para `draft`. A publicação exige tanto os fatos obrigatórios completos quanto a confirmação humana de identidade, oferta, operações e guardrails. O botão de publicar permanece desabilitado no frontend até cumprir os dois critérios, e o backend repete a validação.
+
+A publicação não confirma automaticamente blocos. Isso mantém a separação entre fato extraído/rascunho, fato revisado pelo dono e regra operacional publicada.

@@ -34,6 +34,29 @@ const emptyProfile: Profile = {
   qualificationRules: "",
 };
 
+const requiredStepKeys = ["identity", "offering", "operations", "guardrails"] as const;
+const stepTitles: Record<string, string> = {
+  identity: "Identidade da empresa",
+  offering: "Oferta e serviços",
+  operations: "Área e horários",
+  guardrails: "Limites do atendimento",
+  voice: "Tom e respostas aprovadas",
+};
+const fieldTitles: Record<string, string> = {
+  businessName: "Nome",
+  segment: "Segmento",
+  description: "Descrição",
+  services: "Serviços",
+  serviceArea: "Área de atendimento",
+  businessHours: "Horários",
+  forbiddenWords: "Condutas proibidas",
+  humanHandoffRules: "Transferência para humano",
+  toneOfVoice: "Tom de voz",
+  faq: "FAQ",
+  cancellationPolicy: "Cancelamento",
+  qualificationRules: "Qualificação",
+};
+
 export default function OnboardingPage() {
   const utils = trpc.useUtils();
   const [, setLocation] = useLocation();
@@ -55,8 +78,12 @@ export default function OnboardingPage() {
     onSuccess: () => {
       setDirty(false);
       setAutosaveState("saved");
+      void utils.onboarding.profile.invalidate();
     },
     onError: () => setAutosaveState("error"),
+  });
+  const confirmStep = trpc.onboarding.confirmStep.useMutation({
+    onSuccess: () => void utils.onboarding.profile.invalidate(),
   });
   const saveMutation = trpc.onboarding.save.useMutation({
     onSuccess: result => {
@@ -100,6 +127,14 @@ export default function OnboardingPage() {
     setDirty(true);
     setProfile(current => ({ ...current, [key]: value }));
   };
+  const confirmedStepKeys = new Set(
+    (profileQuery.data?.stepAnswers ?? [])
+      .filter(answer => answer.status === "confirmed")
+      .map(answer => answer.stepKey)
+  );
+  const readyForHumanApprovedPublish =
+    profileQuery.data?.checklist.readyToPublish === true &&
+    requiredStepKeys.every(stepKey => confirmedStepKeys.has(stepKey));
   const field = (
     key: keyof Profile,
     label: string,
@@ -173,6 +208,47 @@ export default function OnboardingPage() {
               </div>
             ))}
           </div>
+        </section>
+      )}
+      {(profileQuery.data?.stepAnswers ?? []).length > 0 && (
+        <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+          <SectionTitle
+            eyebrow="Revisão humana"
+            title="Confirme cada bloco antes de publicar"
+            action={<span className="muted" style={{ fontSize: 10 }}>{confirmedStepKeys.size}/{requiredStepKeys.length} obrigatórios confirmados</span>}
+          />
+          <div style={{ display: "grid", gap: 10 }}>
+            {(profileQuery.data?.stepAnswers ?? []).map(step => {
+              const required = requiredStepKeys.includes(step.stepKey as (typeof requiredStepKeys)[number]);
+              const confirmed = step.status === "confirmed";
+              return (
+                <div key={step.stepKey} style={{ padding: 12, border: `1px solid ${confirmed ? "rgba(86,214,138,.28)" : "rgba(255,255,255,.08)"}`, background: confirmed ? "rgba(86,214,138,.035)" : "rgba(255,255,255,.012)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                    <div>
+                      <strong style={{ color: "#ddd", fontSize: 12 }}>{stepTitles[step.stepKey] ?? step.stepKey}</strong>
+                      <div style={{ display: "grid", gap: 5, marginTop: 9 }}>
+                        {Object.entries(step.answer).map(([key, value]) => (
+                          <div key={key} style={{ fontSize: 10, lineHeight: 1.5 }}>
+                            <span className="muted">{fieldTitles[key] ?? key}: </span><span style={{ color: "#aaa", whiteSpace: "pre-wrap" }}>{value || "Não informado"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {required && (
+                      <button
+                        className={confirmed ? "btn-secondary" : "btn-primary"}
+                        disabled={confirmed || confirmStep.isPending}
+                        onClick={() => confirmStep.mutate({ stepKey: step.stepKey as "identity" | "offering" | "operations" | "guardrails" })}
+                      >
+                        <CheckCircle2 size={13} /> {confirmed ? "Confirmado" : "Confirmar bloco"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {confirmStep.error && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} /> {confirmStep.error.message}</div>}
         </section>
       )}
       <section className="surface" style={{ padding: 22 }}>
@@ -270,11 +346,12 @@ export default function OnboardingPage() {
           </button>
           <button
             className="btn-primary"
-            disabled={saveMutation.isPending}
+            disabled={saveMutation.isPending || !readyForHumanApprovedPublish}
             onClick={() => saveMutation.mutate({ profile, publish: true })}
+            title={!readyForHumanApprovedPublish ? "Salve o rascunho e confirme os blocos obrigatórios antes de publicar" : undefined}
           >
             <Sparkles size={13} />{" "}
-            {saveMutation.isPending ? "Gerando..." : "Gerar e publicar prompt"}
+            {saveMutation.isPending ? "Gerando..." : readyForHumanApprovedPublish ? "Gerar e publicar prompt" : "Confirme os blocos obrigatórios"}
           </button>
           <small className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             {autosaveState === "waiting" && "Alterações pendentes..."}

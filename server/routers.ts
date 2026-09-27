@@ -28,6 +28,7 @@ import {
   cancelAgendaAppointment,
   updateAgendaStatus,
   createQuote,
+  confirmOnboardingStep,
   getAgendaSnapshot,
   getUserByEmail,
   getUserById,
@@ -1141,6 +1142,22 @@ export const appRouter = router({
     profile: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingProfile(ctx.workspace.workspaceId)
     ),
+    confirmStep: requireOnboardingEditor
+      .input(z.object({ stepKey: z.enum(["identity", "offering", "operations", "guardrails"]) }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await confirmOnboardingStep(
+          ctx.workspace.workspaceId,
+          input.stepKey,
+          ctx.user.id
+        );
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: "onboarding_step_confirmed",
+          summary: `Bloco de onboarding confirmado: ${input.stepKey}`,
+        });
+        return result;
+      }),
     autosave: requireOnboardingEditor
       .input(
         z.object({
@@ -1205,6 +1222,11 @@ export const appRouter = router({
             throw new TRPCError({
               code: "BAD_REQUEST",
               message: `Complete antes de publicar: ${error.message.slice("ONBOARDING_INCOMPLETE:".length)}`,
+            });
+          if (error instanceof Error && error.message.startsWith("ONBOARDING_CONFIRMATION_REQUIRED:"))
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Revise e confirme cada bloco obrigatório antes de publicar.",
             });
           throw error;
         }

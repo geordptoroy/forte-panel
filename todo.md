@@ -311,9 +311,9 @@ Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
 ### P0 — fundação segura
 
 - [ ] Separar núcleo obrigatório curto de perguntas condicionais e aprofundamento; permitir áudio, texto, “não se aplica”, “decidir depois” e retomada.
-- [ ] Definir schemas por bloco, estados `draft/confirmed/published` e campos `missing/conflict/source/confidence`.
+- [ ] Definir schemas por bloco, estados `draft/confirmed/published` e campos `missing/conflict/source/confidence`. (blocos e estados draft/confirmed já persistidos; missing/conflict/source/confidence e published separado ainda pendentes)
 - [ ] Mostrar após cada resposta/bloco apenas a regra curta daquela área; manter o prompt completo recolhido e opcional.
-- [ ] Definir confirmação humana obrigatória antes de publicar prompt ou regra operacional.
+- [x] Definir confirmação humana obrigatória antes de publicar prompt ou regra operacional. (quatro blocos obrigatórios exigem `onboarding.confirmStep` e o backend repete o gate)
 - [ ] Definir guardrails: IA não inventa preço, prazo, disponibilidade, serviço, política ou promessa; fallback para humano quando faltar fonte.
 - [ ] Definir acesso administrativo de suporte com workspace autorizado, motivo, masking, auditoria e sem publicação silenciosa.
 

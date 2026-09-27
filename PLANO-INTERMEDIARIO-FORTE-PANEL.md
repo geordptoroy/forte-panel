@@ -495,3 +495,11 @@ Próxima decisão: modelar respostas por bloco (`onboardingStepAnswers`) ou adic
 A migration `0029_onboarding_step_answers` adiciona respostas tenant-aware por sessão e bloco. O autosave e o salvamento manual fazem upsert de identidade, oferta, operações, guardrails e voz; publicação confirma os blocos. O perfil JSON continua sendo a fonte compatível enquanto a UI bloco a bloco não é criada.
 
 Próximo corte: usar `stepAnswers` em uma revisão por bloco com confirmação humana, ou adicionar áudio apenas depois de definir consentimento, retenção e confiança por campo.
+
+
+---
+## Etapa seguinte — revisão humana por bloco — 2026-09-27
+
+`stepAnswers` agora aparece em cards de revisão, com confirmação individual para identidade, oferta, operações e guardrails. O backend preserva confirmações quando o conteúdo não mudou, rebaixa blocos editados para `draft` e bloqueia publicação sem confirmação humana dos blocos obrigatórios.
+
+Próximo corte: adicionar confirmação para blocos opcionais e histórico de revisões, ou iniciar o desenho de consentimento/retensão para áudio. Nenhuma extração por LLM deve publicar sem passar por este mesmo gate.

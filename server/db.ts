@@ -2140,6 +2140,13 @@ export type OnboardingStepAnswerPayload = {
   answer: Record<string, string>;
 };
 
+export const requiredOnboardingStepKeys = [
+  "identity",
+  "offering",
+  "operations",
+  "guardrails",
+] as const;
+
 export function buildOnboardingStepAnswers(profile: OnboardingProfile): OnboardingStepAnswerPayload[] {
   return [
     {
@@ -2178,7 +2185,7 @@ async function listOnboardingStepAnswers(workspaceId: number) {
   const db = await getDb();
   const session = await getOnboardingSession(workspaceId);
   if (!db || !session) return [];
-  return db
+  const rows = await db
     .select({
       stepKey: onboardingStepAnswers.stepKey,
       answer: onboardingStepAnswers.answer,
@@ -2194,42 +2201,84 @@ async function listOnboardingStepAnswers(workspaceId: number) {
       )
     )
     .orderBy(onboardingStepAnswers.id);
+  return rows.map(row => ({
+    ...row,
+    answer: JSON.parse(row.answer) as Record<string, string>,
+  }));
 }
 
 async function persistOnboardingStepAnswers(
   workspaceId: number,
   profile: OnboardingProfile,
-  updatedBy: number | undefined,
-  confirmed: boolean
+  updatedBy: number | undefined
 ) {
   const db = await getDb();
   const session = await getOnboardingSession(workspaceId);
   if (!db || !session) return;
   const now = new Date();
   for (const payload of buildOnboardingStepAnswers(profile)) {
+    const serializedAnswer = JSON.stringify(payload.answer);
+    const existing = (
+      await db
+        .select({ answer: onboardingStepAnswers.answer, status: onboardingStepAnswers.status })
+        .from(onboardingStepAnswers)
+        .where(
+          and(
+            eq(onboardingStepAnswers.sessionId, session.id),
+            eq(onboardingStepAnswers.stepKey, payload.stepKey)
+          )
+        )
+        .limit(1)
+    )[0];
+    const status = existing?.answer === serializedAnswer && existing.status === "confirmed"
+      ? "confirmed"
+      : "draft";
     await db
       .insert(onboardingStepAnswers)
       .values({
         sessionId: session.id,
         workspaceId,
         stepKey: payload.stepKey,
-        answer: JSON.stringify(payload.answer),
+        answer: serializedAnswer,
         source: "form",
-        status: confirmed ? "confirmed" : "draft",
+        status,
         updatedBy,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [onboardingStepAnswers.sessionId, onboardingStepAnswers.stepKey],
         set: {
-          answer: JSON.stringify(payload.answer),
+          answer: serializedAnswer,
           source: "form",
-          status: confirmed ? "confirmed" : "draft",
+          status,
           updatedBy,
           updatedAt: now,
         },
       });
   }
+}
+
+export async function confirmOnboardingStep(
+  workspaceId: number,
+  stepKey: (typeof requiredOnboardingStepKeys)[number],
+  updatedBy: number
+) {
+  const db = await getDb();
+  const session = await getOnboardingSession(workspaceId);
+  if (!db || !session) throw new Error("ONBOARDING_SESSION_NOT_FOUND");
+  const [answer] = await db
+    .update(onboardingStepAnswers)
+    .set({ status: "confirmed", updatedBy, updatedAt: new Date() })
+    .where(
+      and(
+        eq(onboardingStepAnswers.workspaceId, workspaceId),
+        eq(onboardingStepAnswers.sessionId, session.id),
+        eq(onboardingStepAnswers.stepKey, stepKey)
+      )
+    )
+    .returning({ id: onboardingStepAnswers.id, stepKey: onboardingStepAnswers.stepKey });
+  if (!answer) throw new Error("ONBOARDING_STEP_NOT_FOUND");
+  return answer;
 }
 
 function buildBusinessPrompt(profile: OnboardingProfile, version: number) {
@@ -2338,7 +2387,15 @@ export async function saveOnboardingProfile(
     "onboarding_profile",
     JSON.stringify(input)
   );
-  await persistOnboardingStepAnswers(workspaceId, input, updatedBy, publish);
+  await persistOnboardingStepAnswers(workspaceId, input, updatedBy);
+  if (publish) {
+    const answers = await listOnboardingStepAnswers(workspaceId);
+    const missing = requiredOnboardingStepKeys.filter(stepKey =>
+      !answers.some(answer => answer.stepKey === stepKey && answer.status === "confirmed")
+    );
+    if (missing.length)
+      throw new Error(`ONBOARDING_CONFIRMATION_REQUIRED:${missing.join(",")}`);
+  }
   const prompt = buildBusinessPrompt(input, nextVersion);
   if (publish)
     await upsertWorkspaceSetting(
