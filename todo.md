@@ -80,16 +80,21 @@
 - Perfil do agente estruturado, simulável, revisado e publicado pelo owner.
 
 ### 4. Uma conexão WhatsApp por empresa (Baileys atual)
+
 - [x] Gateway Baileys próprio, autenticação interna, webhook assinado, QR/pareamento e health básicos.
 - [x] Inbound/outbound de texto, mídia multimodal, JID, idempotência e takeover humano em nível de código.
 - [x] Contrato HTTP do gateway validado sem pareamento: health/readiness, autenticação e envio de texto, imagem, áudio, vídeo e documento.
 - [ ] Validar imagem, áudio, vídeo, documento e tipos interativos em Docker/staging com número de teste.
 - [x] Workflow manual E2E criado para o fluxo operacional de staging, com URL e credenciais injetadas por variável/secret do GitHub; não executado automaticamente porque cria dados.
+- [x] Contrato REST aceita `list`, `poll`, `location`, `contact`, `react`, `sticker`, `album` e `event` com `metadata.payload`; Meta rejeita tipos não-texto explicitamente.
 - [x] E2E protegido por confirmação explícita de staging descartável, concorrência única e timeout de 10 minutos.
 - [x] Lock atômico por diretório impede duas conexões Baileys concorrentes e recupera lock obsoleto com teste automatizado.
 - [x] Diretório de sessão e arquivos persistidos são normalizados para permissões privadas `0700/0600`, com teste automatizado.
 - [x] Auth state local opcional com AES-256-GCM, migração de JSON legado e restore testado.
-- [ ] Store de sessão durável/externo, storage privado de mídia e lifecycle de instância por tenant.
+- [x] Storage privado opcional para mídia inbound, com limite, referência por workspace e URL assinada para o agente; ativar e validar em staging.
+- [ ] Store de sessão durável/externo e lifecycle de instância por tenant.
+- [x] Backup/verify/restore local do PostgreSQL e sessão Baileys com hash, permissões privadas e confirmação destrutiva.
+- [ ] Agendar backup externo e executar restauração real em ambiente limpo.
 - Preservar adapter para troca reversível de provider e manter opção oficial da Meta documentada.
 
 ### 5. Operação, beta e lançamento

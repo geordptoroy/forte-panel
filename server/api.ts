@@ -78,7 +78,22 @@ const messageSchema = z
     provider: z.enum(["baileys", "meta_cloud_api"]).optional(),
     senderType: z.enum(["ai", "human"]).optional(),
     messageType: z
-      .enum(["text", "image", "audio", "video", "document", "button"])
+      .enum([
+        "text",
+        "image",
+        "audio",
+        "video",
+        "document",
+        "button",
+        "list",
+        "poll",
+        "location",
+        "contact",
+        "react",
+        "sticker",
+        "album",
+        "event",
+      ])
       .optional(),
     instanceId: z
       .string()
@@ -107,6 +122,7 @@ const messageSchema = z
         caption: z.string().max(4000).optional(),
         fileName: z.string().max(255).optional(),
         ptv: z.boolean().optional(),
+        payload: z.record(z.string(), z.unknown()).optional(),
       })
       .optional(),
   })
@@ -118,6 +134,20 @@ const messageSchema = z
       input.messageType !== "button" ||
       Boolean(input.metadata?.buttons?.length),
     { message: "Mensagem de botão exige metadata.buttons" }
+  )
+  .refine(
+    input =>
+      ![
+        "list",
+        "poll",
+        "location",
+        "contact",
+        "react",
+        "sticker",
+        "album",
+        "event",
+      ].includes(input.messageType ?? "") || Boolean(input.metadata?.payload),
+    { message: "Mensagem estruturada exige metadata.payload" }
   );
 const messageBatchSchema = z.object({
   messages: z.array(messageSchema).min(1).max(50),

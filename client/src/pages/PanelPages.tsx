@@ -35,6 +35,8 @@ import {
   UserRound,
   UsersRound,
   WalletCards,
+  Wifi,
+  WifiOff,
   Zap,
   X,
 } from "lucide-react";
@@ -68,6 +70,46 @@ function DemoBanner() {
         <strong>Operação conectada:</strong> dados persistidos no CRM; mensagens
         externas passam pela fila e pelo worker configurado.
       </span>
+    </div>
+  );
+}
+
+function ChannelStatusBanner({
+  loading,
+  channel,
+}: {
+  loading: boolean;
+  channel?: {
+    provider: string;
+    configured: boolean;
+    active: boolean;
+    phoneNumber?: string | null;
+  };
+}) {
+  if (loading)
+    return (
+      <div className="channel-status-banner is-loading">
+        <Wifi size={15} /> <span>Verificando conexão do canal...</span>
+      </div>
+    );
+  const ready = Boolean(channel?.configured && channel?.active);
+  return (
+    <div
+      className={`channel-status-banner ${ready ? "is-ready" : "is-warning"}`}
+    >
+      {ready ? <Wifi size={15} /> : <WifiOff size={15} />}
+      <div>
+        <strong>
+          {ready
+            ? "Canal pronto para atendimento"
+            : "Canal ainda não está pronto"}
+        </strong>
+        <span>
+          {ready
+            ? `${channel?.provider === "baileys" ? "Baileys nativo" : "Meta Cloud API"}${channel?.phoneNumber ? ` · ${channel.phoneNumber}` : ""}. Mídia básica e mensagens passam pelo worker.`
+            : "Configure e ative um canal em Integrações antes de esperar envio ou recebimento real."}
+        </span>
+      </div>
     </div>
   );
 }
@@ -367,7 +409,10 @@ function MessageBubble({ message }: { message: Message }) {
           ? message.text
           : "";
   const safeMediaUrl = (() => {
-    if (/^data:(image|audio|video)\//i.test(mediaUrlValue) || /^data:application\/pdf;/i.test(mediaUrlValue))
+    if (
+      /^data:(image|audio|video)\//i.test(mediaUrlValue) ||
+      /^data:application\/pdf;/i.test(mediaUrlValue)
+    )
       return mediaUrlValue;
     try {
       const url = new URL(mediaUrlValue);
@@ -389,6 +434,29 @@ function MessageBubble({ message }: { message: Message }) {
         : message.messageType === "video"
           ? "Vídeo recebido"
           : "Documento recebido";
+  const structuredTypes = [
+    "list",
+    "poll",
+    "location",
+    "contact",
+    "react",
+    "sticker",
+    "album",
+    "event",
+  ];
+  const structuredPayload =
+    metadata.payload && typeof metadata.payload === "object"
+      ? (metadata.payload as Record<string, unknown>)
+      : undefined;
+  const structuredSummary = structuredPayload
+    ? String(
+        structuredPayload.title ??
+          structuredPayload.text ??
+          structuredPayload.name ??
+          structuredPayload.caption ??
+          "Payload estruturado recebido"
+      )
+    : "Payload estruturado recebido";
   return (
     <div className={`message-row from-${message.sender}`}>
       <div className="message-bubble">
@@ -425,6 +493,13 @@ function MessageBubble({ message }: { message: Message }) {
             ) : (
               <span>{message.text || `[${mediaLabel}]`}</span>
             )
+          ) : message.messageType &&
+            structuredTypes.includes(message.messageType) &&
+            structuredPayload ? (
+            <div className="structured-message-preview">
+              <StatusBadge tone="blue">{message.messageType}</StatusBadge>
+              <strong>{structuredSummary}</strong>
+            </div>
           ) : (
             message.text
           )}
@@ -561,6 +636,7 @@ export function InboxPage() {
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const contactsQuery = trpc.inbox.contacts.useQuery();
+  const channelsQuery = trpc.workspace.channels.useQuery();
   const remoteContacts = contactsQuery.data ?? [];
   const items = remoteContacts;
 
@@ -693,6 +769,12 @@ export function InboxPage() {
       }
     >
       <DemoBanner />
+      <ChannelStatusBanner
+        loading={channelsQuery.isLoading}
+        channel={(channelsQuery.data ?? []).find(
+          channel => channel.provider === "baileys"
+        )}
+      />
       <div className="filter-bar">
         <div className="search-field">
           <Search size={14} />

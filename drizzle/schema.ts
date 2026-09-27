@@ -114,6 +114,14 @@ export const messageTypeEnum = pgEnum("message_type", [
   "video",
   "document",
   "button",
+  "sticker",
+  "location",
+  "contact",
+  "poll",
+  "list",
+  "react",
+  "album",
+  "event",
 ]);
 export const messageStatusEnum = pgEnum("message_status", [
   "received",

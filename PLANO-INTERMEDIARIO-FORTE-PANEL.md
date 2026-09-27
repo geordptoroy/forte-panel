@@ -409,3 +409,7 @@ As sessões Baileys agora normalizam permissões privadas: diretórios `0700` e 
 ## Atualização de execução — 2026-09-26 23:43
 
 Foi adicionada a camada `forte-whatsapp/src/encrypted-auth-state.ts`, compatível com `AuthenticationState` do Baileys. Quando `WHATSAPP_SESSION_ENCRYPTION_KEY` está configurada, creds e Signal keys são persistidos com AES-256-GCM, escrita atômica, permissões privadas e migração automática de JSON legado sob o lock da instância. A suíte `encrypted-auth-state.test.ts` cobre cifragem, restore, chave errada e migração. O gateway passou com 14 testes, typecheck e build. Store externo/durável e failover continuam pendentes antes de escala.
+
+## Atualização de execução — 2026-09-26 23:54
+
+Antes do teste na máquina do usuário, foram entregues três blocos verificáveis sem staging: `scripts/backup-restore.sh` com backup/verify/restore protegido por confirmação e hashes; `server/media-storage.ts` com storage privado opcional, limite por arquivo, referência por workspace e URL assinada para o agente; e suporte REST/DB para tipos estruturados Baileys com `metadata.payload`. O Inbox agora consulta os canais do workspace e mostra claramente se o canal está pronto ou ainda precisa de configuração. A validação local passou com typecheck, 62 testes aprovados, build web/backend e 14 testes/build do gateway. Ficam para staging real: ativar storage privado, validar backup restaurado, usar número WhatsApp controlado e agendar cópia externa.

@@ -36,7 +36,7 @@ export type Message = {
   sender: "lead" | "ai" | "human" | "system";
   text: string;
   time: string;
-  messageType?: "text" | "image" | "audio" | "video" | "document" | "button";
+  messageType?: "text" | "image" | "audio" | "video" | "document" | "button" | "sticker" | "location" | "contact" | "poll" | "list" | "react" | "album" | "event";
   metadata?: Record<string, unknown> | null;
 };
 

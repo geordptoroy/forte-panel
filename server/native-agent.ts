@@ -18,6 +18,7 @@ import {
   invokeConfiguredLLM,
   type AgentProviderSettings,
 } from "./llm-providers";
+import { resolvePrivateMediaUrl } from "./media-storage";
 
 export type NativeAgentEvent = {
   eventId: string;
@@ -207,7 +208,7 @@ export async function runNativeAgent(
   const mediaData =
     typeof event.metadata?.mediaData === "string"
       ? event.metadata.mediaData
-      : undefined;
+      : await resolvePrivateMediaUrl(event.metadata);
   const mediaMimeType =
     typeof event.metadata?.mediaMimeType === "string"
       ? event.metadata.mediaMimeType

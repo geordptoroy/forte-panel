@@ -154,18 +154,15 @@ Use `GET /api/v1/health` para liveness e `GET /api/v1/ready` para readiness. O p
 
 O worker emite um evento JSON `worker_heartbeat` por padrão a cada 60 segundos. Ajuste `WORKER_HEARTBEAT_MS` somente se o sistema de logs/monitoramento exigir outra frequência. Monitore também `limitadas`, `alertasCota`, `bucketsRemovidos` e `lastError`.
 
-
 ## 13. Smoke check de staging
 
 O repositório contém `scripts/staging-smoke.sh`, que valida `GET /api/v1/health` com `200/status=ok` e `GET /api/v1/ready` com `200/status=ready`. O script não recebe nem imprime credenciais; precisa apenas de `STAGING_BASE_URL` e falha explicitamente quando a URL não está configurada ou o banco não está pronto.
 
 Também foi criado o workflow manual `Staging smoke check`. Para habilitá-lo, configure a variável de repositório `STAGING_BASE_URL` no GitHub ou informe `base_url` ao disparar o workflow. Execute-o após cada deploy de staging; um `503` em readiness deve bloquear a abertura do beta até a causa ser resolvida.
 
-
 ## 14. Mutações administrativas
 
 A suíte PostgreSQL `server/platform-admin-actions.test.ts` valida o fluxo de pausar/reativar a IA, suspender/reativar workspace e registrar nota interna de suporte com motivo, sessão escopada e auditoria por workspace. Esse gate passa no CI com banco limpo; ainda deve ser repetido no staging real antes dos convites beta.
-
 
 ## 15. Gateway WhatsApp e mídia
 
@@ -173,14 +170,28 @@ O pacote `forte-whatsapp` agora possui testes de contrato HTTP em `src/server.te
 
 Isso não substitui o teste E2E de staging com número dedicado: o pareamento, recebimento real e envio para um contato controlado continuam bloqueados até existir um ambiente de teste explicitamente configurado.
 
-
 ## 16. E2E operacional de staging
 
 O workflow manual `Staging end-to-end` executa `scripts/validate-flow.mjs` contra uma URL fornecida no momento da execução ou pela variável `STAGING_BASE_URL`. A chave REST e as credenciais do administrador entram exclusivamente pelos secrets `STAGING_FORTE_API_KEY`, `STAGING_ADMIN_EMAIL` e `STAGING_ADMIN_PASSWORD`; nunca devem ser commitadas ou passadas na linha de comando.
 
 Esse fluxo cria serviços, profissionais, memberships e agendamentos para provar isolamento e regras da agenda. Portanto, deve ser executado apenas em staging descartável ou com dados de teste previamente autorizados, nunca em produção. O pareamento e o E2E de mídia/WhatsApp continuam sendo uma etapa separada porque exigem um número de teste controlado.
 
-
 ## 17. Proteções do E2E
 
 Antes de iniciar o workflow E2E, o operador deve marcar `confirm_disposable_staging=true`, confirmando que a URL é um staging descartável/autorizado e pode receber dados de teste. O workflow impede duas execuções simultâneas e possui limite de dez minutos; sem a confirmação, URL ou secrets necessários, ele falha antes de chamar o sistema.
+
+## 18. Backup, restore e mídia privada
+
+O script `scripts/backup-restore.sh` fornece três operações:
+
+```bash
+scripts/backup-restore.sh backup
+scripts/backup-restore.sh verify ./backups
+CONFIRM_RESTORE=YES RESTORE_SESSION_DIR=/tmp/forte-restore scripts/backup-restore.sh restore ./backups
+```
+
+`backup` cria dump customizado do PostgreSQL, tar da sessão Baileys sem o lock ativo e manifesto com SHA-256. `verify` valida o dump, o tar e os hashes. `restore` exige confirmação explícita e um diretório de sessão separado; depois da restauração, valide health/readiness, tenant e pareamento antes de reabrir o tráfego.
+
+Para remover data URLs da persistência inbound, configure `FORTE_MEDIA_PRIVATE_STORAGE_ENABLED=true`, `FORTE_MEDIA_MAX_BYTES` e o storage privado do ambiente. O Panel grava a mídia em `workspaces/<workspaceId>/whatsapp/`, mantém somente a referência e resolve URL assinada para o agente. A ativação deve ser feita primeiro em staging.
+
+O REST também aceita tipos estruturados Baileys (`list`, `poll`, `location`, `contact`, `react`, `sticker`, `album`, `event`) com `metadata.payload`; a Meta Cloud API continua limitada a texto neste worker.

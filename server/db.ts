@@ -69,6 +69,7 @@ import {
   mergeAgentProviderSettings,
   type AgentProviderSettings,
 } from "./llm-providers";
+import { persistInboundMedia } from "./media-storage";
 
 const DOMAIN_EVENT_WORKER_ID =
   process.env.WORKER_ID?.trim() || `worker-${crypto.randomUUID()}`;
@@ -3861,6 +3862,11 @@ export async function ingestInboundWhatsApp(
   if (!db) throw new Error("Database unavailable");
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
+  const metadata = await persistInboundMedia(
+    workspace.id,
+    input.eventId,
+    input.metadata
+  );
   const priorMessage = await db
     .select({
       messageId: messages.id,
@@ -3879,7 +3885,7 @@ export async function ingestInboundWhatsApp(
     .limit(1);
   if (priorMessage[0]) return { ...priorMessage[0], duplicate: true };
   const receivedAt = input.receivedAt ?? new Date();
-  const fromMe = input.fromMe === true || input.metadata?.fromMe === true;
+  const fromMe = input.fromMe === true || metadata?.fromMe === true;
   let contact = (
     await db
       .select()
@@ -3984,12 +3990,12 @@ export async function ingestInboundWhatsApp(
       messageType: input.messageType ?? "text",
       content: input.content,
       provider:
-        input.metadata?.provider === "baileys"
+        metadata?.provider === "baileys"
           ? "baileys"
-          : input.metadata?.provider === "meta_cloud_api"
+          : metadata?.provider === "meta_cloud_api"
             ? "meta_cloud_api"
             : await getDefaultWhatsappProvider(workspace.id),
-      metadata: input.metadata,
+      metadata,
       status: "received",
       createdAt: receivedAt,
     })
@@ -4008,10 +4014,10 @@ export async function ingestInboundWhatsApp(
         phone: contact.externalPhone,
         content: input.content,
         messageType: input.messageType ?? "text",
-        metadata: input.metadata,
+        metadata,
         receivedAt,
-        ...(typeof input.metadata?.instanceId === "string"
-          ? { instanceId: input.metadata.instanceId }
+        ...(typeof metadata?.instanceId === "string"
+          ? { instanceId: metadata.instanceId }
           : {}),
       },
     });
@@ -4163,7 +4169,15 @@ export async function queueOutboundMessage(
     | "audio"
     | "video"
     | "document"
-    | "button" = "text",
+    | "button"
+    | "sticker"
+    | "location"
+    | "contact"
+    | "poll"
+    | "list"
+    | "react"
+    | "album"
+    | "event" = "text",
   metadata?: Record<string, unknown>
 ) {
   const db = await getDb();
