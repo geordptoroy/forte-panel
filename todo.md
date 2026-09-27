@@ -272,7 +272,7 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Modelar `onboardingSessions`, `onboardingStepAnswers`, `onboardingAudioAssets`, `onboardingChecklistItems`, `consentRecords`. (`onboardingSessions`, `onboardingStepAnswers` e `consentRecords` já persistidos; áudio/checklist independente ainda pendentes)
 - [ ] Definir os 10 blocos do funil (identidade, oferta, execução, agenda, atendimento/IA, política comercial, recebimento, canal, revisão/publicação) com pergunta falada, campos e destino.
 - [ ] Criar endpoint de upload de áudio com URL assinada e storage privado por workspace.
-- [ ] Ligar `voice.transcribe` tenant-aware ao serviço de transcrição já existente e hoje desconectado.
+- [ ] Ligar `voice.transcribe` tenant-aware ao serviço de transcrição já existente e hoje desconectado. (adaptador `transcribeAudioForWorkspace` agora exige consentimento `transcription`; rota segura e upload privado ainda pendentes)
 - [ ] Estruturar transcrição em JSON validado por schema, com confiança por campo e pergunta de acompanhamento.
 - [ ] Pré-preencher catálogo, agenda, equipe e perfil da IA em rascunho, sem efeito colateral.
 - [ ] Manter formulário como caminho garantido quando o áudio falhar; áudio nunca é a única via.

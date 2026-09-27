@@ -26,6 +26,7 @@
  * ```
  */
 import { ENV } from "./env";
+import { assertOnboardingSourceConsent } from "../db";
 
 export type TranscribeOptions = {
   audioUrl: string; // URL to the audio file (e.g., S3 URL)
@@ -60,9 +61,35 @@ export type TranscriptionResponse = WhisperResponse; // Return native Whisper AP
 
 export type TranscriptionError = {
   error: string;
-  code: "FILE_TOO_LARGE" | "INVALID_FORMAT" | "TRANSCRIPTION_FAILED" | "UPLOAD_FAILED" | "SERVICE_ERROR";
+  code: "CONSENT_REQUIRED" | "FILE_TOO_LARGE" | "INVALID_FORMAT" | "TRANSCRIPTION_FAILED" | "UPLOAD_FAILED" | "SERVICE_ERROR";
   details?: string;
 };
+
+/**
+ * Consent-gated entry point for onboarding transcription.
+ *
+ * Keep the lower-level transcribeAudio helper available for internal callers,
+ * but require this wrapper for any workspace-owned onboarding flow. The gate
+ * runs before a remote fetch, so missing consent cannot leak an audio URL to
+ * the transcription provider.
+ */
+export async function transcribeAudioForWorkspace(
+  workspaceId: number,
+  options: TranscribeOptions
+): Promise<TranscriptionResponse | TranscriptionError> {
+  try {
+    await assertOnboardingSourceConsent(workspaceId, "transcription");
+  } catch (error) {
+    return {
+      error: "Voice transcription consent is required",
+      code: "CONSENT_REQUIRED",
+      details: error instanceof Error && error.message.startsWith("ONBOARDING_SOURCE_CONSENT_REQUIRED:")
+        ? undefined
+        : "Consent verification failed",
+    };
+  }
+  return transcribeAudio(options);
+}
 
 /**
  * Transcribe audio to text using the internal Speech-to-Text service

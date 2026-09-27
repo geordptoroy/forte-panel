@@ -545,3 +545,11 @@ A governança agora possui consentimentos versionados para `transcription`/`llm`
 Importante: isso prepara e bloqueia o uso sem autorização, mas ainda não executa limpeza automática nem conecta provedores de áudio/LLM.
 
 Próximo corte: implementar job/rotina de expiração que respeite `rawArtifactDays` e `derivedDataDays`, com dry-run e testes de isolamento, antes de integrar ingestão automática.
+
+
+---
+## Etapa seguinte — gate de transcrição — 2026-09-27
+
+O adaptador de voz agora possui `transcribeAudioForWorkspace`, que verifica `transcription` antes de qualquer chamada remota e falha fechado quando o consentimento não existe ou a verificação do banco falha.
+
+A procedure pública continua deliberadamente pendente: antes dela, criar `onboardingAudioAssets`/`transcriptions`, upload privado por workspace, ownership, MIME/tamanho/duração, URLs assinadas curtas e política de expiração. Não aceitar `audioUrl` arbitrária diretamente do cliente.

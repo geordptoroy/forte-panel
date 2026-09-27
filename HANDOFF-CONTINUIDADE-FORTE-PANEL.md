@@ -1702,3 +1702,13 @@ Limites atuais: dados brutos de 1–90 dias; dados derivados de 30–3650 dias; 
 O helper `assertOnboardingSourceConsent` já está disponível para qualquer futura rotina de transcrição/LLM. Nenhuma rotina automática foi conectada ainda. A política de retenção está persistida, mas ainda não existe worker de limpeza; não declarar os dados automaticamente apagados até essa próxima etapa.
 
 Validação: `pnpm check`, `pnpm test` (101 aprovados, 35 ignorados), `pnpm build`, journal e `git diff --check` passaram.
+
+
+---
+## Atualização do handoff — 2026-09-27 — gate de consentimento para transcrição
+
+O adaptador `server/_core/voiceTranscription.ts` agora exporta `transcribeAudioForWorkspace(workspaceId, options)`. Antes de qualquer `fetch` para o provedor remoto, ele exige consentimento vigente para a fonte `transcription` via `assertOnboardingSourceConsent`.
+
+O comportamento é fail-closed: sem consentimento ou com falha de verificação de infraestrutura, retorna `CONSENT_REQUIRED` e não envia a URL de áudio ao provedor. Foi adicionado teste unitário que verifica explicitamente a ausência de chamada remota.
+
+Ainda não foi criada uma procedure pública `voice.transcribe`: o repositório ainda não possui endpoint de upload privado/URL assinada nem modelo de `onboardingAudioAssets`/`transcriptions`. Não expor uma rota que aceite URL arbitrária evita SSRF, vazamento entre workspaces e processamento sem retenção definida. Próxima fatia segura: modelar os artefatos tenant-aware, implementar upload privado com ownership e só então adicionar a procedure usando `transcribeAudioForWorkspace`.
