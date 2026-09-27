@@ -90,6 +90,12 @@ import {
 import { listLLMModels } from "./_core/llm";
 import { platformRouter } from "./platform-router";
 import { getPlatformAdminAccess } from "./platform-admin";
+import {
+  connectBaileys,
+  disconnectBaileys,
+  getBaileysQr,
+  getBaileysStatus,
+} from "./baileys-gateway";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
 
@@ -823,6 +829,12 @@ export const appRouter = router({
         active: channel.active === 1,
       }));
     }),
+    baileysStatus: protectedProcedure.query(() => getBaileysStatus()),
+    baileysQr: protectedProcedure.query(() => getBaileysQr()),
+    connectBaileys: requireManager.mutation(() => connectBaileys()),
+    disconnectBaileys: requireManager
+      .input(z.object({ logout: z.boolean().default(false) }).optional())
+      .mutation(({ input }) => disconnectBaileys(input?.logout ?? false)),
     defaultChannel: protectedProcedure.query(({ ctx }) =>
       getDefaultWhatsappProvider(ctx.workspace.workspaceId)
     ),

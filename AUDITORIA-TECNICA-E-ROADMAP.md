@@ -1,6 +1,6 @@
 # Auditoria técnica completa — Forte Panel
 
-**Data:** 2026-09-25
+**Data:** 2026-09-27
 **Escopo:** segurança, autenticação/autorização, multi-tenant, backend, banco, agente nativo, PAPI/Meta, frontend, Docker, CI/CD, operação e testes.
 **Método:** inspeção estática do repositório, revisão dos fluxos e execução de validações locais. Nenhum código de produto foi alterado para produzir este relatório.
 
@@ -357,3 +357,27 @@ O projeto está em uma boa fase de protótipo avançado/MVP, mas a evolução pa
 A auditoria avançou da contenção de tenancy para operação segura do beta: quotas por workspace/usuário, proteção do outbound automático, painel de consumo e alertas in-app de 70%/90% para responsáveis ativos. O risco prioritário deixou de ser apenas implementação e passou a ser validação operacional com PostgreSQL real, retenção dos buckets e definição comercial de planos.
 
 A referência consolidada para abertura do beta é `BETA-OPERATIONS-CHECKLIST.md`; o mapa de todos os documentos está em `PROJECT_DOCUMENTATION_INDEX.md`.
+
+
+---
+## Atualização técnica — 2026-09-27
+
+A implementação recente avançou o projeto de auditoria para pré-staging:
+
+### Concluído desde a revisão anterior
+
+- Logout real no shell operacional.
+- Remoção de reset destrutivo da tela comum de Preferências.
+- Isolamento visual e de rota das funções de plataforma: API keys, prompt, IA e reset permanecem no `/platform-admin`.
+- Conexão Baileys exposta no Panel com QR/status e ações protegidas por manager.
+- Script de atualização única da stack Docker, preservando volumes e sessão do WhatsApp.
+
+### Ainda não considerado pronto para produção
+
+- Validação com PostgreSQL persistente de staging.
+- Pareamento e teste inbound/outbound com número dedicado.
+- Backup off-host e restore em ambiente limpo.
+- Alertas externos, métricas e observabilidade de lançamento.
+- Revisão final de secrets, privacidade, termos e limitações do WhatsApp não oficial.
+
+Os gates locais desta etapa passaram: `pnpm check`, `pnpm build`, `pnpm test` (62 aprovados, 31 ignorados por dependências externas), `bash -n scripts/start-docker.sh` e `git diff --check`.

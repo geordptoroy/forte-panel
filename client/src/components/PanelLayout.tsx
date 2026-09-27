@@ -19,6 +19,7 @@ import {
   Inbox,
   KanbanSquare,
   LayoutDashboard,
+  LogOut,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -28,6 +29,7 @@ import {
   UserCog,
   X,
 } from "lucide-react";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 type NavItem = {
   href: string;
@@ -402,6 +404,7 @@ export default function PanelLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [location] = useLocation();
+  const { logout } = useAuth();
   const { data: workspace } = trpc.workspace.current.useQuery();
   const { data: access } = trpc.auth.access.useQuery();
   const { data: inboxContacts } = trpc.inbox.contacts.useQuery(undefined, {
@@ -518,6 +521,14 @@ export default function PanelLayout({
             <div className="topbar-status">
               <span className="live-dot" /> {workspace?.name ?? "Forte Panel"}
             </div>
+            <button
+              className="icon-button"
+              onClick={() => void logout()}
+              aria-label="Sair"
+              title="Sair"
+            >
+              <LogOut size={14} />
+            </button>
             <Popover
               open={notificationsOpen}
               onOpenChange={setNotificationsOpen}

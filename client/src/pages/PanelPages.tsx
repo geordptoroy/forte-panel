@@ -26,6 +26,8 @@ import {
   Phone,
   Play,
   Plus,
+  QrCode,
+  RefreshCw,
   Search,
   Send,
   Settings2,
@@ -111,6 +113,110 @@ function ChannelStatusBanner({
         </span>
       </div>
     </div>
+  );
+}
+
+function BaileysConnectionCard() {
+  const utils = trpc.useUtils();
+  const status = trpc.workspace.baileysStatus.useQuery(undefined, {
+    refetchInterval: 4_000,
+  });
+  const qr = trpc.workspace.baileysQr.useQuery(undefined, {
+    enabled: status.data?.status === "qr",
+    refetchInterval: 4_000,
+  });
+  const connect = trpc.workspace.connectBaileys.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.baileysStatus.invalidate();
+      await utils.workspace.baileysQr.invalidate();
+    },
+  });
+  const disconnect = trpc.workspace.disconnectBaileys.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.baileysStatus.invalidate();
+      await utils.workspace.baileysQr.invalidate();
+    },
+  });
+  const current = status.data;
+  const connected = current?.status === "connected";
+  const waitingQr = current?.status === "qr";
+  const labels: Record<string, string> = {
+    unconfigured: "Gateway não configurado",
+    idle: "Aguardando conexão",
+    connecting: "Iniciando conexão",
+    qr: "Aguardando leitura do QR Code",
+    connected: "WhatsApp conectado",
+    disconnected: "Desconectado",
+    logged_out: "Sessão encerrada",
+    error: "Erro na conexão",
+  };
+  return (
+    <section className="surface" style={{ marginTop: 20, padding: 20 }}>
+      <SectionTitle
+        eyebrow="Conexão do número"
+        title="WhatsApp via QR Code"
+        action={
+          <StatusBadge tone={connected ? "green" : waitingQr ? "amber" : "neutral"}>
+            {labels[current?.status ?? "idle"] ?? current?.status ?? "Verificando"}
+          </StatusBadge>
+        }
+      />
+      {status.isLoading ? (
+        <div className="muted">Consultando o gateway...</div>
+      ) : status.error ? (
+        <div className="form-error">{status.error.message}</div>
+      ) : !current?.configured ? (
+        <div className="demo-banner" style={{ marginBottom: 0 }}>
+          <Info size={14} /> Configure o gateway no ambiente do servidor para habilitar a conexão.
+        </div>
+      ) : (
+        <div className="qr-connection-layout">
+          <div>
+            <p className="muted">
+              Clique em conectar e leia o código em WhatsApp → Dispositivos conectados → Conectar dispositivo.
+              O QR é renovado automaticamente.
+            </p>
+            <div className="form-grid" style={{ marginTop: 14 }}>
+              <div className="form-field">
+                <label>Instância</label>
+                <input className="input-control" value={current.instanceId} readOnly />
+              </div>
+              <div className="form-field">
+                <label>Número conectado</label>
+                <input className="input-control" value={current.phoneNumber ?? "Aguardando leitura"} readOnly />
+              </div>
+            </div>
+            <div className="page-actions" style={{ marginTop: 16 }}>
+              {!connected && (
+                <button className="btn-primary" disabled={connect.isPending || current.status === "connecting"} onClick={() => connect.mutate()}>
+                  <RefreshCw size={14} /> {connect.isPending ? "Iniciando..." : "Gerar QR Code"}
+                </button>
+              )}
+              {connected && (
+                <button className="btn-secondary" disabled={disconnect.isPending} onClick={() => disconnect.mutate({ logout: false })}>
+                  Desconectar temporariamente
+                </button>
+              )}
+              {connected && (
+                <button className="btn-ghost" disabled={disconnect.isPending} onClick={() => disconnect.mutate({ logout: true })}>
+                  Encerrar sessão do WhatsApp
+                </button>
+              )}
+            </div>
+            {current.lastError && <div className="form-error" style={{ marginTop: 14 }}>{current.lastError}</div>}
+          </div>
+          <div className="qr-code-panel">
+            {waitingQr && qr.data ? (
+              <img src={qr.data} alt="QR Code para conectar o WhatsApp" />
+            ) : waitingQr ? (
+              <div className="muted"><QrCode size={28} /> Gerando QR Code...</div>
+            ) : (
+              <div className="muted"><QrCode size={28} /> O QR Code aparecerá aqui</div>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2247,6 +2353,7 @@ export function IntegrationsPage() {
           })}
         </div>
       </section>
+      <BaileysConnectionCard />
       <section className="surface" style={{ marginTop: 20, padding: 20 }}>
         <SectionTitle
           eyebrow="Baileys nativo"

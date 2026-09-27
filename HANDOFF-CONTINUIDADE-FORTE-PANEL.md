@@ -1,9 +1,9 @@
 # Handoff de continuidade — Forte Panel
 
-**Data do handoff:** 2026-09-25 21:02 (America/Sao_Paulo)
+**Data do handoff:** 2026-09-27 (America/Sao_Paulo)
 **Repositório:** `geordptoroy/forte-panel`
 **Branch:** `main`
-**HEAD de referência desta revisão:** `07ceefa` (remoção dos componentes antigos; consulte `git log -1` para o commit mais recente).
+**HEAD de referência desta revisão:** commit desta atualização; consulte `git log -1` para o hash publicado mais recente.
 **Remote:** `https://github.com/geordptoroy/forte-panel.git`
 **Usuário precisa poder entregar esta conversa a outra IA sem repetir contexto.**
 
@@ -1083,3 +1083,59 @@ A PAPI Cloud não deve ser ativada nem receber token durante essa fase. A migra�
 A fonte de verdade documental foi consolidada em `CAPABILITY-MATRIX.md`, que separa capacidade implementada, teste automatizado e ambiente validado. O roadmap foi corrigido para não marcar como ausentes os gates já executados: CI PostgreSQL com migrations limpas, console platform admin, sessões de suporte, mutações auditadas, heartbeat, versionamento/rollback do agente e contrato HTTP do gateway WhatsApp.
 
 Os gates que ainda dependem de coordenação externa permanecem explicitamente pendentes: URL e banco de staging persistente, execução do smoke/E2E manual, número WhatsApp de teste, store de sessão durável com restore, storage privado de mídia, alertas externos e backup/restauração.
+
+
+---
+## Atualização de continuidade — 2026-09-27 — preparação para beta controlado
+
+Esta atualização fecha o bloco de interface operacional e publicação do build para continuidade por outra IA ou pelo ambiente Docker do usuário.
+
+### Implementado nesta etapa
+
+- Botão **Sair** no `PanelLayout`, conectado à procedure autenticada `auth.logout`.
+- Remoção do componente de reset destrutivo da tela comum de Preferências. Reset, API keys, configuração de IA e prompt continuam exclusivos do `/platform-admin`.
+- Card de conexão Baileys em Integrações com status, polling, QR Code, reconexão, desconexão temporária e encerramento de sessão.
+- Procedures tRPC tenant-aware para `baileysStatus`, `baileysQr`, `connectBaileys` e `disconnectBaileys`; conexão/desconexão exigem papel manager.
+- Script `scripts/start-docker.sh`, executável em uma linha, que faz pull e recria PostgreSQL, Redis, Panel, worker e gateway sem remover volumes.
+- Roadmap, checklist beta e todo atualizados para refletir Baileys nativo como caminho operacional local.
+
+### Validação executada
+
+```text
+pnpm check  ✅
+pnpm build  ✅
+pnpm test   ✅  62 testes aprovados / 31 ignorados por dependências externas
+./scripts/start-docker.sh
+git diff --check ✅
+```
+
+Os testes ignorados continuam sendo os que exigem PostgreSQL/configuração externa no processo local. O QR Code ainda precisa de validação em Docker/staging com um número WhatsApp de teste.
+
+### Como atualizar no computador do usuário
+
+Depois que este commit estiver no GitHub:
+
+```powershell
+cd C:\caminho\do\forte-panel
+git pull origin main
+./scripts/start-docker.sh
+```
+
+No PowerShell, se o script Bash não for executável diretamente, usar Git Bash/WSL ou executar o equivalente:
+
+```powershell
+docker compose --env-file .env pull
+docker compose --env-file .env up -d --force-recreate
+docker compose --env-file .env ps
+```
+
+Não executar `docker compose down -v`, pois isso apaga banco, Redis e sessão pareada do WhatsApp.
+
+### Próximos gates reais
+
+1. Atualizar o ambiente Docker local sem apagar volumes.
+2. Abrir `http://localhost:3002`, entrar em **Integrações** e validar QR/status.
+3. Confirmar inbound e outbound com número de teste.
+4. Repetir migrations, isolamento e smoke/E2E em staging persistente.
+5. Configurar backup off-host e executar restore em ambiente limpo.
+6. Só depois convidar beta testers.

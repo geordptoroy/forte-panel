@@ -22,7 +22,7 @@
 - Cada empresa terá logins individuais de funcionários, com nome, identificador e senha inicial segura, e papéis/permissões.
 - A conexão/número WhatsApp é uma entidade separada do login e do workspace; primeira versão pública: alvo de uma conexão por workspace.
 - O usuário final não deverá configurar secrets nem editar Compose.
-- PAPI atual é provider de transição. Um gateway REST próprio baseado em fork da PAPI ou em Baileys é etapa futura e condicionada à validação de fonte/licença/segurança. Atualmente os Compose mais recentes usam `intrategica/papi-free:1.5.2`, não `1.5.1`; não assumir autorização para modificar/redistribuir a imagem.
+- Baileys nativo é o caminho operacional local atual no serviço `forte-whatsapp`; Meta Cloud API permanece alternativa oficial. Rotas e tipos PAPI legados continuam apenas para compatibilidade de dados antigos e não devem ser tratados como dependência do Compose oficial.
 
 ## Próximos passos — ordem recomendada
 
@@ -62,6 +62,9 @@
 - [x] Suíte PostgreSQL criada para validar pausar/reativar IA, suspender/reativar workspace e nota de suporte com motivo/auditoria, sem revelar segredo bruto; falta repetir no staging real.
 - [x] Cobertura local prova que owner/member e `users.role = admin` sem registro em `platformAdmins` não acessam o console.
 - [x] Suíte PostgreSQL criada para provar sessão de suporte read-only, operador, expiração, revogação e rejeição de outro workspace; executar no staging quando `DATABASE_URL` estiver disponível.
+- [x] Botão de logout adicionado ao painel operacional e ligado à procedure autenticada de logout.
+- [x] Reset destrutivo removido da tela comum de preferências; o controle permanece somente no console `/platform-admin`.
+- [x] Interface de Integrações recebe card de conexão Baileys com status, QR Code, reconexão e desconexão/logout.
 - Criar/explicitar relação tenant ↔ owner/master e preparar backfill do workspace demo sem perder dados.
 - Remover dependência de workspace global/demo e bootstrap de admin global para o caminho público.
 - Garantir sessão ativa e versão/revogação efetiva após troca de senha/desativação.
@@ -87,6 +90,8 @@
 - [x] Contrato HTTP do gateway validado sem pareamento: health/readiness, autenticação e envio de texto, imagem, áudio, vídeo e documento.
 - [ ] Validar imagem, áudio, vídeo, documento e tipos interativos em Docker/staging com número de teste.
 - [x] Workflow manual E2E criado para o fluxo operacional de staging, com URL e credenciais injetadas por variável/secret do GitHub; não executado automaticamente porque cria dados.
+- [x] Comando único `scripts/start-docker.sh` criado: faz pull das imagens e sobe/recria Panel, worker e gateway sem apagar volumes.
+- [x] Script Docker ampliado para atualizar toda a stack: PostgreSQL, Redis, Panel, worker e gateway, preservando volumes.
 - [x] Contrato REST aceita `list`, `poll`, `location`, `contact`, `react`, `sticker`, `album` e `event` com `metadata.payload`; Meta rejeita tipos não-texto explicitamente.
 - [x] E2E protegido por confirmação explícita de staging descartável, concorrência única e timeout de 10 minutos.
 - [x] Lock atômico por diretório impede duas conexões Baileys concorrentes e recupera lock obsoleto com teste automatizado.
@@ -108,7 +113,7 @@
 - Revisar privacidade, termos, retenção e suporte antes de cadastro público aberto.
 - Decidir planos/cobrança depois de validar uso/custo e jornada do produto.
 
-### Futuro condicionado — PAPI própria / Baileys
+### Futuro condicionado — PAPI legada / alternativas de canal
 
 - Primeiro obter ou confirmar com o mantenedor o repositório fonte, licença e permissão de fork/redistribuição da PAPI Free.
 - Comparar código e segurança de `1.5.1` com `1.5.2`, atualmente usada pelo Forte Panel.

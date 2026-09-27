@@ -203,3 +203,14 @@ O REST também aceita tipos estruturados Baileys (`list`, `poll`, `location`, `c
 O painel operacional comum não exibe nem permite editar API keys, configuração de provedores, prompt do agente ou reset de dados. As rotas `/onboarding`, `/ai-config` e `/ai-prompt` agora usam guard exclusivo de `platformAdmins`, e as procedures correspondentes também rejeitam usuários comuns no backend.
 
 O reset de desenvolvimento foi movido para o detalhe do workspace no console `/platform-admin/workspaces/:id`. Ele exige sessão de suporte `operator`, permissão mutável, confirmação explícita `APAGAR DADOS DO WORKSPACE`, motivo e auditoria. Usuários, memberships e acesso são preservados.
+
+
+## 20. Operação local e conexão do WhatsApp
+
+Para atualizar e iniciar a stack usando `.env`, execute:
+
+```bash
+./scripts/start-docker.sh
+```
+
+O script faz pull das imagens publicadas e recria `postgres_panel`, `redis_panel`, `forte-panel`, `forte-panel-worker` e `forte-whatsapp`; não remove volumes. O painel comum agora possui **Sair** no topo e a tela `Integrações` permite iniciar a conexão, acompanhar o estado e ler o QR Code do WhatsApp dentro da própria interface.

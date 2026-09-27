@@ -1,6 +1,6 @@
 # Forte Panel — auditoria documental e roadmap canônico
 
-**Data:** 2026-09-26  
+**Data:** 2026-09-27
 **Repositório:** `geordptoroy/forte-panel`  
 **Base da auditoria:** branch `main`, commit `c86185b`
 
@@ -221,3 +221,27 @@ O beta só deve ser considerado pronto quando:
 - backup e restore são comprovados;
 - suporte consegue diagnosticar e suspender uma conta com auditoria;
 - nenhuma tela promete uma capacidade que o canal selecionado não suporta.
+
+
+---
+## Atualização do roadmap — 2026-09-27
+
+O projeto entrou em **pré-staging para beta controlado**. O bloco de separação entre operação do cliente e administração da plataforma foi fechado no código:
+
+- API keys, prompt, configuração de IA e reset não aparecem no painel operacional comum; continuam no console `/platform-admin`.
+- O painel comum ganhou logout explícito.
+- Integrações ganhou conexão Baileys com status, QR Code e ações de sessão.
+- O comando único `scripts/start-docker.sh` atualiza toda a stack sem apagar volumes.
+- Documentação operacional e handoffs foram sincronizados.
+
+### Status do roadmap a partir desta atualização
+
+| Bloco | Estado | Próxima prova |
+| --- | --- | --- |
+| Segurança e isolamento | Implementado em grande parte, com gates automatizados | Repetir em PostgreSQL persistente de staging |
+| Console de plataforma | Implementado e isolado | Validar fluxo completo no staging |
+| Baileys/QR | Implementado em contrato e UI | Parear número de teste no Docker |
+| Atualização Docker | Comando único documentado e validado por sintaxe | Executar na máquina do usuário |
+| Beta controlado | Ainda não aberto | Concluir staging, E2E, backup/restore e observabilidade |
+
+A próxima ordem recomendada é: `git pull` no computador do usuário, atualização da stack sem `down -v`, validação QR/inbound/outbound, depois staging persistente e somente então convites beta.

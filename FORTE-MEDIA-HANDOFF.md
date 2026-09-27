@@ -1,9 +1,9 @@
 # Forte Media — handoff técnico
 
-**Data:** 2026-09-26  
+**Data:** 2026-09-27
 **Repositório:** `geordptoroy/forte-panel`  
 **Branch:** `main`  
-**Último commit:** `5f9846a`
+**Último commit:** commit desta atualização; consulte `git log -1`.
 
 ## Objetivo do projeto
 
@@ -345,3 +345,31 @@ Se o usuário alterou `LOCAL_ADMIN_EMAIL` ou `LOCAL_ADMIN_PASSWORD` no `.env`, u
 ## Observação para continuidade
 
 A PAPI foi removida da infraestrutura oficial, mas ainda existem rotas e tipos legados no backend para compatibilidade de dados antigos. A remoção completa do código legado deve ser feita depois que Baileys e WABA estiverem estáveis e que não existam workspaces antigos dependentes da PAPI.
+
+
+---
+## Atualização — 2026-09-27 — interface QR e atualização da stack
+
+O caminho operacional atual permanece o gateway Baileys nativo `forte-whatsapp`. O Panel agora expõe a conexão do número dentro de **Integrações**, sem exigir que o usuário final manipule chaves ou endpoints internos.
+
+### Entregas
+
+- Card de QR Code com status `idle`, `connecting`, `qr`, `connected`, `disconnected`, `logged_out` e `error`.
+- Polling de status/QR a cada 4 segundos durante o pareamento.
+- Ações separadas para desconexão temporária e encerramento da sessão.
+- Procedures protegidas: leitura para sessão autenticada; conexão e desconexão para manager/owner.
+- Logout do usuário disponível no topo do painel.
+- Reset administrativo removido das Preferências comuns; permanece no console de plataforma.
+- `scripts/start-docker.sh` atualiza a stack completa (`postgres_panel`, `redis_panel`, `forte-panel`, `forte-panel-worker`, `forte-whatsapp`) sem remover volumes.
+
+### Próximo teste no Windows/PowerShell
+
+```powershell
+cd C:\Users\Rafae\Desktop\forte-media
+git pull origin main
+docker compose --env-file .env pull
+docker compose --env-file .env up -d --force-recreate
+docker compose --env-file .env ps
+```
+
+Depois abrir `http://localhost:3002`, acessar **Integrações**, iniciar o QR e validar uma mensagem inbound nova antes do teste outbound. Não usar `down -v` durante a validação normal.
