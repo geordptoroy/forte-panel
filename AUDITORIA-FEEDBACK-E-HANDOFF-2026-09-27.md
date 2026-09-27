@@ -38,7 +38,7 @@ Não foram encontrados novos arquivos de log anexados fora dos documentos já ve
 - documentação já versionada;
 - evidências históricas de Docker/Baileys registradas no handoff anterior.
 
-Quando logs adicionais forem disponibilizados, anexá-los neste documento na seção **17. Evidências de logs** sem apagar os registros históricos.
+Os logs que faltavam foram anexados pelo usuário em `pasted_content_4.txt` e analisados nesta atualização. Eles confirmam problemas de ordem de inicialização, reinício do banco durante a execução e sincronização de estado do Baileys.
 
 ---
 
@@ -103,6 +103,85 @@ No código atual:
 - a interface do cliente mostra status do canal, mas ainda não apresenta uma cadeia observável `queued → processing → provider_accepted → delivered/failed`.
 
 **Conclusão:** a integração está parcialmente implementada, mas o contrato operacional ainda é frágil para o requisito “mensagens chegando e saindo corretamente”.
+
+### Evidência nova dos logs anexados
+
+Os logs trazem quatro achados objetivos:
+
+1. **Race condition entre worker e migrations.** Às `15:27:15`, `15:27:18` e `15:27:21`, o PostgreSQL registra:
+
+   ```text
+   ERROR: relation "messages" does not exist
+   STATEMENT: update "messages" set "status" = $1 where "messages"."status" = $2 returning "id"
+   ```
+
+   O worker começou a executar contra o banco antes de o schema estar disponível. Mais tarde, às `16:16:05`, o Panel iniciou `applying database migrations` e concluiu às `16:16:08`. O Compose atual depende apenas de `depends_on`/health e não garante que a migration tenha terminado antes do worker.
+
+   **Impacto:** o worker pode falhar ao recuperar/atualizar mensagens, causando a impressão de que mensagens não chegam ou não são processadas. A correção P0 é um job/entrypoint de migration separado ou um gate explícito de readiness de schema antes de iniciar o worker.
+
+2. **Reinício do PostgreSQL derruba o worker.** Às `16:28:19`, o worker encerra com:
+
+   ```text
+   error: terminating connection due to administrator command
+   code: 57P01
+   Emitted 'error' event on BoundPool instance
+   ```
+
+   O PostgreSQL registra `checkpoint starting: shutdown immediate` e encerra; depois os containers sobem novamente. O pool `pg` do worker emite um erro fatal não tratado. **Não é uma falha de senha ou de schema nessa ocorrência:** é o banco sendo reiniciado enquanto o worker mantinha conexão ativa.
+
+   **Impacto:** um restart normal de banco pode matar o worker ou deixá-lo sem recuperar jobs. Adicionar listener de erro no pool, backoff de reconexão, reabertura segura do pool e recuperação de jobs presos após o startup.
+
+3. **Sessão Baileys passa por stream error 515.** Às `16:17:25`, após o pareamento, aparece:
+
+   ```text
+   stream errored out
+   Error: Stream Errored (restart required)
+   ```
+
+   O gateway reconecta às `16:17:28`, refaz pre-keys e fica online. O código 515, isoladamente, parece uma reinicialização exigida pelo estado da sessão após o pareamento, não prova banimento. Porém, a UI deve mostrar `reconnecting` e não `connected` durante essa janela.
+
+4. **Falhas de app-state sync e identidades `@lid`.** O Baileys registra repetidamente:
+
+   ```text
+   failed to find key "AAAAAOyY" to decode mutation
+   ... parking after 2 attempts
+   ```
+
+   Depois injeta novas chaves e conclui o app-state sync, mas registra várias mudanças de identidade para JIDs `@lid`, por exemplo:
+
+   ```text
+   jid: "159446902776063@lid"
+   identity key changed or new contact, session will be re-established
+   ```
+
+   Também confirma a sessão própria com:
+
+   ```text
+   myPN: "5511999828045:12@s.whatsapp.net"
+   myLID: "21522752209051:12@lid"
+   Own LID session created successfully
+   ```
+
+   **Impacto:** o gateway ficou online, mas o armazenamento e a resolução de destinatários não podem depender apenas de telefone. É obrigatório persistir o JID completo recebido e correlacionar `@lid`/PN sem sobrescrever contatos ou enviar para um destinatário incorreto.
+
+5. **O worker continuou saudável somente no heartbeat após o restart.** Às `16:28:21` ele iniciou novamente com `lastError: null` e os heartbeats seguiram até `16:37:22`. Isso comprova que o processo volta a subir, mas não comprova que havia jobs/mensagens sendo consumidos; o log não contém uma confirmação de `inbound received`, `outbound sent` ou webhook aceito nesse intervalo.
+
+6. **Há chamadas sem sessão autenticada.** O Panel registra várias vezes `Auth: Missing session cookie` (`16:16:14`, `16:16:45`, `16:28:28`, `16:33:00` etc.). Isso é compatível com acesso sem login, sessão expirada ou cookies não enviados pelo browser. Não é a causa direta da falha Baileys, mas deve ser relacionado ao problema do console administrativo: o frontend precisa distinguir `401/sessão ausente` de `403/sem permissão` e redirecionar corretamente.
+
+7. **Aviso não bloqueante do Express.** O Panel registra `res.clearCookie: Passing "options.maxAge" is deprecated`. Corrigir para remover `maxAge` do `clearCookie`; não explica as mensagens ausentes, mas deve sair do log antes do beta.
+
+### Correção de prioridade derivada dos logs
+
+Antes de investigar a entrega física no celular, executar nesta ordem:
+
+1. separar migrations do processo web e do worker;
+2. esperar um `schema_ready` explícito antes de iniciar qualquer polling;
+3. tornar o pool PostgreSQL resiliente a `57P01` e `ECONNRESET`;
+4. subir o worker e confirmar `worker_heartbeat` sem erro;
+5. testar inbound/outbound com `messageId`, `jid`, `instanceId` e status em cada etapa;
+6. só então investigar entrega física, `@lid` e confirmação do provider.
+
+Não apagar a sessão WhatsApp neste momento. Os logs mostram que a sessão reconectou, sincronizou e identificou `myPN`/`myLID`; apagar a sessão eliminaria uma evidência útil e obrigaria novo pareamento.
 
 ### P0.2 — Erro de arquitetura na configuração da IA
 
@@ -855,23 +934,33 @@ Isso remove banco, Redis e sessão do WhatsApp.
 
 ---
 
-## 17. Evidências de logs — espaço reservado
+## 17. Evidências de logs — `pasted_content_4.txt`
 
 ### 17.1 Logs do gateway
 
-_Aguardando anexos novos do usuário._
+- `16:16:05–16:16:08`: Panel aplica migrations com sucesso.
+- `16:17:25`: stream error 515 e restart requerido após pareamento.
+- `16:17:31–16:17:35`: pre-keys são enviados; app-state sync encontra chaves ausentes, estaciona coleções e depois recebe novas chaves.
+- `16:17:33`: sessão própria confirmada com `myPN` e `myLID`.
+- `16:29:55–16:37:43`: múltiplos eventos de mudança de identity key para JIDs `@lid`.
 
 ### 17.2 Logs do Panel/webhook
 
-_Aguardando anexos novos do usuário._
+- `15:27:15–15:27:21`: PostgreSQL rejeita atualização em `messages` porque a relation ainda não existe.
+- `16:16:14` em diante: chamadas sem cookie de sessão.
+- Aviso deprecado de `res.clearCookie` com `maxAge`.
+- Não há, no trecho anexado, log suficiente para provar webhook inbound recebido/aceito ou outbound entregue.
 
 ### 17.3 Logs do worker/outbound
 
-_Aguardando anexos novos do usuário._
+- `16:16:06`: worker inicia; polling de 1500 ms, lote 10, três tentativas.
+- Heartbeats seguem com `lastError: null` antes do restart.
+- `16:28:19`: pool PostgreSQL recebe `57P01 terminating connection due to administrator command` e o processo encerra por evento `error` não tratado.
+- `16:28:21` em diante: worker sobe novamente e emite heartbeats, mas sem evento de mensagem processada no trecho.
 
 ### 17.4 SQL/estado da mensagem
 
-_Aguardar consulta com `id`, `direction`, `status`, `provider`, `externalId`, `metadata`, `lastError`, `createdAt`._
+Ainda é necessária consulta no ambiente local com `id`, `direction`, `status`, `provider`, `externalId`, `metadata`, `lastError`, `createdAt`. O arquivo de log não contém esses registros SQL de uma mensagem real.
 
 ---
 
