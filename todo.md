@@ -325,10 +325,9 @@ Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
 - [ ] Criar simulações mínimas: primeira mensagem, triagem, preço, agendamento, fora do horário e handoff.
 
 ### P2 — áudio assistido
-
-- [ ] Conectar captura/upload privado à transcrição tenant-aware, preservando original, fonte, trecho e confiança.
+- [x] Conectar captura/upload privado à transcrição tenant-aware, preservando original, fonte, trecho e confiança. (OnboardingPage agora oferece MediaRecorder, preview, upload, transcrição e retry; a transcrição permanece revisável e o formulário continua como fallback)
 - [ ] Permitir correção por texto ou áudio curto e pergunta de acompanhamento para ambiguidade.
-- [ ] Tornar processamento idempotente, com status, retry e fallback textual/humano.
+- [x] Tornar processamento idempotente, com status, retry e fallback textual/humano. (claim por asset, estados `uploaded/processing/completed/failed` e retry da UI)
 - [ ] Medir custo, duração, taxa de correção e abandono antes de ampliar áudio para toda a base.
 
 ### P3 — suporte avançado

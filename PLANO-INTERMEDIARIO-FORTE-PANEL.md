@@ -576,3 +576,14 @@ A fundação de áudio do onboarding foi conectada sem aceitar URL arbitrária d
 - A migration foi validada como SQL/JSON e por typecheck/build; o teste PostgreSQL ficou skipped nesta sandbox porque não há `DATABASE_URL`/PostgreSQL local. Aplicar `0034` e executar a suíte de integração no CI/staging antes de beta.
 
 Validação desta etapa: `pnpm check` ✅; `pnpm test` ✅ — 106 aprovados, 37 skipped por dependências externas/PostgreSQL; `pnpm build` ✅; `git diff --check` ✅; journal JSON ✅.
+
+
+---
+## Etapa seguinte — captura de voz no onboarding — 2026-09-27
+A `OnboardingPage` agora integra o backend de voz em uma experiência revisável e mobile-first. O operador escolhe o bloco, concede consentimento na seção de governança, grava pelo `MediaRecorder`, acompanha o limite de dois minutos, escuta uma prévia e decide quando enviar. O navegador não inicia o microfone sem consentimento ativo.
+
+O cliente envia o blob serializado em base64 para `voice.upload`; depois do upload bem-sucedido chama `voice.transcribe` somente com o `assetId`. Estados distintos exibem gravação, envio, transcrição, conclusão e erro. Uma falha mantém o formulário textual disponível e permite retry sem gravar novamente. A transcrição concluída aparece como rascunho e pode ser inserida no FAQ sem publicar o prompt; nenhuma resposta de voz altera automaticamente o agente.
+
+Também foram adicionados descarte/regravação, preview local com `URL.createObjectURL`, encerramento automático em 120 segundos, parada das tracks do microfone e revogação das URLs no cleanup. Formatos suportados são negociados com `MediaRecorder` (`webm`, `mp4` ou `ogg`) e normalizados antes do envio.
+
+Validação: `pnpm check` ✅; `pnpm test` ✅ — 106 aprovados, 37 skipped; `pnpm build` ✅; `git diff --check` ✅. O warning conhecido de bundle inicial acima de 500 kB permanece. A próxima etapa é expiração real dos assets, depois correção/extração por bloco com revisão e confiança.

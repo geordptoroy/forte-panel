@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Info, ListChecks, Save, Sparkles } from "lucide-react";
+import {
+  CheckCircle2,
+  Info,
+  ListChecks,
+  Loader2,
+  Mic,
+  RotateCcw,
+  Save,
+  Sparkles,
+  Square,
+  UploadCloud,
+  Volume2,
+} from "lucide-react";
 import { useLocation } from "wouter";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
@@ -57,6 +69,31 @@ const fieldTitles: Record<string, string> = {
   qualificationRules: "Qualificação",
 };
 
+const voiceStepKeys = ["identity", "offering", "operations", "guardrails", "voice"] as const;
+type VoiceStepKey = (typeof voiceStepKeys)[number];
+
+function formatRecordingDuration(durationMs: number) {
+  const seconds = Math.floor(durationMs / 1000);
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function blobToBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const separator = result.indexOf(",");
+      if (separator < 0) {
+        reject(new Error("Não foi possível preparar o áudio para envio."));
+        return;
+      }
+      resolve(result.slice(separator + 1));
+    };
+    reader.onerror = () => reject(new Error("Não foi possível ler a gravação."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export default function OnboardingPage() {
   const utils = trpc.useUtils();
   const [, setLocation] = useLocation();
@@ -105,6 +142,40 @@ export default function OnboardingPage() {
       void utils.onboarding.profile.invalidate();
     },
   });
+  const [voiceStepKey, setVoiceStepKey] = useState<VoiceStepKey>("voice");
+  const [voiceStatus, setVoiceStatus] = useState<"idle" | "recording" | "recorded" | "uploading" | "transcribing" | "completed" | "error">("idle");
+  const [voiceDurationMs, setVoiceDurationMs] = useState(0);
+  const [voiceMimeType, setVoiceMimeType] = useState("audio/webm");
+  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
+  const [voiceUrl, setVoiceUrl] = useState("");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceError, setVoiceError] = useState("");
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef(0);
+  const recordingTimerRef = useRef<number | null>(null);
+  const transcribeVoice = trpc.voice.transcribe.useMutation({
+    onSuccess: result => {
+      setVoiceStatus("completed");
+      setVoiceTranscript(result.text);
+      setVoiceError("");
+    },
+    onError: error => {
+      setVoiceStatus("error");
+      setVoiceError(error.message);
+    },
+  });
+  const uploadVoice = trpc.voice.upload.useMutation({
+    onSuccess: asset => {
+      setVoiceStatus("transcribing");
+      transcribeVoice.mutate({ assetId: asset.assetId, language: "pt" });
+    },
+    onError: error => {
+      setVoiceStatus("error");
+      setVoiceError(error.message);
+    },
+  });
 
   useEffect(() => {
     if (profileQuery.data) {
@@ -143,6 +214,112 @@ export default function OnboardingPage() {
     return () => window.clearTimeout(timeout);
   }, [autosave.mutate, dirty, profile]);
 
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
+    if (voiceUrl) URL.revokeObjectURL(voiceUrl);
+  }, [voiceUrl]);
+
+  const stopRecording = () => {
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+  };
+
+  const startRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setVoiceStatus("error");
+      setVoiceError("Este navegador não oferece gravação de áudio. Responda por texto ou use um navegador atualizado.");
+      return;
+    }
+    setVoiceError("");
+    setVoiceTranscript("");
+    setVoiceBlob(null);
+    if (voiceUrl) {
+      URL.revokeObjectURL(voiceUrl);
+      setVoiceUrl("");
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+      const supported = candidates.find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, supported ? { mimeType: supported } : undefined);
+      streamRef.current = stream;
+      recorderRef.current = recorder;
+      voiceChunksRef.current = [];
+      recordingStartedAtRef.current = Date.now();
+      setVoiceDurationMs(0);
+      setVoiceMimeType((supported ?? "audio/webm").split(";", 1)[0]);
+      setVoiceStatus("recording");
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
+        stream.getTracks().forEach(track => track.stop());
+        const durationMs = Math.min(120_000, Date.now() - recordingStartedAtRef.current);
+        const mimeType = (recorder.mimeType || supported || "audio/webm").split(";", 1)[0];
+        const blob = new Blob(voiceChunksRef.current, { type: mimeType });
+        setVoiceDurationMs(durationMs);
+        setVoiceMimeType(mimeType);
+        setVoiceBlob(blob);
+        setVoiceStatus(blob.size > 0 && blob.size <= 16 * 1024 * 1024 ? "recorded" : "error");
+        if (!blob.size) setVoiceError("A gravação ficou vazia. Tente novamente.");
+        if (blob.size > 16 * 1024 * 1024) setVoiceError("A gravação ultrapassou o limite de 16 MB.");
+        if (blob.size > 0 && blob.size <= 16 * 1024 * 1024) setVoiceUrl(URL.createObjectURL(blob));
+        streamRef.current = null;
+        recorderRef.current = null;
+      };
+      recorder.start(250);
+      recordingTimerRef.current = window.setInterval(() => {
+        const elapsed = Date.now() - recordingStartedAtRef.current;
+        setVoiceDurationMs(Math.min(120_000, elapsed));
+        if (elapsed >= 120_000) stopRecording();
+      }, 250);
+    } catch {
+      setVoiceStatus("error");
+      setVoiceError("Não foi possível acessar o microfone. Verifique a permissão do navegador ou responda por texto.");
+    }
+  };
+
+  const discardRecording = () => {
+    stopRecording();
+    if (voiceUrl) URL.revokeObjectURL(voiceUrl);
+    setVoiceUrl("");
+    setVoiceBlob(null);
+    setVoiceTranscript("");
+    setVoiceError("");
+    setVoiceDurationMs(0);
+    setVoiceStatus("idle");
+  };
+
+  const uploadRecordedVoice = async () => {
+    if (!voiceBlob || !sessionQuery.data?.id) return;
+    setVoiceStatus("uploading");
+    setVoiceError("");
+    try {
+      const audioBase64 = await blobToBase64(voiceBlob);
+      uploadVoice.mutate({
+        sessionId: sessionQuery.data.id,
+        stepKey: voiceStepKey,
+        mimeType: voiceMimeType,
+        durationMs: Math.max(1, Math.round(voiceDurationMs)),
+        audioBase64,
+      });
+    } catch (error) {
+      setVoiceStatus("error");
+      setVoiceError(error instanceof Error ? error.message : "Não foi possível preparar o áudio.");
+    }
+  };
+
+  const insertTranscriptIntoFaq = () => {
+    if (!voiceTranscript.trim()) return;
+    const prefix = profile.faq.trim() ? `${profile.faq.trim()}\n\n` : "";
+    setDirty(true);
+    setProfile(current => ({
+      ...current,
+      faq: `${prefix}Transcrição do onboarding (${stepTitles[voiceStepKey]}):\n${voiceTranscript.trim()}`,
+    }));
+  };
+
   const update = (key: keyof Profile, value: string) => {
     setDirty(true);
     setProfile(current => ({ ...current, [key]: value }));
@@ -156,6 +333,9 @@ export default function OnboardingPage() {
     profileQuery.data?.checklist.readyToPublish === true &&
     requiredStepKeys.every(stepKey => confirmedStepKeys.has(stepKey));
   const confirmedRequiredCount = requiredStepKeys.filter(stepKey => confirmedStepKeys.has(stepKey)).length;
+  const transcriptionConsentGranted = governanceQuery.data?.consents.some(
+    consent => consent.source === "transcription" && consent.status === "granted"
+  ) === true;
   const field = (
     key: keyof Profile,
     label: string,
@@ -245,6 +425,86 @@ export default function OnboardingPage() {
           {(setSourceConsent.error || saveRetentionPolicy.error) && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} /> {(setSourceConsent.error || saveRetentionPolicy.error)?.message}</div>}
         </section>
       )}
+      <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+        <SectionTitle
+          eyebrow="Entrada por voz"
+          title="Responda falando, revise antes de usar"
+          action={<span className="muted" style={{ fontSize: 10 }}>até 02:00 · 16 MB</span>}
+        />
+        <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11, lineHeight: 1.5 }}>
+          Grave uma resposta curta para este bloco. O áudio será enviado de forma privada, transcrito e mostrado como rascunho; nada publica automaticamente.
+        </p>
+        <div className="form-grid" style={{ alignItems: "end" }}>
+          <div className="form-field">
+            <label htmlFor="onboarding-voice-step">Bloco da resposta</label>
+            <select
+              id="onboarding-voice-step"
+              className="input-control"
+              value={voiceStepKey}
+              onChange={event => setVoiceStepKey(event.target.value as VoiceStepKey)}
+              disabled={voiceStatus === "recording" || voiceStatus === "uploading" || voiceStatus === "transcribing"}
+            >
+              {voiceStepKeys.map(stepKey => <option key={stepKey} value={stepKey}>{stepTitles[stepKey]}</option>)}
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              className={voiceStatus === "recording" ? "btn-secondary" : "btn-primary"}
+              disabled={!transcriptionConsentGranted || !sessionQuery.data?.id || voiceStatus === "uploading" || voiceStatus === "transcribing"}
+              onClick={() => voiceStatus === "recording" ? stopRecording() : void startRecording()}
+              title={!transcriptionConsentGranted ? "Conceda o consentimento de transcrição acima antes de gravar" : undefined}
+            >
+              {voiceStatus === "recording" ? <><Square size={13} /> Parar gravação</> : <><Mic size={13} /> Gravar resposta</>}
+            </button>
+            {voiceBlob && voiceStatus !== "recording" && (
+              <button className="btn-secondary" onClick={discardRecording} disabled={voiceStatus === "uploading" || voiceStatus === "transcribing"}>
+                <RotateCcw size={13} /> Gravar novamente
+              </button>
+            )}
+          </div>
+        </div>
+        {!transcriptionConsentGranted && (
+          <div className="demo-banner" style={{ margin: "14px 0 0" }}>
+            <Info size={14} /> Conceda o consentimento de transcrição na seção de governança para habilitar o microfone.
+          </div>
+        )}
+        {voiceStatus === "recording" && (
+          <div className="operational-banner" style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 14, padding: "10px 12px", fontSize: 10 }} aria-live="polite">
+            <Volume2 size={14} /> Gravando {formatRecordingDuration(voiceDurationMs)} de 02:00. Fale naturalmente e pare quando terminar.
+          </div>
+        )}
+        {voiceUrl && (
+          <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
+            <audio controls src={voiceUrl} style={{ width: "100%", height: 36 }} aria-label="Prévia da gravação" />
+            {voiceStatus === "recorded" || voiceStatus === "error" ? (
+              <button className="btn-secondary" onClick={() => void uploadRecordedVoice()} disabled={uploadVoice.isPending || transcribeVoice.isPending}>
+                <UploadCloud size={13} /> Enviar e transcrever
+              </button>
+            ) : null}
+          </div>
+        )}
+        {(voiceStatus === "uploading" || voiceStatus === "transcribing") && (
+          <div className="muted" style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 12, fontSize: 10 }} aria-live="polite">
+            <Loader2 size={13} className="animate-spin" /> {voiceStatus === "uploading" ? "Enviando áudio privado..." : "Transcrevendo com consentimento..."}
+          </div>
+        )}
+        {voiceTranscript && voiceStatus === "completed" && (
+          <div style={{ marginTop: 14, padding: 12, border: "1px solid rgba(86,214,138,.22)", background: "rgba(86,214,138,.035)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <strong style={{ color: "#b9e4c7", fontSize: 11 }}>Transcrição revisável</strong>
+              <button className="btn-secondary" style={{ padding: "5px 8px", fontSize: 9 }} onClick={insertTranscriptIntoFaq}>
+                Usar no FAQ como rascunho
+              </button>
+            </div>
+            <p style={{ margin: "9px 0 0", color: "#bcbcbc", fontSize: 11, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{voiceTranscript}</p>
+          </div>
+        )}
+        {voiceError && (
+          <div className="demo-banner" style={{ margin: "12px 0 0" }} role="alert">
+            <Info size={14} /> <span>{voiceError} O formulário abaixo continua disponível como fallback.</span>
+          </div>
+        )}
+      </section>
       {profileQuery.data?.checklist && (
         <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start" }}>

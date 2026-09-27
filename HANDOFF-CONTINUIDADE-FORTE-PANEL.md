@@ -1728,3 +1728,17 @@ Foram adicionados `server/onboarding-audio.ts`, testes unitários de limites/MIM
 Validação no sandbox: `pnpm check` passou; `pnpm test` passou com 106 testes aprovados e 37 skipped por dependências externas/PostgreSQL; `pnpm build` passou com o warning conhecido de bundle inicial acima de 500 kB; `git diff --check` e journal JSON passaram. Não há PostgreSQL local nem `DATABASE_URL` nesta sandbox, portanto a migration e o teste de integração ainda precisam ser aplicados/executados em CI/staging.
 
 Próximo bloco recomendado: adicionar captura `MediaRecorder` na `OnboardingPage`, player/status/retry e integração com `voice.upload`; em seguida criar rotina/worker de expiração com dry-run e auditoria, e só depois estruturar transcrições em JSON por bloco com revisão/confiança antes de tocar `onboardingStepAnswers`. O formulário textual continua sendo o fallback obrigatório. Não abrir lead intake público nem ativar processamento sem consentimento.
+
+
+---
+## Atualização do handoff — 2026-09-27 — captura e preview de voz no onboarding
+
+A próxima fatia recomendada foi executada em `client/src/pages/OnboardingPage.tsx`. A tela agora tem um cartão de entrada por voz com seleção do bloco (`identity`, `offering`, `operations`, `guardrails` ou `voice`), gravação via `MediaRecorder`, limite visual de 2 minutos, preview local, descarte/regravação, envio e transcrição.
+
+O microfone fica desabilitado enquanto o consentimento `transcription` não estiver concedido. A captura negocia `audio/webm;codecs=opus`, `audio/webm`, `audio/mp4` ou `audio/ogg;codecs=opus`, normaliza o MIME, encerra automaticamente aos 120 segundos e para todas as tracks ao terminar. O blob fica apenas no browser até o operador clicar em **Enviar e transcrever**. O upload usa `voice.upload` com o `sessionId` atual; no sucesso, a UI chama `voice.transcribe` somente com o `assetId` retornado.
+
+A UI diferencia `recording`, `recorded`, `uploading`, `transcribing`, `completed` e `error`. Em erro, a gravação permanece disponível para retry e o formulário textual continua explicitamente indicado como fallback. A transcrição aparece como rascunho revisável e pode ser inserida no FAQ, marcando o perfil como sujo para autosave; ela não confirma bloco nem publica prompt automaticamente. URLs locais e tracks são limpas no unmount/descarte.
+
+Validação após a alteração: `pnpm check` passou; `pnpm test` passou com 106 aprovados e 37 skipped por dependências externas/PostgreSQL; `pnpm build` passou; `git diff --check` passou. O bundle inicial cresceu para aproximadamente 738 kB e mantém o warning de code splitting acima de 500 kB.
+
+Próximo bloco recomendado: rotina/worker de expiração física de assets e limpeza de transcrições derivadas conforme `rawArtifactDays`/`derivedDataDays`, com dry-run e auditoria. Depois, permitir correção por texto/áudio curto e extração estruturada para `onboardingStepAnswers` somente após revisão/confiança. Não ativar expansão pública de áudio antes da execução da migration 0034 e da suíte PostgreSQL em CI/staging.
