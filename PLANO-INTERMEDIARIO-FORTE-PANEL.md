@@ -644,3 +644,10 @@ A publicação deixou de sobrescrever diretamente o setting atual. A migration `
 `onboarding.versions` lista o histórico protegido. `onboarding.rollback` recupera uma versão do mesmo workspace, gera nova versão incremental com `rollbackOfId`, atualiza o perfil publicado e repõe o histórico de respostas; nunca apaga ou reescreve uma versão anterior. A UI apresenta o histórico e a ação de publicar uma versão anterior como novo rollback.
 
 Validação desta etapa: `pnpm check` ✅; teste PostgreSQL condicional de gate/publicação/rollback adicionado (skipped no sandbox sem PostgreSQL); suíte local: 112 aprovados e 41 skipped; migration/journal e build permanecem gates finais.
+
+
+---
+## Etapa operacional — Docker local para prova PostgreSQL — 2026-09-27
+Foi preparado um caminho local para o próximo gate: `LOCAL-DOCKER-TESTE.md` documenta o Compose, o `.env` gerado, o start, logs, migrations e os testes de publicação. O PostgreSQL é publicado apenas em localhost; Redis, painel, worker e gateway continuam na rede Docker.
+
+O reset global é separado e protegido por token explícito para reduzir acidentes. Ele pode remover volumes, imagens, redes e cache de outros projetos Docker da máquina, portanto não é executado automaticamente pelo agente. A execução real do teste PostgreSQL fica para a máquina do usuário, onde Docker e o espaço local estão disponíveis.

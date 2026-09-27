@@ -7,6 +7,8 @@ services:
       POSTGRES_DB: ${PANEL_POSTGRES_DB:-forte_panel}
       POSTGRES_USER: ${PANEL_POSTGRES_USER:-forte_panel}
       POSTGRES_PASSWORD: ${PANEL_POSTGRES_PASSWORD:?PANEL_POSTGRES_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${PANEL_POSTGRES_PORT:-5432}:5432"
     volumes:
       - forte_postgres_panel_data:/var/lib/postgresql/data
     healthcheck:

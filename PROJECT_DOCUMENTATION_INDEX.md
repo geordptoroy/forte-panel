@@ -16,6 +16,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 10. [`GUIA-CONVITES-E-PERMISSOES.md`](./GUIA-CONVITES-E-PERMISSOES.md) — convite de funcionários, RBAC/ABAC, matriz de visibilidade, escopos de Inbox e critérios de aceite.
 11. [`GUIA-UX-CLAREZA-E-FACILIDADE.md`](./GUIA-UX-CLAREZA-E-FACILIDADE.md) — checklist de primeiro acesso, linguagem para leigos, estados vazios, ajuda contextual, previews e métricas de abandono.
 12. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência de teste e ambiente efetivamente validado.
+13. [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) — reset destrutivo opcional, inicialização Docker, migrations e testes PostgreSQL locais.
 
 ## Produto e tenancy
 

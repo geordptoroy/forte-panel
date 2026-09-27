@@ -197,6 +197,7 @@ Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
 - [x] Rota `/kanban` registrada no `App.tsx`.
 - [x] Billing/quotes usa `ctx.workspace.workspaceId`, exige `requireManager` e não usa mais `ensureDemoWorkspace()` nesses caminhos.
 - [x] `pnpm check`, `pnpm build`, suíte local e `git diff --check` executados.
+- [x] Preparar fluxo local reproduzível com `docker-compose.local.yml`, `.env.docker.example`, inicialização, logs e reset destrutivo explicitamente confirmado.
 - [ ] Rodar a prova equivalente em PostgreSQL/staging com dois workspaces; 31 testes dependentes de banco continuam skipped no sandbox sem `DATABASE_URL`.
 - [ ] Fazer smoke browser do console: platform-only, workspace suspenso, refresh/back/forward e reativação.
 - [ ] Iniciar P1.1: QR/Conexão WhatsApp em primeira dobra e validação real em Docker.
