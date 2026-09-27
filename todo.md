@@ -238,7 +238,8 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Revisar grupos em staging, escolher contato canônico, migrar referências/transações e só depois aplicar deduplicação controlada.
 - [x] Responder pela instância/canal de origem da conversa, não por `defaultPapiWebhook`. (mensagens legadas sem origem ainda usam o default explicitamente marcado)
 - [ ] Formalizar se a operação é caixa compartilhada; caso não seja, implementar assignment/equipe/ACL por contato e mídia.
-- [ ] Separar `awaiting_response` de unread: derivar por última inbound/outbound e implementar leitura transacional por usuário.
+- [x] Definir semanticamente `awaiting_response` separado de unread: a última atividade outbound aceita aguarda o lead; a última inbound precisa de operador; outbound `failed` não conta. (contrato puro e testes adicionados)
+- [ ] Integrar `awaiting_response` às consultas da Inbox/Dashboard e implementar leitura transacional por usuário; `unread` continua significando somente não lida pelo operador.
 - [ ] Exibir status `queued/processing/sent/failed`, erro e retry na Inbox; invalidar após webhook/worker.
 - [ ] Corrigir KPIs `daysNoReply`/`receivedMonthCents`, usar consultas server-side e timezone do workspace.
 - [ ] Persistir histórico de stages (from/to, ator, motivo, timestamp, SLA, open/won/lost) e tratar Sem retorno/Perdido como estados terminais.

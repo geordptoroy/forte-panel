@@ -1315,3 +1315,10 @@ O slice seguinte foi concluído com helpers compartilhados em `server/_core/phon
 Foi criado `scripts/audit-contact-duplicates.ts`, em modo somente leitura. Uso: `pnpm exec tsx scripts/audit-contact-duplicates.ts --workspace=<id> --json`. O comando consulta apenas `contacts`, agrupa por workspace e chave canônica, reporta IDs, telefones e nomes envolvidos e não mescla, exclui ou atualiza nada. Também não cruza automaticamente LID/grupo com telefone comum.
 
 A consolidação histórica permanece pendente e deve ocorrer em staging: revisar cada grupo, escolher o contato canônico, migrar referências de conversas/mensagens/notas/orçamentos/agendamentos com transação e backup, validar contagens e só então executar uma migração aprovada. Nunca rodar uma mesclagem automática em produção.
+
+
+### Contrato de estado da Inbox — 2026-09-27
+
+Foi definido em `server/_core/conversation-state.ts` que `unread` e `awaitingResponse` são estados diferentes. `unread` representa mensagem inbound ainda não lida pelo operador. `awaitingResponse` representa a última atividade outbound com status `sent`, indicando que o negócio respondeu e aguarda o lead. A última inbound indica necessidade de resposta do operador; outbound `queued`, `processing` ou `failed` não conta como resposta entregue.
+
+Foram adicionados quatro testes cobrindo outbound aceito, inbound novo, outbound falho e desempate por ID no mesmo timestamp. A integração nas consultas da Inbox/Dashboard e a leitura transacional por usuário ainda são o próximo slice, pois exigem decidir a persistência da leitura e evitar divergência entre `contacts.unreadCount` e `conversations.unreadCount`.
