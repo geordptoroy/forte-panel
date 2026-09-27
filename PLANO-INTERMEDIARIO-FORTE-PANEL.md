@@ -405,3 +405,7 @@ O gateway recebeu `forte-whatsapp/src/session-lock.ts`, com lock atômico `.sess
 ## Atualização de execução — 2026-09-26 23:42
 
 As sessões Baileys agora normalizam permissões privadas: diretórios `0700` e arquivos `0600`, incluindo o lock, com tratamento recursivo de subdiretórios. A suíte do gateway passou com 11 testes, typecheck e build. Isso reduz exposição acidental no volume, mas não equivale a criptografia em repouso; a troca do `useMultiFileAuthState` por store durável/criptografado e o restore continuam pendentes.
+
+## Atualização de execução — 2026-09-26 23:43
+
+Foi adicionada a camada `forte-whatsapp/src/encrypted-auth-state.ts`, compatível com `AuthenticationState` do Baileys. Quando `WHATSAPP_SESSION_ENCRYPTION_KEY` está configurada, creds e Signal keys são persistidos com AES-256-GCM, escrita atômica, permissões privadas e migração automática de JSON legado sob o lock da instância. A suíte `encrypted-auth-state.test.ts` cobre cifragem, restore, chave errada e migração. O gateway passou com 14 testes, typecheck e build. Store externo/durável e failover continuam pendentes antes de escala.

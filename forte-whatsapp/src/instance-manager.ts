@@ -13,6 +13,7 @@ import makeWASocket, {
 } from "baileys";
 import pino from "pino";
 import { config } from "./config.js";
+import { useEncryptedAuthState } from "./encrypted-auth-state.js";
 import { acquireSessionLock, type SessionLock } from "./session-lock.js";
 
 export type InstanceStatus =
@@ -56,7 +57,9 @@ export class InstanceManager {
       const sessionPath = path.join(config.sessionDir, config.instanceId);
       await fs.mkdir(sessionPath, { recursive: true });
       this.sessionLock ??= await acquireSessionLock(sessionPath);
-      const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+      const { state, saveCreds } = config.sessionEncryptionKey
+        ? await useEncryptedAuthState(sessionPath, config.sessionEncryptionKey)
+        : await useMultiFileAuthState(sessionPath);
       const { version } = await fetchLatestBaileysVersion();
       this.socket = makeWASocket({
         version,

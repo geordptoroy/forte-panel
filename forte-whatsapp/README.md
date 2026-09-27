@@ -10,7 +10,7 @@ A API é interna e exige `Authorization: Bearer <WHATSAPP_API_KEY>`.
 
 ## Variáveis
 
-Copie `.env.example` para um ambiente local e preencha somente localmente. Nunca versione credenciais ou a pasta `sessions`.
+Copie `.env.example` para um ambiente local e preencha somente localmente. Nunca versione credenciais ou a pasta `sessions`. Defina `WHATSAPP_SESSION_ENCRYPTION_KEY` com 32 bytes em hex/base64 para usar AES-256-GCM; se já houver uma sessão JSON legada, o primeiro acesso com a chave a migra para o formato cifrado sob o lock da instância.
 
 ## Endpoints principais
 
@@ -27,7 +27,7 @@ O payload genérico permite texto, imagem, áudio, vídeo, documento, sticker, l
 
 ## Pendências de produção
 
-- substituir `useMultiFileAuthState` por store durável e criptografado;
+- o auth state criptografado com AES-256-GCM está disponível por `WHATSAPP_SESSION_ENCRYPTION_KEY`, incluindo restore e migração legada; ainda falta mover o store para backend durável/externo;
 - o gateway já usa lock atômico por diretório de instância e aplica permissões `0700` ao diretório e `0600` aos arquivos; ainda falta lifecycle de múltiplas instâncias por workspace;
 - mover mídia de data URL para storage privado com URL assinada;
 - executar E2E em Docker/staging com número de teste;
