@@ -89,6 +89,7 @@
 ### 5. Operação, beta e lançamento
 
 - [x] CI com PostgreSQL 16, migrations limpas e suites de isolamento; o workflow falha se uma suite crítica for ignorada.
+- [x] Cobertura PostgreSQL do heartbeat confirma estados healthy, degraded e stale no console e preserva um único registro por serviço.
 - CI com suites E2E, health/readiness, logs/alertas e correlation IDs.
 - Backups off-host e restauração testada; exportação/encerramento de empresa; limites antiabuso.
 - Revisar privacidade, termos, retenção e suporte antes de cadastro público aberto.

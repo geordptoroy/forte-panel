@@ -384,3 +384,8 @@ No sandbox sem `DATABASE_URL`/Docker, a suíte fica corretamente marcada como ig
 Foi criado `.github/workflows/postgres-integration.yml`. O workflow inicia PostgreSQL 16, aplica a árvore versionada `drizzle-pg`, executa as suítes críticas de isolamento e falha se qualquer uma for ignorada. Ele roda em pull requests, pushes na `main` e execução manual.
 
 A validação local confirmou a formatação do YAML e `git diff --check`. A execução efetiva depende do runner GitHub Actions, pois o sandbox atual não possui Docker nem PostgreSQL.
+
+
+## Atualização de execução — 2026-09-26 21:45
+
+Foi adicionada a suíte `server/worker-heartbeat.test.ts`. Em PostgreSQL real, ela confirma que o heartbeat é upsertado por serviço e que o console classifica corretamente o worker como `healthy`, `degraded` após erro e `stale` quando o sinal ultrapassa o limite de 180 segundos. O contrato HTTP de `/api/v1/health` e `/api/v1/ready` já estava coberto por `server/api.contract.test.ts`; agora o sinal persistido do worker também está protegido no CI.
