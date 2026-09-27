@@ -230,3 +230,12 @@ Antes de novos convites beta, fechar obrigatoriamente:
 8. Backup/restore, staging persistente, observabilidade e testes negativos de tenancy.
 
 Tickets de suporte, catálogo de preços, planos sandbox, landing, termos, privacidade e LGPD são etapas seguintes; não ativar cobrança ou cadastro público antes da aprovação dos gates acima. Consulte `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md` para a ordem completa.
+
+
+## 22. Resultado da execução P0 — 2026-09-27
+
+O primeiro bloco de correções foi concluído. O retorno do console permanece no console da plataforma, workspaces suspensos podem receber uma sessão administrativa para reativação, `/kanban` está registrado e billing/quotes passou a exigir gerente e escopo explícito do workspace.
+
+Os comandos locais `pnpm check`, `pnpm build`, `pnpm test -- --runInBand` e `git diff --check` foram executados. O resultado foi 62 testes aprovados, 31 skipped por ausência de `DATABASE_URL`, build aprovado com alerta conhecido de bundle grande e nenhum erro de TypeScript.
+
+O gate ainda não é considerado totalmente fechado até executar PostgreSQL/staging com dois workspaces, validar quotes sem cruzamento de tenant e rodar smoke browser no ciclo workspace suspenso → logout → novo login → reativação. Depois desse gate, a próxima frente é QR/Conexão WhatsApp.

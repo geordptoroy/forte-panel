@@ -1855,6 +1855,17 @@ export async function getWorkspaceBySlug(slug: string) {
   return result[0];
 }
 
+export async function getWorkspaceById(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .limit(1);
+  return result[0];
+}
+
 export async function getActiveWorkspaceById(workspaceId: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -3403,15 +3414,14 @@ export async function getDashboardSnapshot(workspaceId: number) {
   };
 }
 
-export async function listQuotes() {
+export async function listQuotes(workspaceId: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) return [];
+  if (!db) return [];
   const rows = await db
     .select({ quote: quotes, contact: contacts })
     .from(quotes)
     .leftJoin(contacts, eq(quotes.contactId, contacts.id))
-    .where(eq(quotes.workspaceId, workspace.id))
+    .where(eq(quotes.workspaceId, workspaceId))
     .orderBy(desc(quotes.createdAt));
   return rows.map(({ quote, contact }) => ({
     ...quote,
@@ -3443,18 +3453,18 @@ export async function createQuote(
     dueDate?: Date;
     notes?: string;
   },
+  workspaceId: number,
   actorUserId?: number
 ) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Database unavailable");
+  if (!db) throw new Error("Database unavailable");
   const contact = await db
     .select({ id: contacts.id })
     .from(contacts)
     .where(
       and(
         eq(contacts.id, input.contactId),
-        eq(contacts.workspaceId, workspace.id)
+        eq(contacts.workspaceId, workspaceId)
       )
     )
     .limit(1);
@@ -3463,7 +3473,7 @@ export async function createQuote(
   const inserted = await db
     .insert(quotes)
     .values({
-      workspaceId: workspace.id,
+      workspaceId,
       contactId: input.contactId,
       serviceName: input.serviceName,
       description: input.description,
@@ -3479,9 +3489,14 @@ export async function createQuote(
   await db
     .update(contacts)
     .set({ quoteCents: input.quotedCents, updatedAt: now })
-    .where(eq(contacts.id, input.contactId));
+    .where(
+      and(
+        eq(contacts.id, input.contactId),
+        eq(contacts.workspaceId, workspaceId)
+      )
+    );
   await db.insert(auditLogs).values({
-    workspaceId: workspace.id,
+    workspaceId,
     actorUserId,
     contactId: input.contactId,
     action: "quote_created",
@@ -3501,24 +3516,24 @@ export async function updateQuotePayment(
     | "parcialmente_pago"
     | "pago"
     | "cancelado",
+  workspaceId: number,
   actorUserId?: number
 ) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
-  if (!db || !workspace) throw new Error("Database unavailable");
+  if (!db) throw new Error("Database unavailable");
   const existing = await db
     .select()
     .from(quotes)
-    .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspace.id)))
+    .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
     .limit(1);
   if (!existing[0]) throw new Error("Quote not found");
   const updated = await db
     .update(quotes)
     .set({ receivedCents, status, updatedAt: new Date() })
-    .where(eq(quotes.id, id))
+    .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
     .returning();
   await db.insert(auditLogs).values({
-    workspaceId: workspace.id,
+    workspaceId,
     actorUserId,
     contactId: existing[0].contactId,
     action: "quote_updated",

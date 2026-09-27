@@ -1175,3 +1175,28 @@ Foi feita uma auditoria ampla do console administrativo, operação do workspace
 ### Regra de continuidade
 
 Não usar `ensureDemoWorkspace()` em novos fluxos tenant-aware, não esconder falhas de integração com números artificiais e não ativar cobrança real. O próximo bloco de código deve ser P0.1/P0.2/P0.3, com testes de platform-only, workspace suspenso e dois workspaces.
+
+
+---
+## Execução do bloco P0 — 2026-09-27
+
+O bloco P0 foi implementado e validado no sandbox.
+
+### Código alterado
+
+- `client/src/pages/PlatformAdminPage.tsx`: o rodapé do console agora retorna para `/platform-admin`, nunca para `/dashboard`; a sessão administrativa sincroniza o `sessionId` na URL ao escalar para operador e limpa a URL ao iniciar novamente depois de expiração/erro.
+- `server/db.ts`: adicionada `getWorkspaceById`, sem filtro de `active`, para uso exclusivo do controle-plane; quotes agora recebem `workspaceId` explícito, filtram contato/quote pelo tenant e atualizam quote somente dentro desse tenant.
+- `server/platform-admin.ts`: `startSupportSession` passa a abrir sessão read-only/operator também para workspace suspenso, permitindo reativação pelo console após logout ou expiração.
+- `client/src/App.tsx`: rota `/kanban` registrada; faturamento visualmente protegido por `manager`.
+- `server/routers.ts`: `billing.quotes`, `createQuote` e `updatePayment` passaram de `protectedProcedure` para `requireManager` e usam `ctx.workspace.workspaceId`.
+
+### Validação
+
+- `pnpm check`: passou.
+- `pnpm build`: passou; permanece o aviso conhecido de bundle inicial grande, reservado para P1 de performance.
+- `pnpm test -- --runInBand`: 62 testes passaram e 31 ficaram skipped por dependência de PostgreSQL/staging sem `DATABASE_URL`; nenhuma falha ocorreu.
+- `git diff --check`: passou.
+
+### Limitação ainda pendente
+
+A prova de dois tenants, workspace suspenso e billing cruzado ainda precisa rodar em PostgreSQL real/staging. O próximo passo é adicionar/ativar essa cobertura de integração e fazer validação browser do console, incluindo suspensão → logout → novo login → reativação.

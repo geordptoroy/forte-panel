@@ -161,3 +161,15 @@ O modelo de dados deve suportar versão aceita de termos/política, timestamp, f
 ## Auditoria de lançamento
 
 O beta não deve avançar para novos convites enquanto P0 não estiver fechado e os seguintes gates não tiverem evidência em staging: dois workspaces isolados, QR/inbound/outbound com número de teste, backup/restore, suporte administrativo com auditoria, billing sandbox sem cruzamento de tenant, mobile crítico validado e consentimento/documentos públicos definidos.
+
+
+---
+## Registro de execução — P0 concluído
+
+O primeiro bloco foi implementado no commit desta etapa. O console administrativo não retorna mais para `/dashboard`; a sessão de suporte pode ser iniciada para workspaces suspensos; a rota `/kanban` foi registrada; e billing/quotes deixou de depender do workspace demo nos procedimentos tenant-aware.
+
+A validação local passou em `pnpm check`, `pnpm build` e nos 62 testes executáveis. O build ainda emite o alerta de bundle acima de 500 kB, que permanece corretamente no P1 de performance. Trinta e um testes continuam skipped porque o sandbox atual não tem `DATABASE_URL`; portanto a prova definitiva de isolamento, suspensão e billing entre dois tenants continua sendo gate de staging.
+
+### Próximo bloco imediato
+
+Adicionar/ativar testes PostgreSQL para: (a) platform-only abrir workspace suspenso, sair e reativar; (b) operador de workspace A não ler nem mutar quotes de B; (c) manager versus agent no billing; e (d) smoke browser de todas as rotas da sidebar. Em seguida iniciar o P1.1 de QR/Conexão WhatsApp.

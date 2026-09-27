@@ -22,6 +22,7 @@ import {
   getActiveWorkspaceById,
   getDb,
   getPlatformNativeAgentConfig,
+  getWorkspaceById,
   resetWorkspaceDevelopmentData,
   getWorkspaceUsageSnapshot,
   listPapiInstances,
@@ -315,8 +316,8 @@ export async function startSupportSession(input: {
   expiresInMinutes: number;
 }) {
   const db = await getDb();
-  const workspace = await getActiveWorkspaceById(input.workspaceId);
-  if (!db || !workspace) throw new Error("Workspace não encontrado ou inativo");
+  const workspace = await getWorkspaceById(input.workspaceId);
+  if (!db || !workspace) throw new Error("Workspace não encontrado");
   const minutes = Math.max(5, Math.min(Math.floor(input.expiresInMinutes), 60));
   const now = new Date();
   const created = await db

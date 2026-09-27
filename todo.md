@@ -177,3 +177,16 @@ Para migrations, tenancy ou webhooks, acrescentar testes de integração com Pos
 - [ ] Validar staging persistente, backup/restore, alertas externos, antiabuso e E2E antes de abrir cadastro público.
 
 Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
+
+
+## Execução P0 — 2026-09-27
+
+- [x] Console admin não retorna mais para `/dashboard`; retorno permanece dentro do console da plataforma.
+- [x] Sessão administrativa pode ser iniciada em workspace suspenso para permitir reativação.
+- [x] `sessionId` é atualizado na URL ao escalar e limpo ao iniciar nova sessão após erro/expiração.
+- [x] Rota `/kanban` registrada no `App.tsx`.
+- [x] Billing/quotes usa `ctx.workspace.workspaceId`, exige `requireManager` e não usa mais `ensureDemoWorkspace()` nesses caminhos.
+- [x] `pnpm check`, `pnpm build`, suíte local e `git diff --check` executados.
+- [ ] Rodar a prova equivalente em PostgreSQL/staging com dois workspaces; 31 testes dependentes de banco continuam skipped no sandbox sem `DATABASE_URL`.
+- [ ] Fazer smoke browser do console: platform-only, workspace suspenso, refresh/back/forward e reativação.
+- [ ] Iniciar P1.1: QR/Conexão WhatsApp em primeira dobra e validação real em Docker.

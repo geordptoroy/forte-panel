@@ -37,6 +37,7 @@ function Router() {
       </Route>
       <Route path="/dashboard" component={DashboardPage} />
       <Route path="/inbox" component={InboxPage} />
+      <Route path="/kanban" component={KanbanPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/platform-admin" component={PlatformAdminHome} />
       <Route path="/platform-admin/workspaces" component={PlatformAdminHome} />
@@ -55,7 +56,7 @@ function Router() {
       <Route path="/contacts/:id" component={ContactDetailPage} />
       <Route path="/billing">
         {() => (
-          <AccessGuard requirement="fullAgenda" title="Faturamento">
+          <AccessGuard requirement="manager" title="Faturamento">
             <BillingPage />
           </AccessGuard>
         )}

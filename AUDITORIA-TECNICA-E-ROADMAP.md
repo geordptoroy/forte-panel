@@ -392,3 +392,10 @@ Também foi confirmada uma divergência semântica entre Dashboard, Atendimento 
 No frontend, o QR está abaixo da primeira dobra mobile, CTAs somem por CSS, o Inbox possui scrolls aninhados, tabs não são URL-canonicals e o bundle inicial ultrapassa 680 kB minificado. O plano de correção inclui foco/scroll deliberado no QR, acessibilidade de tabs/dialogs, code splitting, debounce/paginação e upload sem data URL duplicada.
 
 A auditoria de produto concluiu que catálogo operacional, assinatura SaaS, rate limit e billing ainda estão misturados conceitualmente ou incompletos. O modelo de preço fixo/a partir/orçamento deve ser separado do plano SaaS. Landing, signup, Termos, Privacidade, cookies, consentimento e fluxos LGPD permanecem posteriores aos gates de tenancy, staging, backup/restore e beta controlado.
+
+
+## Execução técnica P0 — 2026-09-27
+
+Foram corrigidos os quatro bloqueios imediatos priorizados: retorno inadequado do console, suporte a workspace suspenso, rota `/kanban` ausente e billing/quotes dependente do workspace demo. A regra agora é que o controle-plane pode consultar uma entidade suspensa por `getWorkspaceById`, enquanto as operações normais continuam usando o filtro de workspace ativo. Quotes exigem `requireManager` e recebem o tenant do contexto tRPC em leitura e mutação.
+
+A implementação não elimina a necessidade de PostgreSQL real: o sandbox executou 62 testes e pulou 31 cenários dependentes de banco. Também permanece o alerta de bundle inicial grande. Esses itens seguem como gates de staging e P1 de performance, respectivamente.

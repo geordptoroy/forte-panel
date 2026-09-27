@@ -1123,8 +1123,8 @@ export const appRouter = router({
   }),
 
   billing: router({
-    quotes: protectedProcedure.query(async () => {
-      const items = await listQuotes();
+    quotes: requireManager.query(async ({ ctx }) => {
+      const items = await listQuotes(ctx.workspace.workspaceId);
       return items.map(item => ({
         ...item,
         dueDate: item.dueDate?.toISOString() ?? null,
@@ -1132,7 +1132,7 @@ export const appRouter = router({
         updatedAt: item.updatedAt.toISOString(),
       }));
     }),
-    createQuote: protectedProcedure
+    createQuote: requireManager
       .input(
         z.object({
           contactId: z.number().int().positive(),
@@ -1155,8 +1155,10 @@ export const appRouter = router({
           notes: z.string().max(1000).optional(),
         })
       )
-      .mutation(({ input, ctx }) => createQuote(input, ctx.user.id)),
-    updatePayment: protectedProcedure
+      .mutation(({ input, ctx }) =>
+        createQuote(input, ctx.workspace.workspaceId, ctx.user.id)
+      ),
+    updatePayment: requireManager
       .input(
         z.object({
           id: z.number().int().positive(),
@@ -1177,6 +1179,7 @@ export const appRouter = router({
           input.id,
           input.receivedCents,
           input.status,
+          ctx.workspace.workspaceId,
           ctx.user.id
         )
       ),

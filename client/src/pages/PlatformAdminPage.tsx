@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import { toast } from "sonner";
 import {
@@ -103,7 +103,7 @@ function PlatformShell({
         </nav>
         <div className="platform-sidebar-foot">
           <small>Suporte read-only por padrão</small>
-          <Link href="/dashboard">Voltar ao painel workspace</Link>
+          <Link href="/platform-admin">Voltar ao console da plataforma</Link>
         </div>
       </aside>
       <main className="platform-main">
@@ -144,8 +144,8 @@ function PlatformAccessGate({ children }: { children: React.ReactNode }) {
           Seu usuário não possui uma permissão explícita de plataforma. O papel
           admin do workspace não concede acesso global.
         </p>
-        <Link className="btn-secondary" href="/dashboard">
-          Voltar ao painel
+        <Link className="btn-secondary" href="/login">
+          Voltar ao login
         </Link>
       </div>
     );
@@ -528,11 +528,14 @@ export function PlatformWorkspacePage() {
 }
 
 function PlatformWorkspaceDetail({ workspaceId }: { workspaceId: number }) {
-  const [, navigate] = useLocation();
-  const querySession = new URLSearchParams(
-    typeof window !== "undefined" ? window.location.search : ""
-  ).get("session");
+  const [location, navigate] = useLocation();
+  const querySession = new URLSearchParams(location.split("?")[1] ?? "").get(
+    "session"
+  );
   const [sessionId, setSessionId] = useState(Number(querySession ?? 0));
+  useEffect(() => {
+    setSessionId(Number(querySession ?? 0));
+  }, [querySession]);
   const access = trpc.platform.access.useQuery();
   const detailInput = useMemo(
     () => ({ workspaceId, sessionId }),
@@ -560,6 +563,7 @@ function PlatformWorkspaceDetail({ workspaceId }: { workspaceId: number }) {
     onSuccess: session => {
       toast.success("Sessão operadora iniciada");
       setSessionId(session.id);
+      navigate(`/platform-admin/workspaces/${workspaceId}?session=${session.id}`);
     },
     onError: error => toast.error(error.message),
   });
@@ -607,7 +611,13 @@ function PlatformWorkspaceDetail({ workspaceId }: { workspaceId: number }) {
           title="Acesso encerrado"
           description={detail.error.message}
         />
-        <button className="btn-secondary" onClick={() => setSessionId(0)}>
+        <button
+          className="btn-secondary"
+          onClick={() => {
+            setSessionId(0);
+            navigate(`/platform-admin/workspaces/${workspaceId}`);
+          }}
+        >
           Iniciar outra sessão
         </button>
       </PlatformShell>
