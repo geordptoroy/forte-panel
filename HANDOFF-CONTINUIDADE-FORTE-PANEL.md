@@ -1347,3 +1347,10 @@ A abordagem aprovada é convite individual por workspace: owner/admin envia link
 A autorização será RBAC + escopo/assignment, aplicada no servidor: owner/admin/manager/agent/professional não são apenas rótulos de UI. Atendente vê o histórico e os dados necessários para responder clientes, além de serviços/preços publicados e agenda operacional, mas não recebe faturamento consolidado, margem, secrets, chave Pix em claro, prompt administrativo, exportação ampla ou gestão de equipe por padrão. Inbox completa só será liberada por decisão explícita do workspace; o padrão recomendado é fila/assignment. A matriz detalhada está em `GUIA-CONVITES-E-PERMISSOES.md`.
 
 Próximos itens: implementar `workspaceInvites`/aceite/revogação, capacidades server-side, escopos de Inbox e testes negativos por papel. Confirmação de e-mail e Google OAuth continuam planejados e desligados até configuração de provedores.
+
+
+### Fundação backend de convites de funcionários — 2026-09-27
+
+Foi implementada a migration `0024_workspace_invites` e as procedures tenant-aware para criar, listar, revogar e aceitar convites. O convite guarda somente `tokenHash`, expira em 72 horas, invalida convites pendentes anteriores para o mesmo e-mail/workspace, registra auditoria e cria a conta local com senha própria e membership no papel concedido. O aceite é transacional, rejeita convite expirado/revogado/aceito e nunca promove o funcionário a `platform_admin`.
+
+As rotas protegidas `workspace.invites.list/create/revoke` exigem owner/admin; `auth.acceptInvite` é pública e recebe token, nome e senha. O token bruto retorna somente na criação para a futura UI/link; a resposta não expõe o hash armazenado. Ainda falta tela de gestão de convites, envio de e-mail, link público de aceite e matriz completa de capabilities/assignment.

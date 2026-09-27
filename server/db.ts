@@ -36,6 +36,7 @@ import {
   webhookEvents,
   whatsappChannels,
   whatsappInstances,
+  workspaceInvites,
   workspaceMembers,
   workspaceSettings,
   workspaceUsageBuckets,
@@ -46,6 +47,13 @@ import {
 import type { WhatsappProvider } from "./integrations/contracts";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
+import {
+  createInviteToken,
+  hashInviteToken,
+  INVITE_TTL_MS,
+  isInviteExpired,
+  normalizeInviteEmail,
+} from "./_core/invites";
 import { resolveReplyRoute } from "./_core/message-routing";
 import { normalizeContactPhone, normalizeWhatsappJid } from "./_core/phone";
 import {
@@ -413,6 +421,211 @@ export async function createLocalWorkspaceMember(
     summary: `Conta ${email} criada com papel ${input.role} e perfil ${input.operationalRole}`,
   });
   return user;
+}
+
+
+export async function createWorkspaceInvite(
+  workspaceId: number,
+  actorUserId: number,
+  input: {
+    email: string;
+    inviteeName?: string;
+    role: "admin" | "manager" | "agent";
+    operationalRole: "human_attendant" | "ai_attendant" | "professional";
+    professionalId?: number | null;
+    scope?: string;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const email = normalizeInviteEmail(input.email);
+  const token = createInviteToken();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
+  const created = await db.transaction(async tx => {
+    const existingUser = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    if (existingUser[0]) throw new Error("Já existe uma conta com este e-mail");
+    if (input.operationalRole === "professional" && !input.professionalId)
+      throw new Error("Profissional executor precisa estar vinculado a um profissional");
+    if (input.professionalId) {
+      const professional = await tx
+        .select({ id: professionals.id })
+        .from(professionals)
+        .where(and(eq(professionals.id, input.professionalId), eq(professionals.workspaceId, workspaceId)))
+        .limit(1);
+      if (!professional[0]) throw new Error("Profissional não pertence a este workspace");
+    }
+    await tx
+      .update(workspaceInvites)
+      .set({ status: "replaced", updatedAt: now })
+      .where(
+        and(
+          eq(workspaceInvites.workspaceId, workspaceId),
+          eq(workspaceInvites.email, email),
+          inArray(workspaceInvites.status, ["pending", "sent"])
+        )
+      );
+    const [invite] = await tx
+      .insert(workspaceInvites)
+      .values({
+        workspaceId,
+        email,
+        inviteeName: input.inviteeName?.trim() || null,
+        role: input.role,
+        operationalRole: input.operationalRole,
+        professionalId: input.professionalId ?? null,
+        scope: input.scope?.trim() || "workspace",
+        tokenHash: hashInviteToken(token),
+        status: "pending",
+        expiresAt,
+        invitedByUserId: actorUserId,
+      })
+      .returning();
+    if (!invite) throw new Error("Não foi possível criar o convite");
+    await tx.insert(auditLogs).values({
+      workspaceId,
+      actorUserId,
+      action: "member_invite_created",
+      summary: `Convite criado para ${email} com papel ${input.role}`,
+    });
+    return invite;
+  });
+  return { invite: created, token };
+}
+
+export async function listWorkspaceInvites(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  await db
+    .update(workspaceInvites)
+    .set({ status: "expired", updatedAt: now })
+    .where(
+      and(
+        eq(workspaceInvites.workspaceId, workspaceId),
+        inArray(workspaceInvites.status, ["pending", "sent"]),
+        lte(workspaceInvites.expiresAt, now)
+      )
+    );
+  return db
+    .select({
+      id: workspaceInvites.id,
+      workspaceId: workspaceInvites.workspaceId,
+      email: workspaceInvites.email,
+      inviteeName: workspaceInvites.inviteeName,
+      role: workspaceInvites.role,
+      operationalRole: workspaceInvites.operationalRole,
+      professionalId: workspaceInvites.professionalId,
+      scope: workspaceInvites.scope,
+      status: workspaceInvites.status,
+      expiresAt: workspaceInvites.expiresAt,
+      invitedByUserId: workspaceInvites.invitedByUserId,
+      acceptedByUserId: workspaceInvites.acceptedByUserId,
+      acceptedAt: workspaceInvites.acceptedAt,
+      revokedAt: workspaceInvites.revokedAt,
+      createdAt: workspaceInvites.createdAt,
+    })
+    .from(workspaceInvites)
+    .where(eq(workspaceInvites.workspaceId, workspaceId))
+    .orderBy(desc(workspaceInvites.createdAt), desc(workspaceInvites.id));
+}
+
+export async function revokeWorkspaceInvite(
+  workspaceId: number,
+  inviteId: number,
+  actorUserId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const now = new Date();
+  const updated = await db
+    .update(workspaceInvites)
+    .set({ status: "revoked", revokedAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(workspaceInvites.id, inviteId),
+        eq(workspaceInvites.workspaceId, workspaceId),
+        inArray(workspaceInvites.status, ["pending", "sent"])
+      )
+    )
+    .returning({ id: workspaceInvites.id, email: workspaceInvites.email });
+  if (!updated[0]) return false;
+  await db.insert(auditLogs).values({
+    workspaceId,
+    actorUserId,
+    action: "member_invite_revoked",
+    summary: `Convite ${inviteId} revogado para ${updated[0].email}`,
+  });
+  return true;
+}
+
+export async function acceptWorkspaceInvite(
+  token: string,
+  input: { name: string; password: string }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const tokenHash = hashInviteToken(token);
+  return db.transaction(async tx => {
+    const invite = (
+      await tx
+        .select()
+        .from(workspaceInvites)
+        .where(eq(workspaceInvites.tokenHash, tokenHash))
+        .limit(1)
+    )[0];
+    if (!invite) throw new Error("Convite inválido ou expirado");
+    if (invite.status !== "pending" && invite.status !== "sent")
+      throw new Error("Convite inválido ou já utilizado");
+    const now = new Date();
+    if (isInviteExpired(invite.expiresAt, now)) {
+      await tx.update(workspaceInvites).set({ status: "expired", updatedAt: now }).where(eq(workspaceInvites.id, invite.id));
+      throw new Error("Convite expirado");
+    }
+    await tx.execute(sql`SELECT "id" FROM "workspaceInvites" WHERE "id" = ${invite.id} FOR UPDATE`);
+    const existingUser = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, invite.email))
+      .limit(1);
+    if (existingUser[0]) throw new Error("Já existe uma conta com este e-mail");
+    const [user] = await tx
+      .insert(users)
+      .values({
+        openId: `local_${crypto.randomUUID()}`,
+        name: input.name.trim() || invite.inviteeName || invite.email,
+        email: invite.email,
+        loginMethod: "local",
+        role: "user",
+        passwordHash: hashLocalPassword(input.password),
+        operationalRole: invite.operationalRole,
+      })
+      .returning({ id: users.id, email: users.email, name: users.name });
+    if (!user) throw new Error("Não foi possível criar a conta");
+    await tx.insert(workspaceMembers).values({
+      workspaceId: invite.workspaceId,
+      userId: user.id,
+      role: invite.role,
+      professionalId: invite.professionalId,
+    });
+    const updated = await tx
+      .update(workspaceInvites)
+      .set({ status: "accepted", acceptedByUserId: user.id, acceptedAt: now, updatedAt: now })
+      .where(and(eq(workspaceInvites.id, invite.id), inArray(workspaceInvites.status, ["pending", "sent"])))
+      .returning({ id: workspaceInvites.id });
+    if (!updated[0]) throw new Error("Convite já foi utilizado");
+    await tx.insert(auditLogs).values({
+      workspaceId: invite.workspaceId,
+      actorUserId: user.id,
+      action: "member_invite_accepted",
+      summary: `Convite ${invite.id} aceito por ${invite.email}`,
+    });
+    return { user, workspaceId: invite.workspaceId };
+  });
 }
 
 export async function getWorkspaceMemberForUser(

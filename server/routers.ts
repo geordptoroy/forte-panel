@@ -14,8 +14,10 @@ import {
 import { ScheduleError } from "./schedule";
 import {
   ensureDemoInbox,
+  acceptWorkspaceInvite,
   ensureDemoWorkspace,
   createLocalWorkspaceMember,
+  createWorkspaceInvite,
   createProfessional,
   createAgendaAppointment,
   cancelAgendaAppointment,
@@ -40,6 +42,7 @@ import {
   getNativeAgentRuntimeConfig,
   saveNativeAgentConfig,
   resetWorkspaceDevelopmentData,
+  revokeWorkspaceInvite,
   listContactNotes,
   addContactNote,
   getContactById,
@@ -49,6 +52,7 @@ import {
   listMessagesForContact,
   listQuotes,
   listInAppNotifications,
+  listWorkspaceInvites,
   markAllInAppNotificationsRead,
   markInAppNotificationRead,
   moveContactStage,
@@ -375,6 +379,33 @@ export const appRouter = router({
           operationalRole: null,
         } as const;
       }),
+    acceptInvite: publicProcedure
+      .input(
+        z.object({
+          token: z.string().min(40).max(100),
+          name: z.string().trim().min(2).max(160),
+          password: z.string().min(8).max(128),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          const result = await acceptWorkspaceInvite(input.token, {
+            name: input.name,
+            password: input.password,
+          });
+          return {
+            success: true,
+            email: result.user.email,
+            workspaceId: result.workspaceId,
+          } as const;
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              error instanceof Error ? error.message : "Convite inválido",
+          });
+        }
+      }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -393,6 +424,64 @@ export const appRouter = router({
         plan: workspace.plan,
         timezone: workspace.timezone,
       };
+    }),
+    invites: router({
+      list: requireAdministrator.query(async ({ ctx }) => {
+        const rows = await listWorkspaceInvites(ctx.workspace.workspaceId);
+        return rows.map(row => ({
+          ...row,
+          expiresAt: row.expiresAt.toISOString(),
+          acceptedAt: row.acceptedAt?.toISOString() ?? null,
+          revokedAt: row.revokedAt?.toISOString() ?? null,
+          createdAt: row.createdAt.toISOString(),
+        }));
+      }),
+      create: requireAdministrator
+        .input(
+          z.object({
+            email: z.string().email(),
+            inviteeName: z.string().trim().min(2).max(160).optional(),
+            role: z.enum(["admin", "manager", "agent"]),
+            operationalRole: z.enum([
+              "human_attendant",
+              "ai_attendant",
+              "professional",
+            ]),
+            professionalId: z.number().int().positive().nullable().optional(),
+            scope: z.string().trim().max(80).optional(),
+          })
+        )
+        .mutation(async ({ input, ctx }) => {
+          const result = await createWorkspaceInvite(
+            ctx.workspace.workspaceId,
+            ctx.user.id,
+            input
+          );
+          const { tokenHash: _tokenHash, ...invite } = result.invite;
+          return {
+            invite: {
+              ...invite,
+              expiresAt: invite.expiresAt.toISOString(),
+              createdAt: invite.createdAt.toISOString(),
+            },
+            token: result.token,
+          };
+        }),
+      revoke: requireAdministrator
+        .input(z.object({ inviteId: z.number().int().positive() }))
+        .mutation(async ({ input, ctx }) => {
+          const revoked = await revokeWorkspaceInvite(
+            ctx.workspace.workspaceId,
+            input.inviteId,
+            ctx.user.id
+          );
+          if (!revoked)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Convite não encontrado ou já encerrado",
+            });
+          return { success: true } as const;
+        }),
     }),
     // The member roster is administrative data: an executor must not be able to
     // enumerate colleagues, e-mails or account status through a direct URL.

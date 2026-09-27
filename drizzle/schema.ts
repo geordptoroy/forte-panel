@@ -28,6 +28,14 @@ export const workspaceMemberRoleEnum = pgEnum("workspace_member_role", [
   "manager",
   "agent",
 ]);
+export const workspaceInviteStatusEnum = pgEnum("workspace_invite_status", [
+  "pending",
+  "sent",
+  "accepted",
+  "expired",
+  "revoked",
+  "replaced",
+]);
 export const whatsappProviderEnum = pgEnum("whatsapp_provider", [
   "papi",
   "baileys",
@@ -401,6 +409,40 @@ export const workspaceMembers = pgTable(
     index("workspace_members_professional_idx").on(
       table.workspaceId,
       table.professionalId
+    ),
+  ]
+);
+export const workspaceInvites = pgTable(
+  "workspaceInvites",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    email: varchar("email", { length: 320 }).notNull(),
+    inviteeName: varchar("inviteeName", { length: 160 }),
+    role: workspaceMemberRoleEnum("role").default("agent").notNull(),
+    operationalRole: operationalRoleEnum("operationalRole")
+      .default("human_attendant")
+      .notNull(),
+    professionalId: integer("professionalId"),
+    scope: varchar("scope", { length: 80 }).default("workspace").notNull(),
+    tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+    status: workspaceInviteStatusEnum("status").default("pending").notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    invitedByUserId: integer("invitedByUserId").notNull(),
+    acceptedByUserId: integer("acceptedByUserId"),
+    acceptedAt: timestamp("acceptedAt"),
+    revokedAt: timestamp("revokedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("workspace_invites_pending_email_unique_idx")
+      .on(table.workspaceId, table.email)
+      .where(sql`${table.status} IN ('pending', 'sent')`),
+    index("workspace_invites_workspace_status_idx").on(
+      table.workspaceId,
+      table.status,
+      table.expiresAt
     ),
   ]
 );
@@ -874,6 +916,8 @@ export type WorkerHeartbeat = typeof workerHeartbeats.$inferSelect;
 export type InsertWorkerHeartbeat = typeof workerHeartbeats.$inferInsert;
 export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
 export type InsertWorkspaceMember = typeof workspaceMembers.$inferInsert;
+export type WorkspaceInvite = typeof workspaceInvites.$inferSelect;
+export type InsertWorkspaceInvite = typeof workspaceInvites.$inferInsert;
 export type WorkspaceSetting = typeof workspaceSettings.$inferSelect;
 export type InsertWorkspaceSetting = typeof workspaceSettings.$inferInsert;
 export type ApiIdempotency = typeof apiIdempotency.$inferSelect;
