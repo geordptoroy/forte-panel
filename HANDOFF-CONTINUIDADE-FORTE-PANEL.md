@@ -1553,3 +1553,28 @@ pnpm test direcionado ✅ — 97 aprovados, 35 ignorados
 ```
 
 Próximo corte: autosave/retomada do onboarding ou modelagem da primeira sessão estruturada, escolhendo um deles antes de adicionar áudio e LLM.
+
+
+---
+## Atualização do handoff — 2026-09-27 13:00 — autosave e retomada do onboarding
+
+Foi implementado autosave do rascunho atual com retomada automática ao reabrir a tela.
+
+### Implementado
+
+- Nova procedure `onboarding.autosave`, usando o mesmo guard owner/admin/platform support do onboarding.
+- Autosave salva somente `publish: false`; nunca publica prompt nem cria auditoria de negócio a cada tecla.
+- Frontend espera 1,2 segundo após a última alteração antes de enviar o rascunho.
+- Estados visíveis: alterações pendentes, salvando, rascunho salvo e falha com fallback para salvar manualmente.
+- Ao retornar à tela, `onboarding.profile` carrega o último rascunho salvo e o checklist/progresso continuam disponíveis.
+- Salvar manualmente ou publicar continua gerando a auditoria correspondente; autosave não gera ruído de auditoria.
+
+### Validação
+
+```text
+pnpm check ✅
+pnpm test direcionado ✅ — 97 aprovados, 35 ignorados
+`git diff --check` ✅
+```
+
+“Fazer depois” e retomada entre múltiplas sessões/blocos ainda não possuem modelo explícito; esta etapa retoma o último perfil salvo no workspace.

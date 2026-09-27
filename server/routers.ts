@@ -1115,6 +1115,28 @@ export const appRouter = router({
     profile: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingProfile(ctx.workspace.workspaceId)
     ),
+    autosave: requireOnboardingEditor
+      .input(
+        z.object({
+          profile: z.object({
+            businessName: z.string().max(160),
+            segment: z.string().max(80),
+            description: z.string().max(4000),
+            services: z.string().max(8000),
+            serviceArea: z.string().max(2000),
+            businessHours: z.string().max(2000),
+            toneOfVoice: z.string().max(500),
+            forbiddenWords: z.string().max(2000),
+            faq: z.string().max(8000),
+            cancellationPolicy: z.string().max(2000),
+            humanHandoffRules: z.string().max(2000),
+            qualificationRules: z.string().max(2000),
+          }),
+        })
+      )
+      .mutation(({ input, ctx }) =>
+        saveOnboardingProfile(ctx.workspace.workspaceId, input.profile, false)
+      ),
     save: requireOnboardingEditor
       .input(
         z.object({

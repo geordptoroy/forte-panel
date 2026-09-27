@@ -463,3 +463,11 @@ Próximo corte: revisar o onboarding estruturado de negócio e separar capabilit
 O perfil de onboarding agora expõe checklist, percentual, próximo passo e critério `readyToPublish`. A publicação é bloqueada no backend quando identidade, oferta, operação ou limites de atendimento estão incompletos; o rascunho continua salvável. A UI mostra o progresso e não abre secrets/configuração administrativa da IA.
 
 O próximo passo deve escolher entre modelar `onboardingSessions`/respostas por bloco ou implementar autosave/retomada sobre o perfil atual. Áudio e estruturação por LLM ficam depois dessa fundação.
+
+
+---
+## Etapa seguinte — autosave e retomada do onboarding — 2026-09-27
+
+O onboarding agora possui `onboarding.autosave`, disparado 1,2 segundo após a última alteração, sem publicar e sem criar auditoria a cada tecla. A tela exibe o estado do rascunho e `onboarding.profile` retoma o último conteúdo salvo ao reabrir.
+
+O item ainda pendente é “fazer depois”/retomada por sessões e blocos explícitos; depois disso pode ser modelada a primeira `onboardingSession` antes de adicionar áudio e LLM.

@@ -39,10 +39,21 @@ export default function OnboardingPage() {
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [published, setPublished] = useState(false);
   const [savedVersion, setSavedVersion] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  const [autosaveState, setAutosaveState] = useState<"idle" | "waiting" | "saving" | "saved" | "error">("idle");
+  const autosave = trpc.onboarding.autosave.useMutation({
+    onSuccess: () => {
+      setDirty(false);
+      setAutosaveState("saved");
+    },
+    onError: () => setAutosaveState("error"),
+  });
   const saveMutation = trpc.onboarding.save.useMutation({
     onSuccess: result => {
       setPublished(result.published);
       setSavedVersion(result.version);
+      setDirty(false);
+      setAutosaveState("saved");
       void utils.onboarding.profile.invalidate();
     },
   });
@@ -52,11 +63,25 @@ export default function OnboardingPage() {
       setProfile(profileQuery.data.profile);
       setPublished(profileQuery.data.published);
       setSavedVersion(profileQuery.data.version);
+      setDirty(false);
+      setAutosaveState("idle");
     }
   }, [profileQuery.data]);
 
-  const update = (key: keyof Profile, value: string) =>
+  useEffect(() => {
+    if (!dirty) return;
+    setAutosaveState("waiting");
+    const timeout = window.setTimeout(() => {
+      setAutosaveState("saving");
+      autosave.mutate({ profile });
+    }, 1200);
+    return () => window.clearTimeout(timeout);
+  }, [autosave.mutate, dirty, profile]);
+
+  const update = (key: keyof Profile, value: string) => {
+    setDirty(true);
     setProfile(current => ({ ...current, [key]: value }));
+  };
   const field = (
     key: keyof Profile,
     label: string,
@@ -228,6 +253,12 @@ export default function OnboardingPage() {
             <Sparkles size={13} />{" "}
             {saveMutation.isPending ? "Gerando..." : "Gerar e publicar prompt"}
           </button>
+          <small className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            {autosaveState === "waiting" && "Alterações pendentes..."}
+            {autosaveState === "saving" && "Salvando rascunho..."}
+            {autosaveState === "saved" && "Rascunho salvo"}
+            {autosaveState === "error" && "Autosave indisponível; use Salvar rascunho."}
+          </small>
           {published && (
             <span
               className="green"
