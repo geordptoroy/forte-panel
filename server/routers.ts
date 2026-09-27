@@ -1136,20 +1136,29 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const result = await saveOnboardingProfile(
-          ctx.workspace.workspaceId,
-          input.profile,
-          input.publish
-        );
-        await logWorkspaceAction({
-          workspaceId: ctx.workspace.workspaceId,
-          actorUserId: ctx.user.id,
-          action: input.publish ? "onboarding_published" : "onboarding_saved",
-          summary: input.publish
-            ? `Onboarding publicado na versão ${result.version}`
-            : "Rascunho de onboarding salvo",
-        });
-        return result;
+        try {
+          const result = await saveOnboardingProfile(
+            ctx.workspace.workspaceId,
+            input.profile,
+            input.publish
+          );
+          await logWorkspaceAction({
+            workspaceId: ctx.workspace.workspaceId,
+            actorUserId: ctx.user.id,
+            action: input.publish ? "onboarding_published" : "onboarding_saved",
+            summary: input.publish
+              ? `Onboarding publicado na versão ${result.version}`
+              : "Rascunho de onboarding salvo",
+          });
+          return result;
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith("ONBOARDING_INCOMPLETE:"))
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Complete antes de publicar: ${error.message.slice("ONBOARDING_INCOMPLETE:".length)}`,
+            });
+          throw error;
+        }
       }),
   }),
 

@@ -1524,3 +1524,32 @@ pnpm test ✅ — 95 aprovados, 35 ignorados por dependências externas/PostgreS
 ```
 
 A próxima extensão é revisar o onboarding estruturado (checklist, catálogo, canal e publicação) e decidir se alguma configuração não sensível de IA deve ganhar capability própria; secrets, prompt administrativo e reset da plataforma permanecem fora do workspace owner/admin.
+
+
+---
+## Atualização do handoff — 2026-09-27 12:57 — checklist estruturado do onboarding
+
+Foi entregue a primeira fatia estruturada do onboarding sem criar ainda o funil de áudio/sessões.
+
+### Implementado
+
+- `getOnboardingChecklist` deriva seis etapas dos fatos já persistidos no perfil: identidade, oferta, área/horários, limites do atendimento, tom/FAQ e revisão/publicação.
+- A resposta de `onboarding.profile` agora inclui itens, contagem, percentual, `requiredComplete`, `readyToPublish` e `nextStep`.
+- `onboarding.save({ publish: true })` bloqueia server-side publicação se identidade, oferta, operações ou limites do atendimento estiverem incompletos; rascunho continua permitido.
+- Erro de publicação incompleta chega ao usuário como mensagem de negócio, sem erro interno.
+- A tela mostra percentual, barra de progresso, próximo passo único e status de cada etapa.
+- A publicação continua sendo a única ação que altera o prompt operacional; salvar rascunho não publica.
+- Testes puros cobrem falha fechada com campos faltantes e publicação somente após fatos obrigatórios completos.
+
+### Limite consciente
+
+Ainda não foram modelados `onboardingSessions`, respostas por bloco, áudio, autosave, “fazer depois”, retomada ou checklist persistente independente do perfil. Também não foram abertos secrets, prompt administrativo ou configuração nativa da IA para owner/admin.
+
+### Validação
+
+```text
+pnpm check ✅
+pnpm test direcionado ✅ — 97 aprovados, 35 ignorados
+```
+
+Próximo corte: autosave/retomada do onboarding ou modelagem da primeira sessão estruturada, escolhendo um deles antes de adicionar áudio e LLM.

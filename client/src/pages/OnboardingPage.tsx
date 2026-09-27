@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Info, Save, Sparkles } from "lucide-react";
+import { CheckCircle2, Info, ListChecks, Save, Sparkles } from "lucide-react";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 
@@ -34,6 +34,7 @@ const emptyProfile: Profile = {
 };
 
 export default function OnboardingPage() {
+  const utils = trpc.useUtils();
   const profileQuery = trpc.onboarding.profile.useQuery();
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [published, setPublished] = useState(false);
@@ -42,6 +43,7 @@ export default function OnboardingPage() {
     onSuccess: result => {
       setPublished(result.published);
       setSavedVersion(result.version);
+      void utils.onboarding.profile.invalidate();
     },
   });
 
@@ -99,6 +101,32 @@ export default function OnboardingPage() {
           </span>
         </div>
       </div>
+      {profileQuery.data?.checklist && (
+        <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start" }}>
+            <div>
+              <SectionTitle eyebrow="Próximo passo" title="Checklist da empresa" />
+              <p className="muted" style={{ margin: "-5px 0 0", fontSize: 11 }}>
+                {profileQuery.data.checklist.nextStep
+                  ? `${profileQuery.data.checklist.nextStep.title}: ${profileQuery.data.checklist.nextStep.description}`
+                  : "Configuração completa. Revise os dados antes de publicar."}
+              </p>
+            </div>
+            <strong className="green" style={{ fontSize: 20 }}>{profileQuery.data.checklist.completionPercent}%</strong>
+          </div>
+          <div style={{ height: 5, margin: "15px 0", background: "rgba(255,255,255,.08)" }}>
+            <div style={{ width: `${profileQuery.data.checklist.completionPercent}%`, height: "100%", background: "var(--green)", transition: "width .25s ease" }} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8 }}>
+            {profileQuery.data.checklist.items.map(item => (
+              <div key={item.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "9px 10px", border: "1px solid rgba(255,255,255,.07)", color: item.complete ? "var(--green)" : "#777", fontSize: 10 }}>
+                {item.complete ? <CheckCircle2 size={14} /> : <ListChecks size={14} />}
+                <span><strong style={{ display: "block", color: item.complete ? "#b9e4c7" : "#b0b0b0" }}>{item.title}</strong><small style={{ color: "#666" }}>{item.description}</small></span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <section className="surface" style={{ padding: 22 }}>
         <SectionTitle eyebrow="Identidade do negócio" title="Sobre a empresa" />
         <div className="form-grid">

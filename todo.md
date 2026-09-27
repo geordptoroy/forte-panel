@@ -344,7 +344,7 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 
 ### P0 — primeiro acesso
 
-- [ ] Criar checklist de primeiro acesso com um próximo passo único, progresso, autosave, “fazer depois” e retomada.
+- [ ] Criar checklist de primeiro acesso com um próximo passo único, progresso, autosave, “fazer depois” e retomada. (checklist/progresso/próximo passo e bloqueio server-side de publicação já entregues; autosave, “fazer depois” e retomada continuam pendentes)
 - [ ] Separar visualmente configurar negócio, atender clientes, acompanhar resultados e administrar equipe.
 - [ ] Revisar termos técnicos das telas para linguagem de negócio; deixar provider, webhook, prompt e secrets somente em detalhes/suporte.
 - [ ] Reescrever estados vazios e erros com explicação, exemplo e ação de resolução.

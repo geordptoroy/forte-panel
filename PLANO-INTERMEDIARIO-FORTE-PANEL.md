@@ -455,3 +455,11 @@ O próximo bloco funcional é mover onboarding/configuração histórica para ow
 `onboarding.profile` e `onboarding.save` agora aceitam owner/admin com `canManageTeam` e continuam aceitando `platform_admin` para suporte. O frontend ganhou `OnboardingGuard`, o link aparece na sidebar administrativa e cada salvamento/publicação gera auditoria. Configuração de IA, prompt e reset continuam protegidos por `requirePlatformAdministrator`/`PlatformOnlyGuard`.
 
 Próximo corte: revisar o onboarding estruturado de negócio e separar capabilities de configuração operacional de secrets/prompts administrativos, sem ampliar acesso por conveniência.
+
+
+---
+## Etapa seguinte — checklist estruturado do onboarding — 2026-09-27
+
+O perfil de onboarding agora expõe checklist, percentual, próximo passo e critério `readyToPublish`. A publicação é bloqueada no backend quando identidade, oferta, operação ou limites de atendimento estão incompletos; o rascunho continua salvável. A UI mostra o progresso e não abre secrets/configuração administrativa da IA.
+
+O próximo passo deve escolher entre modelar `onboardingSessions`/respostas por bloco ou implementar autosave/retomada sobre o perfil atual. Áudio e estruturação por LLM ficam depois dessa fundação.

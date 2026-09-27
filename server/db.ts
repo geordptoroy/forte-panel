@@ -1998,6 +1998,79 @@ const emptyOnboardingProfile: OnboardingProfile = {
   qualificationRules: "",
 };
 
+export type OnboardingChecklistItem = {
+  id: string;
+  title: string;
+  description: string;
+  complete: boolean;
+  required: boolean;
+};
+
+export function getOnboardingChecklist(
+  profile: OnboardingProfile,
+  published: boolean
+) {
+  const items: OnboardingChecklistItem[] = [
+    {
+      id: "identity",
+      title: "Identidade da empresa",
+      description: "Nome, segmento e descrição do negócio",
+      complete: Boolean(profile.businessName.trim() && profile.segment.trim() && profile.description.trim()),
+      required: true,
+    },
+    {
+      id: "offering",
+      title: "Oferta e serviços",
+      description: "Serviços, preços, duração ou regras de orçamento",
+      complete: Boolean(profile.services.trim()),
+      required: true,
+    },
+    {
+      id: "operations",
+      title: "Área e horários",
+      description: "Onde atende e quando a equipe está disponível",
+      complete: Boolean(profile.serviceArea.trim() && profile.businessHours.trim()),
+      required: true,
+    },
+    {
+      id: "guardrails",
+      title: "Limites do atendimento",
+      description: "Condutas proibidas e quando transferir para humano",
+      complete: Boolean(profile.forbiddenWords.trim() && profile.humanHandoffRules.trim()),
+      required: true,
+    },
+    {
+      id: "voice",
+      title: "Tom e respostas aprovadas",
+      description: "Tom de voz e perguntas frequentes",
+      complete: Boolean(profile.toneOfVoice.trim() && profile.faq.trim()),
+      required: false,
+    },
+    {
+      id: "publication",
+      title: "Revisão e publicação",
+      description: "Publique somente depois de revisar as regras",
+      complete: published,
+      required: false,
+    },
+  ];
+  const requiredItems = items.filter(item => item.required);
+  const requiredComplete = requiredItems.every(item => item.complete);
+  const completedCount = items.filter(item => item.complete).length;
+  const next = items.find(item => !item.complete);
+  return {
+    items,
+    completedCount,
+    totalCount: items.length,
+    completionPercent: Math.round((completedCount / items.length) * 100),
+    requiredComplete,
+    readyToPublish: requiredComplete,
+    nextStep: next
+      ? { id: next.id, title: next.title, description: next.description }
+      : null,
+  };
+}
+
 function buildBusinessPrompt(profile: OnboardingProfile, version: number) {
   return `Você atende clientes da empresa ${profile.businessName || "da empresa configurada"}, do segmento ${profile.segment}. Este é o prompt operacional publicado v${version}.\n\nDescrição do negócio:\n${profile.description || "Não informada."}\n\nServiços, duração e preços:\n${profile.services || "Consultar a equipe antes de prometer preço ou prazo."}\n\nÁrea de atendimento:\n${profile.serviceArea || "Não informada."}\n\nHorários:\n${profile.businessHours || "Consultar disponibilidade real na agenda."}\n\nTom de voz:\n${profile.toneOfVoice || emptyOnboardingProfile.toneOfVoice}\n\nPalavras e condutas proibidas:\n${profile.forbiddenWords || "Não inventar informações, preços, horários ou confirmações."}\n\nPerguntas frequentes e respostas aprovadas:\n${profile.faq || "Não cadastradas."}\n\nPolítica de cancelamento, reagendamento e sinal:\n${profile.cancellationPolicy || "Escalar para atendimento humano quando não houver regra publicada."}\n\nSempre transferir para humano quando:\n${profile.humanHandoffRules || "o cliente pedir humano, houver reclamação, risco, dúvida fora do cadastro ou negociação especial."}\n\nCritérios de qualificação e follow-up:\n${profile.qualificationRules || "Identificar serviço, localização, urgência e próximo passo."}`;
 }
@@ -2043,6 +2116,7 @@ export async function getOnboardingProfile(workspaceId: number) {
       version: 0,
       prompt: "",
       published: false,
+      checklist: getOnboardingChecklist(emptyOnboardingProfile, false),
     };
   const profileSetting = await getWorkspaceSetting(
     workspace.id,
@@ -2061,11 +2135,13 @@ export async function getOnboardingProfile(workspaceId: number) {
   const published = promptSetting?.value
     ? (JSON.parse(promptSetting.value) as { version: number; prompt: string })
     : undefined;
+  const checklist = getOnboardingChecklist(profile, Boolean(published?.prompt));
   return {
     profile,
     version: published?.version ?? 0,
     prompt: published?.prompt ?? "",
     published: Boolean(published?.prompt),
+    checklist,
   };
 }
 
@@ -2077,6 +2153,15 @@ export async function saveOnboardingProfile(
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const current = await getOnboardingProfile(workspaceId);
+  const nextPublished = publish || current.published;
+  const nextChecklist = getOnboardingChecklist(input, nextPublished);
+  if (publish && !nextChecklist.requiredComplete) {
+    const missing = nextChecklist.items
+      .filter(item => item.required && !item.complete)
+      .map(item => item.title)
+      .join(", ");
+    throw new Error(`ONBOARDING_INCOMPLETE:${missing}`);
+  }
   const nextVersion = current.version + 1;
   await upsertWorkspaceSetting(
     workspace.id,
@@ -2098,7 +2183,8 @@ export async function saveOnboardingProfile(
     profile: input,
     version: publish ? nextVersion : current.version,
     prompt: publish ? prompt : current.prompt,
-    published: publish || current.published,
+    published: nextPublished,
+    checklist: nextChecklist,
   };
 }
 
