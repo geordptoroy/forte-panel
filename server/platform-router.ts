@@ -10,6 +10,7 @@ import {
   getPlatformWorkspaceDetail,
   isExternalProviderCallAllowedForSimulation,
   listPlatformAuditLogs,
+  listPlatformGlobalAuditLogs,
   listPlatformWorkspaces,
   listPlatformWorkspaceNotes,
   publishPlatformAgentDraft,
@@ -119,6 +120,10 @@ export const platformRouter = router({
   overview: requirePlatform.query(() => listPlatformWorkspaces()),
 
   globalAiConfig: requirePlatform.query(() => getPlatformGlobalAgentSnapshot()),
+
+  globalAudit: requirePlatform
+    .input(z.object({ limit: z.number().int().min(1).max(200).default(100) }).optional())
+    .query(({ input }) => listPlatformGlobalAuditLogs(input?.limit ?? 100)),
 
   saveGlobalAiConfig: requirePlatformOperator
     .input(
