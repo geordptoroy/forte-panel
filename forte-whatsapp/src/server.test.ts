@@ -14,6 +14,7 @@ type FakeManager = {
     metadata?: Record<string, unknown>
   ) => Promise<string>;
   sendPayload: (phone: string, payload: never) => Promise<string>;
+  requestPairingCode: (phone: string) => Promise<string>;
 };
 
 type CreateServer = (manager: InstanceManager) => Server;
@@ -21,6 +22,7 @@ let createServer: CreateServer;
 let server: Server;
 let baseUrl = "";
 let reconnectCalls = 0;
+let pairingPhone = "";
 
 beforeAll(async () => {
   process.env.WHATSAPP_API_KEY = "gateway-test-key";
@@ -47,6 +49,10 @@ beforeAll(async () => {
       `fake-${messageType}-${phone}-${content}-${metadata?.mediaMimeType ?? "none"}`,
     sendPayload: async (phone: string, _payload: never) =>
       `fake-payload-${phone}`,
+    requestPairingCode: async (phone: string) => {
+      pairingPhone = phone;
+      return "AB12-CD34";
+    },
   } as unknown as InstanceManager;
   server = createServer(manager);
   await new Promise<void>(resolve => {
@@ -95,6 +101,23 @@ describe("Baileys gateway HTTP contract", () => {
     );
     expect(response.status).toBe(202);
     expect(reconnectCalls).toBe(before + 1);
+  });
+
+  it("returns a protected pairing code for a phone number", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/instances/test-instance/pairing-code`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer gateway-test-key",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: "5511999999999" }),
+      }
+    );
+    expect(response.status).toBe(200);
+    expect(pairingPhone).toBe("5511999999999");
+    await expect(response.json()).resolves.toMatchObject({ code: "AB12-CD34" });
   });
 
   it.each([

@@ -1588,6 +1588,26 @@ export async function listWhatsappChannels(workspaceId: number) {
     );
 }
 
+export async function updateBaileysChannelName(workspaceId: number, name: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const normalized = name.trim();
+  if (normalized.length < 2 || normalized.length > 120)
+    throw new Error("O nome da instância deve ter entre 2 e 120 caracteres");
+  const updated = await db
+    .update(whatsappChannels)
+    .set({ name: normalized })
+    .where(
+      and(
+        eq(whatsappChannels.workspaceId, workspaceId),
+        eq(whatsappChannels.provider, "baileys")
+      )
+    )
+    .returning();
+  if (!updated[0]) throw new Error("Canal Baileys não encontrado neste workspace");
+  return updated[0];
+}
+
 export type PapiInstanceSummary = {
   id: number;
   workspaceId: number;

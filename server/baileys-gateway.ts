@@ -96,6 +96,19 @@ export async function connectBaileys() {
   return getBaileysStatus();
 }
 
+export async function requestBaileysPairingCode(phone: string) {
+  const id = encodeURIComponent(instanceId());
+  const response = await gatewayRequest(`/api/instances/${id}/pairing-code`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ phone }),
+  });
+  if (!response) throw new Error("Gateway WhatsApp não está configurado");
+  const body = (await response.json()) as { code?: string };
+  if (!body.code) throw new Error("Gateway não retornou o código de pareamento");
+  return { code: body.code };
+}
+
 export async function disconnectBaileys(logout = false) {
   const id = encodeURIComponent(instanceId());
   const response = await gatewayRequest(

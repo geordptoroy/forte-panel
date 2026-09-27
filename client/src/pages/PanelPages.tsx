@@ -120,11 +120,19 @@ function BaileysConnectionCard() {
   const utils = trpc.useUtils();
   const cardRef = useRef<HTMLElement>(null);
   const qrRef = useRef<HTMLDivElement>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  const [connectionMode, setConnectionMode] = useState<"qr" | "phone">("qr");
+  const [nameDraft, setNameDraft] = useState("");
+  const [phoneDraft, setPhoneDraft] = useState("");
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const status = trpc.workspace.baileysStatus.useQuery(undefined, {
     refetchInterval: 4_000,
   });
   const current = status.data;
+  const channelsQuery = trpc.workspace.channels.useQuery();
+  const baileysChannel = channelsQuery.data?.find(channel => channel.provider === "baileys");
   const waitingQr = current?.status === "qr";
   const qrIssuedAt = current?.updatedAt ? Date.parse(current.updatedAt) : NaN;
   const qrExpiresAt = Number.isFinite(qrIssuedAt) ? qrIssuedAt + 60_000 : NaN;
@@ -133,7 +141,7 @@ function BaileysConnectionCard() {
     ? Math.max(0, Math.ceil((qrExpiresAt - now) / 1000))
     : null;
   const qr = trpc.workspace.baileysQr.useQuery(undefined, {
-    enabled: waitingQr && !qrExpired,
+    enabled: current?.status !== "connected" && (waitingQr || (wizardOpen && wizardStep === 3)) && !qrExpired,
     refetchInterval: 3_000,
     retry: false,
   });
@@ -143,6 +151,19 @@ function BaileysConnectionCard() {
         utils.workspace.baileysStatus.invalidate(),
         utils.workspace.baileysQr.invalidate(),
       ]);
+      setWizardStep(3);
+    },
+  });
+  const saveName = trpc.workspace.updateBaileysChannelName.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.channels.invalidate();
+      setWizardStep(2);
+    },
+  });
+  const pairing = trpc.workspace.requestBaileysPairingCode.useMutation({
+    onSuccess: result => {
+      setPairingCode(result.code);
+      setWizardStep(3);
     },
   });
   const disconnect = trpc.workspace.disconnectBaileys.useMutation({
@@ -170,6 +191,7 @@ function BaileysConnectionCard() {
     unconfigured: "Gateway não configurado",
     idle: "Aguardando conexão",
     connecting: "Iniciando conexão",
+    pairing: "Aguardando código no WhatsApp",
     qr: qrExpired ? "QR expirado" : "Aguardando leitura do QR Code",
     connected: "WhatsApp conectado",
     disconnected: "Desconectado",
@@ -178,6 +200,14 @@ function BaileysConnectionCard() {
   };
   const connected = current?.status === "connected";
   const retrying = connect.isPending || current?.status === "connecting";
+  const openWizard = () => {
+    setNameDraft(baileysChannel?.name ?? current?.instanceName ?? "");
+    setPhoneDraft("");
+    setPairingCode(null);
+    setWizardStep(1);
+    setConnectionMode("qr");
+    setWizardOpen(true);
+  };
   return (
     <section
       ref={cardRef}
@@ -216,7 +246,7 @@ function BaileysConnectionCard() {
               </div>
               <div className="form-field">
                 <label>Nome da instância</label>
-                <input className="input-control" value={current.instanceName ?? current.instanceId} readOnly />
+                <input className="input-control" value={baileysChannel?.name ?? current.instanceName ?? current.instanceId} readOnly />
               </div>
               <div className="form-field">
                 <label>Número conectado</label>
@@ -232,6 +262,9 @@ function BaileysConnectionCard() {
               </div>
             )}
             <div className="qr-actions" style={{ marginTop: 16 }}>
+              <button className="btn-primary" onClick={openWizard}>
+                <Settings2 size={14} /> {connected ? "Editar conexão" : "Configurar conexão"}
+              </button>
               {!connected && (
                 <button
                   className="btn-primary"
@@ -279,6 +312,47 @@ function BaileysConnectionCard() {
               <div className="muted"><QrCode size={28} /> O QR Code aparecerá aqui.</div>
             )}
             {qr.error && !qrExpired && <small className="qr-error">QR aguardando atualização do gateway.</small>}
+          </div>
+        </div>
+      )}
+      {wizardOpen && (
+        <div className="connection-wizard-backdrop" role="dialog" aria-modal="true" aria-labelledby="connection-wizard-title">
+          <div className="connection-wizard">
+            <button className="connection-wizard-close" onClick={() => setWizardOpen(false)} aria-label="Fechar configuração"><X size={16} /></button>
+            <span className="eyebrow">Configuração guiada · {wizardStep}/3</span>
+            <h2 id="connection-wizard-title">{wizardStep === 1 ? "Dê um nome à sua conexão" : wizardStep === 2 ? "Escolha como conectar" : "Finalize no seu WhatsApp"}</h2>
+            <p className="muted">
+              {wizardStep === 1 ? "Esse nome aparece para sua equipe e identifica este canal no workspace." : wizardStep === 2 ? "Use QR Code para uma conexão rápida ou um código numérico quando não puder escanear." : pairingCode ? "Abra Dispositivos conectados no WhatsApp e informe o código abaixo." : "Siga as instruções na tela para concluir a conexão."}
+            </p>
+            {wizardStep === 1 && (
+              <div className="connection-wizard-content">
+                <label className="form-field"><span>Nome da instância</span><input className="input-control" autoFocus value={nameDraft} onChange={event => setNameDraft(event.target.value)} placeholder="Ex.: WhatsApp Comercial" /></label>
+                <div className="connection-wizard-tip"><CheckCircle2 size={15} /><span>Depois disso, você só precisará conectar o número. A sessão ficará persistente no gateway.</span></div>
+                <button className="btn-primary" disabled={saveName.isPending || nameDraft.trim().length < 2} onClick={() => saveName.mutate({ name: nameDraft })}>{saveName.isPending ? "Salvando..." : "Continuar"}</button>
+                {saveName.error && <div className="form-error">{saveName.error.message}</div>}
+              </div>
+            )}
+            {wizardStep === 2 && (
+              <div className="connection-wizard-content">
+                <div className="connection-mode-switch">
+                  <button className={connectionMode === "qr" ? "is-active" : ""} onClick={() => setConnectionMode("qr")}><QrCode size={16} /><strong>QR Code</strong><small>Escaneie com o celular</small></button>
+                  <button className={connectionMode === "phone" ? "is-active" : ""} onClick={() => setConnectionMode("phone")}><Phone size={16} /><strong>Código por telefone</strong><small>Digite o número com DDI</small></button>
+                </div>
+                {connectionMode === "qr" ? (
+                  <button className="btn-primary" disabled={connect.isPending || connected} onClick={() => connected ? setWizardStep(3) : connect.mutate()}>{connected ? "Já conectado · continuar" : connect.isPending ? "Gerando QR Code..." : "Gerar QR Code"}</button>
+                ) : (
+                  <><label className="form-field"><span>Número do WhatsApp com DDI</span><input className="input-control" inputMode="numeric" value={phoneDraft} onChange={event => setPhoneDraft(event.target.value)} placeholder="5511999999999" /></label><button className="btn-primary" disabled={pairing.isPending || phoneDraft.replace(/\D/g, "").length < 8} onClick={() => pairing.mutate({ phone: phoneDraft })}>{pairing.isPending ? "Gerando código..." : "Gerar código de pareamento"}</button></>
+                )}
+                {(connect.error || pairing.error) && <div className="form-error">{connect.error?.message ?? pairing.error?.message}</div>}
+              </div>
+            )}
+            {wizardStep === 3 && (
+              <div className="connection-wizard-content connection-wizard-finish">
+                {pairingCode ? <><div className="pairing-code">{pairingCode}</div><p className="muted">No celular: WhatsApp → Configurações → Dispositivos conectados → Conectar aparelho → Conectar com número de telefone.</p></> : qr.data && !connected ? <img className="wizard-qr" src={qr.data} alt="QR Code para conectar o WhatsApp" /> : <CheckCircle2 size={44} className="green" />}
+                <strong>{connected ? "WhatsApp conectado com sucesso" : pairingCode ? "Digite este código no WhatsApp" : "Leia o QR Code com o WhatsApp"}</strong>
+                <button className="btn-primary" onClick={() => setWizardOpen(false)}>{connected ? "Concluir" : "Fechar e acompanhar status"}</button>
+              </div>
+            )}
           </div>
         </div>
       )}

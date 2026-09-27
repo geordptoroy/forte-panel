@@ -47,6 +47,16 @@ export function createServer(manager: InstanceManager) {
     }
     if (
       req.method === "POST" &&
+      url.pathname === `/api/instances/${config.instanceId}/pairing-code`
+    ) {
+      const body = await readJson(req);
+      const phone = String(body.phone ?? "");
+      if (!phone) return json(res, 400, { error: "phone_required" });
+      const code = await manager.requestPairingCode(phone);
+      return json(res, 200, { instanceId: config.instanceId, code });
+    }
+    if (
+      req.method === "POST" &&
       url.pathname === `/api/instances/${config.instanceId}/disconnect`
     ) {
       await manager.stop();

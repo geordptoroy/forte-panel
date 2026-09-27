@@ -41,6 +41,7 @@ import {
   getDefaultWhatsappProvider,
   consumeWorkspaceUserUsage,
   listWhatsappChannels,
+  updateBaileysChannelName,
   setDefaultWhatsappProvider,
   getAuditLogForContact,
   getDashboardSnapshot,
@@ -145,6 +146,7 @@ import { platformRouter } from "./platform-router";
 import { getPlatformAdminAccess } from "./platform-admin";
 import {
   connectBaileys,
+  requestBaileysPairingCode,
   disconnectBaileys,
   getBaileysQr,
   getBaileysStatus,
@@ -1155,6 +1157,15 @@ export const appRouter = router({
     baileysStatus: protectedProcedure.query(() => getBaileysStatus()),
     baileysQr: protectedProcedure.query(() => getBaileysQr()),
     connectBaileys: requireManager.mutation(() => connectBaileys()),
+    requestBaileysPairingCode: requireManager
+      .input(z.object({ phone: z.string().min(8).max(24) }))
+      .mutation(({ input }) => requestBaileysPairingCode(input.phone)),
+    updateBaileysChannelName: requireManager
+      .input(z.object({ name: z.string().trim().min(2).max(120) }))
+      .mutation(async ({ input, ctx }) => {
+        const channel = await updateBaileysChannelName(ctx.workspace.workspaceId, input.name);
+        return { id: channel.id, name: channel.name };
+      }),
     disconnectBaileys: requireManager
       .input(z.object({ logout: z.boolean().default(false) }).optional())
       .mutation(({ input }) => disconnectBaileys(input?.logout ?? false)),

@@ -21,6 +21,7 @@ export type InstanceStatus =
   | "idle"
   | "connecting"
   | "qr"
+  | "pairing"
   | "connected"
   | "disconnected"
   | "logged_out"
@@ -127,6 +128,18 @@ export class InstanceManager {
     await this.stop(false);
     this.suppressReconnectUntil = 0;
     await this.start();
+  }
+
+  async requestPairingCode(phone: string): Promise<string> {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 8 || digits.length > 15)
+      throw new Error("Informe um número completo com DDI, somente números");
+    if (this.snapshot.status === "connected")
+      throw new Error("Esta instância já está conectada");
+    if (!this.socket) await this.start();
+    if (!this.socket) throw new Error("Não foi possível iniciar a sessão WhatsApp");
+    this.set({ status: "pairing", qr: undefined, lastError: undefined });
+    return this.socket.requestPairingCode(digits);
   }
 
   private async releaseSessionLock() {
