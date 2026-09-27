@@ -360,6 +360,13 @@ a { color: inherit; text-decoration: none; }
 .ai-route-number { display: grid; justify-items: center; gap: 5px; color: #83ae92; }
 .ai-route-number span { color: #586d5e; font-size: 8px; }
 .ai-route-fields { gap: 9px; }
+.ai-route-footer { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.055); }
+.ai-test-button { min-height: 32px; padding: 0 11px; font-size: 8px; }
+.ai-test-result { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 9px; line-height: 1.4; }
+.ai-test-result > span { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 99px; background: var(--red); }
+.ai-test-result.is-ready { color: var(--green); }
+.ai-test-result.is-ready > span { background: var(--green); }
+.ai-test-result.is-error { color: var(--red); }
 .ai-recommendation { margin-top: 14px; margin-bottom: 0; }
 .ai-prompt-field { margin-top: 18px; }
 .ai-config-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
@@ -453,6 +460,7 @@ a { color: inherit; text-decoration: none; }
   .ai-toggle { width: 100%; justify-content: space-between; }
   .ai-provider-fields, .ai-route-fields, .ai-operation-grid { grid-template-columns: 1fr; }
   .ai-route-fields-four { grid-template-columns: 1fr; }
+  .ai-route-footer { align-items: flex-start; flex-direction: column; }
   .ai-route-top { flex-wrap: wrap; }
   .ai-route-top .ai-toggle { width: 100%; margin-left: 0; justify-content: space-between; }
   .ai-route-card { grid-template-columns: 30px 1fr; gap: 10px; }

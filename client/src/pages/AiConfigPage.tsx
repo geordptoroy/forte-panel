@@ -6,6 +6,7 @@ import {
   Info,
   MessageSquareText,
   Mic,
+  PlugZap,
   Save,
   Sparkles,
 } from "lucide-react";
@@ -85,7 +86,16 @@ const capabilityLabels: Record<
 export default function AiConfigPage() {
   const agentQuery = trpc.agent.config.useQuery();
   const saveMutation = trpc.agent.save.useMutation();
+  const testMutation = trpc.agent.testConnection.useMutation();
   const [config, setConfig] = useState<AgentConfig>(initialConfig);
+  const [tested, setTested] = useState<
+    Partial<
+      Record<
+        Capability,
+        { ready: boolean; message: string; latencyMs?: number }
+      >
+    >
+  >({});
   useEffect(() => {
     if (agentQuery.data)
       setConfig({ ...agentQuery.data, llm: agentQuery.data.llm });
@@ -117,6 +127,31 @@ export default function AiConfigPage() {
     }));
   const save = () =>
     saveMutation.mutate({ ...config, model: config.llm.routing.text.model });
+  const testConnection = (capability: Capability) => {
+    const route = config.llm.routing[capability];
+    const provider = config.llm.providers[route.provider];
+    testMutation.mutate(
+      {
+        capability,
+        provider: route.provider,
+        baseUrl: route.baseUrl ?? provider.baseUrl,
+        apiKey: route.apiKey ?? provider.apiKey,
+        model: route.model,
+      },
+      {
+        onSuccess: result =>
+          setTested(current => ({
+            ...current,
+            [capability]: result,
+          })),
+        onError: error =>
+          setTested(current => ({
+            ...current,
+            [capability]: { ready: false, message: error.message },
+          })),
+      }
+    );
+  };
   return (
     <PanelLayout
       eyebrow="Sistema / Inteligência artificial"
@@ -161,6 +196,7 @@ export default function AiConfigPage() {
               const routeApiKey = route.apiKey ?? provider.apiKey;
               const info = capabilityLabels[capability];
               const Icon = info.icon;
+              const testResult = tested[capability];
               const isConfigured = Boolean(
                 routeBaseUrl.trim() && routeApiKey.trim() && route.model.trim()
               );
@@ -239,6 +275,30 @@ export default function AiConfigPage() {
                       />
                       <small>Informe o modelo disponível nessa URL.</small>
                     </label>
+                  </div>
+                  <div className="ai-route-footer">
+                    <button
+                      className="btn-secondary ai-test-button"
+                      type="button"
+                      disabled={testMutation.isPending}
+                      onClick={() => testConnection(capability)}
+                    >
+                      <PlugZap size={13} />
+                      {testMutation.isPending
+                        ? "Testando..."
+                        : "Testar conexão"}
+                    </button>
+                    {testResult && (
+                      <span
+                        className={`ai-test-result ${testResult.ready ? "is-ready" : "is-error"}`}
+                      >
+                        <span />
+                        {testResult.message}
+                        {testResult.ready && testResult.latencyMs !== undefined
+                          ? ` · ${testResult.latencyMs} ms`
+                          : ""}
+                      </span>
+                    )}
                   </div>
                 </article>
               );

@@ -32,6 +32,7 @@ import {
   getWorkspaceUsageSnapshot,
   getOnboardingProfile,
   getNativeAgentConfig,
+  getNativeAgentRuntimeConfig,
   saveNativeAgentConfig,
   resetWorkspaceDevelopmentData,
   listContactNotes,
@@ -54,6 +55,11 @@ import {
   verifyLocalPassword,
   updateQuotePayment,
 } from "./db";
+import {
+  invokeConfiguredLLM,
+  type AgentCapability,
+  type AgentProviderSettings,
+} from "./llm-providers";
 import {
   countWorkspaceMembers,
   createService,
@@ -987,6 +993,82 @@ export const appRouter = router({
           summary: `Agente nativo ${result.enabled ? "ativado" : "pausado"}; modelo ${result.model}`,
         });
         return result;
+      }),
+    testConnection: requireAdministrator
+      .input(
+        z.object({
+          capability: z.enum(["text", "vision", "audio", "document"]),
+          provider: z.enum([
+            "nvidia_nim",
+            "google_gemini",
+            "openai_compatible",
+          ]),
+          baseUrl: z.string().trim().max(500),
+          apiKey: z.string().max(500),
+          model: z.string().trim().max(200),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const startedAt = Date.now();
+        const runtime = await getNativeAgentRuntimeConfig(
+          ctx.workspace.workspaceId
+        );
+        const route = runtime.llm.routing[input.capability];
+        const storedApiKey =
+          route.apiKey || runtime.llm.providers[input.provider].apiKey;
+        const settings: AgentProviderSettings = {
+          ...runtime.llm,
+          routing: {
+            ...runtime.llm.routing,
+            [input.capability]: {
+              ...route,
+              provider: input.provider,
+              baseUrl: input.baseUrl || route.baseUrl,
+              apiKey: input.apiKey.startsWith("••••")
+                ? storedApiKey
+                : input.apiKey,
+              model: input.model || route.model,
+            },
+          },
+        };
+        if (!settings.routing[input.capability].baseUrl)
+          return { ready: false, message: "Informe a URL da API." };
+        if (!settings.routing[input.capability].apiKey)
+          return { ready: false, message: "Informe a API key." };
+        if (!settings.routing[input.capability].model)
+          return { ready: false, message: "Informe o modelo." };
+        try {
+          const result = await invokeConfiguredLLM(
+            settings,
+            input.capability as AgentCapability,
+            {
+              model: settings.routing[input.capability].model,
+              messages: [
+                {
+                  role: "user",
+                  content: "Responda apenas com OK.",
+                },
+              ],
+              maxTokens: 5,
+            }
+          );
+          return {
+            ready: true,
+            model: result.model || settings.routing[input.capability].model,
+            latencyMs: Date.now() - startedAt,
+            message: "Conexão confirmada. A API respondeu corretamente.",
+          };
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Falha desconhecida";
+          return {
+            ready: false,
+            latencyMs: Date.now() - startedAt,
+            message: message
+              .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+              .slice(0, 240),
+          };
+        }
       }),
     models: protectedProcedure.query(async () => {
       if (!ENV.forgeApiKey) return { data: [], configured: false };

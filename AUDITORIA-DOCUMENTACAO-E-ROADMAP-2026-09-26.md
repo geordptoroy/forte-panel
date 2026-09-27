@@ -130,7 +130,7 @@ A partir deste documento, o roadmap canônico passa a ser organizado por produto
 - [x] Prompt separado da empresa e das APIs.
 - [x] URL, API key e modelo por operação.
 - [x] Seleção de operação por tipo de mídia.
-- [ ] Estado visual real por operação, teste de conexão e erro acionável.
+- [x] Estado visual real por operação, teste de conexão e erro acionável.
 - [ ] Rascunho, revisão, simulação sem envio e publicação versionada.
 - [ ] Histórico e rollback por workspace.
 - [ ] Fallback opcional configurável, nunca silencioso.

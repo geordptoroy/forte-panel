@@ -58,11 +58,10 @@ O operador deve confirmar, para cada URL:
 - limite de tamanho e formato de arquivo;
 - timeout e política de retenção do serviço.
 
-O Forte Panel não valida a existência do modelo remoto antes de salvar a configuração. A validação operacional deve ser uma etapa explícita de **testar conexão** — ainda pendente na próxima fase do roadmap.
+O Forte Panel não valida a existência do modelo remoto ao salvar a configuração. A tela oferece **Testar conexão** por operação: faz uma chamada mínima, sem salvar a configuração e sem enviar mensagem ao WhatsApp, e informa sucesso, latência ou erro sanitizado. Essa chamada pode consumir uma pequena unidade de quota/custo do serviço remoto.
 
 ## Pendências conhecidas
 
-- Teste de conexão por operação na interface.
 - Estados de erro acionáveis quando uma rota está incompleta ou indisponível.
 - Transcrição dedicada para endpoints que não aceitam áudio diretamente.
 - OCR e extração de documentos com limites de tamanho.
