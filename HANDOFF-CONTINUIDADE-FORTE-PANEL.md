@@ -1784,3 +1784,15 @@ A procedure `onboarding.answerConflict` recebe `stepKey`, `conflictKey` e o escl
 A `OnboardingPage` renderiza textarea/input e ações nos cards de revisão humana; a aplicação invalida o perfil e não publica automaticamente. Foram adicionados testes unitários do catálogo/perguntas. No sandbox: 112 testes aprovados, 39 skipped por PostgreSQL/dependências externas; `pnpm check`, `pnpm build`, journal JSON e `git diff --check` passaram.
 
 Próximo passo recomendado: medir custo, duração, taxa de correção e abandono; depois criar publicação versionada do rascunho somente após todos os blocos obrigatórios estarem confirmados.
+
+
+---
+## Atualização do handoff — 2026-09-27 — telemetria de onboarding
+
+A observabilidade do funil foi implementada com `onboardingTelemetryEvents` e migration `0035_onboarding_telemetry`. Os eventos carregam `workspaceId`, `sessionId`, tipo, bloco opcional, fonte, duração, tokens, flag de correção e metadata operacional. Não armazenam texto de resposta, transcrição, prompt, áudio ou conteúdo sensível.
+
+Eventos conectados: `session_started`, `session_paused`, `session_completed`, `audio_uploaded`, `audio_transcribed`, `audio_transcription_failed`, `llm_proposal_created`, `follow_up_answered` e `conflict_follow_up_answered`. A chamada LLM devolve modelo e tokens de uso para telemetria; quando o provider não devolve usage, os tokens ficam nulos, sem estimativa inventada.
+
+`onboarding.metrics` é uma query protegida por workspace com janela de 1 a 90 dias. Retorna sessões iniciadas/concluídas, abandono estimado para a sessão corrente ativa/pausada sem atividade há 7 dias, correções de áudio, follow-ups, conflitos, duração total de áudio, chamadas/tokens LLM e duração média das sessões concluídas. A tela exibe o resumo e identifica tokens como proxy de custo. O catálogo real de preço por modelo ainda não foi configurado, portanto não há custo monetário inventado.
+
+Próximo passo recomendado: validar a migration em PostgreSQL/staging com dados sintéticos, observar a telemetria por uma janela real e só então implementar publicação versionada do rascunho confirmado.

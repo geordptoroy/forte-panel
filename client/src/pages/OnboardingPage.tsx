@@ -114,6 +114,7 @@ export default function OnboardingPage() {
     onSuccess: () => setLocation("/dashboard"),
   });
   const profileQuery = trpc.onboarding.profile.useQuery();
+  const metricsQuery = trpc.onboarding.metrics.useQuery({ windowDays: 30 });
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [published, setPublished] = useState(false);
   const [savedVersion, setSavedVersion] = useState(0);
@@ -582,6 +583,29 @@ export default function OnboardingPage() {
               </div>
             ))}
           </div>
+        </section>
+      )}
+      {metricsQuery.data && (
+        <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+          <SectionTitle eyebrow="Medição · últimos 30 dias" title="Qualidade do onboarding" action={<span className="muted" style={{ fontSize: 10 }}>sem conteúdo de respostas</span>} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
+            {[
+              ["Sessões concluídas", metricsQuery.data.completed],
+              ["Abandono estimado", metricsQuery.data.abandoned],
+              ["Correções", metricsQuery.data.corrections],
+              ["Follow-ups", metricsQuery.data.followUps + metricsQuery.data.conflictFollowUps],
+              ["Tokens LLM", metricsQuery.data.llmTotalTokens],
+              ["Áudio capturado", `${Math.round(metricsQuery.data.audioDurationMs / 1000)}s`],
+            ].map(([label, value]) => (
+              <div key={String(label)} style={{ padding: "10px 11px", border: "1px solid rgba(255,255,255,.07)" }}>
+                <strong style={{ display: "block", color: "#ddd", fontSize: 16 }}>{value}</strong>
+                <span className="muted" style={{ fontSize: 9 }}>{label}</span>
+              </div>
+            ))}
+          </div>
+          <p className="muted" style={{ margin: "10px 0 0", fontSize: 10 }}>
+            Tokens são o proxy de custo até o catálogo de preços do modelo ser configurado. Abandono = sessão ativa/pausada sem atividade há 7 dias.
+          </p>
         </section>
       )}
       {(profileQuery.data?.stepAnswers ?? []).length > 0 && (

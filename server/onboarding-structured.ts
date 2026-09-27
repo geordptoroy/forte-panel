@@ -141,5 +141,15 @@ export async function extractOnboardingStructuredProposal(input: {
   } catch {
     throw new Error("ONBOARDING_PROPOSAL_INVALID");
   }
-  return normalizeOnboardingStructuredProposal(input.stepKey, parsed);
+  const normalized = normalizeOnboardingStructuredProposal(input.stepKey, parsed);
+  const usage = (result as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }; model?: string }).usage;
+  return {
+    ...normalized,
+    llm: {
+      model: (result as { model?: string }).model ?? "unknown",
+      inputTokens: usage?.prompt_tokens ?? null,
+      outputTokens: usage?.completion_tokens ?? null,
+      totalTokens: usage?.total_tokens ?? null,
+    },
+  };
 }

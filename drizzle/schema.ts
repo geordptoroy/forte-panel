@@ -429,6 +429,36 @@ export const onboardingTranscriptions = pgTable(
   ]
 );
 
+export const onboardingTelemetryEvents = pgTable(
+  "onboardingTelemetryEvents",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    sessionId: integer("sessionId").notNull(),
+    eventType: varchar("eventType", { length: 64 }).notNull(),
+    stepKey: varchar("stepKey", { length: 80 }),
+    source: varchar("source", { length: 24 }),
+    durationMs: integer("durationMs"),
+    inputTokens: integer("inputTokens"),
+    outputTokens: integer("outputTokens"),
+    totalTokens: integer("totalTokens"),
+    correction: integer("correction").default(0).notNull(),
+    metadata: jsonb("metadata").$type<Record<string, string | number | boolean | null>>(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("onboarding_telemetry_workspace_created_idx").on(
+      table.workspaceId,
+      table.createdAt
+    ),
+    index("onboarding_telemetry_session_event_idx").on(
+      table.sessionId,
+      table.eventType,
+      table.createdAt
+    ),
+  ]
+);
+
 export const workspaces = pgTable("workspaces", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 160 }).notNull(),
@@ -1191,6 +1221,8 @@ export type OnboardingAudioAsset = typeof onboardingAudioAssets.$inferSelect;
 export type InsertOnboardingAudioAsset = typeof onboardingAudioAssets.$inferInsert;
 export type OnboardingTranscription = typeof onboardingTranscriptions.$inferSelect;
 export type InsertOnboardingTranscription = typeof onboardingTranscriptions.$inferInsert;
+export type OnboardingTelemetryEvent = typeof onboardingTelemetryEvents.$inferSelect;
+export type InsertOnboardingTelemetryEvent = typeof onboardingTelemetryEvents.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;
 export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

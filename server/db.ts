@@ -37,6 +37,7 @@ import {
   onboardingRetentionPolicies,
   onboardingStepAnswers,
   onboardingStepAnswerRevisions,
+  onboardingTelemetryEvents,
   onboardingTranscriptions,
   passwordResetTokens,
   professionals,
@@ -2094,6 +2095,112 @@ export async function getOnboardingSession(workspaceId: number) {
   )[0];
 }
 
+export type OnboardingTelemetryEventInput = {
+  workspaceId: number;
+  sessionId: number;
+  eventType: string;
+  stepKey?: string | null;
+  source?: string | null;
+  durationMs?: number | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  totalTokens?: number | null;
+  correction?: boolean;
+  metadata?: Record<string, string | number | boolean | null>;
+};
+
+export async function recordOnboardingTelemetry(input: OnboardingTelemetryEventInput) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [event] = await db
+    .insert(onboardingTelemetryEvents)
+    .values({
+      workspaceId: input.workspaceId,
+      sessionId: input.sessionId,
+      eventType: input.eventType.slice(0, 64),
+      stepKey: input.stepKey?.slice(0, 80) ?? null,
+      source: input.source?.slice(0, 24) ?? null,
+      durationMs: input.durationMs ?? null,
+      inputTokens: input.inputTokens ?? null,
+      outputTokens: input.outputTokens ?? null,
+      totalTokens: input.totalTokens ?? null,
+      correction: input.correction ? 1 : 0,
+      metadata: input.metadata,
+    })
+    .returning({ id: onboardingTelemetryEvents.id });
+  return event;
+}
+
+export async function getOnboardingTelemetrySummary(workspaceId: number, windowDays = 30) {
+  const db = await getDb();
+  const empty = {
+    windowDays,
+    started: 0,
+    completed: 0,
+    abandoned: 0,
+    corrections: 0,
+    followUps: 0,
+    conflictFollowUps: 0,
+    audioDurationMs: 0,
+    llmCalls: 0,
+    llmTotalTokens: 0,
+    averageCompletedDurationMs: null as number | null,
+    eventsByType: {} as Record<string, number>,
+  };
+  if (!db) return empty;
+  const safeWindowDays = Math.min(90, Math.max(1, windowDays));
+  const since = new Date(Date.now() - safeWindowDays * 24 * 60 * 60 * 1000);
+  const events = await db
+    .select()
+    .from(onboardingTelemetryEvents)
+    .where(and(eq(onboardingTelemetryEvents.workspaceId, workspaceId), gte(onboardingTelemetryEvents.createdAt, since)))
+    .limit(50_000);
+  const eventsByType: Record<string, number> = {};
+  let audioDurationMs = 0;
+  let llmTotalTokens = 0;
+  let llmCalls = 0;
+  let corrections = 0;
+  let followUps = 0;
+  let conflictFollowUps = 0;
+  const completedDurations: number[] = [];
+  for (const event of events) {
+    eventsByType[event.eventType] = (eventsByType[event.eventType] ?? 0) + 1;
+    if (event.eventType === "audio_uploaded") audioDurationMs += event.durationMs ?? 0;
+    if (event.eventType === "llm_proposal_created") {
+      llmCalls += 1;
+      llmTotalTokens += event.totalTokens ?? 0;
+    }
+    if (event.correction) corrections += 1;
+    if (event.eventType === "follow_up_answered") followUps += 1;
+    if (event.eventType === "conflict_follow_up_answered") conflictFollowUps += 1;
+    if (event.eventType === "session_completed" && event.durationMs !== null) completedDurations.push(event.durationMs);
+  }
+  const sessions = await db
+    .select({ status: onboardingSessions.status, lastActivityAt: onboardingSessions.lastActivityAt })
+    .from(onboardingSessions)
+    .where(eq(onboardingSessions.workspaceId, workspaceId))
+    .limit(1);
+  const session = sessions[0];
+  const abandoned = session && session.status !== "completed" && session.lastActivityAt < new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) ? 1 : 0;
+  return {
+    ...empty,
+    windowDays: safeWindowDays,
+    started: eventsByType.session_started ?? 0,
+    completed: eventsByType.session_completed ?? 0,
+    abandoned,
+    corrections,
+    followUps,
+    conflictFollowUps,
+    audioDurationMs,
+    llmCalls,
+    llmTotalTokens,
+    averageCompletedDurationMs: completedDurations.length
+      ? Math.round(completedDurations.reduce((total, duration) => total + duration, 0) / completedDurations.length)
+      : null,
+    eventsByType,
+  };
+}
+
 export async function startOnboardingSession(workspaceId: number, ownerUserId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -2105,12 +2212,24 @@ export async function startOnboardingSession(workspaceId: number, ownerUserId: n
       .set({ ownerUserId, status: "active", pausedAt: null, lastActivityAt: now, updatedAt: now })
       .where(eq(onboardingSessions.id, existing.id))
       .returning();
+    await recordOnboardingTelemetry({
+      workspaceId,
+      sessionId: session.id,
+      eventType: "session_started",
+      metadata: { resumed: true },
+    });
     return session;
   }
   const [session] = await db
     .insert(onboardingSessions)
     .values({ workspaceId, ownerUserId, status: "active", startedAt: now, lastActivityAt: now, updatedAt: now })
     .returning();
+  await recordOnboardingTelemetry({
+    workspaceId,
+    sessionId: session.id,
+    eventType: "session_started",
+    metadata: { resumed: false },
+  });
   return session;
 }
 
@@ -2123,6 +2242,12 @@ export async function pauseOnboardingSession(workspaceId: number) {
     .set({ status: "paused", pausedAt: now, lastActivityAt: now, updatedAt: now })
     .where(eq(onboardingSessions.workspaceId, workspaceId))
     .returning();
+  if (session)
+    await recordOnboardingTelemetry({
+      workspaceId,
+      sessionId: session.id,
+      eventType: "session_paused",
+    });
   return session;
 }
 
@@ -2130,6 +2255,7 @@ async function touchOnboardingSession(workspaceId: number, nextStep: string | nu
   const db = await getDb();
   if (!db) return;
   const now = new Date();
+  const existing = completed ? await getOnboardingSession(workspaceId) : undefined;
   await db
     .update(onboardingSessions)
     .set({
@@ -2140,6 +2266,13 @@ async function touchOnboardingSession(workspaceId: number, nextStep: string | nu
       updatedAt: now,
     })
     .where(eq(onboardingSessions.workspaceId, workspaceId));
+  if (completed && existing)
+    await recordOnboardingTelemetry({
+      workspaceId,
+      sessionId: existing.id,
+      eventType: "session_completed",
+      durationMs: Math.max(0, now.getTime() - existing.startedAt.getTime()),
+    });
 }
 
 export type OnboardingStepAnswerPayload = {

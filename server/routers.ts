@@ -46,6 +46,7 @@ import {
   getDashboardSnapshot,
   getWorkspaceUsageSnapshot,
   getOnboardingSession,
+  getOnboardingTelemetrySummary,
   getOnboardingProfile,
   getNativeAgentConfig,
   getNativeAgentRuntimeConfig,
@@ -83,6 +84,7 @@ import {
   applyOnboardingFollowUpAnswer,
   persistOnboardingAudioTranscription,
   persistOnboardingStepAnswerProposal,
+  recordOnboardingTelemetry,
   saveOnboardingProfile,
   startOnboardingSession,
   setContactAi,
@@ -1165,6 +1167,11 @@ export const appRouter = router({
     profile: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingProfile(ctx.workspace.workspaceId)
     ),
+    metrics: requireOnboardingEditor
+      .input(z.object({ windowDays: z.number().int().min(1).max(90).default(30) }).optional())
+      .query(({ input, ctx }) =>
+        getOnboardingTelemetrySummary(ctx.workspace.workspaceId, input?.windowDays ?? 30)
+      ),
     governance: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingGovernance(ctx.workspace.workspaceId)
     ),
@@ -1290,6 +1297,15 @@ export const appRouter = router({
             action: "onboarding_follow_up_answered",
             summary: `Pergunta de acompanhamento respondida no bloco ${input.stepKey}`,
           });
+          const session = await getOnboardingSession(ctx.workspace.workspaceId);
+          if (session)
+            await recordOnboardingTelemetry({
+              workspaceId: ctx.workspace.workspaceId,
+              sessionId: session.id,
+              eventType: "follow_up_answered",
+              stepKey: input.stepKey,
+              source: "human_form",
+            });
           return result;
         } catch (error) {
           if (error instanceof Error && error.message === "ONBOARDING_FOLLOW_UP_FIELD_INVALID")
@@ -1320,6 +1336,15 @@ export const appRouter = router({
             action: "onboarding_conflict_follow_up_answered",
             summary: `Esclarecimento de conflito registrado no bloco ${input.stepKey}`,
           });
+          const session = await getOnboardingSession(ctx.workspace.workspaceId);
+          if (session)
+            await recordOnboardingTelemetry({
+              workspaceId: ctx.workspace.workspaceId,
+              sessionId: session.id,
+              eventType: "conflict_follow_up_answered",
+              stepKey: input.stepKey,
+              source: "human_form",
+            });
           return result;
         } catch (error) {
           if (error instanceof Error && error.message === "ONBOARDING_CONFLICT_NOT_FOUND")
@@ -1443,6 +1468,19 @@ export const appRouter = router({
             action: "onboarding_structured_proposal_created",
             summary: `Proposta estruturada criada como rascunho para o bloco ${input.stepKey}`,
           });
+          const session = await getOnboardingSession(workspaceId);
+          if (session)
+            await recordOnboardingTelemetry({
+              workspaceId,
+              sessionId: session.id,
+              eventType: "llm_proposal_created",
+              stepKey: input.stepKey,
+              source: "llm",
+              inputTokens: proposal.llm.inputTokens,
+              outputTokens: proposal.llm.outputTokens,
+              totalTokens: proposal.llm.totalTokens,
+              metadata: { model: proposal.llm.model },
+            });
           return saved;
         } catch (error) {
           if (error instanceof Error && error.message === "ONBOARDING_PROPOSAL_TEXT_REQUIRED")
@@ -1543,6 +1581,16 @@ export const appRouter = router({
             : "onboarding_audio_uploaded",
           summary: `${input.correction ? "Correção curta recebida" : "Áudio recebido"} para o bloco ${input.stepKey}`,
         });
+        await recordOnboardingTelemetry({
+          workspaceId: ctx.workspace.workspaceId,
+          sessionId: session.id,
+          eventType: "audio_uploaded",
+          stepKey: input.stepKey,
+          source: "transcription",
+          durationMs: input.durationMs ?? null,
+          correction: input.correction,
+          metadata: { sizeBytes: audioBuffer.length, mimeType: validation.mimeType },
+        });
         return {
           assetId: asset.id,
           sessionId: asset.sessionId,
@@ -1616,6 +1664,15 @@ export const appRouter = router({
               ok: false,
               errorCode: result.code,
             });
+            await recordOnboardingTelemetry({
+              workspaceId,
+              sessionId: claim.asset.sessionId,
+              eventType: "audio_transcription_failed",
+              stepKey: claim.asset.stepKey,
+              source: "transcription",
+              durationMs: claim.asset.durationMs,
+              metadata: { errorCode: result.code },
+            });
             if (result.code === "CONSENT_REQUIRED")
               throw new TRPCError({ code: "BAD_REQUEST", message: "O consentimento para transcrição não está ativo." });
             throw new TRPCError({
@@ -1638,6 +1695,15 @@ export const appRouter = router({
             action: "onboarding_audio_transcribed",
             summary: `Áudio transcrito para o bloco ${claim.asset.stepKey}`,
           });
+          await recordOnboardingTelemetry({
+            workspaceId,
+            sessionId: claim.asset.sessionId,
+            eventType: "audio_transcribed",
+            stepKey: claim.asset.stepKey,
+            source: "transcription",
+            durationMs: claim.asset.durationMs,
+            metadata: { provider: "builtin_whisper", model: "whisper-1" },
+          });
           return {
             assetId: claim.asset.id,
             status: "completed" as const,
@@ -1652,6 +1718,16 @@ export const appRouter = router({
             ok: false,
             errorCode: "SERVICE_ERROR",
           });
+          if (claim?.asset)
+            await recordOnboardingTelemetry({
+              workspaceId,
+              sessionId: claim.asset.sessionId,
+              eventType: "audio_transcription_failed",
+              stepKey: claim.asset.stepKey,
+              source: "transcription",
+              durationMs: claim.asset.durationMs,
+              metadata: { errorCode: "SERVICE_ERROR" },
+            });
           throw new TRPCError({
             code: "BAD_GATEWAY",
             message: "O serviço de transcrição está indisponível. Tente novamente ou responda por texto.",

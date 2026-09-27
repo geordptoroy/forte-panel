@@ -622,3 +622,14 @@ Conflitos possuem um segundo fluxo: o responsável informa qual versão aprovada
 As procedures `onboarding.answerFollowUp` e `onboarding.answerConflict` são tenant-aware, validam o campo contra o bloco correto, aplicam limites de tamanho e não publicam nem confirmam automaticamente. A UI mostra a pergunta no card de revisão e invalida o perfil após salvar para refletir missing/conflicts e o novo histórico.
 
 Validação desta etapa: `pnpm check` ✅; `pnpm test` ✅ — 112 aprovados, 39 skipped por dependências externas/PostgreSQL; `pnpm build` ✅; journal JSON e `git diff --check` ✅.
+
+
+---
+## Etapa seguinte — telemetria de qualidade e custo — 2026-09-27
+Foi criada a migration `0035_onboarding_telemetry`, com eventos tenant-aware e sem conteúdo de resposta/transcrição. Cada evento pode registrar sessão, bloco, fonte, duração, tokens de entrada/saída/total, correção e metadata operacional limitada.
+
+A sessão registra início, retomada, pausa e conclusão; uploads registram duração, tamanho/MIME e se eram correção curta; transcrições registram sucesso/falha e provider; propostas LLM registram modelo e tokens; follow-ups registram contagem de correções humanas e esclarecimentos. O texto do operador, prompt e transcrição não entram na telemetria.
+
+A procedure protegida `onboarding.metrics` retorna resumo por workspace e janela de 1–90 dias: sessões iniciadas/concluídas, abandono estimado para sessão sem atividade há 7 dias, correções, follow-ups, duração de áudio, chamadas/tokens LLM e duração média de sessões concluídas. A UI apresenta esses indicadores no onboarding. Tokens são explicitamente tratados como proxy de custo enquanto o catálogo de preço por modelo não estiver configurado.
+
+Validação desta etapa: `pnpm check` ✅; migration/journal JSON e diff SQL serão validados antes do release; a suíte completa e `pnpm build` permanecem como gates finais.

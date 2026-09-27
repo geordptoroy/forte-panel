@@ -328,7 +328,7 @@ Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
 - [x] Conectar captura/upload privado à transcrição tenant-aware, preservando original, fonte, trecho e confiança. (OnboardingPage agora oferece MediaRecorder, preview, upload, transcrição e retry; a transcrição permanece revisável e o formulário continua como fallback)
 - [x] Permitir correção por texto ou áudio curto e proposta estruturada com pergunta explícita de revisão para ambiguidade. (textarea editável, regravação de até 30s, consentimento `llm`, schema JSON estrito, `missing/conflicts/confidence`, persistência como `draft`, follow-up por campo/conflito e revisão imutável; publicação versionada ainda pendente)
 - [x] Tornar processamento idempotente, com status, retry e fallback textual/humano. (claim por asset, estados `uploaded/processing/completed/failed` e retry da UI)
-- [ ] Medir custo, duração, taxa de correção e abandono antes de ampliar áudio para toda a base.
+- [x] Medir custo, duração, taxa de correção e abandono antes de ampliar áudio para toda a base. (migration `0035_onboarding_telemetry`, eventos tenant-aware sem conteúdo, tokens como proxy de custo, duração de sessão/áudio, correções, follow-ups, conclusão e abandono estimado por 7 dias; preço real por modelo ainda depende de catálogo configurado)
 
 ### P3 — suporte avançado
 
