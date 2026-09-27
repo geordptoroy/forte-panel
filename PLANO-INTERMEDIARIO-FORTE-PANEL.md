@@ -519,3 +519,11 @@ Próximo corte: adicionar campos `source`, `confidence`, `missing` e `conflict` 
 `onboardingStepAnswers` e seu histórico agora carregam `source`, `confidence`, `missing` e `conflicts`. O formulário preenche provenance humana e ausências derivadas, enquanto transcrição/LLM permanecem fontes futuras sem bypass do gate de confirmação.
 
 Próximo corte: especificar valores permitidos de `source`, política de confiança e resolução de conflitos antes de conectar áudio ou LLM.
+
+
+---
+## Etapa seguinte — política de provenance e conflitos — 2026-09-27
+
+As fontes aceitas são `human_form`, `transcription`, `llm` e `import`; a confiança é validada entre 0 e 100, com formulário humano fixado em 100. Conflicts impedem confirmação e publicação dos blocos obrigatórios. A regra está no backend e não depende apenas do frontend.
+
+Próximo corte: definir o contrato de resolução de conflitos e a política de retenção/consentimento caso uma fonte automática seja conectada.

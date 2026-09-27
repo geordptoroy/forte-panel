@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOnboardingStepAnswers,
   getOnboardingChecklist,
+  validateOnboardingAnswerMetadata,
   type OnboardingProfile,
 } from "./db";
 
@@ -53,5 +54,13 @@ describe("onboarding checklist", () => {
     expect(answers[0]).toMatchObject({ source: "human_form", confidence: 100, missing: [], conflicts: [] });
     expect(buildOnboardingStepAnswers({ ...completeProfile, faq: "" }).find(answer => answer.stepKey === "voice"))
       .toMatchObject({ missing: ["faq"], source: "human_form" });
+  });
+
+  it("validates provenance and confidence before persistence", () => {
+    expect(validateOnboardingAnswerMetadata({ source: "human_form", confidence: 100, missing: [], conflicts: [] }).valid).toBe(true);
+    expect(validateOnboardingAnswerMetadata({ source: "llm", confidence: 101, missing: [], conflicts: [] }).errors).toContain("confidence_out_of_range");
+    expect(validateOnboardingAnswerMetadata({ source: "unknown", confidence: 80, missing: [], conflicts: [] }).errors).toContain("source_invalid");
+    expect(validateOnboardingAnswerMetadata({ source: "human_form", confidence: 90, missing: [], conflicts: [] }).errors).toContain("human_form_confidence_must_be_100");
+    expect(validateOnboardingAnswerMetadata({ source: "human_form", confidence: 100, missing: [""], conflicts: ["" ] }).valid).toBe(false);
   });
 });

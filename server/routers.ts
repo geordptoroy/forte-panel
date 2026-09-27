@@ -1145,18 +1145,24 @@ export const appRouter = router({
     confirmStep: requireOnboardingEditor
       .input(z.object({ stepKey: z.enum(["identity", "offering", "operations", "guardrails", "voice"]) }))
       .mutation(async ({ input, ctx }) => {
-        const result = await confirmOnboardingStep(
-          ctx.workspace.workspaceId,
-          input.stepKey,
-          ctx.user.id
-        );
-        await logWorkspaceAction({
-          workspaceId: ctx.workspace.workspaceId,
-          actorUserId: ctx.user.id,
-          action: "onboarding_step_confirmed",
-          summary: `Bloco de onboarding confirmado: ${input.stepKey}`,
-        });
-        return result;
+        try {
+          const result = await confirmOnboardingStep(
+            ctx.workspace.workspaceId,
+            input.stepKey,
+            ctx.user.id
+          );
+          await logWorkspaceAction({
+            workspaceId: ctx.workspace.workspaceId,
+            actorUserId: ctx.user.id,
+            action: "onboarding_step_confirmed",
+            summary: `Bloco de onboarding confirmado: ${input.stepKey}`,
+          });
+          return result;
+        } catch (error) {
+          if (error instanceof Error && error.message === "ONBOARDING_CONFLICTS_UNRESOLVED")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Resolva os conflitos deste bloco antes de confirmar." });
+          throw error;
+        }
       }),
     autosave: requireOnboardingEditor
       .input(
@@ -1227,6 +1233,11 @@ export const appRouter = router({
             throw new TRPCError({
               code: "BAD_REQUEST",
               message: "Revise e confirme cada bloco obrigatório antes de publicar.",
+            });
+          if (error instanceof Error && error.message.startsWith("ONBOARDING_CONFLICTS_UNRESOLVED:"))
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Resolva os conflitos dos blocos obrigatórios antes de publicar.",
             });
           throw error;
         }

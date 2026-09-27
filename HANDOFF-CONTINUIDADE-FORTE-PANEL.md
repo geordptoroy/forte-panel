@@ -1672,3 +1672,11 @@ A migration `0031_onboarding_answer_quality` adiciona aos registros atuais e ao 
 O formulário atual grava `source=human_form` e `confidence=100` como provenance da entrada humana. `missing` é derivado por campo vazio e `conflicts` inicia vazio, sem fingir que existe inferência de áudio/LLM. Os metadados acompanham as revisões e aparecem no card de revisão.
 
 O contrato agora está preparado para futuras fontes (`transcription`, `llm`, importação) sem permitir que confiança ou ausência substituam a confirmação humana. A publicação continua bloqueada por falta de fatos obrigatórios ou confirmação dos blocos essenciais.
+
+
+---
+## Atualização do handoff — 2026-09-27 — política de qualidade e conflitos
+
+Foi fechada a política de qualidade antes de conectar fontes automáticas. As fontes permitidas agora são `human_form`, `transcription`, `llm` e `import`. A confiança é opcional, mas deve ser inteira entre 0 e 100; entradas de formulário humano exigem confiança 100. Ausências e conflitos precisam ser arrays de strings válidos.
+
+A confirmação de um bloco é recusada enquanto houver conflitos. A publicação também bloqueia conflitos nos blocos obrigatórios, mesmo que o usuário tente chamar a API diretamente. O erro é traduzido para uma mensagem acionável no router. Testes cobrem fonte desconhecida, confiança fora do intervalo, confiança humana inconsistente e campos inválidos.

@@ -2155,6 +2155,32 @@ export const confirmableOnboardingStepKeys = [
   ...requiredOnboardingStepKeys,
   "voice",
 ] as const;
+export const onboardingAnswerSources = [
+  "human_form",
+  "transcription",
+  "llm",
+  "import",
+] as const;
+
+export type OnboardingAnswerSource = (typeof onboardingAnswerSources)[number];
+
+export function validateOnboardingAnswerMetadata(input: {
+  source: string;
+  confidence: number | null;
+  missing: string[];
+  conflicts: string[];
+}) {
+  const errors: string[] = [];
+  if (!onboardingAnswerSources.includes(input.source as OnboardingAnswerSource))
+    errors.push("source_invalid");
+  if (input.confidence !== null && (!Number.isInteger(input.confidence) || input.confidence < 0 || input.confidence > 100))
+    errors.push("confidence_out_of_range");
+  if (input.source === "human_form" && input.confidence !== 100)
+    errors.push("human_form_confidence_must_be_100");
+  if (input.missing.some(field => !field.trim())) errors.push("missing_field_invalid");
+  if (input.conflicts.some(conflict => !conflict.trim())) errors.push("conflict_invalid");
+  return { valid: errors.length === 0, errors };
+}
 
 export function buildOnboardingStepAnswers(profile: OnboardingProfile): OnboardingStepAnswerPayload[] {
   const base: Array<Pick<OnboardingStepAnswerPayload, "stepKey" | "answer">> = [
@@ -2273,6 +2299,8 @@ async function persistOnboardingStepAnswers(
   if (!db || !session) return;
   const now = new Date();
   for (const payload of buildOnboardingStepAnswers(profile)) {
+    const quality = validateOnboardingAnswerMetadata(payload);
+    if (!quality.valid) throw new Error(`ONBOARDING_ANSWER_METADATA_INVALID:${quality.errors.join(",")}`);
     const serializedAnswer = JSON.stringify(payload.answer);
     const existing = (
       await db
@@ -2344,6 +2372,21 @@ export async function confirmOnboardingStep(
   const db = await getDb();
   const session = await getOnboardingSession(workspaceId);
   if (!db || !session) throw new Error("ONBOARDING_SESSION_NOT_FOUND");
+  const current = (
+    await db
+      .select({ conflicts: onboardingStepAnswers.conflicts })
+      .from(onboardingStepAnswers)
+      .where(
+        and(
+          eq(onboardingStepAnswers.workspaceId, workspaceId),
+          eq(onboardingStepAnswers.sessionId, session.id),
+          eq(onboardingStepAnswers.stepKey, stepKey)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (current && (JSON.parse(current.conflicts) as string[]).length > 0)
+    throw new Error("ONBOARDING_CONFLICTS_UNRESOLVED");
   const [answer] = await db
     .update(onboardingStepAnswers)
     .set({ status: "confirmed", updatedBy, updatedAt: new Date() })
@@ -2496,6 +2539,11 @@ export async function saveOnboardingProfile(
     );
     if (missing.length)
       throw new Error(`ONBOARDING_CONFIRMATION_REQUIRED:${missing.join(",")}`);
+    const conflicted = answers
+      .filter(answer => requiredOnboardingStepKeys.includes(answer.stepKey as (typeof requiredOnboardingStepKeys)[number]) && answer.conflicts.length > 0)
+      .map(answer => answer.stepKey);
+    if (conflicted.length)
+      throw new Error(`ONBOARDING_CONFLICTS_UNRESOLVED:${conflicted.join(",")}`);
   }
   const prompt = buildBusinessPrompt(input, nextVersion);
   if (publish)
