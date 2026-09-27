@@ -399,3 +399,8 @@ Foi criado `scripts/staging-smoke.sh` para validar liveness e readiness após de
 ## Atualização de execução — 2026-09-26 23:15
 
 O pacote `forte-whatsapp` recebeu `src/server.test.ts` e `vitest.config.ts` locais. Os oito testes cobrem health/readiness, autenticação e envio de texto, imagem, áudio, vídeo e documento contra um `InstanceManager` simulado, sem pareamento ou número real. O workflow de publicação passou a executar testes, typecheck e build do gateway antes de publicar as imagens. O E2E com número dedicado continua separado e pendente de staging configurado.
+
+
+## Atualização de execução — 2026-09-26 23:21
+
+Foi criado `.github/workflows/staging-e2e.yml`, manual e sem execução em push. Ele injeta `STAGING_BASE_URL`, `STAGING_FORTE_API_KEY`, `STAGING_ADMIN_EMAIL` e `STAGING_ADMIN_PASSWORD` apenas durante o job e executa `scripts/validate-flow.mjs`. Como o fluxo cria dados operacionais, a documentação exige staging descartável/autorizado e proíbe execução em produção.

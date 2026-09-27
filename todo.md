@@ -84,6 +84,7 @@
 - [x] Inbound/outbound de texto, mídia multimodal, JID, idempotência e takeover humano em nível de código.
 - [x] Contrato HTTP do gateway validado sem pareamento: health/readiness, autenticação e envio de texto, imagem, áudio, vídeo e documento.
 - [ ] Validar imagem, áudio, vídeo, documento e tipos interativos em Docker/staging com número de teste.
+- [x] Workflow manual E2E criado para o fluxo operacional de staging, com URL e credenciais injetadas por variável/secret do GitHub; não executado automaticamente porque cria dados.
 - [ ] Store de sessão durável/criptografado, storage privado de mídia e lifecycle de instância por tenant.
 - Preservar adapter para troca reversível de provider e manter opção oficial da Meta documentada.
 

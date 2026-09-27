@@ -172,3 +172,10 @@ A suíte PostgreSQL `server/platform-admin-actions.test.ts` valida o fluxo de pa
 O pacote `forte-whatsapp` agora possui testes de contrato HTTP em `src/server.test.ts` para health/readiness, autenticação e envio de texto, imagem, áudio, vídeo e documento sem pareamento ou número real. O workflow de publicação executa `npm ci`, `npm test`, `npm run check` e `npm run build` do gateway.
 
 Isso não substitui o teste E2E de staging com número dedicado: o pareamento, recebimento real e envio para um contato controlado continuam bloqueados até existir um ambiente de teste explicitamente configurado.
+
+
+## 16. E2E operacional de staging
+
+O workflow manual `Staging end-to-end` executa `scripts/validate-flow.mjs` contra uma URL fornecida no momento da execução ou pela variável `STAGING_BASE_URL`. A chave REST e as credenciais do administrador entram exclusivamente pelos secrets `STAGING_FORTE_API_KEY`, `STAGING_ADMIN_EMAIL` e `STAGING_ADMIN_PASSWORD`; nunca devem ser commitadas ou passadas na linha de comando.
+
+Esse fluxo cria serviços, profissionais, memberships e agendamentos para provar isolamento e regras da agenda. Portanto, deve ser executado apenas em staging descartável ou com dados de teste previamente autorizados, nunca em produção. O pareamento e o E2E de mídia/WhatsApp continuam sendo uma etapa separada porque exigem um número de teste controlado.

@@ -1,0 +1,34 @@
+name: Staging end-to-end
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Staging base URL (overrides STAGING_BASE_URL repository variable)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_BASE_URL: ${{ inputs.base_url || vars.STAGING_BASE_URL }}
+      FORTE_API_KEY: ${{ secrets.STAGING_FORTE_API_KEY }}
+      LOCAL_ADMIN_EMAIL: ${{ secrets.STAGING_ADMIN_EMAIL }}
+      LOCAL_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required staging configuration
+        run: |
+          test -n "$STAGING_BASE_URL"
+          test -n "$FORTE_API_KEY"
+          test -n "$LOCAL_ADMIN_EMAIL"
+          test -n "$LOCAL_ADMIN_PASSWORD"
+
+      - name: Run operational E2E flow
+        run: node scripts/validate-flow.mjs "$STAGING_BASE_URL"
