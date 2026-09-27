@@ -153,3 +153,10 @@ Os buckets de uso não são mantidos indefinidamente. O worker executa uma limpe
 Use `GET /api/v1/health` para liveness e `GET /api/v1/ready` para readiness. O primeiro confirma somente o processo HTTP; o segundo confirma também a conexão PostgreSQL. Configure o monitoramento para considerar `503` em `/ready` como indisponibilidade do serviço.
 
 O worker emite um evento JSON `worker_heartbeat` por padrão a cada 60 segundos. Ajuste `WORKER_HEARTBEAT_MS` somente se o sistema de logs/monitoramento exigir outra frequência. Monitore também `limitadas`, `alertasCota`, `bucketsRemovidos` e `lastError`.
+
+
+## 13. Smoke check de staging
+
+O repositório contém `scripts/staging-smoke.sh`, que valida `GET /api/v1/health` com `200/status=ok` e `GET /api/v1/ready` com `200/status=ready`. O script não recebe nem imprime credenciais; precisa apenas de `STAGING_BASE_URL` e falha explicitamente quando a URL não está configurada ou o banco não está pronto.
+
+Também foi criado o workflow manual `Staging smoke check`. Para habilitá-lo, configure a variável de repositório `STAGING_BASE_URL` no GitHub ou informe `base_url` ao disparar o workflow. Execute-o após cada deploy de staging; um `503` em readiness deve bloquear a abertura do beta até a causa ser resolvida.

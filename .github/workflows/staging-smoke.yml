@@ -1,0 +1,24 @@
+name: Staging smoke check
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Staging base URL (overrides STAGING_BASE_URL repository variable)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_BASE_URL: ${{ inputs.base_url || vars.STAGING_BASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate staging liveness and readiness
+        run: ./scripts/staging-smoke.sh

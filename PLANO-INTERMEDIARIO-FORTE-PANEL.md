@@ -389,3 +389,8 @@ A validação local confirmou a formatação do YAML e `git diff --check`. A exe
 ## Atualização de execução — 2026-09-26 21:45
 
 Foi adicionada a suíte `server/worker-heartbeat.test.ts`. Em PostgreSQL real, ela confirma que o heartbeat é upsertado por serviço e que o console classifica corretamente o worker como `healthy`, `degraded` após erro e `stale` quando o sinal ultrapassa o limite de 180 segundos. O contrato HTTP de `/api/v1/health` e `/api/v1/ready` já estava coberto por `server/api.contract.test.ts`; agora o sinal persistido do worker também está protegido no CI.
+
+
+## Atualização de execução — 2026-09-26 23:05
+
+Foi criado `scripts/staging-smoke.sh` para validar liveness e readiness após deploy, além do workflow manual `.github/workflows/staging-smoke.yml`. A URL é fornecida por `STAGING_BASE_URL` como variável de repositório ou pelo input manual `base_url`; nenhuma credencial é necessária ou exposta. O script foi validado com `bash -n` e com um servidor HTTP local simulado, confirmando `health=ok` e `ready=ready`.

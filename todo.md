@@ -90,7 +90,8 @@
 
 - [x] CI com PostgreSQL 16, migrations limpas e suites de isolamento; o workflow falha se uma suite crítica for ignorada.
 - [x] Cobertura PostgreSQL do heartbeat confirma estados healthy, degraded e stale no console e preserva um único registro por serviço.
-- CI com suites E2E, health/readiness, logs/alertas e correlation IDs.
+- [x] Smoke check manual de staging criado para validar `/api/v1/health` e `/api/v1/ready` sem expor credenciais.
+- CI com suites E2E, logs/alertas e correlation IDs.
 - Backups off-host e restauração testada; exportação/encerramento de empresa; limites antiabuso.
 - Revisar privacidade, termos, retenção e suporte antes de cadastro público aberto.
 - Decidir planos/cobrança depois de validar uso/custo e jornada do produto.
