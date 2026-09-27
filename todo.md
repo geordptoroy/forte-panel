@@ -52,15 +52,15 @@
 - [x] Adicionar retenção de buckets: o worker remove diariamente registros antigos de workspace e usuário; padrão de 30 dias configurável por `FORTE_USAGE_RETENTION_DAYS`.
 - [x] Adicionar liveness `/api/v1/health`, readiness `/api/v1/ready` com `select 1` seguro e heartbeat JSON do worker configurável por `WORKER_HEARTBEAT_MS`.
 - [ ] Repetir a mesma validação no PostgreSQL do ambiente de staging/produção antes do beta.
-- **Decisão de produto:** o cadastro público será por e-mail + senha para criar owner e workspace em `onboarding`; o login/bootstrap de `platform_admin` continua separado e protegido por secrets de deployment. A implementação pública ainda não foi aberta: falta concluir os gates de segurança, consentimento, recuperação e staging.
-- [ ] Implementar signup público inicial por e-mail + senha, com hash, rate limit, aceite versionado e criação transacional de owner/workspace em `onboarding`.
+- **Decisão de produto:** o cadastro público será por e-mail + senha para criar owner e workspace em `onboarding`; o login/bootstrap de `platform_admin` continua separado e protegido por secrets de deployment. O signup agora está implementado, mas não deve ser aberto em produção antes de recuperação, staging e revisão legal.
+- [x] Implementar signup público inicial por e-mail + senha, com hash, rate limit, aceite versionado e criação transacional de owner/workspace em `onboarding`. (migration `0026_consent_records`, rota `auth.signup`, sessão automática e tela `/signup`; depende de `LOCAL_AUTH_ENABLED=true`)
 - [ ] Preparar `EMAIL_VERIFICATION_ENABLED=false`, tokens e provider de confirmação sem ativar envio; ativar somente após configurar secret, domínio/remetente e testes de entrega.
 - [ ] Planejar Google OAuth e outros provedores atrás de feature flag desligada; não bloquear o signup inicial por essa integração.
 - [x] Implementar convite de funcionário por workspace: token hash, uso único, expiração, revogação, aceite pelo e-mail convidado e criação da própria senha via backend + telas administrativa/pública. (migration 0024; envio automático de e-mail ainda pendente)
 - [ ] Aplicar matriz server-side de capacidades e escopos: owner/admin/manager/agent/professional; esconder faturamento, secrets, prompt administrativo e exportações de quem não precisa.
 - [ ] Definir Inbox compartilhada versus assignment por equipe; atendente vê o histórico necessário para atender, mas não ganha faturamento, secrets ou conversas fora do escopo automaticamente.
 - [ ] Adicionar testes negativos de papel/escopo e auditoria para convite, aceite, reenvio, revogação, mudança de papel e desativação.
-- Próxima fatia de código: criar leitura transacional por operador; depois implementar signup público e convites de funcionários, mantendo staging como gate antes de abrir o cadastro.
+- Próxima fatia de código: preparar recuperação de senha e fluxo de onboarding do owner; manter staging como gate antes de abrir o cadastro.
 - [x] Estrutura inicial do console interno `platform_admin` criada para listar workspaces, consultar saúde/uso, prestar suporte escopado e registrar auditoria; falta validar em PostgreSQL/staging.
 - [x] API keys, configuração de IA, prompt e reset removidos do painel operacional comum; backend e rotas exigem `platformAdmins`, e o reset está no detalhe do workspace com sessão operadora e auditoria.
 - [x] **P0 antes dos convites beta:** implementar configuração versionada do agente por workspace: rascunho, simulação sem envio externo, publicação, histórico e rollback.

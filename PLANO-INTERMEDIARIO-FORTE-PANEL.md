@@ -423,3 +423,11 @@ Foi implementada a separação entre **mensagem inbound não lida pelo operador*
 O frontend marca a conversa como lida ao abrir a thread e o shell passou a exibir o contador para qualquer membro ativo com `canUseInbox`. Também foram formalizadas capabilities server-side (`canUseInbox`, `canSendMessages`, `canManageInbox`) e guards nas procedures da Inbox. A política atual segue caixa compartilhada até existir modelo de assignment/fila; portanto isso não é ainda a matriz final de escopo por equipe/profissional.
 
 Cobertura adicionada em `server/inbox-read-state.test.ts`: dois operadores independentes, dois workspaces, rejeição de contato cruzado e nova mensagem após leitura. Sem `DATABASE_URL`, a suíte PostgreSQL fica skipped; o typecheck, suíte local, build e diff check passaram.
+
+
+---
+## Etapa seguinte — signup público inicial — 2026-09-27
+
+Foi entregue `auth.signup` com hash de senha, rate limit por IP/e-mail, consentimento versionado e criação transacional de workspace `onboarding`, usuário owner, membership, auditoria e sessão automática. A migration é `0026_consent_records`; a UI pública está em `/signup` e o fluxo só é habilitado quando `LOCAL_AUTH_ENABLED=true`. O segredo `LOCAL_ADMIN_PASSWORD` continua exclusivo do bootstrap do administrador de plataforma e não é necessário para o login posterior de owners públicos.
+
+O próximo corte é **recuperação de senha one-time** sem expor token ou segredo na API, seguido da migração do onboarding/configuração histórica para owner/admin. O cadastro não deve ser aberto em produção antes de aplicar migrations em PostgreSQL/staging, revisar termos/privacidade e validar antiabuso.

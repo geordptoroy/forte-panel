@@ -24,6 +24,7 @@ import {
   availability,
   contactNotes,
   contacts,
+  consentRecords,
   conversations,
   conversationReads,
   domainEvents,
@@ -330,6 +331,98 @@ export async function setLocalPassword(userId: number, password: string) {
     .update(users)
     .set({ passwordHash: hashLocalPassword(password), updatedAt: new Date() })
     .where(eq(users.id, userId));
+}
+
+export const PUBLIC_TERMS_VERSION = "2026-09-27.v1";
+export const PUBLIC_PRIVACY_VERSION = "2026-09-27.v1";
+
+export function slugifyWorkspaceName(name: string) {
+  const base = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 70);
+  return base || "workspace";
+}
+
+export async function createPublicSignup(input: {
+  name: string;
+  email: string;
+  password: string;
+  workspaceName: string;
+  segment?: string;
+  timezone?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const email = input.email.trim().toLowerCase();
+  const name = input.name.trim();
+  const workspaceName = input.workspaceName.trim();
+  const now = new Date();
+  return db.transaction(async tx => {
+    const existing = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email}`)
+      .limit(1);
+    if (existing[0]) throw new Error("Já existe uma conta com este e-mail");
+
+    const slug = `${slugifyWorkspaceName(workspaceName)}-${crypto
+      .randomBytes(4)
+      .toString("hex")}`;
+    const [workspace] = await tx
+      .insert(workspaces)
+      .values({
+        name: workspaceName,
+        slug,
+        segment: input.segment?.trim() || "servicos",
+        timezone: input.timezone?.trim() || "America/Sao_Paulo",
+        plan: "starter",
+        status: "onboarding",
+      })
+      .returning();
+    if (!workspace) throw new Error("Não foi possível criar o workspace");
+
+    const [user] = await tx
+      .insert(users)
+      .values({
+        openId: `local_${crypto.randomUUID()}`,
+        name,
+        email,
+        loginMethod: "local",
+        role: "user",
+        passwordHash: hashLocalPassword(input.password),
+        operationalRole: "human_attendant",
+        lastSignedIn: now,
+      })
+      .returning();
+    if (!user) throw new Error("Não foi possível criar a conta");
+
+    await tx.insert(workspaceMembers).values({
+      workspaceId: workspace.id,
+      userId: user.id,
+      role: "owner",
+      active: 1,
+    });
+    await tx.insert(consentRecords).values({
+      userId: user.id,
+      workspaceId: workspace.id,
+      termsVersion: PUBLIC_TERMS_VERSION,
+      privacyVersion: PUBLIC_PRIVACY_VERSION,
+      acceptedAt: now,
+      createdAt: now,
+    });
+    await tx.insert(auditLogs).values({
+      workspaceId: workspace.id,
+      actorUserId: user.id,
+      action: "public_signup_completed",
+      summary: "Cadastro público criou owner e workspace",
+      createdAt: now,
+    });
+    return { user, workspace };
+  });
 }
 
 export async function revokeUserSessions(userId: number) {

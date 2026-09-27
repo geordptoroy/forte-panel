@@ -1406,3 +1406,36 @@ O teste de integração ainda está corretamente ignorado neste sandbox sem `DAT
 ### Próximo passo
 
 Implementar o signup público inicial e recuperação de senha preparada, mantendo confirmação de e-mail e OAuth atrás de feature flags desligadas, ou antecipar assignment/fila se a decisão de caixa compartilhada mudar. A matriz completa de escopos por equipe/profissional continua pendente e não deve ser presumida pela capability-base deste bloco.
+
+
+---
+## Atualização do handoff — 2026-09-27 12:29 — signup público inicial
+
+Foi implementado o primeiro fluxo público de identidade do cliente do Forte Panel, separado do bootstrap de `platform_admin`.
+
+### Implementado
+
+- Migration `drizzle-pg/0026_consent_records.sql` e registro no journal.
+- Tabela `consentRecords` com `termsVersion`, `privacyVersion`, usuário, workspace e timestamp de aceite.
+- `createPublicSignup` executa em transação única: verifica e-mail globalmente, cria workspace com slug seguro e aleatório, cria owner local com hash `scrypt`, cria membership `owner`, registra consentimento e auditoria.
+- O workspace nasce com `status = onboarding`, `plan = starter`, timezone `America/Sao_Paulo` e ainda fica ativo para o owner acessar o painel.
+- Procedure pública `auth.signup`, protegida por `LOCAL_AUTH_ENABLED`, com nome, e-mail, senha, empresa e aceite obrigatório dos dois documentos.
+- Signup gera sessão automaticamente; login posterior deixou de exigir `LOCAL_ADMIN_PASSWORD`, mantendo esse segredo apenas para o administrador de plataforma configurado por ambiente.
+- Rate limit independente de signup por IP/e-mail: 3 tentativas em 15 minutos bloqueiam por 30 minutos.
+- Tela pública `/signup`, link na tela de login e consentimentos versionados (`2026-09-27.v1`).
+- Testes puros de slug, consentimento e rate limit; teste PostgreSQL transacional cobre owner, workspace, membership, hash, consentimento e e-mail duplicado.
+
+### Validação
+
+```text
+pnpm check ✅
+pnpm test ✅ — 90 aprovados, 34 ignorados por dependências externas/PostgreSQL
+pnpm build ✅ — warning conhecido de bundle inicial acima de 500 kB
+`git diff --check` ✅
+```
+
+O teste PostgreSQL de signup ainda fica skipped sem `DATABASE_URL`. O cadastro também não deve ser aberto amplamente antes de staging/produção aplicar as migrations, configurar `LOCAL_AUTH_ENABLED=true`, revisar termos/privacidade e concluir recuperação de senha. Confirmação de e-mail e OAuth continuam desligados por decisão de produto.
+
+### Limite conhecido e próximo bloco
+
+A tela `/onboarding` e as procedures de configuração histórica ainda estão guardadas para `platform_admin`; portanto o owner recém-cadastrado entra no dashboard, mas a migração do onboarding de negócio para owner/admin continua pendente. O próximo bloco deve preparar recuperação de senha one-time e, em seguida, mover onboarding/configuração para o owner sem reabrir segredos de plataforma.

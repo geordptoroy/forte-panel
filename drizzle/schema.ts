@@ -180,6 +180,26 @@ export const users = pgTable(
   ]
 );
 
+export const consentRecords = pgTable(
+  "consentRecords",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    workspaceId: integer("workspaceId").notNull(),
+    termsVersion: varchar("termsVersion", { length: 64 }).notNull(),
+    privacyVersion: varchar("privacyVersion", { length: 64 }).notNull(),
+    acceptedAt: timestamp("acceptedAt").defaultNow().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("consent_records_user_idx").on(table.userId, table.createdAt),
+    index("consent_records_workspace_idx").on(
+      table.workspaceId,
+      table.createdAt
+    ),
+  ]
+);
+
 export const workspaces = pgTable("workspaces", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 160 }).notNull(),
@@ -922,6 +942,8 @@ export const notifications = pgTable(
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+export type ConsentRecord = typeof consentRecords.$inferSelect;
+export type InsertConsentRecord = typeof consentRecords.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;
 export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

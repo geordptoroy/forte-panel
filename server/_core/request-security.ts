@@ -10,7 +10,11 @@ type LoginBucket = {
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_BLOCK_MS = 15 * 60 * 1000;
 const LOGIN_MAX_FAILURES = 5;
+const SIGNUP_WINDOW_MS = 15 * 60 * 1000;
+const SIGNUP_BLOCK_MS = 30 * 60 * 1000;
+const SIGNUP_MAX_ATTEMPTS = 3;
 const loginBuckets = new Map<string, LoginBucket>();
+const signupBuckets = new Map<string, LoginBucket>();
 
 function getForwardedValue(value: string | string[] | undefined) {
   if (!value) return undefined;
@@ -114,12 +118,66 @@ export function recordLoginSuccess(req: Request, email: string) {
   for (const key of bucketKeys(req, email)) loginBuckets.delete(key);
 }
 
+function pruneSignupBucket(key: string, now: number) {
+  const bucket = signupBuckets.get(key);
+  if (!bucket) return undefined;
+  if (
+    now - bucket.firstFailureAt > SIGNUP_WINDOW_MS &&
+    bucket.blockedUntil <= now
+  ) {
+    signupBuckets.delete(key);
+    return undefined;
+  }
+  return bucket;
+}
+
+export function assertSignupAllowed(
+  req: Request,
+  email: string,
+  now = Date.now()
+) {
+  for (const key of bucketKeys(req, email)) {
+    const bucket = pruneSignupBucket(key, now);
+    if (bucket?.blockedUntil && bucket.blockedUntil > now)
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message: "Muitas tentativas de cadastro. Tente novamente mais tarde.",
+      });
+  }
+}
+
+export function recordSignupAttempt(
+  req: Request,
+  email: string,
+  now = Date.now()
+) {
+  for (const key of bucketKeys(req, email)) {
+    const existing = pruneSignupBucket(key, now);
+    const bucket: LoginBucket = existing ?? {
+      failures: 0,
+      firstFailureAt: now,
+      blockedUntil: 0,
+    };
+    bucket.failures += 1;
+    if (bucket.failures >= SIGNUP_MAX_ATTEMPTS)
+      bucket.blockedUntil = now + SIGNUP_BLOCK_MS;
+    signupBuckets.set(key, bucket);
+  }
+}
+
 export function resetLoginRateLimitForTests() {
   loginBuckets.clear();
+  signupBuckets.clear();
 }
 
 export const loginRateLimitConfig = {
   windowMs: LOGIN_WINDOW_MS,
   blockMs: LOGIN_BLOCK_MS,
   maxFailures: LOGIN_MAX_FAILURES,
+};
+
+export const signupRateLimitConfig = {
+  windowMs: SIGNUP_WINDOW_MS,
+  blockMs: SIGNUP_BLOCK_MS,
+  maxAttempts: SIGNUP_MAX_ATTEMPTS,
 };

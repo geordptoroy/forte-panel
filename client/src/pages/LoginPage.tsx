@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { LockKeyhole, LogIn } from "lucide-react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 
@@ -36,6 +36,7 @@ export default function LoginPage() {
           <button className="btn-primary auth-submit" type="submit" disabled={login.isPending}><LogIn size={14} /> {login.isPending ? "Entrando..." : "Entrar"}</button>
         </form>
         <small className="auth-footnote">Cada pessoa acessa com o próprio e-mail e senha. A visão do painel muda conforme o papel e o perfil operacional.</small>
+        <p className="auth-switch">Ainda não tem empresa? <Link href="/signup">Criar cadastro</Link></p>
       </section>
     </main>
   );

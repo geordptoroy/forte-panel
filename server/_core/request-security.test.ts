@@ -3,10 +3,13 @@ import type { Request } from "express";
 import {
   assertLoginAllowed,
   assertSameOrigin,
+  assertSignupAllowed,
   loginRateLimitConfig,
   recordLoginFailure,
   recordLoginSuccess,
+  recordSignupAttempt,
   resetLoginRateLimitForTests,
+  signupRateLimitConfig,
 } from "./request-security";
 
 function request(overrides: Partial<Request> = {}) {
@@ -91,5 +94,17 @@ describe("request security", () => {
     recordLoginFailure(req, email, 1_000);
     recordLoginSuccess(req, email);
     expect(() => assertLoginAllowed(req, email, 2_000)).not.toThrow();
+  });
+
+  it("blocks repeated public signup attempts by IP and email", () => {
+    const req = request();
+    const email = "owner@example.com";
+    for (let i = 0; i < signupRateLimitConfig.maxAttempts; i += 1) {
+      assertSignupAllowed(req, email, 1_000);
+      recordSignupAttempt(req, email, 1_000 + i);
+    }
+    expect(() => assertSignupAllowed(req, email, 2_000)).toThrow(
+      "Muitas tentativas de cadastro"
+    );
   });
 });

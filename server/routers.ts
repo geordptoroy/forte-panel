@@ -8,13 +8,16 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   assertLoginAllowed,
+  assertSignupAllowed,
   recordLoginFailure,
   recordLoginSuccess,
+  recordSignupAttempt,
 } from "./_core/request-security";
 import { ScheduleError } from "./schedule";
 import {
   ensureDemoInbox,
   acceptWorkspaceInvite,
+  createPublicSignup,
   ensureDemoWorkspace,
   createLocalWorkspaceMember,
   createWorkspaceInvite,
@@ -57,6 +60,8 @@ import {
   markConversationRead,
   markInAppNotificationRead,
   moveContactStage,
+  PUBLIC_PRIVACY_VERSION,
+  PUBLIC_TERMS_VERSION,
   sendManualMessage,
   saveOnboardingProfile,
   setContactAi,
@@ -312,7 +317,7 @@ export const appRouter = router({
         z.object({ email: z.string().email(), password: z.string().min(1) })
       )
       .mutation(async ({ input, ctx }) => {
-        if (!ENV.localAuthEnabled || !ENV.localAdminPassword) {
+        if (!ENV.localAuthEnabled) {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
             message: "Login local não configurado",
@@ -322,6 +327,7 @@ export const appRouter = router({
         assertLoginAllowed(ctx.req, email);
         let account = await getUserByEmail(email);
         const isEnvAdmin =
+          Boolean(ENV.localAdminPassword) &&
           email === ENV.localAdminEmail.trim().toLowerCase() &&
           input.password === ENV.localAdminPassword;
         if (isEnvAdmin) {
@@ -390,6 +396,58 @@ export const appRouter = router({
           role: null,
           operationalRole: null,
         } as const;
+      }),
+    signup: publicProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(2).max(160),
+          email: z.string().email(),
+          password: z.string().min(8).max(128),
+          workspaceName: z.string().trim().min(2).max(160),
+          acceptTerms: z.literal(true),
+          acceptPrivacy: z.literal(true),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ENV.localAuthEnabled) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Cadastro local não configurado",
+          });
+        }
+        const email = input.email.trim().toLowerCase();
+        assertSignupAllowed(ctx.req, email);
+        recordSignupAttempt(ctx.req, email);
+        try {
+          const result = await createPublicSignup({
+            name: input.name,
+            email,
+            password: input.password,
+            workspaceName: input.workspaceName,
+          });
+          const token = await sdk.signSession({
+            openId: result.user.openId,
+            appId: "local",
+            name: result.user.name ?? email,
+            sessionVersion: result.user.sessionVersion,
+          });
+          ctx.res.cookie(COOKIE_NAME, token, {
+            ...getSessionCookieOptions(ctx.req),
+            maxAge: SESSION_TTL_MS,
+          });
+          return {
+            success: true,
+            workspaceId: result.workspace.id,
+            role: "owner" as const,
+            operationalRole: "human_attendant" as const,
+            termsVersion: PUBLIC_TERMS_VERSION,
+            privacyVersion: PUBLIC_PRIVACY_VERSION,
+          } as const;
+        } catch (error) {
+          if (error instanceof Error && /já existe uma conta/i.test(error.message))
+            throw new TRPCError({ code: "CONFLICT", message: error.message });
+          throw error;
+        }
       }),
     acceptInvite: publicProcedure
       .input(
