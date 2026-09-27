@@ -1,5 +1,3 @@
-
-
 ## Etapa 5 — Claim atômico de idempotência HTTP — concluída
 
 A idempotência das rotas mutáveis deixou de usar o padrão inseguro `SELECT` antes do handler e `INSERT` depois do handler.
@@ -165,7 +163,6 @@ estados/loading/erro/vazio
 
 Toda melhoria deve preservar o branding atual e ser validada em desktop e mobile.
 
-
 ---
 
 ## Nova direção principal — SaaS público multi-conta e logins de funcionários (2026-09-25)
@@ -303,7 +300,6 @@ Foi documentado e priorizado como P0 o Console Administrativo da Plataforma. Ele
 
 O documento consolidado é `STATUS-COMPLETO-E-PLANO-BETA.md`. O próximo bloco de implementação deve criar as permissões de plataforma, as sessões de suporte e o CRUD de rascunho/publicação/rollback do agente.
 
-
 ---
 
 ## Atualização de execução — 2026-09-26 16:23
@@ -347,7 +343,6 @@ registrar contrato e scaffold
 
 Critério de aceite do primeiro bloco: `forte-whatsapp` sobe sem PAPI, responde health/readiness, mantém a estrutura de sessão em volume e oferece contratos internos testáveis; nenhuma credencial real deve entrar no Git ou nos exemplos.
 
-
 ## Atualização de execução — 2026-09-26 21:28
 
 A revisão do handoff foi retomada no commit `929c467`, com typecheck, testes e build inicialmente aprovados. O console interno `platform_admin` já possui configuração versionada do agente por workspace, incluindo rascunho, simulação local sem provider externo, publicação, histórico e rollback.
@@ -365,7 +360,6 @@ git diff --check ✅
 
 Próxima etapa ainda pendente antes do beta: validar as mutações do console e o isolamento de autorização no PostgreSQL/staging real, sem abrir cadastro público nem executar smoke test Cloud.
 
-
 ## Atualização de execução — 2026-09-26 21:39
 
 Foi criada a suíte `server/platform-support-session.test.ts`, condicionada a PostgreSQL real, cobrindo:
@@ -378,34 +372,32 @@ Foi criada a suíte `server/platform-support-session.test.ts`, condicionada a Po
 
 No sandbox sem `DATABASE_URL`/Docker, a suíte fica corretamente marcada como ignorada; os testes locais de autorização continuam aprovados. A execução contra staging PostgreSQL permanece o próximo gate operacional antes dos convites beta.
 
-
 ## Atualização de execução — 2026-09-26 21:40
 
 Foi criado `.github/workflows/postgres-integration.yml`. O workflow inicia PostgreSQL 16, aplica a árvore versionada `drizzle-pg`, executa as suítes críticas de isolamento e falha se qualquer uma for ignorada. Ele roda em pull requests, pushes na `main` e execução manual.
 
 A validação local confirmou a formatação do YAML e `git diff --check`. A execução efetiva depende do runner GitHub Actions, pois o sandbox atual não possui Docker nem PostgreSQL.
 
-
 ## Atualização de execução — 2026-09-26 21:45
 
 Foi adicionada a suíte `server/worker-heartbeat.test.ts`. Em PostgreSQL real, ela confirma que o heartbeat é upsertado por serviço e que o console classifica corretamente o worker como `healthy`, `degraded` após erro e `stale` quando o sinal ultrapassa o limite de 180 segundos. O contrato HTTP de `/api/v1/health` e `/api/v1/ready` já estava coberto por `server/api.contract.test.ts`; agora o sinal persistido do worker também está protegido no CI.
-
 
 ## Atualização de execução — 2026-09-26 23:05
 
 Foi criado `scripts/staging-smoke.sh` para validar liveness e readiness após deploy, além do workflow manual `.github/workflows/staging-smoke.yml`. A URL é fornecida por `STAGING_BASE_URL` como variável de repositório ou pelo input manual `base_url`; nenhuma credencial é necessária ou exposta. O script foi validado com `bash -n` e com um servidor HTTP local simulado, confirmando `health=ok` e `ready=ready`.
 
-
 ## Atualização de execução — 2026-09-26 23:15
 
 O pacote `forte-whatsapp` recebeu `src/server.test.ts` e `vitest.config.ts` locais. Os oito testes cobrem health/readiness, autenticação e envio de texto, imagem, áudio, vídeo e documento contra um `InstanceManager` simulado, sem pareamento ou número real. O workflow de publicação passou a executar testes, typecheck e build do gateway antes de publicar as imagens. O E2E com número dedicado continua separado e pendente de staging configurado.
-
 
 ## Atualização de execução — 2026-09-26 23:21
 
 Foi criado `.github/workflows/staging-e2e.yml`, manual e sem execução em push. Ele injeta `STAGING_BASE_URL`, `STAGING_FORTE_API_KEY`, `STAGING_ADMIN_EMAIL` e `STAGING_ADMIN_PASSWORD` apenas durante o job e executa `scripts/validate-flow.mjs`. Como o fluxo cria dados operacionais, a documentação exige staging descartável/autorizado e proíbe execução em produção.
 
-
 ## Atualização de execução — 2026-09-26 23:32
 
 O workflow E2E foi endurecido: agora exige confirmação explícita de staging descartável/autorizado, possui grupo de concorrência único e timeout de dez minutos. A validação de configuração ocorre antes da execução do script, evitando chamadas acidentais contra ambiente sem URL ou credenciais.
+
+## Atualização de execução — 2026-09-26 23:40
+
+O gateway recebeu `forte-whatsapp/src/session-lock.ts`, com lock atômico `.session.lock` por instância, detecção de processo ativo, recuperação segura de lock obsoleto e liberação idempotente no ciclo `start/stop`. A suíte `session-lock.test.ts` cobre exclusividade, release e recuperação; `npm test`, `npm run check` e `npm run build` passaram com 10 testes. Isso evita duas conexões concorrentes no mesmo diretório, mas não substitui um store de autenticação durável/criptografado nem um teste de restore.

@@ -13,6 +13,7 @@ import makeWASocket, {
 } from "baileys";
 import pino from "pino";
 import { config } from "./config.js";
+import { acquireSessionLock, type SessionLock } from "./session-lock.js";
 
 export type InstanceStatus =
   | "idle"
@@ -41,6 +42,7 @@ export class InstanceManager {
     updatedAt: new Date().toISOString(),
   };
   private starting = false;
+  private sessionLock?: SessionLock;
 
   getStatus(): InstanceSnapshot {
     return { ...this.snapshot };
@@ -53,6 +55,7 @@ export class InstanceManager {
     try {
       const sessionPath = path.join(config.sessionDir, config.instanceId);
       await fs.mkdir(sessionPath, { recursive: true });
+      this.sessionLock ??= await acquireSessionLock(sessionPath);
       const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
       const { version } = await fetchLatestBaileysVersion();
       this.socket = makeWASocket({
@@ -76,6 +79,7 @@ export class InstanceManager {
         status: "error",
         lastError: error instanceof Error ? error.message : "connection failed",
       });
+      await this.releaseSessionLock();
       throw error;
     } finally {
       this.starting = false;
@@ -83,11 +87,21 @@ export class InstanceManager {
   }
 
   async stop(logout = false): Promise<void> {
-    if (!this.socket) return;
+    if (!this.socket) {
+      await this.releaseSessionLock();
+      return;
+    }
     if (logout) await this.socket.logout();
     else this.socket.end(undefined);
     this.socket = undefined;
     this.set({ status: logout ? "logged_out" : "disconnected", qr: undefined });
+    await this.releaseSessionLock();
+  }
+
+  private async releaseSessionLock() {
+    const lock = this.sessionLock;
+    this.sessionLock = undefined;
+    if (lock) await lock.release();
   }
 
   async sendMessage(
