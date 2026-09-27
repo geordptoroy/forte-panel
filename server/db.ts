@@ -6056,7 +6056,7 @@ export async function getCorePipelineSnapshot(workspaceId: number) {
           status: messages.status,
           lastError: messages.lastError,
           attemptCount: messages.attemptCount,
-          updatedAt: messages.updatedAt,
+          updatedAt: messages.createdAt,
         })
         .from(messages)
         .innerJoin(conversations, eq(conversations.id, messages.conversationId))
@@ -6067,7 +6067,7 @@ export async function getCorePipelineSnapshot(workspaceId: number) {
             sql`${messages.lastError} is not null`
           )
         )
-        .orderBy(desc(messages.updatedAt), desc(messages.id))
+        .orderBy(desc(messages.createdAt), desc(messages.id))
         .limit(10),
     ]);
   return {
