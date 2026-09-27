@@ -56,7 +56,7 @@
 - [ ] Implementar signup público inicial por e-mail + senha, com hash, rate limit, aceite versionado e criação transacional de owner/workspace em `onboarding`.
 - [ ] Preparar `EMAIL_VERIFICATION_ENABLED=false`, tokens e provider de confirmação sem ativar envio; ativar somente após configurar secret, domínio/remetente e testes de entrega.
 - [ ] Planejar Google OAuth e outros provedores atrás de feature flag desligada; não bloquear o signup inicial por essa integração.
-- [x] Implementar fundação do convite de funcionário por workspace: token hash, uso único, expiração, revogação, aceite pelo e-mail convidado e criação da própria senha via procedures protegidas. (migration 0024; tela e envio de e-mail ainda pendentes)
+- [x] Implementar convite de funcionário por workspace: token hash, uso único, expiração, revogação, aceite pelo e-mail convidado e criação da própria senha via backend + telas administrativa/pública. (migration 0024; envio automático de e-mail ainda pendente)
 - [ ] Aplicar matriz server-side de capacidades e escopos: owner/admin/manager/agent/professional; esconder faturamento, secrets, prompt administrativo e exportações de quem não precisa.
 - [ ] Definir Inbox compartilhada versus assignment por equipe; atendente vê o histórico necessário para atender, mas não ganha faturamento, secrets ou conversas fora do escopo automaticamente.
 - [ ] Adicionar testes negativos de papel/escopo e auditoria para convite, aceite, reenvio, revogação, mudança de papel e desativação.

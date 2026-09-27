@@ -1354,3 +1354,12 @@ Próximos itens: implementar `workspaceInvites`/aceite/revogação, capacidades 
 Foi implementada a migration `0024_workspace_invites` e as procedures tenant-aware para criar, listar, revogar e aceitar convites. O convite guarda somente `tokenHash`, expira em 72 horas, invalida convites pendentes anteriores para o mesmo e-mail/workspace, registra auditoria e cria a conta local com senha própria e membership no papel concedido. O aceite é transacional, rejeita convite expirado/revogado/aceito e nunca promove o funcionário a `platform_admin`.
 
 As rotas protegidas `workspace.invites.list/create/revoke` exigem owner/admin; `auth.acceptInvite` é pública e recebe token, nome e senha. O token bruto retorna somente na criação para a futura UI/link; a resposta não expõe o hash armazenado. Ainda falta tela de gestão de convites, envio de e-mail, link público de aceite e matriz completa de capabilities/assignment.
+
+
+### UI de convites e aceite público — 2026-09-27
+
+A tela `TeamPage` foi migrada de criação direta com senha para convite: owner/admin escolhe e-mail, nome, papel e perfil operacional; a procedure cria o convite e a tela mostra o link uma única vez, copiando-o quando o navegador permite. A tela lista convites, status e permite revogar pendentes.
+
+Foi criada `InviteAcceptPage` em `/invite/:token`: o funcionário informa nome e cria a própria senha; o token é enviado a `auth.acceptInvite`, e, após sucesso, a pessoa é direcionada ao login. O login foi atualizado para mencionar cadastro ou convite. O envio automático de e-mail continua desligado por decisão de produto; o link é manual/controlado nesta fase.
+
+Validação pendente deste slice: typecheck, suíte completa e build. Próximas extensões: recuperação de senha, signup público do owner, assignment de Inbox e envio transacional quando o provedor estiver configurado.

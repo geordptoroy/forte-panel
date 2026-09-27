@@ -24,6 +24,7 @@ import AiConfigPage from "./pages/AiConfigPage";
 import AiPromptPage from "./pages/AiPromptPage";
 import BillingPage from "./pages/BillingPage";
 import LoginPage from "./pages/LoginPage";
+import InviteAcceptPage from "./pages/InviteAcceptPage";
 import {
   PlatformAdminHome,
   PlatformWorkspacePage,
@@ -39,6 +40,7 @@ function Router() {
       <Route path="/inbox" component={InboxPage} />
       <Route path="/kanban" component={KanbanPage} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/invite/:token" component={InviteAcceptPage} />
       <Route path="/platform-admin" component={PlatformAdminHome} />
       <Route path="/platform-admin/workspaces" component={PlatformAdminHome} />
       <Route
@@ -123,6 +125,7 @@ function AuthenticatedRouter() {
   });
   const [location] = useLocation();
   if (location === "/login") return <LoginPage />;
+  if (location.startsWith("/invite/")) return <Router />;
   if (isLoading)
     return (
       <main className="auth-screen">

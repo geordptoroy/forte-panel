@@ -1,7 +1,7 @@
 # Forte Panel — Guia de convites, funcionários e permissões
 
 **Data:** 2026-09-27  
-**Status:** decisão de produto; fundação backend de convites implementada na migration `0024` e nas procedures de criação/listagem/revogação/aceite. Tela de gestão, link público completo e envio de e-mail ainda pendentes.
+**Status:** decisão de produto; fundação backend e telas de criação/listagem/revogação/aceite implementadas na migration `0024`. Envio automático de e-mail e assignment de Inbox ainda pendentes.
 
 ## 1. Decisão principal
 

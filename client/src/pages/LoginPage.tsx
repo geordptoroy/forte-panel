@@ -29,7 +29,7 @@ export default function LoginPage() {
         <div className="auth-mark"><LockKeyhole size={18} /></div>
         <span className="eyebrow">Forte Panel / Acesso</span>
         <h1>Entrar no painel</h1>
-        <p>Use o acesso criado pelo proprietário da instalação.</p>
+        <p>Use o e-mail e a senha definidos no cadastro ou no convite da empresa.</p>
         <form onSubmit={submit} className="auth-form">
           <label className="form-field"><span>E-mail</span><input className="input-control" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
           <label className="form-field"><span>Senha</span><input className="input-control" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
