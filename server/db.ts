@@ -6000,6 +6000,91 @@ export async function markWebhookEvent(
     );
 }
 
+export async function getCorePipelineSnapshot(workspaceId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [webhookRows, domainRows, messageRows, domainFailures, messageFailures] =
+    await Promise.all([
+      db
+        .select({
+          status: webhookEvents.status,
+          count: sql<number>`count(*)`,
+        })
+        .from(webhookEvents)
+        .where(eq(webhookEvents.workspaceId, workspaceId))
+        .groupBy(webhookEvents.status),
+      db
+        .select({
+          status: domainEvents.status,
+          count: sql<number>`count(*)`,
+        })
+        .from(domainEvents)
+        .where(eq(domainEvents.workspaceId, workspaceId))
+        .groupBy(domainEvents.status),
+      db
+        .select({
+          status: messages.status,
+          direction: messages.direction,
+          count: sql<number>`count(*)`,
+        })
+        .from(messages)
+        .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+        .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+        .where(eq(contacts.workspaceId, workspaceId))
+        .groupBy(messages.status, messages.direction),
+      db
+        .select({
+          eventId: domainEvents.eventKey,
+          status: domainEvents.status,
+          lastError: domainEvents.lastError,
+          attemptCount: domainEvents.attemptCount,
+          updatedAt: domainEvents.updatedAt,
+        })
+        .from(domainEvents)
+        .where(
+          and(
+            eq(domainEvents.workspaceId, workspaceId),
+            sql`${domainEvents.lastError} is not null`
+          )
+        )
+        .orderBy(desc(domainEvents.updatedAt), desc(domainEvents.id))
+        .limit(10),
+      db
+        .select({
+          id: messages.id,
+          direction: messages.direction,
+          status: messages.status,
+          lastError: messages.lastError,
+          attemptCount: messages.attemptCount,
+          updatedAt: messages.updatedAt,
+        })
+        .from(messages)
+        .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+        .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+        .where(
+          and(
+            eq(contacts.workspaceId, workspaceId),
+            sql`${messages.lastError} is not null`
+          )
+        )
+        .orderBy(desc(messages.updatedAt), desc(messages.id))
+        .limit(10),
+    ]);
+  return {
+    workspaceId,
+    webhookEvents: webhookRows.map(row => ({ ...row, count: Number(row.count) })),
+    domainEvents: domainRows.map(row => ({ ...row, count: Number(row.count) })),
+    messages: messageRows.map(row => ({ ...row, count: Number(row.count) })),
+    failures: [
+      ...domainFailures.map(row => ({ ...row, kind: "domain_event" as const })),
+      ...messageFailures.map(row => ({ ...row, kind: "message" as const })),
+    ]
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .slice(0, 10)
+      .map(row => ({ ...row, updatedAt: row.updatedAt.toISOString() })),
+  };
+}
+
 export async function ingestInboundWhatsApp(
   workspaceId: number,
   input: {
