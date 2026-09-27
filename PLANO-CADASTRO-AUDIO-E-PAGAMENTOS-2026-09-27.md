@@ -56,6 +56,14 @@ Regras herdadas da auditoria anexada:
 
 Essa separação evita misturar os dados do empresário com os fatos do lead e deixa claro que o áudio de entrada acontece no canal WhatsApp, não na tela de criação de conta do empresário.
 
+### 1.2 Guia de levantamento assistido por IA
+
+O guia operacional completo está em [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md). A decisão é não transformar as 72 perguntas da auditoria recebida em um formulário linear. O onboarding usará um núcleo P0 de 10 blocos, perguntas condicionais por segmento e aprofundamento progressivo.
+
+O prestador poderá responder por áudio ou texto, alternar entre os dois e retomar depois. A cadeia será: captura → transcrição → extração em JSON validado → detecção de lacunas/conflitos → rascunho de prompt → resumo com exemplos → correção/aceite humano → publicação versionada → simulação → ativação. A IA melhora a redação, mas não pode inventar preço, política, prazo, serviço ou disponibilidade.
+
+O administrador da plataforma poderá visualizar respostas, transcrições, fatos extraídos e versões do prompt para suporte, sempre com workspace autorizado, motivo, masking e auditoria. Ele poderá sugerir alterações e criar rascunhos, mas não publicar silenciosamente no lugar do prestador.
+
 ## 2. Parte 1 — O que mais pode ser melhorado na base
 
 ### 2.1 Prioridade imediata (P0 de produto, antes de convites)
@@ -326,9 +334,9 @@ Nada abaixo antecipa o lançamento público; P0 do plano de auditoria continua s
 | B0    | Fechar P0 vigente e provar dois tenants, workspace suspenso e billing em PostgreSQL/staging                                                                                       | —          | Evidência em staging, sem banco manual                                       |
 | B1    | Segurança de identidade: rate limit no login, checagem de origem, unread/leitura, índice de mensagens e quotes, `messages.externalId` por tenant, `contacts.workspaceId NOT NULL` | B0         | Testes negativos cobrindo cada item                                          |
 | B2    | Identidade e cadastro: signup com verificação de e-mail, convite, recuperação de senha, consentimento versionado, `workspaceInvites`, `passwordResetTokens`, `consentRecords`     | B1         | Cadastro ponta a ponta em staging com e-mail real de teste                   |
-| B3    | Onboarding estruturado (sem áudio): sessões, blocos, checklist, `workspaces.status = onboarding`                                                                                  | B2         | Empresa nova sai do onboarding sem banco manual                              |
-| B4    | Onboarding por áudio: upload, transcrição tenant-aware, estruturação com schema, acompanhamento de campos, retenção e consentimento de voz                                        | B3         | Fluxo por áudio concluído ponta a ponta com fallback por formulário          |
-| B5    | Autoatendimento do dono: mover onboarding, configuração de IA e prompt de `requirePlatformAdministrator` para owner/gerente, com console de plataforma restrito a suporte         | B3         | Owner configura e publica sem operador da plataforma                         |
+| B3    | Onboarding estruturado sem áudio: sessão retomável, núcleo de 10 blocos, perguntas condicionais, checklist, rascunho de prompt e `workspaces.status = onboarding` | B2 | Empresa nova sai do onboarding sem banco manual e confirma antes de publicar |
+| B4    | Onboarding por áudio: upload, transcrição tenant-aware, estruturação com schema, proveniência/confiança, acompanhamento de campos, retenção e consentimento de voz | B3 | Fluxo por áudio concluído ponta a ponta com fallback por formulário |
+| B5    | Autoatendimento e suporte: mover onboarding/configuração de IA para owner/gerente; console admin vê versões e sugere correções com acesso justificado, sem publicação silenciosa | B3 | Owner configura/publica e suporte consegue ajudar com auditoria |
 | B6    | Financeiro: itens, condição comercial, chave Pix, registro manual de recebimentos, recibo, extrato e `workspacePaymentSettings` | B3         | Orçamento com condição registrada, Pix enviado pela conversa, lançamento manual e extrato coerente |
 | B7    | Higiene: lint + `check`/`build` em PR, config pnpm migrada, remoção de artefatos de template e árvore drizzle legada, README/licença, branding por tenant                         | paralelo   | CI bloqueando regressão; raiz do repositório limpa                           |
 | B8    | Observabilidade e LGPD: correlation ID, logging estruturado, retenção/exclusão/exportação e política publicada                                                                    | B2/B6      | Gate de lançamento satisfeito                                                |
@@ -347,7 +355,7 @@ Validação executada no repositório clonado nesta sessão, apenas para registr
 
 - `pnpm install --frozen-lockfile`: concluído, com avisos de configuração pnpm ignorada e scripts de build não aprovados (achados 19).
 - `pnpm check`: aprovado, sem erros de tipo.
-- `pnpm test`: **62 testes aprovados, 31 ignorados** (16 arquivos aprovados, 11 ignorados) — os ignorados dependem de `DATABASE_URL`.
+- `pnpm test`: **69 testes aprovados, 31 ignorados** (17 arquivos aprovados, 11 ignorados) — os ignorados dependem de `DATABASE_URL`.
 - `pnpm build`: aprovado, com o aviso conhecido de chunk inicial de 691,20 kB.
 
 Limitações que permanecem:
@@ -359,9 +367,11 @@ Limitações que permanecem:
 
 ## 7. Registro de decisões
 
-1. O funil por áudio é **entrada opcional com confirmação obrigatória**, nunca fonte de verdade automática.
-2. O dono do negócio passa a configurar a própria empresa e a IA; o console da plataforma permanece como suporte escopado.
-3. O financeiro evolui para **ledger de recebimentos** com plano de pagamento e meios escolhidos pelo workspace; a primeira fase é manual, com Pix estático e sem PSP.
-4. Nenhum dado de cartão é armazenado pelo Forte Panel e nenhum valor é retido pela plataforma nesta fase.
-5. Documento fiscal fica fora do escopo desta fase, com campos reservados.
-6. O lançamento público continua condicionado a P0, gate de staging, LGPD e observabilidade.
+1. O levantamento é progressivo: núcleo obrigatório curto, perguntas condicionais e aprofundamento posterior; áudio e texto são equivalentes como entrada.
+2. O funil por áudio é **entrada opcional com confirmação obrigatória**, nunca fonte de verdade automática.
+3. A IA transcreve, estrutura e redige um rascunho de prompt; o prestador confirma antes da publicação e o administrador só presta suporte com acesso auditado.
+4. O dono do negócio passa a configurar a própria empresa e a IA; o console da plataforma permanece como suporte escopado.
+5. O financeiro evolui para **ledger de recebimentos** com plano de pagamento e meios escolhidos pelo workspace; a primeira fase é manual, com Pix estático e sem PSP.
+6. Nenhum dado de cartão é armazenado pelo Forte Panel e nenhum valor é retido pela plataforma nesta fase.
+7. Documento fiscal fica fora do escopo desta fase, com campos reservados.
+8. O lançamento público continua condicionado a P0, gate de staging, LGPD e observabilidade.

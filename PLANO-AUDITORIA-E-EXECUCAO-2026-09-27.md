@@ -4,7 +4,7 @@
 **Estado:** pré-staging, antes de novos convites beta
 **Escopo:** console da plataforma, operação do workspace, WhatsApp/QR, UX mobile, métricas, catálogo, planos, LGPD e lançamento público.
 
-> Continuação: a auditoria de melhoria contínua de 27/09 acrescentou achados novos e planeja o funil de cadastro com respostas em áudio, além do controle operacional de orçamento, chave Pix e recebimentos manuais, em [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md). Este documento continua sendo a fila P0–P3 em execução; o novo documento é a próxima camada de produto e não substitui os gates daqui.
+> Continuação: a auditoria de melhoria contínua de 27/09 acrescentou achados novos e planeja o funil de cadastro com respostas em áudio, além do controle operacional de orçamento, chave Pix e recebimentos manuais, em [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md). O desenho detalhado de perguntas progressivas, geração de prompt e suporte administrativo está em [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md). Este documento continua sendo a fila P0–P3 em execução; os documentos novos são a próxima camada de produto e não substituem os gates daqui.
 
 ## Resumo executivo
 

@@ -12,7 +12,8 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 6. [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) — auditoria de divergências e roadmap canônico por fases.
 7. [`PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`](./PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md) — plano priorizado P0–P3 para console, operação, QR, UX, produto, planos e LGPD.
 8. [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md) — auditoria de melhoria contínua, funil de cadastro com respostas em áudio e modelo de orçamento, chave Pix e registro manual de recebimentos.
-9. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência de teste e ambiente efetivamente validado.
+9. [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md) — perguntas progressivas, entrada por áudio/texto, geração de prompt com confirmação e suporte administrativo auditado.
+10. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência de teste e ambiente efetivamente validado.
 
 ## Produto e tenancy
 
@@ -37,6 +38,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 ## Cadastro, onboarding e financeiro
 
 - [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md) — funil de cadastro por áudio, checklist de onboarding, modelo de orçamento, chave Pix, registro manual de recebimentos e recibos.
+- [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md) — guia operacional do núcleo obrigatório, perguntas condicionais, prompt rascunho/publicado, revisão do prestador e suporte do administrador.
 
 ## Infraestrutura e desenvolvimento
 

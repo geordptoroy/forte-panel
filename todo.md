@@ -288,3 +288,36 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Registrar manualmente pagamentos informados pelo empresário/funcionários (Pix, maquininha, dinheiro, transferência ou outro), com valor, data, meio, responsável e observação.
 - [ ] Deixar explícito: sem gateway, checkout, boleto, link de pagamento, integração com maquininha, armazenamento de cartão ou retenção de valores; documento fiscal fora do escopo.
 - [ ] Manter cobrança do próprio SaaS separada (`saasProducts`, `workspaceSubscriptions`, `invoices`, `usageLedger`).
+
+
+## Onboarding assistido por IA — ordem de execução refinada
+
+Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
+
+### P0 — fundação segura
+
+- [ ] Separar núcleo obrigatório curto de perguntas condicionais e aprofundamento; permitir áudio, texto, “não se aplica”, “decidir depois” e retomada.
+- [ ] Definir schemas por bloco, estados `draft/confirmed/published` e campos `missing/conflict/source/confidence`.
+- [ ] Definir confirmação humana obrigatória antes de publicar prompt ou regra operacional.
+- [ ] Definir guardrails: IA não inventa preço, prazo, disponibilidade, serviço, política ou promessa; fallback para humano quando faltar fonte.
+- [ ] Definir acesso administrativo de suporte com workspace autorizado, motivo, masking, auditoria e sem publicação silenciosa.
+
+### P1 — onboarding textual e progressivo
+
+- [ ] Implementar sessão retomável com núcleo de 10 blocos e perguntas condicionais por segmento.
+- [ ] Extrair respostas textuais para JSON validado e gerar rascunho de prompt com resumo, conflitos e exemplos.
+- [ ] Criar `promptDraftVersions`, revisão pelo prestador, publicação versionada e rollback.
+- [ ] Criar simulações mínimas: primeira mensagem, triagem, preço, agendamento, fora do horário e handoff.
+
+### P2 — áudio assistido
+
+- [ ] Conectar captura/upload privado à transcrição tenant-aware, preservando original, fonte, trecho e confiança.
+- [ ] Permitir correção por texto ou áudio curto e pergunta de acompanhamento para ambiguidade.
+- [ ] Tornar processamento idempotente, com status, retry e fallback textual/humano.
+- [ ] Medir custo, duração, taxa de correção e abandono antes de ampliar áudio para toda a base.
+
+### P3 — suporte avançado
+
+- [ ] Criar console de suporte para comparar respostas, transcrições, fatos extraídos e versões do prompt.
+- [ ] Adicionar `promptReviewComments`, `promptPublications`, `promptSimulations` e `supportAccessLogs`.
+- [ ] Registrar visualizar, baixar, corrigir, exportar, publicar e rollback; aplicar retenção, exportação e exclusão LGPD.
