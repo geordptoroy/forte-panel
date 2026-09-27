@@ -3,6 +3,17 @@
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
 **Fase de código atual:** consolidar Baileys nativo, multimídia, interface operacional e validação em staging. A migração inicial do canal já foi executada; o foco agora é hardening, E2E e produto.
 
+## Direção registrada — 2026-09-27: core antes do restante
+
+- [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
+- [ ] Próxima fatia de código: implementar modo reversível `CORE_ONLY_MODE` e página **Conexão da instância e consumo** como experiência principal pós-login.
+- [ ] Enquanto o modo core estiver ativo, ocultar/bloquear temporariamente as demais telas por flag central; preservar dados, código, APIs, workers e a opção de rollback. Não desativar fluxos funcionais em contas existentes sem validação separada.
+- [ ] Validar conexão da instância e consumo (unidades e janela) antes de reabrir inbound/outbound e IA.
+- [ ] Depois do core, seguir a ordem documentada: transporte de texto → router/provider/model registry → agente WhatsApp → mídia → configurador de onboarding → Ajuda do Produto → copiloto/admin → módulos workspace, uma fatia por vez.
+- [ ] Redesenhar o Console Administrativo com o sistema visual do workspace e áreas separadas de providers/modelos, rotas/capacidades, agentes, workspaces, suporte, conhecimento e auditoria.
+- [ ] Corrigir antes de uso amplo do admin: precedência/herança global-local, contrato/normalização de endpoint, testes reais por modalidade, proveniência de configuração e rotação da chave de criptografia.
+- [ ] Separar métricas de rate-limit (janela por minuto) de tokens, custo de provider e eventual faturamento comercial.
+
 ## Concluído até aqui no MVP
 
 - Shell responsivo e páginas base de Dashboard, Inbox, Kanban, Agenda, Contatos, ficha do cliente, Faturamento, Integrações e Configurações.
