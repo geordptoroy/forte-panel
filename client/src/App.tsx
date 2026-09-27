@@ -30,6 +30,9 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
 import {
   PlatformAdminHome,
+  PlatformAuditPage,
+  PlatformGlobalAiPage,
+  PlatformSupportPage,
   PlatformWorkspacePage,
 } from "./pages/PlatformAdminPage";
 
@@ -49,6 +52,9 @@ function Router() {
       <Route path="/invite/:token" component={InviteAcceptPage} />
       <Route path="/platform-admin" component={PlatformAdminHome} />
       <Route path="/platform-admin/workspaces" component={PlatformAdminHome} />
+      <Route path="/platform-admin/ai" component={PlatformGlobalAiPage} />
+      <Route path="/platform-admin/support" component={PlatformSupportPage} />
+      <Route path="/platform-admin/audit" component={PlatformAuditPage} />
       <Route
         path="/platform-admin/workspaces/:id"
         component={PlatformWorkspacePage}
