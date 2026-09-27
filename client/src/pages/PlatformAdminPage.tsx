@@ -97,6 +97,24 @@ function PlatformShell({
           >
             <Users size={15} /> Workspaces beta
           </button>
+          <button
+            className={active === "ai" ? "is-active" : ""}
+            onClick={() => navigate("/platform-admin/ai")}
+          >
+            <Bot size={15} /> IA global
+          </button>
+          <button
+            className={active === "support" ? "is-active" : ""}
+            onClick={() => navigate("/platform-admin/support")}
+          >
+            <LifeBuoy size={15} /> Suporte
+          </button>
+          <button
+            className={active === "audit" ? "is-active" : ""}
+            onClick={() => navigate("/platform-admin/audit")}
+          >
+            <FileText size={15} /> Auditoria
+          </button>
           <div className="platform-nav-note">
             <LockKeyhole size={13} />
             <span>
@@ -121,7 +139,15 @@ function PlatformShell({
           <div>
             <span className="eyebrow">
               Forte Platform /{" "}
-              {active === "overview" ? "Operação" : "Workspace"}
+              {active === "overview"
+                ? "Operação"
+                : active === "ai"
+                  ? "IA global"
+                  : active === "support"
+                    ? "Suporte"
+                    : active === "audit"
+                      ? "Auditoria"
+                      : "Workspace"}
             </span>
             <h1>{title}</h1>
             <p>{description}</p>
