@@ -1541,3 +1541,68 @@ function AuditTab({ item }: { item: any }) {
     </div>
   );
 }
+
+export function PlatformGlobalAiPage() {
+  const access = trpc.platform.access.useQuery();
+  return (
+    <PlatformAccessGate>
+      <PlatformShell
+        title="IA global"
+        description="Configure os provedores e o roteamento global por capacidade de interação."
+        active="ai"
+      >
+        <div className="platform-banner">
+          <Sparkles size={17} />
+          <div>
+            <strong>Configuração centralizada por capacidade</strong>
+            <span>Texto, visão, transcrição e documentos usam o provider/modelo definido aqui como fallback da plataforma.</span>
+          </div>
+        </div>
+        <GlobalAiPolicyCard canMutate={Boolean(access.data?.canMutate)} />
+      </PlatformShell>
+    </PlatformAccessGate>
+  );
+}
+
+export function PlatformSupportPage() {
+  const [, navigate] = useLocation();
+  const workspaces = trpc.platform.workspaces.useQuery({ search: "" }, { refetchInterval: 30_000 });
+  const start = trpc.platform.startSupportSession.useMutation({
+    onSuccess: (session, input) => navigate(`/platform-admin/workspaces/${input.workspaceId}?session=${session.id}`),
+    onError: error => toast.error(error.message),
+  });
+  return (
+    <PlatformAccessGate>
+      <PlatformShell
+        title="Suporte operacional"
+        description="Abra sessões escopadas para investigar workspaces sem misturar permissões de plataforma e cliente."
+        active="support"
+      >
+        <section className="platform-card">
+          <div className="platform-card-title"><div><span className="eyebrow">Fila de atendimento</span><h2>Workspaces disponíveis para suporte</h2></div><LifeBuoy size={18} /></div>
+          {workspaces.isLoading ? <PlatformState icon={RefreshCw} title="Carregando fila" description="Consultando saúde e status dos workspaces." loading /> : workspaces.error ? <PlatformState icon={XCircle} title="Fila indisponível" description={workspaces.error.message} /> : (
+            <div className="platform-table-wrap"><table className="platform-table"><thead><tr><th>Workspace</th><th>Status</th><th>Canal</th><th>Worker</th><th /></tr></thead><tbody>{(workspaces.data?.items ?? []).map(item => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.slug}</small></td><td><WorkspaceStatus value={item.status} /></td><td><WorkspaceStatus value={item.health.channel} /></td><td><WorkspaceStatus value={item.health.worker} /></td><td><button className="btn-secondary" disabled={start.isPending} onClick={() => start.mutate({ workspaceId: item.id, mode: "read_only", reason: "Triagem operacional pelo console da plataforma", expiresInMinutes: 30 })}><LifeBuoy size={13} /> Abrir read-only</button></td></tr>)}</tbody></table></div>
+          )}
+        </section>
+      </PlatformShell>
+    </PlatformAccessGate>
+  );
+}
+
+export function PlatformAuditPage() {
+  const audit = trpc.platform.globalAudit.useQuery({ limit: 100 }, { refetchInterval: 30_000 });
+  return (
+    <PlatformAccessGate>
+      <PlatformShell
+        title="Auditoria da plataforma"
+        description="Histórico de alterações globais, sessões de suporte e decisões operacionais."
+        active="audit"
+      >
+        <section className="platform-card">
+          <div className="platform-card-title"><div><span className="eyebrow">Trilha imutável</span><h2>Eventos globais recentes</h2></div><FileText size={18} /></div>
+          {audit.isLoading ? <PlatformState icon={RefreshCw} title="Carregando auditoria" description="Consultando eventos globais." loading /> : audit.error ? <PlatformState icon={XCircle} title="Auditoria indisponível" description={audit.error.message} /> : (audit.data ?? []).length === 0 ? <PlatformState icon={FileText} title="Nenhum evento global" description="As ações de plataforma aparecerão aqui após a primeira alteração auditada." /> : <div className="platform-audit-list">{(audit.data ?? []).map(item => <div key={item.id}><strong>{item.summary}</strong><small>{item.actorName ?? "Operador desconhecido"} · {fmtDate(item.createdAt)}</small><p>{item.action} · {item.reason}</p></div>)}</div>}
+        </section>
+      </PlatformShell>
+    </PlatformAccessGate>
+  );
+}
