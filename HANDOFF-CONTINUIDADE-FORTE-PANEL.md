@@ -1214,3 +1214,60 @@ No gateway, `POST /connect` passou a usar `reconnect()`, encerrando a sessão at
 Validação concluída: TypeScript do painel aprovado; build do painel aprovado com o alerta já conhecido de bundle inicial grande; TypeScript direto do gateway aprovado; testes HTTP, auth e sessão do gateway aprovados com 15 testes. O wrapper `pnpm --dir forte-whatsapp` tentou reinstalar dependências e foi bloqueado pelo policy de scripts ignorados, então a validação do gateway foi executada diretamente pelos binários locais, sem alterar dependências versionadas.
 
 Ainda falta validação browser real com Docker e um número de teste. O próximo gate é confirmar o ciclo `desconectado → conectar → QR → atualizar QR → conectado → desconectar/logout`, inclusive em largura mobile.
+
+---
+## Auditoria de melhoria contínua e planejamento de cadastro por áudio e pagamentos — 2026-09-27
+
+Esta etapa não alterou código de produto. Ela fez uma varredura nova do repositório e produziu um plano para três frentes pedidas: o que mais pode ser melhorado na base, como estruturar o funil de cadastro em que o lead responde por áudio sobre o próprio negócio, e como tratar pagamentos, já que a área de orçamento atual não oferece as escolhas necessárias.
+
+### Documento criado
+
+`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md` — contém os 26 achados com evidência de arquivo e linha, os 10 blocos do funil de cadastro com pergunta falada, campos estruturados e destino no modelo, o pipeline de conversão de áudio em dado validado, o checklist de operação do dono, o modelo completo de orçamento e pagamento, o faseamento de provedor e a ordem de execução B0–B8.
+
+### Achados mais relevantes
+
+1. `onboarding.profile`, `onboarding.save` e as telas `/onboarding`, `/ai-config`, `/ai-prompt` são exclusivos do operador da plataforma (`requirePlatformAdministrator` e `PlatformOnlyGuard`). O dono do negócio não configura a própria empresa e a IA, o que contraria o autoatendimento previsto em `PRODUCT_SCOPE.md`.
+2. Não existe cadastro público, verificação de e-mail, convite, recuperação de senha nem consentimento versionado. O funil pedido depende dessa base de identidade.
+3. `auth.localLogin` não tem limite de tentativas, atraso progressivo, lockout ou auditoria de falha.
+4. O cookie usa `sameSite: "none"` em HTTPS e não há checagem de `Origin`/`Referer` nas mutações tRPC.
+5. `messages_external_id_unique_idx` é único globalmente em `externalId`, apesar de a checagem de duplicidade no código ser por workspace: dois tenants podem colidir no banco.
+6. `contacts.workspaceId` continua anulável; a migration `0017` já demonstrou o padrão correto de backfill e `SET NOT NULL`.
+7. `contacts.quoteCents` é desnormalizado, nunca recalculado, e o Dashboard soma esse campo; `receivedMonthCents` está fixo em `0`.
+8. `unreadCount` é incrementado no inbound e nunca limpo: não há marcação de leitura para contatos.
+9. `listInboxContacts` não tem paginação.
+10. `inbox.moveStage` aceita qualquer estágio; a lista canônica existe só no cliente de demonstração.
+11. Workspace suspenso devolve a mensagem de membership ausente, confundindo suspensão com falta de vínculo.
+12. `resetWorkspaceDevelopmentData` ainda cai em `ensureDemoWorkspace()` e apaga `workspaceSettings`, incluindo segredos criptografados.
+13. `DEMO_MODE` é fail-open (`!== "false"`), então um staging sem a variável nasce com dados fictícios.
+14. Há branding fixo de um cliente único no título do app, no Dashboard, na sidebar e nos seeds.
+15. A sidebar mostra "Canais conectados" enquanto a tela já se chama "Conexão WhatsApp".
+16. Existem duas `BillingPage`; a versão com dados fictícios em `PanelPages.tsx` continua importada e empacotada.
+17. Faltam índices em `quotes(workspaceId, createdAt)` e `messages(conversationId, createdAt)`.
+18. Não há lint, e `check`/`build` não rodam em pull request.
+19. `pnpm.patchedDependencies` e `pnpm.overrides` estão no local que o pnpm 10 ignora; o patch de `wouter` provavelmente não é aplicado.
+20. `template.json`, `ComponentShowcase.tsx`, `client/public/__manus__/debug-collector.js` e scripts `.py` de patch pontual continuam versionados.
+21. A árvore `drizzle/` legada em MySQL convive com a canônica `drizzle-pg/`.
+22. Não há README nem LICENSE, com 29 documentos e sobreposição de roadmap/handoff.
+23. Não há correlation ID nem logging estruturado.
+24. Nada de LGPD foi implementado (consentimento, exportação, exclusão, retenção de dados pessoais).
+25. `.env.local.example` tem o bloco `BAILEYS_*` duplicado.
+26. O bundle inicial permanece em um único chunk de 691,20 kB.
+
+### Planejamento do cadastro por áudio
+
+O áudio é entrada opcional e o dado estruturado confirmado pelo dono é a fonte de verdade. O funil tem 10 blocos (conta, identidade, oferta, execução, agenda, atendimento/IA, política comercial, recebimento, canal, revisão/publicação), com pergunta falada sugerida, campos estruturados obrigatórios e destino no modelo. A conversão passa por captura com `MediaRecorder`, upload em storage privado com URL assinada, transcrição pelo serviço já existente em `server/_core/voiceTranscription.ts` (hoje sem nenhuma rota ligada), estruturação por LLM com schema validado e confiança por campo, perguntas de acompanhamento apenas nos campos vazios ou incertos, pré-preenchimento em rascunho, revisão bloco a bloco e publicação versionada. Modelo proposto: `onboardingSessions`, `onboardingStepAnswers`, `onboardingAudioAssets`, `onboardingChecklistItems` e `consentRecords`. Guardas: consentimento de voz, retenção do áudio bruto, descarte de campos com termos sensíveis, PII mínima e formulário como fallback garantido.
+
+### Planejamento financeiro
+
+Hoje o faturamento é um contador manual por orçamento. O plano evolui `quotes` com numeração, validade, escopo, subtotal, desconto e total coerentes; cria `quoteItems`, `quoteInstallments`, `quotePayments` como ledger imutável, `paymentReceipts` e `workspacePaymentSettings`. As escolhas que faltam passam a existir: modelo de pagamento (único, sinal + saldo, parcelado com ou sem entrada, na conclusão), sinal em percentual ou valor, parcelas de 1x a 12x com juros por workspace, vencimentos, meios aceitos (Pix, dinheiro, débito, crédito, transferência, boleto, link quando houver provedor) e desconto com limite de aprovação. Fase 1 é manual com Pix copia e cola, extrato, CSV e recibo, sem PSP e sem armazenamento de cartão; a fase 2 define a porta `PaymentProvider` com adapters atrás de flag; a fase 3 trata a cobrança do próprio SaaS separada do financeiro do cliente. Documento fiscal fica fora do escopo, com campos reservados.
+
+### Validação executada nesta etapa
+
+- `pnpm install --frozen-lockfile`: concluído, com o aviso de que o pnpm 10 ignora `pnpm.patchedDependencies`/`pnpm.overrides` e de que os scripts de build de `@tailwindcss/oxide` e `esbuild` foram ignorados.
+- `pnpm check`: aprovado, sem erro de tipo.
+- `pnpm test`: 62 testes aprovados e 31 ignorados (16 arquivos aprovados, 11 ignorados); os ignorados dependem de `DATABASE_URL`.
+- `pnpm build`: aprovado, com o aviso conhecido de chunk inicial de 691,20 kB.
+
+### Próximo passo
+
+Fechar P0 vigente e provar dois tenants, workspace suspenso e billing em PostgreSQL/staging (B0), depois atacar B1 de segurança de identidade (rate limit, origem, unread/leitura, índices, deduplicação por tenant e `contacts.workspaceId NOT NULL`), antes de começar B2 de cadastro e B3 de onboarding estruturado.
