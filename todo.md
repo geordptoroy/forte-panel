@@ -203,3 +203,69 @@ Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
 - [x] TypeScript do painel e gateway aprovados; build do painel aprovado; 15 testes do gateway aprovados.
 - [ ] Validar com Docker e número real: conectar, ler QR, atualizar QR expirado, reiniciar serviço, desconectar e logout.
 - [ ] Validar webhook inbound e status no Inbox depois da conexão real.
+
+
+## Auditoria de melhoria contínua — 2026-09-27
+
+Varredura nova do repositório encontrou 26 pontos além do que já estava no plano P0–P3. O detalhamento, a evidência de cada um e a ordem de execução estão em `PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`.
+
+### P0 de produto — antes de convites
+
+- [ ] Mover onboarding e configuração da IA de `requirePlatformAdministrator` para owner/gerente, deixando o console da plataforma apenas como suporte. Hoje o dono não configura a própria empresa.
+- [ ] Criar cadastro público, verificação de e-mail, convite e recuperação de senha (`workspaceInvites`, `passwordResetTokens`).
+- [ ] Aplicar limite de tentativas, atraso progressivo e auditoria de falha no login local.
+- [ ] Adicionar checagem de origem/CSRF nas mutações tRPC (o cookie usa `sameSite: "none"` em HTTPS).
+- [ ] Tornar a deduplicação de mensagens por tenant: `messages.externalId` é único globalmente hoje.
+- [ ] Tornar `contacts.workspaceId` não anulável com backfill, seguindo o padrão da migration `0017`.
+
+### P1 — operação, dados e coerência
+
+- [ ] Recalcular/derivar valores financeiros: `contacts.quoteCents` desatualiza e `receivedMonthCents` está fixo em `0`.
+- [ ] Limpar `unreadCount` ao abrir a conversa e unificar a fonte de verdade entre contatos e conversas.
+- [ ] Paginar `listInboxContacts` e as listas do console/funil.
+- [ ] Validar estágios do funil no backend com lista canônica única.
+- [ ] Distinguir workspace suspenso de membership ausente na mensagem de erro.
+- [ ] Remover fallback de workspace demo em `resetWorkspaceDevelopmentData` e aposentar o módulo legado `whatsappChannels`.
+- [ ] Inverter `DEMO_MODE` para fail-closed.
+- [ ] Remover branding fixo de cliente único (título, Dashboard, sidebar e seeds).
+- [ ] Alinhar o rótulo da sidebar "Canais conectados" com a tela "Conexão WhatsApp".
+- [ ] Remover a segunda `BillingPage` com dados fictícios e o código de demonstração ainda importado.
+- [ ] Criar índices de leitura: `quotes(workspaceId, createdAt)` e `messages(conversationId, createdAt)`.
+
+### P2 — engenharia e higiene
+
+- [ ] Adicionar lint e rodar `check`/`build` em pull request.
+- [ ] Migrar `pnpm.patchedDependencies`/`pnpm.overrides` para o local suportado pelo pnpm 10 e aprovar builds nativos.
+- [ ] Remover artefatos de template do repositório (`template.json`, `ComponentShowcase.tsx`, `debug-collector.js`) e os scripts `.py` de patch pontual.
+- [ ] Consolidar a árvore de migrations legada (MySQL) e manter apenas `drizzle-pg`.
+- [ ] Criar README e LICENSE; reduzir sobreposição entre handoff, roadmap e auditorias.
+- [ ] Adicionar correlation ID e logging estruturado.
+- [ ] Implementar governança LGPD (consentimento, exportação, exclusão, retenção).
+- [ ] Remover bloco duplicado de `BAILEYS_*` em `.env.local.example`.
+
+## Funil de cadastro com respostas em áudio — planejado
+
+- [ ] Modelar `onboardingSessions`, `onboardingStepAnswers`, `onboardingAudioAssets`, `onboardingChecklistItems`, `consentRecords`.
+- [ ] Definir os 10 blocos do funil (identidade, oferta, execução, agenda, atendimento/IA, política comercial, recebimento, canal, revisão/publicação) com pergunta falada, campos e destino.
+- [ ] Criar endpoint de upload de áudio com URL assinada e storage privado por workspace.
+- [ ] Ligar `voice.transcribe` tenant-aware ao serviço de transcrição já existente e hoje desconectado.
+- [ ] Estruturar transcrição em JSON validado por schema, com confiança por campo e pergunta de acompanhamento.
+- [ ] Pré-preencher catálogo, agenda, equipe e perfil da IA em rascunho, sem efeito colateral.
+- [ ] Manter formulário como caminho garantido quando o áudio falhar; áudio nunca é a única via.
+- [ ] Implementar consentimento de voz e retenção do áudio bruto.
+- [ ] Usar `workspaces.status = onboarding` de verdade e só promover para `active` com checklist obrigatório fechado.
+
+## Orçamentos, meios de pagamento e conciliação — planejado
+
+- [ ] Evoluir `quotes` com numeração, validade, escopo, subtotal, desconto e total coerentes.
+- [ ] Criar `quoteItems` (itens do catálogo ou linha livre com quantidade).
+- [ ] Criar `quoteInstallments` com sinal, parcelas, vencimentos e periodicidade.
+- [ ] Criar `quotePayments` como ledger imutável de recebimentos, com meio de pagamento, taxa e referência externa.
+- [ ] Criar `paymentReceipts` com numeração sequencial por workspace.
+- [ ] Criar `workspacePaymentSettings` com meios aceitos, chave Pix criptografada, titular, sinal padrão, parcelas e juros.
+- [ ] Oferecer as escolhas que faltam: modelo de pagamento, sinal, parcelamento com/sem entrada, vencimentos e desconto com limite de aprovação.
+- [ ] Migrar os sete status atuais para o status financeiro granular, com mapa explícito e histórico preservado.
+- [ ] Gerar Pix copia e cola, extrato por período, CSV e recibo simples (sem PSP nesta fase).
+- [ ] Definir a porta `PaymentProvider` com adapters atrás de flag, reutilizando `webhookEvents` para idempotência.
+- [ ] Manter cobrança do próprio SaaS separada (`saasProducts`, `workspaceSubscriptions`, `invoices`, `usageLedger`).
+- [ ] Deixar explícito: sem armazenamento de cartão, sem retenção de valores pela plataforma, documento fiscal fora do escopo.
