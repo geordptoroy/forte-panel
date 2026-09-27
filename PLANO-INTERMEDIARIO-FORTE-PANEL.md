@@ -404,3 +404,8 @@ O pacote `forte-whatsapp` recebeu `src/server.test.ts` e `vitest.config.ts` loca
 ## Atualização de execução — 2026-09-26 23:21
 
 Foi criado `.github/workflows/staging-e2e.yml`, manual e sem execução em push. Ele injeta `STAGING_BASE_URL`, `STAGING_FORTE_API_KEY`, `STAGING_ADMIN_EMAIL` e `STAGING_ADMIN_PASSWORD` apenas durante o job e executa `scripts/validate-flow.mjs`. Como o fluxo cria dados operacionais, a documentação exige staging descartável/autorizado e proíbe execução em produção.
+
+
+## Atualização de execução — 2026-09-26 23:32
+
+O workflow E2E foi endurecido: agora exige confirmação explícita de staging descartável/autorizado, possui grupo de concorrência único e timeout de dez minutos. A validação de configuração ocorre antes da execução do script, evitando chamadas acidentais contra ambiente sem URL ou credenciais.

@@ -179,3 +179,8 @@ Isso não substitui o teste E2E de staging com número dedicado: o pareamento, r
 O workflow manual `Staging end-to-end` executa `scripts/validate-flow.mjs` contra uma URL fornecida no momento da execução ou pela variável `STAGING_BASE_URL`. A chave REST e as credenciais do administrador entram exclusivamente pelos secrets `STAGING_FORTE_API_KEY`, `STAGING_ADMIN_EMAIL` e `STAGING_ADMIN_PASSWORD`; nunca devem ser commitadas ou passadas na linha de comando.
 
 Esse fluxo cria serviços, profissionais, memberships e agendamentos para provar isolamento e regras da agenda. Portanto, deve ser executado apenas em staging descartável ou com dados de teste previamente autorizados, nunca em produção. O pareamento e o E2E de mídia/WhatsApp continuam sendo uma etapa separada porque exigem um número de teste controlado.
+
+
+## 17. Proteções do E2E
+
+Antes de iniciar o workflow E2E, o operador deve marcar `confirm_disposable_staging=true`, confirmando que a URL é um staging descartável/autorizado e pode receber dados de teste. O workflow impede duas execuções simultâneas e possui limite de dez minutos; sem a confirmação, URL ou secrets necessários, ele falha antes de chamar o sistema.

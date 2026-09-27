@@ -7,24 +7,36 @@ on:
         description: "Staging base URL (overrides STAGING_BASE_URL repository variable)"
         required: false
         type: string
+      confirm_disposable_staging:
+        description: "Confirm that this URL is a disposable/authorized staging environment that may receive test data"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: staging-e2e
+  cancel-in-progress: false
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       STAGING_BASE_URL: ${{ inputs.base_url || vars.STAGING_BASE_URL }}
       FORTE_API_KEY: ${{ secrets.STAGING_FORTE_API_KEY }}
       LOCAL_ADMIN_EMAIL: ${{ secrets.STAGING_ADMIN_EMAIL }}
       LOCAL_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+      CONFIRM_DISPOSABLE_STAGING: ${{ inputs.confirm_disposable_staging }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Validate required staging configuration
         run: |
+          test "$CONFIRM_DISPOSABLE_STAGING" = "true"
           test -n "$STAGING_BASE_URL"
           test -n "$FORTE_API_KEY"
           test -n "$LOCAL_ADMIN_EMAIL"
