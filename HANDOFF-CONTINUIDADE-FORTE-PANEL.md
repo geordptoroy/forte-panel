@@ -1139,3 +1139,39 @@ Não executar `docker compose down -v`, pois isso apaga banco, Redis e sessão p
 4. Repetir migrations, isolamento e smoke/E2E em staging persistente.
 5. Configurar backup off-host e executar restore em ambiente limpo.
 6. Só depois convidar beta testers.
+
+
+---
+## Auditoria e plano de continuidade — 2026-09-27 01:11
+
+Foi feita uma auditoria ampla do console administrativo, operação do workspace, UX mobile/performance e escopo SaaS/LGPD. O plano detalhado está em `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
+
+### Achados críticos confirmados
+
+- O botão de retorno do console aponta genericamente para `/dashboard`. Isso pode levar à conta normal ou falhar para platform-only; não representa o workspace que estava sob suporte.
+- Workspace suspenso pode virar dead-end: o controle de suporte exige workspace ativo, dificultando iniciar nova sessão para reativar a conta.
+- `/kanban` é referenciado pela sidebar e por cards, mas não possui `Route` no `App.tsx`; o usuário cai em NotFound.
+- Não existe ticket/kanban de suporte administrativo. O Kanban existente é apenas pipeline de leads do workspace.
+- Sessões e abas do console não são plenamente canônicas na URL; refresh/back/forward podem reabrir sessão antiga ou manter estado visual expirado.
+- Dashboard, Atendimento e Funil medem entidades diferentes: mensagens, contatos, unread e stages. O Dashboard não lê mensagens/eventos inbound; o Funil pode ocultar stages inválidos; unread de contato e conversa pode divergir.
+- A conexão QR fica abaixo da primeira dobra no mobile, sem expiração/stale/retry/foco de fluxo.
+- O bundle inicial é monolítico e CTAs desaparecem no mobile; há scrolls aninhados no Inbox.
+- Billing/quotes ainda contém caminhos com `ensureDemoWorkspace()` e procedures insuficientemente protegidas. Não criar teste de planos antes de corrigir tenancy.
+- Não existe modelo comercial real de assinatura nem base de dados LGPD/consentimento/termos/privacidade.
+
+### Ordem aprovada
+
+1. Corrigir retorno do console, workspace suspenso, guards e `/kanban`.
+2. Corrigir quotes/billing tenant-aware e adicionar testes negativos.
+3. Corrigir e validar QR/Conexão WhatsApp em Docker real.
+4. Definir e implementar KPIs, unread, status, stages e atualização cross-screen.
+5. Corrigir mobile, scroll, foco, acessibilidade e code splitting.
+6. Criar tickets/kanban de suporte.
+7. Criar catálogo de serviços com preço fixo, a partir e orçamento.
+8. Criar assinatura/consumo com planos em sandbox, sem cobrança real.
+9. Implementar LGPD, termos, privacidade, cookies e consentimentos versionados.
+10. Só então abrir landing/signup e ampliar o beta.
+
+### Regra de continuidade
+
+Não usar `ensureDemoWorkspace()` em novos fluxos tenant-aware, não esconder falhas de integração com números artificiais e não ativar cobrança real. O próximo bloco de código deve ser P0.1/P0.2/P0.3, com testes de platform-only, workspace suspenso e dois workspaces.

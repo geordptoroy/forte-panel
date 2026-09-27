@@ -381,3 +381,14 @@ A implementação recente avançou o projeto de auditoria para pré-staging:
 - Revisão final de secrets, privacidade, termos e limitações do WhatsApp não oficial.
 
 Os gates locais desta etapa passaram: `pnpm check`, `pnpm build`, `pnpm test` (62 aprovados, 31 ignorados por dependências externas), `bash -n scripts/start-docker.sh` e `git diff --check`.
+
+
+## Achados técnicos da auditoria ampliada — 2026-09-27
+
+A revisão de código confirmou quatro bloqueios técnicos adicionais. O console não pode retornar genericamente para `/dashboard`, porque platform-only ou um operador suportando outro workspace não possui um destino tenant-aware seguro. Workspace suspenso também precisa continuar acessível ao controle-plane para reativação. A navegação aponta para `/kanban`, mas a rota não está registrada. E o fluxo de quotes/billing ainda possui procedures protegidas apenas por `protectedProcedure` e caminhos em `ensureDemoWorkspace()`, exigindo correção antes de qualquer teste comercial.
+
+Também foi confirmada uma divergência semântica entre Dashboard, Atendimento e Funil: cada tela usa uma entidade diferente, mensagens não alimentam a atividade do Dashboard, unread é duplicado em contato/conversa e stages livres podem desaparecer do Kanban. Isso deve ser resolvido com contrato de KPI, projeção de atividade, fonte única de unread, validação de stage e testes de reconciliação.
+
+No frontend, o QR está abaixo da primeira dobra mobile, CTAs somem por CSS, o Inbox possui scrolls aninhados, tabs não são URL-canonicals e o bundle inicial ultrapassa 680 kB minificado. O plano de correção inclui foco/scroll deliberado no QR, acessibilidade de tabs/dialogs, code splitting, debounce/paginação e upload sem data URL duplicada.
+
+A auditoria de produto concluiu que catálogo operacional, assinatura SaaS, rate limit e billing ainda estão misturados conceitualmente ou incompletos. O modelo de preço fixo/a partir/orçamento deve ser separado do plano SaaS. Landing, signup, Termos, Privacidade, cookies, consentimento e fluxos LGPD permanecem posteriores aos gates de tenancy, staging, backup/restore e beta controlado.

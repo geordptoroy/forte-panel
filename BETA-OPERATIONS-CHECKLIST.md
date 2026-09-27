@@ -214,3 +214,19 @@ Para atualizar e iniciar a stack usando `.env`, execute:
 ```
 
 O script faz pull das imagens publicadas e recria `postgres_panel`, `redis_panel`, `forte-panel`, `forte-panel-worker` e `forte-whatsapp`; não remove volumes. O painel comum agora possui **Sair** no topo e a tela `Integrações` permite iniciar a conexão, acompanhar o estado e ler o QR Code do WhatsApp dentro da própria interface.
+
+
+## 21. Bloqueios descobertos na auditoria de 27/09
+
+Antes de novos convites beta, fechar obrigatoriamente:
+
+1. Retorno do console sem cair genericamente em `/dashboard`; suporte a platform-only.
+2. Reativação de workspace suspenso após expiração/logout de sessão administrativa.
+3. Rota `/kanban` funcionando ou links removidos.
+4. Quotes/billing sem `ensureDemoWorkspace()` e com isolamento de workspace.
+5. QR/conexão WhatsApp validado em Docker com número de teste, incluindo inbound/outbound.
+6. KPIs Dashboard/Atendimento/Funil reconciliados por mensagens, contatos, unread e stage.
+7. Mobile sem CTAs escondidos, scroll aninhado ou ausência de destaque da rota atual.
+8. Backup/restore, staging persistente, observabilidade e testes negativos de tenancy.
+
+Tickets de suporte, catálogo de preços, planos sandbox, landing, termos, privacidade e LGPD são etapas seguintes; não ativar cobrança ou cadastro público antes da aprovação dos gates acima. Consulte `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md` para a ordem completa.

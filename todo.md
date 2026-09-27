@@ -142,3 +142,38 @@ git diff --check
 ```
 
 Para migrations, tenancy ou webhooks, acrescentar testes de integração com PostgreSQL real e validar journals. Não rodar smoke PAPI Cloud sem autorização previamente registrada; não solicitar token no chat.
+
+
+## Auditoria 2026-09-27 — backlog priorizado para execução
+
+### P0 — corrigir antes de novos convites
+
+- [ ] Corrigir o botão do console que volta para `/dashboard`; usar retorno contextual ao console/workspace suportado, sem quebrar platform-only.
+- [ ] Permitir iniciar sessão administrativa e reativar workspace suspenso mesmo após logout/expiração.
+- [ ] Unificar guards de plataforma e tornar `sessionId`/aba do console canônicos na URL.
+- [ ] Registrar a rota `/kanban` ou remover os links quebrados da sidebar/cards.
+- [ ] Remover `ensureDemoWorkspace()` de quotes/billing e adicionar isolamento negativo entre dois workspaces.
+
+### P1 — operação, dados e experiência
+
+- [ ] Reestruturar a conexão WhatsApp: renomear para Conexão WhatsApp, priorizar QR no mobile, indicar expiração/stale/retry e validar Docker com número de teste.
+- [ ] Definir KPIs Dashboard/Atendimento/Funil por entidade: mensagens, contatos, unread e stages.
+- [ ] Criar projeção de atividade para inbound/outbound/falha, unificar unread, marcar leitura, validar stages e atualizar telas sem reload.
+- [ ] Corrigir CTAs mobile, scroll do Inbox, destaque de rota/query, acessibilidade de abas/drawers/modais e `:focus-visible`.
+- [ ] Aplicar code splitting, debounce/paginação no console, carregamento por aba e upload sem data URL duplicada.
+
+### P2 — suporte e produto
+
+- [ ] Criar tickets administrativos e Kanban de suporte separado do funil de leads.
+- [ ] Estruturar catálogo de serviços com preço `fixed`, `starting_at` e `quote`.
+- [ ] Criar página de assinatura/consumo com planos em modo sandbox/teste; sem cobrança real e com auditoria de troca de plano.
+- [ ] Separar rate limit técnico de ledger de uso comercial mensal.
+
+### P3 — lançamento público e LGPD
+
+- [ ] Criar landing, pricing, termos, privacidade e cookies.
+- [ ] Criar signup com verificação de e-mail, convite, recuperação e consentimento versionado.
+- [ ] Implementar exportação, anonimização/exclusão, retenção e solicitações de titulares LGPD.
+- [ ] Validar staging persistente, backup/restore, alertas externos, antiabuso e E2E antes de abrir cadastro público.
+
+Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.

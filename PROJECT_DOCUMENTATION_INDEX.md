@@ -10,7 +10,8 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 4. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual consolidado de operação do beta, migrations, quotas e segurança.
 5. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão completa do que funciona, como funciona, plano do console admin e pendências antes do beta.
 6. [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) — auditoria de divergências e roadmap canônico por fases.
-7. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência de teste e ambiente efetivamente validado.
+7. [`PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`](./PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md) — plano priorizado P0–P3 para console, operação, QR, UX, produto, planos e LGPD.
+8. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência de teste e ambiente efetivamente validado.
 
 ## Produto e tenancy
 
@@ -62,3 +63,4 @@ Ao concluir um bloco técnico:
 - Validação PostgreSQL no CI aprovada com migrations limpas e nenhuma suíte ignorada; staging real ainda pendente.
 - Console interno de plataforma possui código, migration, UI e cobertura de autorização, sessões, mutações, auditoria e saúde; staging real ainda pendente.
 - Configuração da IA possui rascunho, simulação local, publicação, histórico e rollback; validação visual/staging e fallback explícito continuam pendentes.
+- Auditoria de 27/09 encontrou `/kanban` sem rota, retorno administrativo inadequado, dead-end de workspace suspenso, divergência entre mensagens/contatos/unread/stages, QR abaixo da primeira dobra mobile, billing ainda com caminho demo e ausência de modelo SaaS/LGPD; seguir o plano P0–P3 antes de novos convites.

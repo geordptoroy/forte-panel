@@ -245,3 +245,30 @@ O projeto entrou em **pré-staging para beta controlado**. O bloco de separaçã
 | Beta controlado | Ainda não aberto | Concluir staging, E2E, backup/restore e observabilidade |
 
 A próxima ordem recomendada é: `git pull` no computador do usuário, atualização da stack sem `down -v`, validação QR/inbound/outbound, depois staging persistente e somente então convites beta.
+
+
+---
+## Roadmap priorizado após auditoria ampla — 2026-09-27
+
+A auditoria de 2026-09-27 identificou que o próximo ciclo deve começar por correções de controle-plane e coerência de dados, não por landing page ou cobrança. O plano executável completo está em `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
+
+### P0 — bloquear antes de novos convites
+
+1. Corrigir o retorno do `/platform-admin` para não apontar genericamente para `/dashboard` e suportar platform-only.
+2. Permitir recuperar/reativar workspace suspenso sem depender de sessão anterior ou banco manual.
+3. Unificar guards de plataforma e tornar sessão/aba administrativas canônicas na URL.
+4. Registrar `/kanban` ou remover seus links quebrados.
+5. Remover `ensureDemoWorkspace()` de quotes/billing e fechar autorização tenant-aware.
+
+### P1 — operação confiável
+
+1. Elevar QR/conexão WhatsApp para fluxo mobile prioritário, com expiração, retry, foco e teste real.
+2. Definir KPIs por entidade: messages, contacts, unread e stage; corrigir projeção de atividade, unread, stages desconhecidos e atualização cross-screen.
+3. Restaurar CTAs mobile, corrigir scroll aninhado, aria/foco/modal e destaque de rota.
+4. Aplicar code splitting, debounce/paginação no admin e upload sem data URL duplicada.
+
+### P2/P3 — produto e lançamento
+
+Depois dos P0/P1, criar tickets/kanban de suporte, catálogo operacional com preço único/a partir/orçamento, assinatura/consumo em sandbox, e finalmente LGPD, termos, privacidade, cookies, landing e signup.
+
+**Regra:** planos podem ser testados somente em modo sandbox, sem cobrança ou bloqueio real. Cadastro público permanece fechado até isolamento, backup/restore, QR, billing tenant-aware e governança de dados terem evidência em staging.
