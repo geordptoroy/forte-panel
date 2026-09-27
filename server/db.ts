@@ -2139,6 +2139,10 @@ async function touchOnboardingSession(workspaceId: number, nextStep: string | nu
 export type OnboardingStepAnswerPayload = {
   stepKey: "identity" | "offering" | "operations" | "guardrails" | "voice";
   answer: Record<string, string>;
+  source: "human_form";
+  confidence: number;
+  missing: string[];
+  conflicts: string[];
 };
 
 export const requiredOnboardingStepKeys = [
@@ -2153,7 +2157,7 @@ export const confirmableOnboardingStepKeys = [
 ] as const;
 
 export function buildOnboardingStepAnswers(profile: OnboardingProfile): OnboardingStepAnswerPayload[] {
-  return [
+  const base: Array<Pick<OnboardingStepAnswerPayload, "stepKey" | "answer">> = [
     {
       stepKey: "identity",
       answer: {
@@ -2184,6 +2188,15 @@ export function buildOnboardingStepAnswers(profile: OnboardingProfile): Onboardi
       },
     },
   ];
+  return base.map(payload => ({
+    ...payload,
+    source: "human_form" as const,
+    confidence: 100,
+    missing: Object.entries(payload.answer)
+      .filter(([, value]) => !value.trim())
+      .map(([key]) => key),
+    conflicts: [],
+  }));
 }
 
 async function listOnboardingStepAnswers(workspaceId: number) {
@@ -2195,6 +2208,9 @@ async function listOnboardingStepAnswers(workspaceId: number) {
       stepKey: onboardingStepAnswers.stepKey,
       answer: onboardingStepAnswers.answer,
       source: onboardingStepAnswers.source,
+      confidence: onboardingStepAnswers.confidence,
+      missing: onboardingStepAnswers.missing,
+      conflicts: onboardingStepAnswers.conflicts,
       status: onboardingStepAnswers.status,
       updatedAt: onboardingStepAnswers.updatedAt,
     })
@@ -2211,6 +2227,10 @@ async function listOnboardingStepAnswers(workspaceId: number) {
       id: onboardingStepAnswerRevisions.id,
       stepKey: onboardingStepAnswerRevisions.stepKey,
       answer: onboardingStepAnswerRevisions.answer,
+      source: onboardingStepAnswerRevisions.source,
+      confidence: onboardingStepAnswerRevisions.confidence,
+      missing: onboardingStepAnswerRevisions.missing,
+      conflicts: onboardingStepAnswerRevisions.conflicts,
       status: onboardingStepAnswerRevisions.status,
       changedBy: onboardingStepAnswerRevisions.changedBy,
       createdAt: onboardingStepAnswerRevisions.createdAt,
@@ -2232,9 +2252,13 @@ async function listOnboardingStepAnswers(workspaceId: number) {
   return rows.map(row => ({
     ...row,
     answer: JSON.parse(row.answer) as Record<string, string>,
+    missing: JSON.parse(row.missing) as string[],
+    conflicts: JSON.parse(row.conflicts) as string[],
     revisions: (revisionsByStep.get(row.stepKey) ?? []).map(revision => ({
       ...revision,
       answer: JSON.parse(revision.answer) as Record<string, string>,
+      missing: JSON.parse(revision.missing) as string[],
+      conflicts: JSON.parse(revision.conflicts) as string[],
     })),
   }));
 }
@@ -2272,7 +2296,10 @@ async function persistOnboardingStepAnswers(
         workspaceId,
         stepKey: payload.stepKey,
         answer: serializedAnswer,
-        source: "form",
+        source: payload.source,
+        confidence: payload.confidence,
+        missing: JSON.stringify(payload.missing),
+        conflicts: JSON.stringify(payload.conflicts),
         status,
         updatedBy,
         updatedAt: now,
@@ -2281,7 +2308,10 @@ async function persistOnboardingStepAnswers(
         target: [onboardingStepAnswers.sessionId, onboardingStepAnswers.stepKey],
         set: {
           answer: serializedAnswer,
-          source: "form",
+          source: payload.source,
+          confidence: payload.confidence,
+          missing: JSON.stringify(payload.missing),
+          conflicts: JSON.stringify(payload.conflicts),
           status,
           updatedBy,
           updatedAt: now,
@@ -2296,6 +2326,10 @@ async function persistOnboardingStepAnswers(
         workspaceId,
         stepKey: payload.stepKey,
         answer: serializedAnswer,
+        source: payload.source,
+        confidence: payload.confidence,
+        missing: JSON.stringify(payload.missing),
+        conflicts: JSON.stringify(payload.conflicts),
         status,
         changedBy: updatedBy,
       });
@@ -2326,6 +2360,10 @@ export async function confirmOnboardingStep(
       workspaceId: onboardingStepAnswers.workspaceId,
       stepKey: onboardingStepAnswers.stepKey,
       answer: onboardingStepAnswers.answer,
+      source: onboardingStepAnswers.source,
+      confidence: onboardingStepAnswers.confidence,
+      missing: onboardingStepAnswers.missing,
+      conflicts: onboardingStepAnswers.conflicts,
     });
   if (!answer) throw new Error("ONBOARDING_STEP_NOT_FOUND");
   await db.insert(onboardingStepAnswerRevisions).values({
@@ -2334,6 +2372,10 @@ export async function confirmOnboardingStep(
     workspaceId: answer.workspaceId,
     stepKey: answer.stepKey,
     answer: answer.answer,
+    source: answer.source,
+    confidence: answer.confidence,
+    missing: answer.missing,
+    conflicts: answer.conflicts,
     status: "confirmed",
     changedBy: updatedBy,
   });

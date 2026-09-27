@@ -511,3 +511,11 @@ Próximo corte: adicionar confirmação para blocos opcionais e histórico de re
 A migration `0030_onboarding_step_answer_revisions` mantém histórico imutável por bloco e a UI exibe as últimas revisões. O bloco `voice` ganhou confirmação explícita opcional; somente os quatro blocos essenciais continuam bloqueando a publicação.
 
 Próximo corte: adicionar campos `source`, `confidence`, `missing` e `conflict` ao contrato estruturado, antes de conectar qualquer transcrição de áudio ou LLM.
+
+
+---
+## Etapa seguinte — qualidade e provenance dos blocos — 2026-09-27
+
+`onboardingStepAnswers` e seu histórico agora carregam `source`, `confidence`, `missing` e `conflicts`. O formulário preenche provenance humana e ausências derivadas, enquanto transcrição/LLM permanecem fontes futuras sem bypass do gate de confirmação.
+
+Próximo corte: especificar valores permitidos de `source`, política de confiança e resolução de conflitos antes de conectar áudio ou LLM.

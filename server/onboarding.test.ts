@@ -50,5 +50,8 @@ describe("onboarding checklist", () => {
     ]);
     expect(answers[0].answer).toMatchObject({ businessName: "Clínica Vida Plena" });
     expect(answers[2].answer).toMatchObject({ businessHours: "Segunda a sexta, 8h às 18h" });
+    expect(answers[0]).toMatchObject({ source: "human_form", confidence: 100, missing: [], conflicts: [] });
+    expect(buildOnboardingStepAnswers({ ...completeProfile, faq: "" }).find(answer => answer.stepKey === "voice"))
+      .toMatchObject({ missing: ["faq"], source: "human_form" });
   });
 });

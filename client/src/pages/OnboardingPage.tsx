@@ -227,6 +227,12 @@ export default function OnboardingPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
                     <div>
                       <strong style={{ color: "#ddd", fontSize: 12 }}>{stepTitles[step.stepKey] ?? step.stepKey}</strong>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, fontSize: 9 }}>
+                        <span className="muted">Origem: {step.source === "human_form" ? "formulário" : step.source}</span>
+                        {step.confidence !== null && <span className="muted">Confiança: {step.confidence}%</span>}
+                        {step.missing.length > 0 && <span style={{ color: "var(--amber)" }}>Ausentes: {step.missing.map(key => fieldTitles[key] ?? key).join(", ")}</span>}
+                        {step.conflicts.length > 0 && <span style={{ color: "var(--red)" }}>Conflitos: {step.conflicts.join(", ")}</span>}
+                      </div>
                       <div style={{ display: "grid", gap: 5, marginTop: 9 }}>
                         {Object.entries(step.answer).map(([key, value]) => (
                           <div key={key} style={{ fontSize: 10, lineHeight: 1.5 }}>

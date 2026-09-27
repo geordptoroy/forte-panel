@@ -1662,3 +1662,13 @@ A leitura de `onboarding.profile` agora retorna as revisões agregadas por bloco
 O bloco `voice` agora pode ser confirmado explicitamente, mas continua opcional para publicação. O gate de publicação segue exigindo somente `identity`, `offering`, `operations` e `guardrails` confirmados.
 
 Validação: `pnpm check`, `pnpm test` (99 aprovados, 35 ignorados), `pnpm build`, journal JSON e `git diff --check` passaram.
+
+
+---
+## Atualização do handoff — 2026-09-27 — metadados de qualidade dos blocos
+
+A migration `0031_onboarding_answer_quality` adiciona aos registros atuais e ao histórico os campos `source`, `confidence`, `missing` e `conflicts`.
+
+O formulário atual grava `source=human_form` e `confidence=100` como provenance da entrada humana. `missing` é derivado por campo vazio e `conflicts` inicia vazio, sem fingir que existe inferência de áudio/LLM. Os metadados acompanham as revisões e aparecem no card de revisão.
+
+O contrato agora está preparado para futuras fontes (`transcription`, `llm`, importação) sem permitir que confiança ou ausência substituam a confirmação humana. A publicação continua bloqueada por falta de fatos obrigatórios ou confirmação dos blocos essenciais.
