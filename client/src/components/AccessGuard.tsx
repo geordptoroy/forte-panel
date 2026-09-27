@@ -49,3 +49,17 @@ export function PlatformOnlyGuard({ children, title }: { children: ReactNode; ti
     </PanelLayout>;
   return <>{children}</>;
 }
+
+export function OnboardingGuard({ children, title }: { children: ReactNode; title: string }) {
+  const { data: access, isLoading } = trpc.auth.access.useQuery();
+  if (isLoading)
+    return <PanelLayout eyebrow="Verificando acesso" title={title} description="Confirmando o acesso à configuração da empresa.">
+      <EmptyState icon={ShieldAlert} title="Verificando permissões" description="Aguarde enquanto validamos o seu papel no workspace." />
+    </PanelLayout>;
+  if (!access?.platform && !access?.canManageTeam)
+    return <PanelLayout eyebrow="Acesso restrito" title={title} description="A configuração da empresa exige permissão administrativa.">
+      <EmptyState icon={ShieldAlert} title="Área restrita" description="Somente proprietário ou administrador podem configurar o onboarding da empresa." />
+      <div style={{ marginTop: 15, textAlign: "center" }}><PageLink href="/settings" className="btn-primary">Voltar para configurações</PageLink></div>
+    </PanelLayout>;
+  return <>{children}</>;
+}

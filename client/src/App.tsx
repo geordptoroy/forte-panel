@@ -18,7 +18,7 @@ import { ProfessionalsPage, ServicesPage } from "./pages/CatalogPage";
 import { ProfessionalPortalPage } from "./pages/ProfessionalPortal";
 import { SettingsTabsPage } from "./pages/SettingsTabs";
 import TeamPage from "./pages/TeamPage";
-import AccessGuard, { PlatformOnlyGuard } from "./components/AccessGuard";
+import AccessGuard, { OnboardingGuard, PlatformOnlyGuard } from "./components/AccessGuard";
 import OnboardingPage from "./pages/OnboardingPage";
 import AiConfigPage from "./pages/AiConfigPage";
 import AiPromptPage from "./pages/AiPromptPage";
@@ -78,9 +78,9 @@ function Router() {
       </Route>
       <Route path="/onboarding">
         {() => (
-          <PlatformOnlyGuard title="Configuração da empresa">
+          <OnboardingGuard title="Configuração da empresa">
             <OnboardingPage />
-          </PlatformOnlyGuard>
+          </OnboardingGuard>
         )}
       </Route>
       <Route path="/ai-config">

@@ -41,4 +41,9 @@ describe("tenant context resolution", () => {
     const caller = appRouter.createCaller(createContext());
     await expect(caller.auth.access()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("does not let an unassigned global admin open workspace onboarding", async () => {
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.onboarding.profile()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
 });

@@ -207,6 +207,17 @@ const requireAdministrator = withAccess(
   access => access.canManageTeam,
   "Somente proprietário ou administrador podem executar esta ação"
 );
+const requireOnboardingEditor = protectedProcedure.use(async ({ ctx, next }) => {
+  const platformAdmin = await getPlatformAdminAccess(ctx.user.id);
+  if (platformAdmin) return next({ ctx: { platformAdmin } });
+  const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
+  if (!access.memberActive || !access.canManageTeam)
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Somente proprietário ou administrador podem configurar o onboarding",
+    });
+  return next({ ctx: { access } });
+});
 const requirePlatformAdministrator = protectedProcedure.use(async ({ ctx, next }) => {
   const platformAdmin = await getPlatformAdminAccess(ctx.user.id);
   if (!platformAdmin)
@@ -1101,10 +1112,10 @@ export const appRouter = router({
   }),
 
   onboarding: router({
-    profile: requirePlatformAdministrator.query(({ ctx }) =>
+    profile: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingProfile(ctx.workspace.workspaceId)
     ),
-    save: requirePlatformAdministrator
+    save: requireOnboardingEditor
       .input(
         z.object({
           profile: z.object({
@@ -1124,13 +1135,22 @@ export const appRouter = router({
           publish: z.boolean().default(false),
         })
       )
-      .mutation(({ input, ctx }) =>
-        saveOnboardingProfile(
+      .mutation(async ({ input, ctx }) => {
+        const result = await saveOnboardingProfile(
           ctx.workspace.workspaceId,
           input.profile,
           input.publish
-        )
-      ),
+        );
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: input.publish ? "onboarding_published" : "onboarding_saved",
+          summary: input.publish
+            ? `Onboarding publicado na versão ${result.version}`
+            : "Rascunho de onboarding salvo",
+        });
+        return result;
+      }),
   }),
 
   agent: router({

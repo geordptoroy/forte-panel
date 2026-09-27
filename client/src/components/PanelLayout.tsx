@@ -225,6 +225,20 @@ const attendantNav: NavGroup[] = [
   },
 ];
 
+const onboardingNav: NavGroup[] = [
+  {
+    label: "Configuração",
+    items: [
+      {
+        href: "/onboarding",
+        label: "Configurar empresa",
+        description: "Identidade e regras do atendimento",
+        icon: Settings,
+      },
+    ],
+  },
+];
+
 type PanelLayoutProps = {
   children: ReactNode;
   eyebrow?: string;
@@ -257,6 +271,7 @@ type AccessProfile =
       role?: string;
       operationalRole?: string;
       canSeeFullAgenda?: boolean;
+      canManageTeam?: boolean;
       restrictedToOwnAgenda?: boolean;
       memberActive?: boolean;
       professionalName?: string | null;
@@ -266,7 +281,8 @@ type AccessProfile =
 
 function navForAccess(access: AccessProfile): NavGroup[] {
   if (!access) return managementNav;
-  if (access.canSeeFullAgenda) return managementNav;
+  if (access.canSeeFullAgenda)
+    return access.canManageTeam ? [...managementNav, ...onboardingNav] : managementNav;
   if (access.operationalRole === "professional") return professionalNav;
   return attendantNav;
 }

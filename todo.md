@@ -221,8 +221,8 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 
 ### P0 de produto — antes de convites
 
-- [ ] Mover onboarding e configuração da IA de `requirePlatformAdministrator` para owner/gerente, deixando o console da plataforma apenas como suporte. Hoje o dono não configura a própria empresa.
-- [ ] Criar signup público inicial por e-mail/senha, convite de funcionário e recuperação de senha (`workspaceInvites`, `passwordResetTokens`); deixar confirmação de e-mail e Google OAuth planejados, feature-flagged e desligados até configurar provedores.
+- [ ] Mover onboarding e configuração da IA de `requirePlatformAdministrator` para owner/gerente, deixando o console da plataforma apenas como suporte. (onboarding textual `profile/save` agora aceita owner/admin; configuração de IA, prompt e reset continuam exclusivos da plataforma)
+- [x] Criar signup público inicial por e-mail/senha, convite de funcionário e recuperação de senha (`workspaceInvites`, `passwordResetTokens`); confirmação de e-mail e Google OAuth continuam planejados, feature-flagged e desligados até configurar provedores.
 - [x] Aplicar limite de tentativas e atraso progressivo no login local. (primeiro slice B1: limiter em memória por IP e conta, com testes; auditoria persistida de falhas continua pendente)
 - [x] Adicionar checagem de origem/CSRF nas mutações tRPC (o cookie usa `sameSite: "none"` em HTTPS). (primeiro slice B1: same-origin em mutações HTTP)
 - [ ] Tornar a deduplicação de mensagens por tenant: `messages.externalId` é único globalmente hoje.

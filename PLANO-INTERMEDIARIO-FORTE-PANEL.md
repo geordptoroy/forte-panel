@@ -447,3 +447,11 @@ A solicitação pública responde genericamente e não retorna token. A entrega 
 A opção escolhida foi preparar sem envio agora. O projeto recebeu `server/_core/email.ts`, configuração segura em `env.ts` e documentação no `.env.local.example`. O adapter monta o conteúdo e a URL do reset, mas não tem dependência de rede, não chama provider e permanece atrás de `EMAIL_DELIVERY_ENABLED=false`/`EMAIL_PROVIDER=none`.
 
 O próximo bloco funcional é mover onboarding/configuração histórica para owner/admin. Quando um provider for escolhido, a entrega deve ser conectada sem devolver tokens na API, sem logs sensíveis e com `PUBLIC_APP_URL`/remetente/domínio validados.
+
+
+---
+## Etapa seguinte — onboarding textual para owner/admin — 2026-09-27
+
+`onboarding.profile` e `onboarding.save` agora aceitam owner/admin com `canManageTeam` e continuam aceitando `platform_admin` para suporte. O frontend ganhou `OnboardingGuard`, o link aparece na sidebar administrativa e cada salvamento/publicação gera auditoria. Configuração de IA, prompt e reset continuam protegidos por `requirePlatformAdministrator`/`PlatformOnlyGuard`.
+
+Próximo corte: revisar o onboarding estruturado de negócio e separar capabilities de configuração operacional de secrets/prompts administrativos, sem ampliar acesso por conveniência.

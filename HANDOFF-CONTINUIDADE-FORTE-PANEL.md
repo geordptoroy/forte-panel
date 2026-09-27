@@ -1498,3 +1498,29 @@ pnpm test — 94 aprovados, 35 ignorados; adapter ✅
 ```
 
 O próximo bloco é mover onboarding/configuração histórica de `platform_admin` para owner/admin. A ativação do e-mail ficará para quando o provider, domínio, remetente e secrets forem escolhidos e configurados; a integração efetiva deve consumir o token internamente, chamar o provider e manter a resposta pública genérica.
+
+
+---
+## Atualização do handoff — 2026-09-27 12:54 — onboarding textual para owner/admin
+
+O onboarding textual da empresa deixou de ser exclusivo do `platform_admin`.
+
+### Implementado
+
+- Novo guard server-side `requireOnboardingEditor`: aceita `owner`/`admin` com `canManageTeam` no workspace ou `platform_admin` de suporte.
+- `onboarding.profile` e `onboarding.save` agora usam esse guard.
+- Salvamento e publicação geram auditoria `onboarding_saved`/`onboarding_published` com o usuário que executou a ação.
+- Nova `OnboardingGuard` no frontend; a rota `/onboarding` permite owner/admin e continua permitindo suporte de plataforma.
+- Sidebar exibe **Configurar empresa** somente para perfis com `canManageTeam` e visão completa de agenda.
+- `/ai-config`, `/ai-prompt` e operações sensíveis de agente continuam atrás de `PlatformOnlyGuard`/`requirePlatformAdministrator`; não foram abertos por engano.
+- Teste de autorização confirma que usuário globalmente `admin`, mas sem membership, não acessa onboarding.
+
+### Validação
+
+```text
+pnpm check ✅
+pnpm test ✅ — 95 aprovados, 35 ignorados por dependências externas/PostgreSQL
+`git diff --check` ✅
+```
+
+A próxima extensão é revisar o onboarding estruturado (checklist, catálogo, canal e publicação) e decidir se alguma configuração não sensível de IA deve ganhar capability própria; secrets, prompt administrativo e reset da plataforma permanecem fora do workspace owner/admin.
