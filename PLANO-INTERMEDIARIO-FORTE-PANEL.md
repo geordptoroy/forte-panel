@@ -364,3 +364,16 @@ git diff --check ✅
 ```
 
 Próxima etapa ainda pendente antes do beta: validar as mutações do console e o isolamento de autorização no PostgreSQL/staging real, sem abrir cadastro público nem executar smoke test Cloud.
+
+
+## Atualização de execução — 2026-09-26 21:39
+
+Foi criada a suíte `server/platform-support-session.test.ts`, condicionada a PostgreSQL real, cobrindo:
+
+- vínculo exato entre `platformAdminId`, `sessionId` e `workspaceId`;
+- sessão `read_only` recusada para mutações de operador;
+- revogação com bloqueio imediato;
+- expiração automática antes da leitura;
+- rejeição de tentativa de usar uma sessão em outro workspace.
+
+No sandbox sem `DATABASE_URL`/Docker, a suíte fica corretamente marcada como ignorada; os testes locais de autorização continuam aprovados. A execução contra staging PostgreSQL permanece o próximo gate operacional antes dos convites beta.
