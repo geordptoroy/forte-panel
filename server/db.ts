@@ -3077,12 +3077,14 @@ export async function setContactAi(
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db
+  const updated = await db
     .update(contacts)
     .set({ aiEnabled: enabled ? 1 : 0, updatedAt: new Date() })
     .where(
       and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
-    );
+    )
+    .returning({ id: contacts.id });
+  if (!updated[0]) throw new Error("Contact not found");
   const conversation = await getConversationByContact(workspaceId, contactId);
   if (conversation) {
     await db
@@ -3211,12 +3213,14 @@ export async function moveContactStage(
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const updatedAt = new Date();
-  await db
+  const updated = await db
     .update(contacts)
     .set({ stage, updatedAt })
     .where(
       and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
-    );
+    )
+    .returning({ id: contacts.id });
+  if (!updated[0]) throw new Error("Contact not found");
   await db.insert(auditLogs).values({
     workspaceId,
     actorUserId,

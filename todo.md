@@ -231,7 +231,7 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Alinhar o rótulo da sidebar "Canais conectados" com a tela "Conexão WhatsApp".
 - [ ] Remover a segunda `BillingPage` com dados fictícios e o código de demonstração ainda importado.
 - [ ] Criar índices de leitura: `quotes(workspaceId, createdAt)` e `messages(conversationId, createdAt)`.
-- [ ] Impedir `auditLogs` falsos: só registrar evento após confirmar que a mutação alterou uma linha do próprio workspace.
+- [x] Impedir `auditLogs` falsos: só registrar evento após confirmar que a mutação alterou uma linha do próprio workspace. (toggle IA e mudança de stage protegidos; cobertura de banco real continua dependente de staging)
 - [ ] Adicionar FKs/constraints para conversations/messages/notes/quotes e decidir barreira redundante de `workspaceId` nas entidades derivadas.
 - [ ] Normalizar telefones/JIDs (E.164) antes do upsert e testar formatos equivalentes.
 - [ ] Responder pela instância/canal de origem da conversa, não por `defaultPapiWebhook`.

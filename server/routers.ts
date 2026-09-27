@@ -1599,6 +1599,16 @@ export const appRouter = router({
     toggleAi: protectedProcedure
       .input(contactIdInput.extend({ enabled: z.boolean() }))
       .mutation(async ({ input, ctx }) => {
+        const existing = await getContactById(
+          ctx.workspace.workspaceId,
+          input.contactId
+        );
+        if (!existing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Contato não encontrado neste workspace",
+          });
+        }
         await setContactAi(
           ctx.workspace.workspaceId,
           input.contactId,
@@ -1652,6 +1662,16 @@ export const appRouter = router({
     moveStage: protectedProcedure
       .input(contactIdInput.extend({ stage: z.string().min(1).max(80) }))
       .mutation(async ({ input, ctx }) => {
+        const existing = await getContactById(
+          ctx.workspace.workspaceId,
+          input.contactId
+        );
+        if (!existing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Contato não encontrado neste workspace",
+          });
+        }
         await moveContactStage(
           ctx.workspace.workspaceId,
           input.contactId,

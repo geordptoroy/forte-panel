@@ -22,6 +22,12 @@ describe("inbox procedures", () => {
     await expect(caller.inbox.toggleAi({ contactId: 0, enabled: true })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
+  it("does not mutate or audit a contact outside the resolved workspace", async () => {
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.inbox.toggleAi({ contactId: 999999, enabled: true })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(caller.inbox.moveStage({ contactId: 999999, stage: "Triagem" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
   it("keeps the seed procedure idempotent at the contract level", async () => {
     const caller = appRouter.createCaller(createContext());
     expect(caller.inbox.seed).toBeTypeOf("function");
