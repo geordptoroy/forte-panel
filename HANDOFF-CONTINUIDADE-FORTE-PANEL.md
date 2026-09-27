@@ -1578,3 +1578,39 @@ pnpm test direcionado ✅ — 97 aprovados, 35 ignorados
 ```
 
 “Fazer depois” e retomada entre múltiplas sessões/blocos ainda não possuem modelo explícito; esta etapa retoma o último perfil salvo no workspace.
+
+
+---
+## Atualização do handoff — 2026-09-27 13:03 — sessão persistente do onboarding
+
+Foi criada a primeira entidade explícita de sessão do onboarding para sustentar pausa e retomada.
+
+### Implementado
+
+- Migration `0028_onboarding_sessions` e tabela tenant-aware com uma sessão por workspace.
+- Estados persistidos: `active`, `paused` e `completed`.
+- Cursor `currentStep`, `lastActivityAt`, `pausedAt`, `completedAt` e usuário que iniciou/retomou.
+- Procedures protegidas por `requireOnboardingEditor`:
+  - `onboarding.session`;
+  - `onboarding.start`;
+  - `onboarding.defer`.
+- A tela inicia ou retoma automaticamente a sessão ao abrir.
+- Botão **Fazer depois** pausa a sessão e retorna ao dashboard.
+- Salvamento/autosave avança o cursor para o próximo item; publicação completa marca a sessão como `completed`.
+- Eventos de iniciar/retomar e pausar ficam auditados, sem expor dados sensíveis.
+- Usuário sem membership não pode criar sessão mesmo que o role global seja admin.
+
+### Limite consciente
+
+A sessão ainda aponta para o perfil estruturado existente; respostas por bloco (`onboardingStepAnswers`), múltiplas sessões, áudio e “fazer depois” com lembrete no dashboard continuam fora desta fatia.
+
+### Validação
+
+```text
+pnpm check ✅
+pnpm test direcionado ✅ — 98 aprovados, 35 ignorados
+`git diff --check` ✅
+journal JSON ✅
+```
+
+Próximo corte: mostrar no dashboard o cartão de retomada ou modelar respostas por bloco; não adicionar áudio/LLM antes de escolher o formato das respostas.

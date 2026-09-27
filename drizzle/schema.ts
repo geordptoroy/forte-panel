@@ -221,6 +221,26 @@ export const passwordResetTokens = pgTable(
   ]
 );
 
+export const onboardingSessions = pgTable(
+  "onboardingSessions",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull().unique(),
+    ownerUserId: integer("ownerUserId").notNull(),
+    status: varchar("status", { length: 24 }).notNull().default("active"),
+    currentStep: varchar("currentStep", { length: 80 }).notNull().default("identity"),
+    startedAt: timestamp("startedAt").defaultNow().notNull(),
+    lastActivityAt: timestamp("lastActivityAt").defaultNow().notNull(),
+    pausedAt: timestamp("pausedAt"),
+    completedAt: timestamp("completedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    index("onboarding_sessions_status_idx").on(table.status, table.lastActivityAt),
+  ]
+);
+
 export const workspaces = pgTable("workspaces", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 160 }).notNull(),
@@ -967,6 +987,8 @@ export type ConsentRecord = typeof consentRecords.$inferSelect;
 export type InsertConsentRecord = typeof consentRecords.$inferInsert;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;
+export type OnboardingSession = typeof onboardingSessions.$inferSelect;
+export type InsertOnboardingSession = typeof onboardingSessions.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;
 export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

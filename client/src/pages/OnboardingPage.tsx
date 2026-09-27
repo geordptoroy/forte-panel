@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Info, ListChecks, Save, Sparkles } from "lucide-react";
+import { useLocation } from "wouter";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 
@@ -35,6 +36,15 @@ const emptyProfile: Profile = {
 
 export default function OnboardingPage() {
   const utils = trpc.useUtils();
+  const [, setLocation] = useLocation();
+  const sessionQuery = trpc.onboarding.session.useQuery();
+  const sessionStarted = useRef(false);
+  const startSession = trpc.onboarding.start.useMutation({
+    onSuccess: () => void sessionQuery.refetch(),
+  });
+  const deferSession = trpc.onboarding.defer.useMutation({
+    onSuccess: () => setLocation("/dashboard"),
+  });
   const profileQuery = trpc.onboarding.profile.useQuery();
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [published, setPublished] = useState(false);
@@ -67,6 +77,14 @@ export default function OnboardingPage() {
       setAutosaveState("idle");
     }
   }, [profileQuery.data]);
+
+  useEffect(() => {
+    if (sessionQuery.isLoading || sessionStarted.current) return;
+    if (!sessionQuery.data || sessionQuery.data.status === "paused") {
+      sessionStarted.current = true;
+      startSession.mutate();
+    }
+  }, [sessionQuery.data, sessionQuery.isLoading, startSession.mutate]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -125,6 +143,11 @@ export default function OnboardingPage() {
             altera o agente; publicar cria uma nova versão operacional.
           </span>
         </div>
+        {sessionQuery.data?.status === "paused" && (
+          <p className="muted" style={{ margin: "10px 0 0", fontSize: 11 }}>
+            Retomando o rascunho salvo anteriormente...
+          </p>
+        )}
       </div>
       {profileQuery.data?.checklist && (
         <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
@@ -259,6 +282,13 @@ export default function OnboardingPage() {
             {autosaveState === "saved" && "Rascunho salvo"}
             {autosaveState === "error" && "Autosave indisponível; use Salvar rascunho."}
           </small>
+          <button
+            className="btn-secondary"
+            disabled={deferSession.isPending || saveMutation.isPending}
+            onClick={() => deferSession.mutate()}
+          >
+            Fazer depois
+          </button>
           {published && (
             <span
               className="green"

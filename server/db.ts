@@ -30,6 +30,7 @@ import {
   domainEvents,
   messages,
   notifications,
+  onboardingSessions,
   passwordResetTokens,
   professionals,
   professionalServices,
@@ -2071,6 +2072,68 @@ export function getOnboardingChecklist(
   };
 }
 
+export type OnboardingSessionStatus = "active" | "paused" | "completed";
+
+export async function getOnboardingSession(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  return (
+    await db
+      .select()
+      .from(onboardingSessions)
+      .where(eq(onboardingSessions.workspaceId, workspaceId))
+      .limit(1)
+  )[0];
+}
+
+export async function startOnboardingSession(workspaceId: number, ownerUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const now = new Date();
+  const existing = await getOnboardingSession(workspaceId);
+  if (existing) {
+    const [session] = await db
+      .update(onboardingSessions)
+      .set({ ownerUserId, status: "active", pausedAt: null, lastActivityAt: now, updatedAt: now })
+      .where(eq(onboardingSessions.id, existing.id))
+      .returning();
+    return session;
+  }
+  const [session] = await db
+    .insert(onboardingSessions)
+    .values({ workspaceId, ownerUserId, status: "active", startedAt: now, lastActivityAt: now, updatedAt: now })
+    .returning();
+  return session;
+}
+
+export async function pauseOnboardingSession(workspaceId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const now = new Date();
+  const [session] = await db
+    .update(onboardingSessions)
+    .set({ status: "paused", pausedAt: now, lastActivityAt: now, updatedAt: now })
+    .where(eq(onboardingSessions.workspaceId, workspaceId))
+    .returning();
+  return session;
+}
+
+async function touchOnboardingSession(workspaceId: number, nextStep: string | null, completed: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  const now = new Date();
+  await db
+    .update(onboardingSessions)
+    .set({
+      status: completed ? "completed" : "active",
+      currentStep: nextStep ?? "review",
+      lastActivityAt: now,
+      completedAt: completed ? now : null,
+      updatedAt: now,
+    })
+    .where(eq(onboardingSessions.workspaceId, workspaceId));
+}
+
 function buildBusinessPrompt(profile: OnboardingProfile, version: number) {
   return `Você atende clientes da empresa ${profile.businessName || "da empresa configurada"}, do segmento ${profile.segment}. Este é o prompt operacional publicado v${version}.\n\nDescrição do negócio:\n${profile.description || "Não informada."}\n\nServiços, duração e preços:\n${profile.services || "Consultar a equipe antes de prometer preço ou prazo."}\n\nÁrea de atendimento:\n${profile.serviceArea || "Não informada."}\n\nHorários:\n${profile.businessHours || "Consultar disponibilidade real na agenda."}\n\nTom de voz:\n${profile.toneOfVoice || emptyOnboardingProfile.toneOfVoice}\n\nPalavras e condutas proibidas:\n${profile.forbiddenWords || "Não inventar informações, preços, horários ou confirmações."}\n\nPerguntas frequentes e respostas aprovadas:\n${profile.faq || "Não cadastradas."}\n\nPolítica de cancelamento, reagendamento e sinal:\n${profile.cancellationPolicy || "Escalar para atendimento humano quando não houver regra publicada."}\n\nSempre transferir para humano quando:\n${profile.humanHandoffRules || "o cliente pedir humano, houver reclamação, risco, dúvida fora do cadastro ou negociação especial."}\n\nCritérios de qualificação e follow-up:\n${profile.qualificationRules || "Identificar serviço, localização, urgência e próximo passo."}`;
 }
@@ -2162,6 +2225,11 @@ export async function saveOnboardingProfile(
       .join(", ");
     throw new Error(`ONBOARDING_INCOMPLETE:${missing}`);
   }
+  await touchOnboardingSession(
+    workspaceId,
+    nextChecklist.nextStep?.id ?? null,
+    nextChecklist.nextStep === null
+  );
   const nextVersion = current.version + 1;
   await upsertWorkspaceSetting(
     workspace.id,

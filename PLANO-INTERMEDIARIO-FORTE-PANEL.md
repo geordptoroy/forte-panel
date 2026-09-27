@@ -471,3 +471,11 @@ O próximo passo deve escolher entre modelar `onboardingSessions`/respostas por 
 O onboarding agora possui `onboarding.autosave`, disparado 1,2 segundo após a última alteração, sem publicar e sem criar auditoria a cada tecla. A tela exibe o estado do rascunho e `onboarding.profile` retoma o último conteúdo salvo ao reabrir.
 
 O item ainda pendente é “fazer depois”/retomada por sessões e blocos explícitos; depois disso pode ser modelada a primeira `onboardingSession` antes de adicionar áudio e LLM.
+
+
+---
+## Etapa seguinte — sessão persistente do onboarding — 2026-09-27
+
+A migration `0028_onboarding_sessions` adiciona uma sessão por workspace com estados `active`, `paused` e `completed`, cursor de etapa e timestamps. A UI inicia/retoma automaticamente, oferece **Fazer depois** e marca a sessão concluída quando o checklist inteiro é publicado. O autosave atualiza o cursor sem publicar.
+
+As respostas ainda vivem no perfil estruturado atual. O próximo passo é adicionar cartão de retomada no dashboard ou `onboardingStepAnswers`; áudio e LLM ficam depois dessa decisão de modelo.

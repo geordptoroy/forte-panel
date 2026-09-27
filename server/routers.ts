@@ -42,6 +42,7 @@ import {
   getAuditLogForContact,
   getDashboardSnapshot,
   getWorkspaceUsageSnapshot,
+  getOnboardingSession,
   getOnboardingProfile,
   getNativeAgentConfig,
   getNativeAgentRuntimeConfig,
@@ -67,7 +68,9 @@ import {
   PUBLIC_TERMS_VERSION,
   resetPasswordWithToken,
   sendManualMessage,
+  pauseOnboardingSession,
   saveOnboardingProfile,
+  startOnboardingSession,
   setContactAi,
   upsertApiContact,
   upsertUser,
@@ -1112,6 +1115,29 @@ export const appRouter = router({
   }),
 
   onboarding: router({
+    session: requireOnboardingEditor.query(({ ctx }) =>
+      getOnboardingSession(ctx.workspace.workspaceId)
+    ),
+    start: requireOnboardingEditor.mutation(async ({ ctx }) => {
+      const session = await startOnboardingSession(ctx.workspace.workspaceId, ctx.user.id);
+      await logWorkspaceAction({
+        workspaceId: ctx.workspace.workspaceId,
+        actorUserId: ctx.user.id,
+        action: "onboarding_started",
+        summary: "Sessão de onboarding iniciada ou retomada",
+      });
+      return session;
+    }),
+    defer: requireOnboardingEditor.mutation(async ({ ctx }) => {
+      const session = await pauseOnboardingSession(ctx.workspace.workspaceId);
+      await logWorkspaceAction({
+        workspaceId: ctx.workspace.workspaceId,
+        actorUserId: ctx.user.id,
+        action: "onboarding_deferred",
+        summary: "Onboarding pausado pelo operador",
+      });
+      return session;
+    }),
     profile: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingProfile(ctx.workspace.workspaceId)
     ),
