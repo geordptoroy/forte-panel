@@ -619,3 +619,10 @@ a { color: inherit; text-decoration: none; }
 .wizard-qr { width: min(100%, 260px); aspect-ratio: 1; image-rendering: pixelated; background: #fff; }
 .pairing-code { padding: 13px 18px; color: #f0f0f0; border: 1px solid rgba(86,214,138,.3); background: rgba(86,214,138,.08); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 28px; font-weight: 900; letter-spacing: .18em; }
 @media (max-width: 520px) { .connection-wizard { padding: 23px 17px; } .connection-mode-switch { grid-template-columns: 1fr; } }
+
+.core-instance-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; margin-top: 18px; }
+.core-instance-form > .btn-primary, .core-instance-form > .btn-secondary { min-height: 42px; white-space: nowrap; }
+@media (max-width: 520px) {
+  .core-instance-form { grid-template-columns: minmax(0, 1fr); }
+  .core-instance-form > .btn-primary, .core-instance-form > .btn-secondary { width: 100%; }
+}

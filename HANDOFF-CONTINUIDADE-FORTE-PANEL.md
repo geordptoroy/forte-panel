@@ -2,10 +2,12 @@
 
 **Data do handoff:** 2026-09-27 (America/Sao_Paulo)
 **Repositório:** `geordptoroy/forte-panel`
-**Branch:** `main`
+**Branch histórica deste handoff:** `main` (não usar como indicação da branch de trabalho atual)
 **HEAD de referência desta revisão:** commit desta atualização; consulte `git log -1` para o hash publicado mais recente.
 **Remote:** `https://github.com/geordptoroy/forte-panel.git`
 **Usuário precisa poder entregar esta conversa a outra IA sem repetir contexto.**
+
+> **Precedência atualizada em 2026-09-27:** este arquivo preserva histórico e pode conter prioridades antigas de PAPI Cloud/singleton. Para a etapa ativa, ler primeiro `PROJECT_DOCUMENTATION_INDEX.md`, `todo.md` e `WHATSAPP-CONNECTION-FLOW-2026-09-27.md`. O foco atual é CRUD multi-instância Baileys + consumo; API REST empresarial fechada por padrão; Docker/WSL/Windows Terminal PowerShell no desenvolvimento do usuário; OCI é futura. Não apagar volumes, migrar produção ou iniciar etapas de IA/admin antes da revisão desta etapa.
 
 ---
 

@@ -1,51 +1,174 @@
-# Fluxo de Conexão WhatsApp — Baileys
+# Core do Forte Panel — instâncias Baileys
 
-## Decisão de produto
+**Documento canônico desta etapa · 27/09/2026**
+**Estado:** CRUD implementado em branch de trabalho; aguarda revisão do usuário e validação no Docker local do usuário.
+**Fonte de verdade para esta fatia:** este documento, `todo.md` e `PROJECT_DOCUMENTATION_INDEX.md`.
 
-A conexão do WhatsApp passa a ser a **primeira etapa operacional do workspace**. Nenhum teste de recebimento, resposta automática, agendamento ou processamento deve ser interpretado como válido antes de uma sessão Baileys conectada e identificada.
+---
 
-## Ordem oficial do MVP
+## 1. Direção do produto registrada
 
-1. Criar conta e entrar no workspace.
-2. Abrir **Conectar WhatsApp**.
-3. Conferir a configuração operacional da instância:
-   - código/instance ID;
-   - nome amigável;
-   - gateway/base URL;
-   - autenticação da API mascarada;
-   - webhook configurado;
-   - sessão persistente e criptografia;
-   - estado atual e número conectado.
-4. Gerar ou atualizar o QR Code.
-5. Ler o QR pelo WhatsApp em **Dispositivos conectados**.
-6. Confirmar o estado `connected` e o número conectado.
-7. Somente depois validar, nesta ordem:
-   - recebimento inbound;
-   - persistência na Inbox;
-   - processamento do worker;
-   - execução do agente;
-   - fila outbound;
-   - envio pelo Baileys;
-   - agenda e automações.
+O desenvolvimento passa a avançar **uma página/função principal por vez**. O primeiro core depois do login é **Instâncias WhatsApp**, com somente:
 
-## Estado atual auditado
+1. criar uma instância Baileys;
+2. editar o nome da instância;
+3. conectar, parear, desconectar e encerrar uma sessão;
+4. excluir uma instância, com confirmação e sem apagar o histórico de mensagens do workspace;
+5. consultar consumo do workspace.
 
-O gateway Baileys já possui QR, reconexão, sessão persistente, outbox de webhook, envio e endpoints protegidos. Porém:
+Enquanto essa etapa estiver em revisão, a aplicação mantém as outras páginas e o backend no repositório, mas as rotas não-core ficam temporariamente redirecionadas para a conexão. Isso é um congelamento de produto reversível, **não substitui autorização no servidor**.
 
-- o `instanceId` ainda é definido por variável de ambiente do gateway;
-- a tela atual mistura conexão com consumo e proteções em `Integrações`;
-- não existe uma página operacional dedicada para o primeiro passo;
-- o Panel exibe o código da instância, mas não apresenta uma ficha clara de configuração;
-- conexão e pipeline de mensagens ainda precisam ser validados separadamente.
+### Sequência solicitada para as próximas fatias
 
-## Limites de segurança
+| Ordem | Core | Estado |
+|---:|---|---|
+| 1 | CRUD e conexão de instâncias Baileys; consumo visível na mesma página | Implementado neste branch; aguarda revisão e teste Docker local |
+| 2 | Console administrativo de providers/modelos, URLs, credenciais e roteamento por capacidade | Planejado; ainda não começar antes da revisão da etapa 1 |
+| 3 | Enviar e receber mensagens pelos tipos necessários, com roteamento por instância e tratamento correto de mídia | Próximo depois da etapa 2; precisa de testes end-to-end com número de teste |
+| 4 | Resposta automática do agente WhatsApp, inicialmente com prompt fictício claramente marcado e modo de simulação antes do envio real | Depois de transporte/mídia aprovados |
 
-- API keys e segredos nunca aparecem em texto claro.
-- O QR só é servido para usuário autenticado e autorizado.
-- A conexão/desconexão exige perfil gerencial.
-- O backend continua sendo a fonte de verdade; esconder o botão no frontend não é autorização.
-- A configuração exibida no Panel representa o ambiente efetivamente em execução. Alterações de segredo ainda exigem atualização controlada do ambiente e restart do gateway.
+A ordem pode ser corrigida pelo usuário depois de revisar este documento. Não habilitar resposta automática nem envio externo apenas porque a conexão Baileys ficou pronta.
 
-## Próxima implementação
+---
 
-Primeiro separar a rota e a navegação de conexão. Depois adicionar a ficha operacional mascarada da instância. Só após validar essa etapa será iniciado o fluxo de inbound/outbound.
+## 2. Resultado da auditoria documental e decisões de escopo
+
+- O projeto foi concebido por um período para conectar workflows externos, mas **não foi encontrado n8n ativo nem consumidor n8n no código**.
+- O contrato REST empresarial existe para compatibilidade/testes de staging, mas fica **desativado por padrão** (`FORTE_PUBLIC_API_ENABLED=false`). Permanecem probes de saúde e o callback interno autenticado/assinado do Baileys. Não é uma API pública para clientes/workflows.
+- O gateway Baileys é a integração WhatsApp ativa nesta fase. O código de Meta e integrações antigas continua isolado como compatibilidade; não deve aparecer na experiência do primeiro core nem ser configurado por padrão.
+- Não apagar tabelas, sessões, volumes Docker ou históricos como parte de uma limpeza documental. A exclusão de uma instância é uma operação funcional específica, com aviso e confirmação na UI.
+- `docs/BAILEYS-INTEGRATION.md` e `forte-whatsapp/README.md` continuam referências técnicas de operação. Este documento substitui a antiga descrição singleton do fluxo do primeiro acesso.
+- O inventário dos documentos de auditoria não indicou outros arquivos com conteúdo comprovadamente descartável sem perder decisões, evidências de segurança ou histórico. A consolidação não é autorização para apagar documentos especialistas que serão usados nas fases de IA/admin.
+
+### Ambiente permanente de desenvolvimento
+
+O usuário desenvolve e executa a aplicação localmente em **Docker dentro do WSL**, operando pelo **Windows Terminal/PowerShell**. A implantação em **Oracle Cloud Infrastructure (OCI)** é futura e não faz parte desta fatia. O sandbox deste agente não compartilha o Docker/volumes do usuário; portanto, não declarar teste local Docker realizado quando não foi possível acessá-lo.
+
+As fatias concluídas devem ser registradas no repositório com commit e push na branch de trabalho/PR. Não fazer merge em `main`, reset destrutivo ou limpeza de volumes sem pedido específico.
+
+---
+
+## 3. Arquitetura do CRUD de instâncias
+
+### Registro de negócio
+
+A tabela PostgreSQL existente `whatsappInstances` é reutilizada; não foi criado um segundo cadastro paralelo. Cada registro Baileys contém `workspaceId`, `channelId`, `instanceId`, `name`, `active`, `isDefault` e estado operacional. As migrations adicionadas são:
+
+- `drizzle-pg/0038_baileys_global_instance_ids.sql`: impede colisão global de IDs Baileys, necessária porque o gateway mantém várias sessões no mesmo processo;
+- `drizzle-pg/0039_baileys_workspace_default_unique.sql`: garante no máximo uma instância Baileys ativa marcada como padrão por workspace.
+
+Novos IDs são estáveis e gerados no backend. O navegador não escolhe caminho de diretório, chave de gateway, chave de webhook nem workspace de destino.
+
+### Gateway e sessão física
+
+`forte-whatsapp` mantém um `InstanceRegistry` com um `InstanceManager` por `instanceId`. As sessões ficam em diretórios separados abaixo de `WHATSAPP_SESSION_DIR`; o registry persiste `.instance.json` com nome e política de autostart junto dos arquivos da sessão.
+
+- Criar: cria o registro físico inativo e o registro de negócio; a conexão só começa quando o usuário aciona **Conectar e gerar QR**.
+- Editar: renomeia o registro no Panel e os metadados do gateway, mantendo o mesmo ID e a mesma sessão autenticada.
+- Desconectar temporariamente: encerra o socket e preserva credenciais/sessão; não inicia automaticamente após restart quando o usuário optou por desconectar.
+- Encerrar sessão: faz logout do WhatsApp e exige novo pareamento.
+- Excluir: a UI mostra confirmação; o gateway tenta encerrar a sessão e remove o diretório físico; o cadastro de negócio fica arquivado/inativo e o histórico do CRM não é apagado. Eventos atrasados de uma instância arquivada são negados.
+- Restart do serviço: instâncias novas conectadas retomam de acordo com metadado `autoStart`; sessões antigas sem metadado são descobertas como legadas e podem retomar. Uma instância `default` removida não é recriada automaticamente.
+
+A sessão continua protegida pelos locks de diretório e pela criptografia de credenciais configurada no serviço. A chave de criptografia e os secrets de gateway/webhook pertencem ao ambiente de serviço; **não são chaves por cliente e não são enviados ao navegador**.
+
+### Compatibilidade com uma instalação antiga
+
+Quando `FORTE_API_WORKSPACE_ID` identifica o workspace e o ID legado (`BAILEYS_INSTANCE_ID`, normalmente `default`) realmente existe no gateway, a primeira listagem pode criar um vínculo Baileys idempotente para essa sessão no workspace correto. Sem sessão física existente, o sistema não inventa nem recria a instância default. Instâncias novas são criadas pelo CRUD.
+
+### Isolamento de workspace
+
+As procedures tRPC usam o workspace autenticado e permissão de gerente/owner/admin para mutações. Antes de uma ação de status/QR/conexão/rename/delete, o backend confirma que o ID pertence ao workspace ativo. O callback Baileys resolve `instanceId` no cadastro global: sessão ativa entrega ao workspace proprietário; sessão arquivada/inativa falha; só a instância legacy não registrada pode usar o vínculo explícito de deployment. Envio outbound Baileys sem `instanceId` falha fechado em vez de cair numa sessão global padrão.
+
+---
+
+## 4. O que está na interface
+
+- Flag central: `client/src/core-mode.ts`, `CORE_ONLY_MODE = true`, rota principal `/whatsapp-connection`.
+- `App.tsx` encaminha rotas não-core para essa rota; login, recuperação e aceite de convite continuam disponíveis.
+- `PanelLayout.tsx` mostra somente o item **Etapa 1 · WhatsApp** no menu responsivo e não consulta dados da Inbox em segundo plano neste modo.
+- A página chama-se **Instâncias WhatsApp** e mostra a lista do workspace, formulário de criação, nome/ID, status, QR, pareamento por telefone, controles de sessão e exclusão confirmada.
+- O card **Consumo do workspace** permanece abaixo das instâncias, consultando a cota atual e a janela de renovação.
+- Demais páginas e módulos não foram deletados: permanecem no código e backend para que possam ser reabertos em uma etapa revisada. A flag não é barreira de segurança.
+
+### Procedures tRPC principais
+
+- consultas: `workspace.baileysInstances`, `workspace.baileysStatus`, `workspace.baileysQr`;
+- mutações: `workspace.createBaileysInstance`, `workspace.renameBaileysInstance`, `workspace.deleteBaileysInstance`, `workspace.connectBaileys`, `workspace.requestBaileysPairingCode`, `workspace.disconnectBaileys`.
+
+Exclusão exige confirmação explícita no cliente e `confirmDeletion: true` no input. Segredos internos continuam mascarados e nenhuma chave de serviço é retornada.
+
+### Endpoints internos do gateway
+
+Todos, exceto probes de saúde internos, exigem `Authorization: Bearer <WHATSAPP_API_KEY>`:
+
+- `GET /api/instances` — lista;
+- `POST /api/instances` — cria;
+- `GET /api/instances/{instanceId}` — estado;
+- `PATCH /api/instances/{instanceId}` — rename;
+- `DELETE /api/instances/{instanceId}` — remove sessão física;
+- `GET /api/instances/{instanceId}/qr`;
+- `POST /api/instances/{instanceId}/connect`;
+- `POST /api/instances/{instanceId}/pairing-code`;
+- `POST /api/instances/{instanceId}/disconnect` e `/logout`.
+
+Essas rotas são serviço-a-serviço dentro da rede Docker, não a REST empresarial desativada.
+
+---
+
+## 5. IA: papéis separados para as próximas fases
+
+**Modelo** é o serviço/família que executa inferência. **Agente** é uma função de produto que combina instruções, contexto, ferramentas e regras de decisão; um agente pode invocar modelos diferentes conforme a operação. Não chamar todo modelo de agente.
+
+| Papel | O que faz | Planejamento |
+|---|---|---|
+| STT/transcrição | Converte áudio em texto | Chamar só em entrada de áudio/transcrição; resultado segue ao roteador da resposta |
+| Visão | Interpreta imagem e, se suportado, frames de vídeo | Chamar só quando a mensagem contém imagem/vídeo compatível |
+| Modelo de resposta | Redige resposta ao cliente | É invocado pelo agente de atendimento com prompt aprovado do workspace |
+| Agente de atendimento WhatsApp | Orquestra tipo de entrada, contexto da conversa, prompt do usuário, tools e política de envio | Não é a credencial/provedor; precisa de modo simulado, logs e aprovação antes de envio automático |
+| Configurador/onboarding | Ajuda owner/admin a organizar dados, rascunhos e configuração do workspace | Deve propor alterações como draft; não pode publicar sem ação autorizada |
+| Ajuda da plataforma | Responde como usar o Forte Panel, apoiado por documentação completa e versionada | Não está validado como suporte contextual completo; `AIChatBox` sozinho não prova que o agente conheça o produto |
+| Copiloto do Console Admin | Ajuda a operar providers, modelos e diagnósticos | É separado do agente que atende o WhatsApp e do suporte ao workspace |
+
+A orquestração por modalidade deve ser explícita: texto → agente/resposta; áudio → STT → agente/resposta; imagem → visão → agente/resposta; vídeo/documento → extrator/modalidade suportada → agente/resposta. Não enviar uma imagem para modelo exclusivo de áudio nem presumir que um único modelo atende todas as capacidades.
+
+O Console Administrativo futuro deve seguir o layout responsivo do workspace (sidebar móvel, header e páginas), mas separar **Providers e credenciais**, **Modelos**, **Capacidades/rotas**, **Agentes e prompts**, **uso/custo**, teste de conexão e auditoria. URLs/chaves ficam no servidor, criptografadas em repouso, mascaradas em respostas e acessíveis apenas a administradores da plataforma. O usuário do workspace seleciona prompt e preferências autorizadas, não recebe chave do provider.
+
+A auditoria mais detalhada de capabilities, credenciais existentes e lacunas continua em `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`, `CONFIGURACAO-MULTIMODEL-AGENTE.md` e `CORE-PIPELINE-AUDIT-2026-09-27.md`; esses documentos são referências das próximas fases, não motivo para abrir mais telas agora.
+
+---
+
+## 6. O que não está incluído nesta etapa
+
+- Console Admin de providers/modelos/chaves;
+- agente de configuração de plataforma ou chat de ajuda do produto;
+- prompt de produção, resposta automática e envio sem operador;
+- testes reais de mensagem para texto, áudio, imagem, vídeo ou documentos;
+- ativação do n8n, API empresarial, Meta Cloud API ou outros provedores de WhatsApp;
+- exclusão das demais páginas, tabelas PAPI legadas, funcionalidades de agenda/CRM ou volumes de dados;
+- deploy/alteração de produção ou migração para OCI.
+
+Uma etapa posterior pode remover código comprovadamente morto após busca de referências, testes e revisão de impacto. Até lá, páginas fora do core ficam desativadas pela flag, e componentes com outros usos permanecem. Nenhum volume, sessão não selecionada ou dado do workspace deve ser apagado como “limpeza”.
+
+---
+
+## 7. Validação e limite deste ambiente
+
+Executar antes de integrar o próximo core:
+
+- `pnpm check` — checagem TypeScript do app/backend;
+- `pnpm exec tsc --noEmit -p forte-whatsapp/tsconfig.json` — checagem do gateway;
+- `pnpm test` — suíte monorepo, incluindo testes do gateway;
+- `pnpm build` — build de produção;
+- `DATABASE_URL=<URL de teste> pnpm exec drizzle-kit check` — consistência de journal/snapshots;
+- `git diff --check` — whitespace.
+
+As migrations 0038/0039 foram geradas e os snapshots passaram por `drizzle-kit check`. **O sandbox não possui Docker nem PostgreSQL disponível:** nenhuma migration foi aplicada a um banco do usuário nesta tarefa. A execução real de migration/Compose, QR com número de teste e validação visual no WSL Docker permanecem como gate explícito da etapa 1.
+
+Última validação neste sandbox: `pnpm test` — 137 passaram, 41 ficaram skipped por dependências de ambiente/DB; `pnpm check`, TypeScript do gateway, `pnpm build`, `drizzle-kit check` e `git diff --check` passaram. O build mantém um aviso preexistente de bundle JS > 500 KB. As migrations foram revisadas manualmente para conter **somente** os dois índices Baileys novos — sem tipos, tabelas ou indexes históricos duplicados.
+
+---
+
+## 8. Próxima decisão do usuário
+
+Revisar este fluxo e a UI de **Instâncias WhatsApp**. Depois, indicar correções de ordem/escopo ou aprovar a próxima fatia. Não iniciar configuração de modelos nem automação de respostas antes desse retorno.

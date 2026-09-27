@@ -1624,43 +1624,212 @@ export async function ensureBaileysChannel(workspaceId: number) {
   return created[0];
 }
 
-export async function updateBaileysChannelName(workspaceId: number, name: string) {
+export type BaileysInstanceSummary = {
+  id: number;
+  workspaceId: number;
+  channelId: number | null;
+  instanceId: string;
+  name: string;
+  status: string;
+  active: boolean;
+  isDefault: boolean;
+  lastSeenAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function summarizeBaileysInstance(
+  instance: typeof whatsappInstances.$inferSelect
+): BaileysInstanceSummary {
+  return {
+    id: instance.id,
+    workspaceId: instance.workspaceId,
+    channelId: instance.channelId,
+    instanceId: instance.instanceId,
+    name: instance.name,
+    status: instance.status,
+    active: instance.active === 1,
+    isDefault: instance.isDefault === 1,
+    lastSeenAt: instance.lastSeenAt,
+    createdAt: instance.createdAt,
+    updatedAt: instance.updatedAt,
+  };
+}
+
+export async function listBaileysInstances(workspaceId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const rows = await db
+    .select()
+    .from(whatsappInstances)
+    .where(
+      and(
+        eq(whatsappInstances.workspaceId, workspaceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
+      )
+    )
+    .orderBy(asc(whatsappInstances.id));
+  return rows.map(summarizeBaileysInstance);
+}
+
+export async function getBaileysInstance(
+  workspaceId: number,
+  instanceId: string,
+  includeInactive = false
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const conditions = [
+    eq(whatsappInstances.workspaceId, workspaceId),
+    eq(whatsappInstances.instanceId, instanceId),
+    eq(whatsappInstances.provider, "baileys"),
+  ];
+  if (!includeInactive) conditions.push(eq(whatsappInstances.active, 1));
+  const rows = await db
+    .select()
+    .from(whatsappInstances)
+    .where(and(...conditions))
+    .limit(1);
+  return rows[0] ? summarizeBaileysInstance(rows[0]) : undefined;
+}
+
+export async function createBaileysInstance(
+  workspaceId: number,
+  channelId: number,
+  instanceId: string,
+  name: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const workspace = await getActiveWorkspaceById(workspaceId);
+  if (!workspace) throw new Error("Workspace inativo ou não encontrado");
+  const normalized = name.trim();
+  if (normalized.length < 2 || normalized.length > 120)
+    throw new Error("O nome da instância deve ter entre 2 e 120 caracteres");
+  return db.transaction(async tx => {
+    const active = await tx
+      .select({ id: whatsappInstances.id })
+      .from(whatsappInstances)
+      .where(
+        and(
+          eq(whatsappInstances.workspaceId, workspaceId),
+          eq(whatsappInstances.provider, "baileys"),
+          eq(whatsappInstances.active, 1)
+        )
+      )
+      .limit(1);
+    const rows = await tx
+      .insert(whatsappInstances)
+      .values({
+        workspaceId,
+        channelId,
+        provider: "baileys",
+        deployment: "self_hosted",
+        instanceId,
+        name: normalized,
+        status: "idle",
+        active: 1,
+        isDefault: active.length === 0 ? 1 : 0,
+      })
+      .returning();
+    if (!rows[0]) throw new Error("Não foi possível salvar a instância Baileys");
+    return summarizeBaileysInstance(rows[0]);
+  });
+}
+
+export async function updateBaileysInstanceName(
+  workspaceId: number,
+  instanceId: string,
+  name: string
+) {
   const db = await getDb();
   if (!db) throw new Error("Banco indisponível");
   const normalized = name.trim();
   if (normalized.length < 2 || normalized.length > 120)
     throw new Error("O nome da instância deve ter entre 2 e 120 caracteres");
-  const existing = await db
-    .select({ id: whatsappChannels.id })
-    .from(whatsappChannels)
+  const rows = await db
+    .update(whatsappInstances)
+    .set({ name: normalized, updatedAt: new Date() })
     .where(
       and(
-        eq(whatsappChannels.workspaceId, workspaceId),
-        eq(whatsappChannels.provider, "baileys")
-      )
-    )
-    .limit(1);
-  if (!existing[0]) {
-    await db.insert(whatsappChannels).values({
-      workspaceId,
-      provider: "baileys",
-      name: normalized,
-      credentialsRef: "BAILEYS_API_KEY",
-      active: 1,
-    });
-  }
-  const updated = await db
-    .update(whatsappChannels)
-    .set({ name: normalized })
-    .where(
-      and(
-        eq(whatsappChannels.workspaceId, workspaceId),
-        eq(whatsappChannels.provider, "baileys")
+        eq(whatsappInstances.workspaceId, workspaceId),
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
       )
     )
     .returning();
-  if (!updated[0]) throw new Error("Canal Baileys não encontrado neste workspace");
-  return updated[0];
+  return rows[0] ? summarizeBaileysInstance(rows[0]) : undefined;
+}
+
+export async function archiveBaileysInstance(
+  workspaceId: number,
+  instanceId: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .update(whatsappInstances)
+      .set({ active: 0, isDefault: 0, status: "deleted", updatedAt: new Date() })
+      .where(
+        and(
+          eq(whatsappInstances.workspaceId, workspaceId),
+          eq(whatsappInstances.instanceId, instanceId),
+          eq(whatsappInstances.provider, "baileys"),
+          eq(whatsappInstances.active, 1)
+        )
+      )
+      .returning();
+    const archived = rows[0];
+    if (!archived) return undefined;
+    if (archived.isDefault === 1) {
+      const next = await tx
+        .select({ id: whatsappInstances.id })
+        .from(whatsappInstances)
+        .where(
+          and(
+            eq(whatsappInstances.workspaceId, workspaceId),
+            eq(whatsappInstances.provider, "baileys"),
+            eq(whatsappInstances.active, 1)
+          )
+        )
+        .orderBy(asc(whatsappInstances.id))
+        .limit(1);
+      if (next[0])
+        await tx
+          .update(whatsappInstances)
+          .set({ isDefault: 1, updatedAt: new Date() })
+          .where(eq(whatsappInstances.id, next[0].id));
+    }
+    return summarizeBaileysInstance(archived);
+  });
+}
+
+export async function findBaileysInstanceOwner(instanceId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const rows = await db
+    .select({
+      workspaceId: whatsappInstances.workspaceId,
+      active: whatsappInstances.active,
+    })
+    .from(whatsappInstances)
+    .where(
+      and(
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys")
+      )
+    )
+    .limit(1);
+  const instance = rows[0];
+  if (!instance) return undefined;
+  const workspace = await getActiveWorkspaceById(instance.workspaceId);
+  return {
+    workspaceId: instance.workspaceId,
+    active: instance.active === 1 && Boolean(workspace),
+  };
 }
 
 export type PapiInstanceSummary = {

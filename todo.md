@@ -1,17 +1,21 @@
 # Forte Panel — acompanhamento do produto público
 
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
-**Fase de código atual:** consolidar Baileys nativo, multimídia, interface operacional e validação em staging. A migração inicial do canal já foi executada; o foco agora é hardening, E2E e produto.
+**Fase de código atual:** etapa 1 do core — CRUD de instâncias Baileys e consumo na única página ativa. Implementação pronta para revisão; migração e QR real ainda aguardam o Docker local do usuário.
 **Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
 
 ## Direção registrada — 2026-09-27: core antes do restante
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
-- [ ] Próxima fatia de código: implementar modo reversível `CORE_ONLY_MODE` e página **Conexão da instância e consumo** como experiência principal pós-login.
-- [ ] Enquanto o modo core estiver ativo, ocultar/bloquear temporariamente as demais telas por flag central; preservar dados, código, tRPC interno, workers e callback Baileys, com rollback. A REST empresarial segue opt-in e fechada por padrão. Não desativar fluxos funcionais em contas existentes sem validação separada.
-- [ ] Validar conexão da instância e consumo (unidades e janela) antes de reabrir inbound/outbound e IA.
-- [ ] Depois do core, seguir a ordem documentada: transporte de texto → router/provider/model registry → agente WhatsApp → mídia → configurador de onboarding → Ajuda do Produto → copiloto/admin → módulos workspace, uma fatia por vez.
-- [ ] Redesenhar o Console Administrativo com o sistema visual do workspace e áreas separadas de providers/modelos, rotas/capacidades, agentes, workspaces, suporte, conhecimento e auditoria.
+- [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.
+- [x] Criar lifecycle Baileys multi-instância por ID estável, persistência por sessão, gateway Bearer e procedimentos tRPC tenant-scoped; rejeitar envio sem `instanceId`.
+- [x] Desativar visualmente as rotas não-core por flag central sem apagar páginas/dados/backend; preservar login, recuperação e convites.
+- [ ] Validar migration 0038/0039, build Compose, conexão QR com linha de teste e consumo no Docker local WSL do usuário. O sandbox atual não tem Docker/PostgreSQL.
+- [ ] Depois da revisão do usuário, configurar no Console Admin providers/modelos, URLs, credenciais e rotas/capacidades; chaves no backend, criptografadas e mascaradas.
+- [ ] Depois, validar transporte de entrada/saída dos tipos de mensagem necessários com roteamento por instância e modalidade.
+- [ ] Só depois, conectar o agente de resposta WhatsApp e começar com prompt fictício, teste simulado e aprovação antes de qualquer envio automático.
+- [ ] Manter separadas Ajuda da Plataforma, configurador de onboarding e copiloto do Console Admin; não tratá-los como o mesmo agente.
+- [ ] Redesenhar o Console Administrativo com o sistema visual responsivo do workspace: sidebar móvel, header e páginas para providers/modelos, capacidades/rotas, agentes, suporte e auditoria.
 - [ ] Corrigir antes de uso amplo do admin: precedência/herança global-local, contrato/normalização de endpoint, testes reais por modalidade, proveniência de configuração e rotação da chave de criptografia.
 - [ ] Separar métricas de rate-limit (janela por minuto) de tokens, custo de provider e eventual faturamento comercial.
 - [x] Desativar por padrão os endpoints REST empresariais (`FORTE_PUBLIC_API_ENABLED=false`), sem rota n8n ativa nem consumidor no frontend; manter somente health/readiness e callback interno autenticado do Baileys. O E2E manual exige opt-in explícito no servidor de staging.
@@ -33,9 +37,9 @@
 
 - Cada conta **master** cria e administra uma empresa/workspace.
 - Cada empresa terá logins individuais de funcionários, com nome, identificador e senha inicial segura, e papéis/permissões.
-- A conexão/número WhatsApp é uma entidade separada do login e do workspace; primeira versão pública: alvo de uma conexão por workspace.
+- Instâncias/números WhatsApp são entidades independentes dentro do workspace, cada uma com ID e sessão Baileys próprios; não usar ID default global para envio.
 - O usuário final não deverá configurar secrets nem editar Compose.
-- Baileys nativo é o caminho operacional local atual no serviço `forte-whatsapp`; Meta Cloud API permanece alternativa oficial. Rotas e tipos PAPI legados continuam apenas para compatibilidade de dados antigos e não devem ser tratados como dependência do Compose oficial.
+- Baileys nativo é o único caminho ativo no core atual. O adapter Meta e os tipos PAPI legados continuam apenas como código/compatibilidade e não são configurados pelo Compose oficial nem exibidos nesta primeira etapa.
 
 ## Próximos passos — ordem recomendada
 
@@ -219,7 +223,7 @@ Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
 ## Execução P1.1 — 2026-09-27
 
 - [x] Aba comum reorganizada para Conexão WhatsApp, sem seleção de múltiplos provedores na experiência do usuário.
-- [x] Regra de uma instância por workspace explicitada na interface.
+- [x] Regra antiga de uma instância por workspace explicitada na interface — **superada em 2026-09-27** pelo CRUD multi-instância solicitado; não reintroduzir singleton.
 - [x] QR com timestamp, expiração em 60 segundos, estado stale, retry e foco/rolagem mobile.
 - [x] Gateway com `reconnect()` para renovar QR sem ignorar o clique quando já há uma sessão.
 - [x] Desconexão manual não dispara reconexão automática indevida.
@@ -249,7 +253,8 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Paginar `listInboxContacts` e as listas do console/funil.
 - [ ] Validar estágios do funil no backend com lista canônica única.
 - [ ] Distinguir workspace suspenso de membership ausente na mensagem de erro.
-- [ ] Remover fallback de workspace demo em `resetWorkspaceDevelopmentData` e aposentar o módulo legado `whatsappChannels`.
+- [ ] Remover fallback de workspace demo em `resetWorkspaceDevelopmentData`.
+- [x] Não aposentar `whatsappChannels` nesta etapa: o registro Baileys usa a linha como vínculo/canal; reavaliar somente quando todos os consumers tiverem migração comprovada.
 - [ ] Inverter `DEMO_MODE` para fail-closed.
 - [ ] Remover branding fixo de cliente único (título, Dashboard, sidebar e seeds).
 - [ ] Alinhar o rótulo da sidebar "Canais conectados" com a tela "Conexão WhatsApp".

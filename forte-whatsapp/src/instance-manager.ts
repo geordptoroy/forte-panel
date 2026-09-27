@@ -28,6 +28,7 @@ export type InstanceStatus =
   | "error";
 export type InstanceSnapshot = {
   instanceId: string;
+  instanceName: string;
   status: InstanceStatus;
   phone?: string;
   qr?: string;
@@ -41,23 +42,38 @@ const logger = pino({ level: process.env.LOG_LEVEL ?? "info" });
 
 export class InstanceManager {
   private socket?: WASocket;
-  private snapshot: InstanceSnapshot = {
-    instanceId: config.instanceId,
-    status: "idle",
-    updatedAt: new Date().toISOString(),
-  };
+  private snapshot: InstanceSnapshot;
   private starting = false;
   private sessionLock?: SessionLock;
   private suppressReconnectUntil = 0;
-  private readonly webhookOutbox = new WebhookOutbox({
-    directory: config.webhookOutboxDir,
-    url: config.webhookUrl,
-    secret: config.webhookSecret,
-    maxAttempts: config.webhookMaxAttempts,
-    initialBackoffMs: config.webhookInitialBackoffMs,
-    maxBackoffMs: config.webhookMaxBackoffMs,
-    logger,
-  });
+  private readonly webhookOutbox: WebhookOutbox;
+
+  constructor(
+    private readonly instanceId = config.instanceId,
+    private instanceName =
+      instanceId === config.instanceId
+        ? config.instanceName
+        : `WhatsApp · ${instanceId}`
+  ) {
+    this.snapshot = {
+      instanceId,
+      instanceName,
+      status: "idle",
+      updatedAt: new Date().toISOString(),
+    };
+    this.webhookOutbox = new WebhookOutbox({
+      directory:
+        instanceId === config.instanceId
+          ? config.webhookOutboxDir
+          : path.join(config.webhookOutboxDir, instanceId),
+      url: config.webhookUrl,
+      secret: config.webhookSecret,
+      maxAttempts: config.webhookMaxAttempts,
+      initialBackoffMs: config.webhookInitialBackoffMs,
+      maxBackoffMs: config.webhookMaxBackoffMs,
+      logger,
+    });
+  }
 
   getStatus(): InstanceSnapshot {
     const outbox = this.webhookOutbox.getStatus();
@@ -68,13 +84,18 @@ export class InstanceManager {
     };
   }
 
+  setName(name: string) {
+    this.instanceName = name;
+    this.set({ instanceName: name });
+  }
+
   async start(): Promise<void> {
     if (this.starting || this.snapshot.status === "connected") return;
     this.starting = true;
     this.set({ status: "connecting", qr: undefined, lastError: undefined });
     try {
       await this.webhookOutbox.start();
-      const sessionPath = path.join(config.sessionDir, config.instanceId);
+      const sessionPath = path.join(config.sessionDir, this.instanceId);
       await fs.mkdir(sessionPath, { recursive: true });
       this.sessionLock ??= await acquireSessionLock(sessionPath);
       const { state, saveCreds } = config.sessionEncryptionKey
@@ -85,7 +106,7 @@ export class InstanceManager {
         version,
         auth: state,
         browser: Browsers.ubuntu("Forte Panel"),
-        logger: logger.child({ instanceId: config.instanceId }),
+        logger: logger.child({ instanceId: this.instanceId }),
         printQRInTerminal: false,
         markOnlineOnConnect: false,
       });
@@ -123,6 +144,26 @@ export class InstanceManager {
     this.set({ status: logout ? "logged_out" : "disconnected", qr: undefined });
     await this.webhookOutbox.stop();
     await this.releaseSessionLock();
+  }
+
+  async deleteSession(): Promise<void> {
+    this.suppressReconnectUntil = Date.now() + 5_000;
+    const socket = this.socket;
+    this.socket = undefined;
+    if (socket) {
+      try {
+        await socket.logout();
+      } catch {
+        socket.end(undefined);
+      }
+    }
+    this.set({ status: "logged_out", qr: undefined });
+    await this.webhookOutbox.stop();
+    await this.releaseSessionLock();
+    await fs.rm(path.join(config.sessionDir, this.instanceId), {
+      recursive: true,
+      force: true,
+    });
   }
 
   async reconnect(): Promise<void> {
@@ -331,7 +372,7 @@ export class InstanceManager {
       );
       await this.webhookOutbox.enqueue({
         eventId: message.key.id ?? crypto.randomUUID(),
-        instanceId: config.instanceId,
+        instanceId: this.instanceId,
         phone: message.key.remoteJid.replace(/@s\.whatsapp\.net$/, ""),
         name: message.pushName,
         content,
@@ -358,7 +399,7 @@ export class InstanceManager {
       if (!call.from || call.chatId?.endsWith("@g.us")) continue;
       await this.webhookOutbox.enqueue({
         eventId: `call-${call.id}-${call.status}`,
-        instanceId: config.instanceId,
+        instanceId: this.instanceId,
         phone: call.from.replace(/@s\.whatsapp\.net$/, ""),
         content: `[ligação ${call.isVideo ? "de vídeo" : "de áudio"}: ${call.status}]`,
         messageType: "text",

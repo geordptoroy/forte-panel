@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch, Redirect, useLocation } from "wouter";
 import { trpc } from "./lib/trpc";
+import { CORE_ONLY_MODE, CORE_ROUTE } from "./core-mode";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
@@ -29,19 +30,20 @@ import SignupPage from "./pages/SignupPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import InviteAcceptPage from "./pages/InviteAcceptPage";
-import {
-  PlatformAdminHome,
-  PlatformAuditPage,
-  PlatformGlobalAiPage,
-  PlatformSupportPage,
-  PlatformWorkspacePage,
-} from "./pages/PlatformAdminPage";
+import { PlatformAdminHome, PlatformAuditPage, PlatformGlobalAiPage, PlatformSupportPage, PlatformWorkspacePage } from "./pages/PlatformAdminPage";
 
 function Router() {
+  const [location] = useLocation();
+  if (
+    CORE_ONLY_MODE &&
+    location !== CORE_ROUTE &&
+    !location.startsWith("/invite/")
+  )
+    return <Redirect to={CORE_ROUTE} />;
   return (
     <Switch>
       <Route path="/">
-        <Redirect to="/dashboard" />
+        <Redirect to={CORE_ONLY_MODE ? CORE_ROUTE : "/dashboard"} />
       </Route>
       <Route path="/dashboard" component={DashboardPage} />
       <Route path="/whatsapp-connection">

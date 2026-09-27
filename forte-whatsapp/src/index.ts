@@ -1,10 +1,29 @@
 import { config } from "./config.js";
-import { InstanceManager } from "./instance-manager.js";
+import { InstanceRegistry } from "./instance-registry.js";
 import { createServer } from "./server.js";
 
-const manager = new InstanceManager();
-const server = createServer(manager);
-server.listen(config.port, "0.0.0.0", () => console.log(`[forte-whatsapp] listening on ${config.port}`));
-void manager.start().catch((error) => console.error("[forte-whatsapp] initial connection failed", error));
+async function main() {
+  const registry = new InstanceRegistry();
+  await registry.initialize();
+  const server = createServer(registry);
+  server.listen(config.port, "0.0.0.0", () =>
+    console.log(`[forte-whatsapp] listening on ${config.port}`)
+  );
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, async () => { await manager.stop(); server.close(); process.exit(0); });
+  let shuttingDown = false;
+  for (const signal of ["SIGINT", "SIGTERM"] as const)
+    process.on(signal, () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      void (async () => {
+        await registry.stopAll();
+        server.close(() => process.exit(0));
+        setTimeout(() => process.exit(1), 10_000).unref();
+      })();
+    });
+}
+
+void main().catch(error => {
+  console.error("[forte-whatsapp] startup failed", error);
+  process.exitCode = 1;
+});

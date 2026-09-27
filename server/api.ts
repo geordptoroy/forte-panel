@@ -20,6 +20,7 @@ import {
   leadMemoryOperation,
   listMessagesForContact,
   listWhatsappChannels,
+  findBaileysInstanceOwner,
   markWebhookEvent,
   moveContactStage,
   queueOutboundMessage,
@@ -1190,8 +1191,6 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
 });
 
 async function handleBaileysWebhook(req: Request, res: Response) {
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
   const configuredSecret = process.env.BAILEYS_WEBHOOK_SECRET?.trim() ?? "";
   const providedSecret = req.header("X-Webhook-Secret") ?? "";
   const secretAccepted = Boolean(
@@ -1203,16 +1202,48 @@ async function handleBaileysWebhook(req: Request, res: Response) {
         Buffer.from(providedSecret)
       )
   );
-  if (
-    !secretAccepted &&
-    !hasValidWebhookSignature(req) &&
-    !requireApiKey(req, res)
-  )
+  if (!secretAccepted && !hasValidWebhookSignature(req) && !requireApiKey(req, res))
     return;
   let eventId = "baileys-unknown-event";
+  let workspaceId: number | undefined;
   try {
     const normalized = getWhatsappAdapter("baileys").normalizeInbound(req.body);
     eventId = normalized.eventId;
+    const instanceId =
+      typeof normalized.metadata?.instanceId === "string"
+        ? normalized.metadata.instanceId
+        : typeof req.body?.instanceId === "string"
+          ? req.body.instanceId
+          : undefined;
+    const instanceOwner = instanceId
+      ? await findBaileysInstanceOwner(instanceId)
+      : undefined;
+    if (instanceOwner && !instanceOwner.active)
+      return fail(
+        res,
+        404,
+        "Instância Baileys inativa ou pertencente a um workspace inativo",
+        "inactive_baileys_instance"
+      );
+    if (instanceOwner?.active) workspaceId = instanceOwner.workspaceId;
+    const legacyInstanceId = process.env.BAILEYS_INSTANCE_ID?.trim() || "default";
+    if (
+      !instanceOwner &&
+      !workspaceId &&
+      (!instanceId || instanceId === legacyInstanceId)
+    ) {
+      workspaceId = await requireApiWorkspaceId(res);
+      if (!workspaceId) return;
+    }
+    if (!workspaceId)
+      return fail(
+        res,
+        instanceId ? 404 : 503,
+        instanceId
+          ? "Instância Baileys não registrada ou inativa"
+          : "O evento não identifica uma instância Baileys",
+        instanceId ? "unknown_baileys_instance" : "instance_id_required"
+      );
     if (normalized.metadata?.isGroup === true)
       return res.status(202).json({
         accepted: true,
@@ -1244,7 +1275,11 @@ async function handleBaileysWebhook(req: Request, res: Response) {
       return res.status(200).json({ accepted: true, duplicate: true, eventId });
     const result = await ingestInboundWhatsApp(workspaceId, {
       ...normalized,
-      metadata: { ...(normalized.metadata ?? {}), provider: "baileys" },
+      metadata: {
+        ...(normalized.metadata ?? {}),
+        provider: "baileys",
+        ...(instanceId ? { instanceId } : {}),
+      },
     });
     await markWebhookEvent(workspaceId, eventId, "processed");
     return res.status(202).json({
@@ -1259,7 +1294,7 @@ async function handleBaileysWebhook(req: Request, res: Response) {
       eventId,
       error: error instanceof Error ? error.message : String(error),
     });
-    await markWebhookEvent(workspaceId, eventId, "failed");
+    if (workspaceId) await markWebhookEvent(workspaceId, eventId, "failed");
     return fail(
       res,
       500,
