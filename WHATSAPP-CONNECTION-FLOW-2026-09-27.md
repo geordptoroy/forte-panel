@@ -1,7 +1,7 @@
 # Core do Forte Panel — instâncias Baileys
 
 **Documento canônico desta etapa · 27/09/2026**
-**Estado:** CRUD implementado em branch de trabalho; aguarda revisão do usuário e validação no Docker local do usuário.
+**Estado:** CRUD implementado; CI de integração PostgreSQL 16 aprovada no commit `b09fe05`; aguarda revisão do usuário e validação no Docker local do usuário.
 **Fonte de verdade para esta fatia:** este documento, `todo.md` e `PROJECT_DOCUMENTATION_INDEX.md`.
 
 ---
@@ -163,9 +163,9 @@ Executar antes de integrar o próximo core:
 - `DATABASE_URL=<URL de teste> pnpm exec drizzle-kit check` — consistência de journal/snapshots;
 - `git diff --check` — whitespace.
 
-As migrations 0038/0039 foram geradas e os snapshots passaram por `drizzle-kit check`. **O sandbox não possui Docker nem PostgreSQL disponível:** nenhuma migration foi aplicada a um banco do usuário nesta tarefa. A execução real de migration/Compose, QR com número de teste e validação visual no WSL Docker permanecem como gate explícito da etapa 1.
+As migrations 0038/0039 foram aplicadas com sucesso no PostgreSQL 16 pelo workflow de integração do GitHub e a suíte completa passou sem testes ignorados nesse ambiente. **O sandbox não possui o Docker/PostgreSQL local do usuário:** nenhuma migration foi aplicada a um banco/volume do usuário nesta tarefa. A execução real no Compose, QR com número de teste e validação visual no WSL Docker permanecem como gate explícito da etapa 1.
 
-Última validação neste sandbox: `pnpm test` — 137 passaram, 41 ficaram skipped por dependências de ambiente/DB; `pnpm check`, TypeScript do gateway, `pnpm build`, `drizzle-kit check` e `git diff --check` passaram. O build mantém um aviso preexistente de bundle JS > 500 KB. As migrations foram revisadas manualmente para conter **somente** os dois índices Baileys novos — sem tipos, tabelas ou indexes históricos duplicados.
+Última validação local: `pnpm test` — 137 passaram, 41 ficaram skipped por dependências de ambiente/DB; `pnpm check`, TypeScript do gateway, `pnpm build`, `drizzle-kit check` e `git diff --check` passaram. Os 22 testes isolados do gateway passaram com `npm ci`, `npm run check` e `npm test`. A CI `PostgreSQL integration` também passou no commit `b09fe05`. O build mantém um aviso preexistente de bundle JS > 500 KB. As migrations foram revisadas manualmente para conter **somente** os dois índices Baileys novos — sem tipos, tabelas ou indexes históricos duplicados.
 
 ---
 
