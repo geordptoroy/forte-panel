@@ -83,6 +83,7 @@ Migrations relevantes:
 0016_workspace_usage_buckets.sql
 0017_tenant_scoped_deduplication.sql
 0018_workspace_user_usage_buckets.sql
+0023_interactive_message_types.sql
 ```
 
 Depois da aplicação, verificar que as três tabelas/constraints existem e executar dois workspaces com usuários diferentes.
@@ -110,7 +111,7 @@ Depois da aplicação, verificar que as três tabelas/constraints existem e exec
 ## 7. Riscos ainda abertos
 
 1. A validação PostgreSQL local passou, mas deve ser repetida no staging real.
-2. O console interno `platform_admin` e a configuração versionada do agente ainda precisam ser implementados antes dos convites.
+2. O console interno `platform_admin` e a configuração versionada do agente estão implementados; falta repetir as mutações e sessões de suporte no staging real antes dos convites.
 3. A cota individual atual é derivada da cota do plano, não de uma tabela de planos comercial.
 4. Ainda não há alerta externo por e-mail/WhatsApp; neste momento o alerta é in-app.
 5. A API REST usa chave da aplicação; se clientes externos receberem acesso individual no futuro, criar tokens por workspace com rotação e revogação.
