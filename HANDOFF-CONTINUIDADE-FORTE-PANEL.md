@@ -1614,3 +1614,17 @@ journal JSON ✅
 ```
 
 Próximo corte: mostrar no dashboard o cartão de retomada ou modelar respostas por bloco; não adicionar áudio/LLM antes de escolher o formato das respostas.
+
+
+---
+## Atualização do handoff — 2026-09-27 13:13 — cartão de retomada no dashboard
+
+O dashboard agora consulta a sessão de onboarding somente para perfis administrativos (`canManageTeam` ou suporte de plataforma).
+
+- Sessões `active` e `paused` aparecem em um cartão **Retome de onde parou**.
+- O cartão mostra o status e o título do `currentStep`.
+- O CTA leva diretamente para `/onboarding`, onde o rascunho é carregado e a sessão é retomada.
+- Sessões `completed` não ocupam espaço no dashboard.
+- Atendentes e profissionais não recebem a query protegida nem veem o cartão.
+
+Validação do slice: `pnpm check`, `pnpm test` (98 aprovados, 35 ignorados) e `git diff --check` passaram.

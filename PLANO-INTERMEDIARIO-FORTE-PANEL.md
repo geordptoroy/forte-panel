@@ -479,3 +479,11 @@ O item ainda pendente é “fazer depois”/retomada por sessões e blocos expl�
 A migration `0028_onboarding_sessions` adiciona uma sessão por workspace com estados `active`, `paused` e `completed`, cursor de etapa e timestamps. A UI inicia/retoma automaticamente, oferece **Fazer depois** e marca a sessão concluída quando o checklist inteiro é publicado. O autosave atualiza o cursor sem publicar.
 
 As respostas ainda vivem no perfil estruturado atual. O próximo passo é adicionar cartão de retomada no dashboard ou `onboardingStepAnswers`; áudio e LLM ficam depois dessa decisão de modelo.
+
+
+---
+## Etapa seguinte — cartão de retomada no dashboard — 2026-09-27
+
+Sessões administrativas `active` ou `paused` agora aparecem no dashboard com o próximo `currentStep` e CTA direto para `/onboarding`. Sessões concluídas ficam ocultas e perfis sem `canManageTeam` não executam a query protegida.
+
+Próxima decisão: modelar respostas por bloco (`onboardingStepAnswers`) ou adicionar lembrete/retomada mais rica; áudio e LLM continuam depois da modelagem do dado estruturado.
