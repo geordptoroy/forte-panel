@@ -45,8 +45,14 @@ export function useAuth(options?: UseAuthOptions) {
       try {
         sessionStorage.removeItem("manus-cookie");
       } catch {}
+      try {
+        localStorage.removeItem("manus-runtime-user-info");
+      } catch {}
       utils.auth.me.setData(undefined, null);
-      await utils.auth.me.invalidate();
+      void utils.auth.me.invalidate();
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        window.location.replace("/login");
+      }
     }
   }, [logoutMutation, utils]);
 
