@@ -52,19 +52,19 @@ const capabilityLabels: Record<
   { title: string; description: string }
 > = {
   text: {
-    title: "Atendimento e respostas",
+    title: "API de texto",
     description: "Conversa, ferramentas, agenda e respostas de texto.",
   },
   vision: {
-    title: "Entender imagens",
+    title: "API de imagem",
     description: "Fotos, comprovantes e imagens do WhatsApp.",
   },
   audio: {
-    title: "Entender áudios",
+    title: "API de áudio",
     description: "Mensagens de voz recebidas.",
   },
   document: {
-    title: "Ler documentos",
+    title: "API de documento",
     description: "PDFs e arquivos recebidos.",
   },
 };
@@ -107,8 +107,8 @@ export default function AiConfigPage() {
   return (
     <PanelLayout
       eyebrow="Sistema / Inteligência artificial"
-      title="Modelos e credenciais"
-      description="Escolha o provedor, informe a credencial e defina o modelo de cada operação."
+      title="APIs por operação"
+      description="Configure separadamente a API de texto, imagem, áudio e documento."
     >
       <section className="surface ai-config-hero">
         <div className="ai-config-hero-icon">
@@ -118,7 +118,7 @@ export default function AiConfigPage() {
           <strong>Configuração multimodelo</strong>
           <p>
             Cada operação tem sua própria conexão. Informe somente a URL, a API
-            key e o modelo disponibilizado pelo seu provedor.
+            key e o modelo disponibilizado pela API escolhida.
           </p>
         </div>
         <div className="ai-config-status">
@@ -135,7 +135,7 @@ export default function AiConfigPage() {
           <Info size={14} />
           <span>
             A chave é compartilhada por todas as operações que usam o mesmo
-            provedor. Ela aparece em cada card de propósito e fica criptografada
+            serviço. Ela aparece em cada card de propósito e fica criptografada
             no workspace.
           </span>
         </div>
@@ -179,7 +179,7 @@ export default function AiConfigPage() {
                             baseUrl: event.target.value,
                           })
                         }
-                        placeholder="https://seu-provedor.com/v1"
+                        placeholder="https://api.exemplo.com/v1"
                       />
                     </label>
                     <label className="form-field">
@@ -227,7 +227,7 @@ export default function AiConfigPage() {
           <Info size={14} />
           <span>
             <strong>Sem modelo fixo:</strong> use qualquer endpoint compatível e
-            informe o ID que sua conta disponibiliza em cada operação.
+            informe o modelo que sua conta disponibiliza em cada API.
           </span>
         </div>
         <div className="ai-config-actions">

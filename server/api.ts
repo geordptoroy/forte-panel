@@ -57,6 +57,7 @@ const webhookSchema = z.object({
   metadata: z
     .object({
       instanceId: z.string().max(160).optional(),
+      mediaData: z.string().max(50_000_000).optional(),
       mediaUrl: z.string().max(4000).optional(),
       mediaMimeType: z.string().max(180).optional(),
       fileName: z.string().max(255).optional(),

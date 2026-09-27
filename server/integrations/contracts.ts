@@ -29,7 +29,21 @@ export type OutboundMessageCommand = {
   idempotencyKey: string;
   phone: string;
   content: string;
-  messageType?: "text" | "image" | "audio" | "video" | "document" | "button";
+  messageType?:
+    | "text"
+    | "image"
+    | "audio"
+    | "video"
+    | "document"
+    | "sticker"
+    | "location"
+    | "contact"
+    | "poll"
+    | "list"
+    | "button"
+    | "album"
+    | "react"
+    | "event";
   metadata?: Record<string, unknown>;
   instanceId?: string;
   /** Internal backend-only credential; never serialize to the client. */

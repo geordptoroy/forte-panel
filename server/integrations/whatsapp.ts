@@ -130,6 +130,18 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
       ...(fromMe ? { fromMe: true } : {}),
       ...(isGroup ? { isGroup: true } : {}),
       ...(jid ? { jid } : {}),
+      ...(typeof data?.metadata?.mediaData === "string"
+        ? { mediaData: data.metadata.mediaData }
+        : {}),
+      ...(typeof data?.metadata?.mediaMimeType === "string"
+        ? { mediaMimeType: data.metadata.mediaMimeType }
+        : {}),
+      ...(typeof data?.metadata?.fileName === "string"
+        ? { fileName: data.metadata.fileName }
+        : {}),
+      ...(typeof data?.metadata?.fileLength === "number"
+        ? { fileLength: data.metadata.fileLength }
+        : {}),
       rawType,
       messageId,
     },
@@ -399,12 +411,17 @@ export function createBaileysAdapter(): BaileysAdapter {
             "Idempotency-Key": command.idempotencyKey,
           },
           body: JSON.stringify({
-            phone: typeof command.metadata?.jid === "string"
-              ? command.metadata.jid
-              : normalizePhone(command.phone),
+            phone:
+              typeof command.metadata?.jid === "string"
+                ? command.metadata.jid
+                : normalizePhone(command.phone),
             messageType: command.messageType ?? "text",
             content: command.content,
             metadata: command.metadata ?? {},
+            ...(command.metadata?.payload &&
+            typeof command.metadata.payload === "object"
+              ? { payload: command.metadata.payload }
+              : {}),
           }),
         }
       );

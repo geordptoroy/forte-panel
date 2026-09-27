@@ -1327,13 +1327,11 @@ export async function setDefaultWhatsappProvider(
       .set({ value: provider, updatedAt: new Date() })
       .where(eq(workspaceSettings.id, existing[0].id));
   } else {
-    await db
-      .insert(workspaceSettings)
-      .values({
-        workspaceId: workspace.id,
-        key: "default_whatsapp_provider",
-        value: provider,
-      });
+    await db.insert(workspaceSettings).values({
+      workspaceId: workspace.id,
+      key: "default_whatsapp_provider",
+      value: provider,
+    });
   }
   return provider;
 }
@@ -2520,14 +2518,12 @@ export async function ensureDemoAgenda(workspaceId: number) {
     .from(professionals)
     .where(eq(professionals.workspaceId, workspaceId));
   if (workspaceProfessionals.length === 0) {
-    await db
-      .insert(professionals)
-      .values({
-        workspaceId: workspaceId,
-        name: "Gabriel Barbosa",
-        specialty: "Atendimento principal",
-        color: "#56d68a",
-      });
+    await db.insert(professionals).values({
+      workspaceId: workspaceId,
+      name: "Gabriel Barbosa",
+      specialty: "Atendimento principal",
+      color: "#56d68a",
+    });
     workspaceProfessionals = await db
       .select()
       .from(professionals)
@@ -2540,15 +2536,13 @@ export async function ensureDemoAgenda(workspaceId: number) {
     .limit(1);
   if (existingAvailability.length === 0 && workspaceProfessionals[0]) {
     for (const weekday of [1, 2, 3, 4, 5, 6]) {
-      await db
-        .insert(availability)
-        .values({
-          workspaceId: workspaceId,
-          professionalId: workspaceProfessionals[0].id,
-          weekday,
-          startMinute: 9 * 60,
-          endMinute: 18 * 60,
-        });
+      await db.insert(availability).values({
+        workspaceId: workspaceId,
+        professionalId: workspaceProfessionals[0].id,
+        weekday,
+        startMinute: 9 * 60,
+        endMinute: 18 * 60,
+      });
     }
   }
   const existingLinks = await db
@@ -2559,14 +2553,12 @@ export async function ensureDemoAgenda(workspaceId: number) {
   if (existingLinks.length === 0) {
     for (const professional of workspaceProfessionals) {
       for (const service of workspaceServices) {
-        await db
-          .insert(professionalServices)
-          .values({
-            workspaceId: workspaceId,
-            professionalId: professional.id,
-            serviceId: service.id,
-            active: 1,
-          });
+        await db.insert(professionalServices).values({
+          workspaceId: workspaceId,
+          professionalId: professional.id,
+          serviceId: service.id,
+          active: 1,
+        });
       }
     }
   }
@@ -3084,17 +3076,15 @@ export async function setContactAi(
       .set({ humanControlled: enabled ? 0 : 1, updatedAt: new Date() })
       .where(eq(conversations.id, conversation.id));
   }
-  await db
-    .insert(auditLogs)
-    .values({
-      workspaceId,
-      actorUserId,
-      contactId,
-      action: enabled ? "ai_enabled" : "ai_paused",
-      summary: enabled
-        ? "IA reativada pelo operador"
-        : "IA pausada pelo operador",
-    });
+  await db.insert(auditLogs).values({
+    workspaceId,
+    actorUserId,
+    contactId,
+    action: enabled ? "ai_enabled" : "ai_paused",
+    summary: enabled
+      ? "IA reativada pelo operador"
+      : "IA pausada pelo operador",
+  });
 }
 
 export async function sendManualMessage(
@@ -3138,19 +3128,17 @@ export async function sendManualMessage(
     ...(inboundJid ? { jid: inboundJid } : {}),
     ...(manualInstanceId ? { instanceId: manualInstanceId } : {}),
   };
-  await db
-    .insert(messages)
-    .values({
-      conversationId: conversation.id,
-      direction: "outbound",
-      senderType: "human",
-      messageType: "text",
-      content,
-      metadata: Object.keys(metadata).length ? metadata : undefined,
-      status: "queued",
-      provider,
-      createdAt,
-    });
+  await db.insert(messages).values({
+    conversationId: conversation.id,
+    direction: "outbound",
+    senderType: "human",
+    messageType: "text",
+    content,
+    metadata: Object.keys(metadata).length ? metadata : undefined,
+    status: "queued",
+    provider,
+    createdAt,
+  });
   await db
     .update(contacts)
     .set({
@@ -3170,15 +3158,13 @@ export async function sendManualMessage(
       updatedAt: createdAt,
     })
     .where(eq(conversations.id, conversation.id));
-  await db
-    .insert(auditLogs)
-    .values({
-      workspaceId,
-      actorUserId,
-      contactId,
-      action: "manual_message_queued",
-      summary: `Mensagem manual enfileirada para ${provider}`,
-    });
+  await db.insert(auditLogs).values({
+    workspaceId,
+    actorUserId,
+    contactId,
+    action: "manual_message_queued",
+    summary: `Mensagem manual enfileirada para ${provider}`,
+  });
   const result = await db
     .select()
     .from(messages)
@@ -3208,15 +3194,13 @@ export async function moveContactStage(
     .where(
       and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
     );
-  await db
-    .insert(auditLogs)
-    .values({
-      workspaceId,
-      actorUserId,
-      contactId,
-      action: "stage_changed",
-      summary: `Lead movido para ${stage}`,
-    });
+  await db.insert(auditLogs).values({
+    workspaceId,
+    actorUserId,
+    contactId,
+    action: "stage_changed",
+    summary: `Lead movido para ${stage}`,
+  });
   const contact = await getContactById(workspaceId, contactId);
   if (contact?.workspaceId) {
     await enqueueDomainEvent({
@@ -3278,15 +3262,13 @@ export async function addContactNote(
       authorType: "human",
     })
     .returning();
-  await db
-    .insert(auditLogs)
-    .values({
-      workspaceId,
-      actorUserId,
-      contactId,
-      action: "note_created",
-      summary: "Nota interna adicionada à ficha",
-    });
+  await db.insert(auditLogs).values({
+    workspaceId,
+    actorUserId,
+    contactId,
+    action: "note_created",
+    summary: "Nota interna adicionada à ficha",
+  });
   return created[0];
 }
 
@@ -3486,15 +3468,13 @@ export async function createQuote(
     .update(contacts)
     .set({ quoteCents: input.quotedCents, updatedAt: now })
     .where(eq(contacts.id, input.contactId));
-  await db
-    .insert(auditLogs)
-    .values({
-      workspaceId: workspace.id,
-      actorUserId,
-      contactId: input.contactId,
-      action: "quote_created",
-      summary: `Orçamento criado: ${input.serviceName}`,
-    });
+  await db.insert(auditLogs).values({
+    workspaceId: workspace.id,
+    actorUserId,
+    contactId: input.contactId,
+    action: "quote_created",
+    summary: `Orçamento criado: ${input.serviceName}`,
+  });
   return inserted[0];
 }
 
@@ -3525,15 +3505,13 @@ export async function updateQuotePayment(
     .set({ receivedCents, status, updatedAt: new Date() })
     .where(eq(quotes.id, id))
     .returning();
-  await db
-    .insert(auditLogs)
-    .values({
-      workspaceId: workspace.id,
-      actorUserId,
-      contactId: existing[0].contactId,
-      action: "quote_updated",
-      summary: `Recebimento do orçamento atualizado para ${receivedCents} centavos`,
-    });
+  await db.insert(auditLogs).values({
+    workspaceId: workspace.id,
+    actorUserId,
+    contactId: existing[0].contactId,
+    action: "quote_updated",
+    summary: `Recebimento do orçamento atualizado para ${receivedCents} centavos`,
+  });
   return updated[0];
 }
 
@@ -4021,6 +3999,7 @@ export async function ingestInboundWhatsApp(
         phone: contact.externalPhone,
         content: input.content,
         messageType: input.messageType ?? "text",
+        metadata: input.metadata,
         receivedAt,
         ...(typeof input.metadata?.instanceId === "string"
           ? { instanceId: input.metadata.instanceId }
@@ -4269,14 +4248,12 @@ export async function queueOutboundMessage(
       updatedAt: createdAt,
     })
     .where(eq(conversations.id, conversation.id));
-  await db
-    .insert(auditLogs)
-    .values({
-      workspaceId,
-      contactId,
-      action: "api_message_queued",
-      summary: `${senderType === "ai" ? "Mensagem da IA" : "Mensagem humana"} enfileirada para o worker de WhatsApp`,
-    });
+  await db.insert(auditLogs).values({
+    workspaceId,
+    contactId,
+    action: "api_message_queued",
+    summary: `${senderType === "ai" ? "Mensagem da IA" : "Mensagem humana"} enfileirada para o worker de WhatsApp`,
+  });
   return created[0];
 }
 
@@ -4362,14 +4339,12 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
           lastError: null,
         })
         .where(eq(messages.id, item.message.id));
-      await db
-        .insert(auditLogs)
-        .values({
-          workspaceId: item.workspaceId!,
-          contactId: item.contactId,
-          action: "message_sent",
-          summary: `Mensagem enviada pelo provedor ${item.message.provider}`,
-        });
+      await db.insert(auditLogs).values({
+        workspaceId: item.workspaceId!,
+        contactId: item.contactId,
+        action: "message_sent",
+        summary: `Mensagem enviada pelo provedor ${item.message.provider}`,
+      });
       sent += 1;
       if (item.workspaceId) {
         try {
@@ -4502,14 +4477,12 @@ export async function updateAgendaStatus(
     )
     .returning();
   if (appointment.contactId)
-    await db
-      .insert(auditLogs)
-      .values({
-        workspaceId,
-        contactId: appointment.contactId,
-        action: `appointment_${status}`,
-        summary: `Agendamento ${appointmentId} atualizado para ${status}`,
-      });
+    await db.insert(auditLogs).values({
+      workspaceId,
+      contactId: appointment.contactId,
+      action: `appointment_${status}`,
+      summary: `Agendamento ${appointmentId} atualizado para ${status}`,
+    });
   return updated[0];
 }
 
@@ -4714,22 +4687,18 @@ export async function leadMemoryOperation(
   if (!contact) return { exists: false, noteCreated: false, lead: null };
   const note = input.note?.trim();
   if (!note) throw new Error("Note is required");
-  await db
-    .insert(contactNotes)
-    .values({
-      workspaceId: workspace.id,
-      contactId: contact.id,
-      content: note,
-      authorType: "ai",
-    });
-  await db
-    .insert(auditLogs)
-    .values({
-      workspaceId,
-      contactId: contact.id,
-      action: "lead_note_created",
-      summary: note.slice(0, 500),
-    });
+  await db.insert(contactNotes).values({
+    workspaceId: workspace.id,
+    contactId: contact.id,
+    content: note,
+    authorType: "ai",
+  });
+  await db.insert(auditLogs).values({
+    workspaceId,
+    contactId: contact.id,
+    action: "lead_note_created",
+    summary: note.slice(0, 500),
+  });
   const created = await db
     .select()
     .from(contactNotes)
@@ -5039,6 +5008,10 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
                 : undefined,
             content: String(eventPayload.content ?? ""),
             messageType: String(eventPayload.messageType ?? "text"),
+            metadata:
+              eventPayload.metadata && typeof eventPayload.metadata === "object"
+                ? (eventPayload.metadata as Record<string, unknown>)
+                : undefined,
             messages: Array.isArray(eventPayload.messages)
               ? (eventPayload.messages as Array<{
                   content: string;
