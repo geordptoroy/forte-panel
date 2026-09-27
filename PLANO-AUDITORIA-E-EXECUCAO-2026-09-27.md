@@ -4,6 +4,8 @@
 **Estado:** pré-staging, antes de novos convites beta
 **Escopo:** console da plataforma, operação do workspace, WhatsApp/QR, UX mobile, métricas, catálogo, planos, LGPD e lançamento público.
 
+> Continuação: a auditoria de melhoria contínua de 27/09 acrescentou 26 achados novos e planeja o funil de cadastro com respostas em áudio, além do financeiro completo do cliente, em [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md). Este documento continua sendo a fila P0–P3 em execução; o novo documento é a próxima camada de produto e não substitui os gates daqui.
+
 ## Resumo executivo
 
 A auditoria confirmou que o produto já tem uma base técnica relevante, mas ainda não deve abrir cadastro público nem ampliar o beta. Existem dois grupos de problemas: **falhas de fluxo que precisam ser corrigidas imediatamente** e **blocos de produto que precisam ser modelados antes de serem simulados na interface**.
@@ -129,6 +131,8 @@ Criar página **Assinatura e consumo** com cards de planos, plano atual, consumo
 - nenhum checkout ou pagamento real deve ser ativado sem decisão posterior.
 
 Modelo futuro separado do CRM: `saas_products`, `plan_prices`, `plan_entitlements`, `workspace_subscriptions`, `trials`, `usage_ledger`, `invoices` e eventos idempotentes. O rate limit por minuto não deve ser tratado como faturamento mensal.
+
+O financeiro **do cliente** (orçamento com itens, plano de pagamento, meios de recebimento, ledger, recibo e conciliação) é distinto da cobrança do próprio SaaS e está detalhado em [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md).
 
 ## Prioridade P3 — lançamento público e governança
 
