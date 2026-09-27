@@ -82,6 +82,7 @@
 ### 4. Uma conexão WhatsApp por empresa (Baileys atual)
 - [x] Gateway Baileys próprio, autenticação interna, webhook assinado, QR/pareamento e health básicos.
 - [x] Inbound/outbound de texto, mídia multimodal, JID, idempotência e takeover humano em nível de código.
+- [x] Contrato HTTP do gateway validado sem pareamento: health/readiness, autenticação e envio de texto, imagem, áudio, vídeo e documento.
 - [ ] Validar imagem, áudio, vídeo, documento e tipos interativos em Docker/staging com número de teste.
 - [ ] Store de sessão durável/criptografado, storage privado de mídia e lifecycle de instância por tenant.
 - Preservar adapter para troca reversível de provider e manter opção oficial da Meta documentada.

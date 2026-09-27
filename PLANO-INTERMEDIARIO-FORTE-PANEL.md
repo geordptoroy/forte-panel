@@ -394,3 +394,8 @@ Foi adicionada a suíte `server/worker-heartbeat.test.ts`. Em PostgreSQL real, e
 ## Atualização de execução — 2026-09-26 23:05
 
 Foi criado `scripts/staging-smoke.sh` para validar liveness e readiness após deploy, além do workflow manual `.github/workflows/staging-smoke.yml`. A URL é fornecida por `STAGING_BASE_URL` como variável de repositório ou pelo input manual `base_url`; nenhuma credencial é necessária ou exposta. O script foi validado com `bash -n` e com um servidor HTTP local simulado, confirmando `health=ok` e `ready=ready`.
+
+
+## Atualização de execução — 2026-09-26 23:15
+
+O pacote `forte-whatsapp` recebeu `src/server.test.ts` e `vitest.config.ts` locais. Os oito testes cobrem health/readiness, autenticação e envio de texto, imagem, áudio, vídeo e documento contra um `InstanceManager` simulado, sem pareamento ou número real. O workflow de publicação passou a executar testes, typecheck e build do gateway antes de publicar as imagens. O E2E com número dedicado continua separado e pendente de staging configurado.

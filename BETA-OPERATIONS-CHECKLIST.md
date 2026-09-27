@@ -165,3 +165,10 @@ Também foi criado o workflow manual `Staging smoke check`. Para habilitá-lo, c
 ## 14. Mutações administrativas
 
 A suíte PostgreSQL `server/platform-admin-actions.test.ts` valida o fluxo de pausar/reativar a IA, suspender/reativar workspace e registrar nota interna de suporte com motivo, sessão escopada e auditoria por workspace. Esse gate passa no CI com banco limpo; ainda deve ser repetido no staging real antes dos convites beta.
+
+
+## 15. Gateway WhatsApp e mídia
+
+O pacote `forte-whatsapp` agora possui testes de contrato HTTP em `src/server.test.ts` para health/readiness, autenticação e envio de texto, imagem, áudio, vídeo e documento sem pareamento ou número real. O workflow de publicação executa `npm ci`, `npm test`, `npm run check` e `npm run build` do gateway.
+
+Isso não substitui o teste E2E de staging com número dedicado: o pareamento, recebimento real e envio para um contato controlado continuam bloqueados até existir um ambiente de teste explicitamente configurado.
