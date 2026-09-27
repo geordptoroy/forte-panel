@@ -196,3 +196,10 @@ CONFIRM_RESTORE=YES RESTORE_SESSION_DIR=/tmp/forte-restore scripts/backup-restor
 Para remover data URLs da persistência inbound, configure `FORTE_MEDIA_PRIVATE_STORAGE_ENABLED=true`, `FORTE_MEDIA_MAX_BYTES` e o storage privado do ambiente. O Panel grava a mídia em `workspaces/<workspaceId>/whatsapp/`, mantém somente a referência e resolve URL assinada para o agente. A ativação deve ser feita primeiro em staging.
 
 O REST também aceita tipos estruturados Baileys (`list`, `poll`, `location`, `contact`, `react`, `sticker`, `album`, `event`) com `metadata.payload`; a Meta Cloud API continua limitada a texto neste worker.
+
+
+## 19. Segredos, prompt e reset
+
+O painel operacional comum não exibe nem permite editar API keys, configuração de provedores, prompt do agente ou reset de dados. As rotas `/onboarding`, `/ai-config` e `/ai-prompt` agora usam guard exclusivo de `platformAdmins`, e as procedures correspondentes também rejeitam usuários comuns no backend.
+
+O reset de desenvolvimento foi movido para o detalhe do workspace no console `/platform-admin/workspaces/:id`. Ele exige sessão de suporte `operator`, permissão mutável, confirmação explícita `APAGAR DADOS DO WORKSPACE`, motivo e auditoria. Usuários, memberships e acesso são preservados.

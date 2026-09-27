@@ -672,11 +672,18 @@ function PlatformWorkspaceDetail({ workspaceId }: { workspaceId: number }) {
         ))}
       </div>
       {tab === "summary" && (
-        <SummaryTab
-          item={item}
-          onAgent={() => setTab("agent")}
-          onSupport={() => setTab("support")}
-        />
+        <>
+          <SummaryTab
+            item={item}
+            onAgent={() => setTab("agent")}
+            onSupport={() => setTab("support")}
+          />
+          <ResetWorkspaceCard
+            workspaceId={workspaceId}
+            sessionId={sessionId}
+            canMutate={Boolean(access.data?.canMutate) && item.session.mode === "operator"}
+          />
+        </>
       )}
       {tab === "support" && (
         <SupportTab
@@ -708,6 +715,66 @@ function PlatformWorkspaceDetail({ workspaceId }: { workspaceId: number }) {
       )}
       {tab === "audit" && <AuditTab item={item} />}
     </PlatformShell>
+  );
+}
+
+function ResetWorkspaceCard({
+  workspaceId,
+  sessionId,
+  canMutate,
+}: {
+  workspaceId: number;
+  sessionId: number;
+  canMutate: boolean;
+}) {
+  const [confirmation, setConfirmation] = useState("");
+  const reset = trpc.platform.resetWorkspace.useMutation({
+    onSuccess: () => {
+      setConfirmation("");
+      toast.success("Dados operacionais do workspace apagados");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const phrase = "APAGAR DADOS DO WORKSPACE";
+  return (
+    <section className="platform-card platform-danger-card">
+      <div className="platform-card-title">
+        <div>
+          <span className="eyebrow">Somente sessão operadora</span>
+          <h2>Limpar dados de desenvolvimento</h2>
+        </div>
+        <ShieldAlert size={17} />
+      </div>
+      <p className="platform-muted">
+        Remove mensagens, contatos, agenda, catálogo, canais e configurações
+        operacionais deste workspace. Usuários, membership e acesso permanecem.
+      </p>
+      <code>{phrase}</code>
+      <input
+        className="input-control"
+        value={confirmation}
+        onChange={event => setConfirmation(event.target.value)}
+        placeholder={phrase}
+        disabled={!canMutate || reset.isPending}
+      />
+      <button
+        className="btn-primary"
+        style={{ marginTop: 12, background: "#8f3030" }}
+        disabled={!canMutate || reset.isPending || confirmation !== phrase}
+        onClick={() => {
+          if (!window.confirm("Confirma apagar os dados deste workspace?")) return;
+          reset.mutate({
+            workspaceId,
+            sessionId,
+            confirmation: phrase,
+            reason: "Limpeza de dados de desenvolvimento solicitada pelo suporte",
+          });
+        }}
+      >
+        {reset.isPending ? "Apagando..." : "Apagar dados do workspace"}
+      </button>
+      {!canMutate && <small className="platform-muted">Inicie uma sessão operadora para habilitar esta ação.</small>}
+    </section>
   );
 }
 

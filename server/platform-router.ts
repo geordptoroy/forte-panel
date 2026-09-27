@@ -13,6 +13,7 @@ import {
   listPlatformWorkspaceNotes,
   publishPlatformAgentDraft,
   revokeSupportSession,
+  resetPlatformWorkspace,
   rollbackPlatformAgentVersion,
   savePlatformAgentDraft,
   setPlatformWorkspaceAi,
@@ -296,6 +297,23 @@ export const platformRouter = router({
         platformAdminId: ctx.platformAdmin.id,
         workspaceId: input.workspaceId,
         status: input.status,
+        reason: input.reason,
+      });
+    }),
+
+  resetWorkspace: requirePlatformOperator
+    .input(
+      supportSessionInput.extend({
+        confirmation: z.literal("APAGAR DADOS DO WORKSPACE"),
+        reason: reasonInput,
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const session = await requireSession(input, ctx.platformAdmin.id, true);
+      return resetPlatformWorkspace({
+        platformAdminId: ctx.platformAdmin.id,
+        workspaceId: input.workspaceId,
+        supportSessionId: session.id,
         reason: input.reason,
       });
     }),

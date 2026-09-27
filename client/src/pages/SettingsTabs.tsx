@@ -38,7 +38,6 @@ export function SettingsTabsPage() {
     if (access?.canSeeFullAgenda) list.push({ key: "notifications", label: "Notificações" });
     if (isProfessional) list.splice(1, 0, { key: "availability", label: "Minha disponibilidade" });
     if (access?.canSeeFullAgenda) list.push({ key: "audit", label: "Auditoria" });
-    if (access?.canManageTeam) list.push({ key: "development", label: "Limpeza de desenvolvimento" });
     return list;
   }, [access?.canSeeFullAgenda, isProfessional]);
   const [tab, setTab] = useState("profile");
@@ -58,7 +57,6 @@ export function SettingsTabsPage() {
         {tab === "notifications" && <NotificationsTab />}
         {tab === "availability" && <AvailabilityTab />}
         {tab === "audit" && <AuditTab />}
-        {tab === "development" && <DevelopmentTab />}
       </section>
     </div>
   </PanelLayout>;

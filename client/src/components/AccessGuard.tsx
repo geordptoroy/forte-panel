@@ -35,3 +35,17 @@ export default function AccessGuard({ requirement, children, title }: { requirem
 
   return <>{children}</>;
 }
+
+export function PlatformOnlyGuard({ children, title }: { children: ReactNode; title: string }) {
+  const { data: access, isLoading } = trpc.auth.access.useQuery();
+  if (isLoading)
+    return <PanelLayout eyebrow="Verificando acesso" title={title} description="Confirmando o acesso ao painel administrativo.">
+      <EmptyState icon={ShieldAlert} title="Verificando permissões" description="Aguarde enquanto validamos o acesso de suporte." />
+    </PanelLayout>;
+  if (!access?.platform)
+    return <PanelLayout eyebrow="Acesso restrito" title={title} description="Esta área não pertence ao painel operacional comum.">
+      <EmptyState icon={ShieldAlert} title="Área exclusiva do suporte" description="Chaves, prompt e ações destrutivas só podem ser administrados pelo console de suporte." />
+      <div style={{ marginTop: 15, textAlign: "center" }}><PageLink href="/" className="btn-primary">Voltar ao atendimento</PageLink></div>
+    </PanelLayout>;
+  return <>{children}</>;
+}

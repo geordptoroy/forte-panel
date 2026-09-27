@@ -9,7 +9,6 @@ import {
 import {
   BarChart3,
   Bell,
-  BrainCircuit,
   CalendarDays,
   CheckCheck,
   ClipboardList,
@@ -104,24 +103,6 @@ const managementNav: NavGroup[] = [
         label: "Canais conectados",
         description: "WhatsApp e serviços externos",
         icon: PlugZap,
-      },
-      {
-        href: "/onboarding",
-        label: "Configuração da empresa",
-        description: "Perfil, prompt e regras",
-        icon: BrainCircuit,
-      },
-      {
-        href: "/ai-config",
-        label: "Configuração da IA",
-        description: "Credenciais e modelos",
-        icon: BrainCircuit,
-      },
-      {
-        href: "/ai-prompt",
-        label: "Prompt do agente",
-        description: "Instruções de comportamento",
-        icon: BrainCircuit,
       },
       {
         href: "/team",

@@ -22,6 +22,7 @@ import {
   getActiveWorkspaceById,
   getDb,
   getPlatformNativeAgentConfig,
+  resetWorkspaceDevelopmentData,
   getWorkspaceUsageSnapshot,
   listPapiInstances,
   saveNativeAgentConfig,
@@ -270,6 +271,25 @@ async function recordPlatformAudit(input: {
     })
     .returning();
   return created[0];
+}
+
+export async function resetPlatformWorkspace(input: {
+  platformAdminId: number;
+  workspaceId: number;
+  supportSessionId: number;
+  reason: string;
+}) {
+  const result = await resetWorkspaceDevelopmentData(input.workspaceId);
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    workspaceId: input.workspaceId,
+    supportSessionId: input.supportSessionId,
+    action: "workspace_development_reset",
+    reason: input.reason,
+    summary: "Dados operacionais do workspace apagados pelo console administrativo",
+    after: result,
+  });
+  return result;
 }
 
 function sessionView(session: typeof supportSessions.$inferSelect) {

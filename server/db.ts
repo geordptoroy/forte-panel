@@ -2165,9 +2165,11 @@ export async function cleanupWorkspaceUsageBuckets(
   };
 }
 
-export async function resetWorkspaceDevelopmentData() {
+export async function resetWorkspaceDevelopmentData(workspaceId?: number) {
   const db = await getDb();
-  const workspace = await ensureDemoWorkspace();
+  const workspace = workspaceId
+    ? await getActiveWorkspaceById(workspaceId)
+    : await ensureDemoWorkspace();
   if (!db || !workspace) throw new Error("Workspace unavailable");
   return db.transaction(async tx => {
     await tx

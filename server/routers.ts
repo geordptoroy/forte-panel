@@ -173,6 +173,15 @@ const requireAdministrator = withAccess(
   access => access.canManageTeam,
   "Somente proprietário ou administrador podem executar esta ação"
 );
+const requirePlatformAdministrator = protectedProcedure.use(async ({ ctx, next }) => {
+  const platformAdmin = await getPlatformAdminAccess(ctx.user.id);
+  if (!platformAdmin)
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Somente o painel administrativo de suporte pode executar esta ação",
+    });
+  return next({ ctx: { platformAdmin } });
+});
 const requireActiveMember = withAccess(
   () => true,
   "Seu acesso está desativado neste workspace"
@@ -185,6 +194,7 @@ export const appRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
     access: protectedProcedure.query(async ({ ctx }) => {
       const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
+      const platformAdmin = await getPlatformAdminAccess(ctx.user.id);
       return {
         userId: access.userId,
         workspaceId: access.workspaceId,
@@ -197,6 +207,7 @@ export const appRouter = router({
         canManageCatalog: access.canManageCatalog,
         canSeeFullAgenda: access.canSeeFullAgenda,
         restrictedToOwnAgenda: access.restrictedToOwnAgenda,
+        platform: Boolean(platformAdmin),
       };
     }),
     updateProfile: protectedProcedure
@@ -857,10 +868,10 @@ export const appRouter = router({
   }),
 
   onboarding: router({
-    profile: protectedProcedure.query(({ ctx }) =>
+    profile: requirePlatformAdministrator.query(({ ctx }) =>
       getOnboardingProfile(ctx.workspace.workspaceId)
     ),
-    save: protectedProcedure
+    save: requirePlatformAdministrator
       .input(
         z.object({
           profile: z.object({
@@ -890,7 +901,7 @@ export const appRouter = router({
   }),
 
   agent: router({
-    config: protectedProcedure.query(async ({ ctx }) => {
+    config: requirePlatformAdministrator.query(async ({ ctx }) => {
       const config = await getNativeAgentConfig(ctx.workspace.workspaceId);
       return {
         ...config,
@@ -911,7 +922,7 @@ export const appRouter = router({
         ),
       };
     }),
-    save: requireAdministrator
+    save: requirePlatformAdministrator
       .input(
         z.object({
           enabled: z.boolean(),
@@ -994,7 +1005,7 @@ export const appRouter = router({
         });
         return result;
       }),
-    testConnection: requireAdministrator
+    testConnection: requirePlatformAdministrator
       .input(
         z.object({
           capability: z.enum(["text", "vision", "audio", "document"]),
@@ -1070,7 +1081,7 @@ export const appRouter = router({
           };
         }
       }),
-    models: protectedProcedure.query(async () => {
+    models: requirePlatformAdministrator.query(async () => {
       if (!ENV.forgeApiKey) return { data: [], configured: false };
       try {
         const response = await listLLMModels();
@@ -1082,7 +1093,7 @@ export const appRouter = router({
   }),
 
   development: router({
-    resetWorkspace: requireAdministrator
+    resetWorkspace: requirePlatformAdministrator
       .input(
         z.object({ confirmation: z.literal("APAGAR DADOS DO FORTE PANEL") })
       )
