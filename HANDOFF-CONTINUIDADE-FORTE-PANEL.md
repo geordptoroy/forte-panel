@@ -1303,3 +1303,8 @@ Correção de produto: não mostrar um prompt completo longo como etapa 10 do ca
 ### Roteamento de resposta pela origem da conversa — 2026-09-27
 
 O próximo slice técnico foi concluído: `sendManualMessage` agora lê o provider e os metadados da mensagem inbound mais recente, preserva `instanceId` e JID, e grava `routingSource=inbound_origin`. O `defaultPapiWebhook` só é consultado quando a conversa é legada e não possui origem registrada; nesse caso a mensagem fica marcada como `routingSource=legacy_default`. Metadados enviados pelo operador não podem sobrescrever a rota validada. Foram adicionados testes puros para provider/instância/JID e para o fallback legado.
+
+
+### Normalização de telefone e JID — 2026-09-27
+
+O slice seguinte foi concluído com helpers compartilhados em `server/_core/phone.ts`. Inbound e `upsertApiContact` normalizam a chave antes do lookup/insert, evitando duplicidade entre `+55 (11) 99999-9999`, `55 11 99999-9999` e o JID equivalente. Identidades `@lid` e `@g.us` ficam distintas (`lid:`/`group:`), enquanto o JID normalizado permanece no metadata para roteamento. Os adapters PAPI/Baileys/Meta usam a regra compartilhada e PAPI preserva o JID no destinatário quando disponível. Foram adicionados 4 testes de normalização; a migração/deduplicação de registros históricos deve ser feita em staging.

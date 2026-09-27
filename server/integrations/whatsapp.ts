@@ -10,6 +10,7 @@ import type {
   WhatsappProvider,
 } from "./contracts";
 import { ENV } from "../_core/env";
+import { normalizeContactPhone, normalizeWhatsappJid } from "../_core/phone";
 
 function nowHealth(
   name: "papi" | "baileys" | "meta_cloud_api",
@@ -21,7 +22,19 @@ function nowHealth(
 }
 
 function normalizePhone(phone: string) {
-  return phone.replace(/[^0-9]/g, "");
+  return normalizeContactPhone(phone);
+}
+
+function outboundRecipient(phone: string, metadata?: Record<string, unknown>) {
+  const jid =
+    typeof metadata?.jid === "string"
+      ? normalizeWhatsappJid(metadata.jid)
+      : undefined;
+  return jid ?? normalizePhone(phone);
+}
+
+function normalizeInboundPhone(phone: string) {
+  return normalizeContactPhone(phone).replace(/^(lid|group):/, "");
 }
 
 function normalizePapiInbound(event: any): InboundMessageEvent {
@@ -39,7 +52,7 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
       key?.remoteJid ??
       ""
   );
-  const phone = normalizePhone(
+  const phone = normalizeInboundPhone(
     String(
       message?.phone ??
         message?.from ??
@@ -170,7 +183,7 @@ function normalizeMetaInbound(event: any): InboundMessageEvent {
     "[mídia recebida]";
   return {
     eventId: String(message?.id ?? event?.eventId ?? crypto.randomUUID()),
-    phone: normalizePhone(String(message?.from ?? "")),
+    phone: normalizeInboundPhone(String(message?.from ?? "")),
     name: profile?.name,
     content,
     messageType: message?.type ?? "text",
@@ -229,7 +242,7 @@ export function createPapiAdapter(): PapiAdapter {
       if (messageType === "audio") {
         endpoint = `/api/instances/${instancePath}/send-audio`;
         payload = {
-          jid: normalizePhone(command.phone),
+          jid: outboundRecipient(command.phone, metadata),
           url: command.content,
           ptt: metadata.ptt !== false,
         };
@@ -239,7 +252,7 @@ export function createPapiAdapter(): PapiAdapter {
           throw new Error("Mensagem de botões PAPI exige de 1 a 3 botões");
         endpoint = `/api/instances/${instancePath}/send-buttons`;
         payload = {
-          jid: normalizePhone(command.phone),
+          jid: outboundRecipient(command.phone, metadata),
           text: command.content,
           footer: typeof metadata.footer === "string" ? metadata.footer : "",
           buttons,
@@ -250,7 +263,10 @@ export function createPapiAdapter(): PapiAdapter {
         };
       } else if (messageType === "text") {
         endpoint = `/api/instances/${instancePath}/send-text`;
-        payload = { jid: normalizePhone(command.phone), text: command.content };
+        payload = {
+          jid: outboundRecipient(command.phone, metadata),
+          text: command.content,
+        };
         // Preserve custom historical installations, but treat the old default /messages as deprecated.
         if (sendPath && sendPath !== "/messages")
           endpoint = sendPath.startsWith("/") ? sendPath : `/${sendPath}`;

@@ -47,6 +47,7 @@ import type { WhatsappProvider } from "./integrations/contracts";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
 import { resolveReplyRoute } from "./_core/message-routing";
+import { normalizeContactPhone, normalizeWhatsappJid } from "./_core/phone";
 import {
   assertWithinWorkingHours,
   getLocalDayBounds,
@@ -3884,10 +3885,20 @@ export async function ingestInboundWhatsApp(
   if (!db) throw new Error("Database unavailable");
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
+  const phone = normalizeContactPhone(
+    typeof input.metadata?.jid === "string" ? input.metadata.jid : input.phone
+  );
+  if (!phone) throw new Error("Phone is invalid after normalization");
+  const normalizedJid = normalizeWhatsappJid(
+    typeof input.metadata?.jid === "string" ? input.metadata.jid : undefined
+  );
   const metadata = await persistInboundMedia(
     workspace.id,
     input.eventId,
-    input.metadata
+    {
+      ...(input.metadata ?? {}),
+      ...(normalizedJid ? { jid: normalizedJid } : {}),
+    }
   );
   const priorMessage = await db
     .select({
@@ -3914,7 +3925,7 @@ export async function ingestInboundWhatsApp(
       .from(contacts)
       .where(
         and(
-          eq(contacts.externalPhone, input.phone),
+          eq(contacts.externalPhone, phone),
           eq(contacts.workspaceId, workspace.id)
         )
       )
@@ -3925,8 +3936,8 @@ export async function ingestInboundWhatsApp(
       .insert(contacts)
       .values({
         workspaceId: workspace.id,
-        externalPhone: input.phone,
-        name: input.name?.trim() || input.phone,
+        externalPhone: phone,
+        name: input.name?.trim() || phone,
         urgency: "Média",
         stage: "Novo contato",
         aiEnabled: 1,
@@ -3942,7 +3953,7 @@ export async function ingestInboundWhatsApp(
         .from(contacts)
         .where(
           and(
-            eq(contacts.externalPhone, input.phone),
+            eq(contacts.externalPhone, phone),
             eq(contacts.workspaceId, workspace.id)
           )
         )
@@ -4075,13 +4086,15 @@ export async function upsertApiContact(
   if (!db) throw new Error("Database unavailable");
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
+  const phone = normalizeContactPhone(input.phone);
+  if (!phone) throw new Error("Phone is invalid after normalization");
   const existing = (
     await db
       .select()
       .from(contacts)
       .where(
         and(
-          eq(contacts.externalPhone, input.phone),
+          eq(contacts.externalPhone, phone),
           eq(contacts.workspaceId, workspace.id)
         )
       )
@@ -4110,8 +4123,8 @@ export async function upsertApiContact(
     .insert(contacts)
     .values({
       workspaceId: workspace.id,
-      externalPhone: input.phone,
-      name: input.name?.trim() || input.phone,
+      externalPhone: phone,
+      name: input.name?.trim() || phone,
       city: input.city,
       neighborhood: input.neighborhood,
       serviceRequested: input.serviceRequested,
@@ -4130,7 +4143,7 @@ export async function upsertApiContact(
       .from(contacts)
       .where(
         and(
-          eq(contacts.externalPhone, input.phone),
+          eq(contacts.externalPhone, phone),
           eq(contacts.workspaceId, workspace.id)
         )
       )
