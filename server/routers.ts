@@ -6,6 +6,11 @@ import { ENV } from "./_core/env";
 import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import {
+  assertLoginAllowed,
+  recordLoginFailure,
+  recordLoginSuccess,
+} from "./_core/request-security";
 import { ScheduleError } from "./schedule";
 import {
   ensureDemoInbox,
@@ -289,6 +294,7 @@ export const appRouter = router({
           });
         }
         const email = input.email.trim().toLowerCase();
+        assertLoginAllowed(ctx.req, email);
         let account = await getUserByEmail(email);
         const isEnvAdmin =
           email === ENV.localAdminEmail.trim().toLowerCase() &&
@@ -307,6 +313,7 @@ export const appRouter = router({
           !account ||
           !verifyLocalPassword(input.password, account.passwordHash)
         ) {
+          recordLoginFailure(ctx.req, email);
           throw new TRPCError({
             code: "UNAUTHORIZED",
             message: "E-mail ou senha inválidos",
@@ -317,6 +324,7 @@ export const appRouter = router({
             code: "INTERNAL_SERVER_ERROR",
             message: "Conta local não pôde ser carregada",
           });
+        recordLoginSuccess(ctx.req, email);
         const membership = await getWorkspaceMembershipContext(account.id);
         const platformAdmin = await getPlatformAdminAccess(account.id);
         if (!membership && !platformAdmin) {

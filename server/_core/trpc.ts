@@ -3,13 +3,19 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { getWorkspaceMembershipContext } from "../db";
+import { assertSameOrigin } from "./request-security";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
 });
 
 export const router = t.router;
-export const publicProcedure = t.procedure;
+const requestSecurity = t.middleware(async opts => {
+  assertSameOrigin(opts.ctx.req);
+  return opts.next();
+});
+const secureProcedure = t.procedure.use(requestSecurity);
+export const publicProcedure = secureProcedure;
 
 const requireUser = t.middleware(async opts => {
   const { ctx, next } = opts;
@@ -38,10 +44,10 @@ const requireAuthenticatedUser = t.middleware(async opts => {
   return next({ ctx: { ...ctx, user: ctx.user } });
 });
 
-export const protectedProcedure = t.procedure.use(requireUser);
-export const authenticatedProcedure = t.procedure.use(requireAuthenticatedUser);
+export const protectedProcedure = secureProcedure.use(requireUser);
+export const authenticatedProcedure = secureProcedure.use(requireAuthenticatedUser);
 
-export const adminProcedure = t.procedure.use(
+export const adminProcedure = secureProcedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 

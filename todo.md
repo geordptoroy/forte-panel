@@ -213,8 +213,8 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 
 - [ ] Mover onboarding e configuração da IA de `requirePlatformAdministrator` para owner/gerente, deixando o console da plataforma apenas como suporte. Hoje o dono não configura a própria empresa.
 - [ ] Criar cadastro público, verificação de e-mail, convite e recuperação de senha (`workspaceInvites`, `passwordResetTokens`).
-- [ ] Aplicar limite de tentativas, atraso progressivo e auditoria de falha no login local.
-- [ ] Adicionar checagem de origem/CSRF nas mutações tRPC (o cookie usa `sameSite: "none"` em HTTPS).
+- [x] Aplicar limite de tentativas e atraso progressivo no login local. (primeiro slice B1: limiter em memória por IP e conta, com testes; auditoria persistida de falhas continua pendente)
+- [x] Adicionar checagem de origem/CSRF nas mutações tRPC (o cookie usa `sameSite: "none"` em HTTPS). (primeiro slice B1: same-origin em mutações HTTP)
 - [ ] Tornar a deduplicação de mensagens por tenant: `messages.externalId` é único globalmente hoje.
 - [ ] Tornar `contacts.workspaceId` não anulável com backfill, seguindo o padrão da migration `0017`.
 
