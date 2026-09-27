@@ -1690,3 +1690,15 @@ Foi criada a migration `0032_onboarding_conflict_resolutions`. Owner/admin com a
 Cada decisão preserva o snapshot anterior do bloco, o conflito original, a decisão, a nota, o usuário e o timestamp. O bloco é rebaixado para `draft`, recebe uma nova revisão e precisa ser confirmado novamente. A procedure é tenant-aware e registra também uma ação de workspace. Conflitos inexistentes ou já resolvidos retornam erro acionável.
 
 A UI exibe as ações diretamente no card do bloco. O gate de publicação continua impedindo publicação enquanto conflitos obrigatórios permanecerem abertos.
+
+
+---
+## Atualização do handoff — 2026-09-27 — governança antes de fontes automáticas
+
+Foi criada a migration `0033_onboarding_governance` com `onboardingSourceConsents` e `onboardingRetentionPolicies`. Owner/admin podem consultar a governança, conceder/revogar consentimento para `transcription` e `llm` e configurar retenção.
+
+Limites atuais: dados brutos de 1–90 dias; dados derivados de 30–3650 dias; retenção bruta não pode superar a derivada. A versão de política padrão é `2026-09-27.v1`. Consentimentos são event-sourced por workspace/source e a leitura usa o evento mais recente.
+
+O helper `assertOnboardingSourceConsent` já está disponível para qualquer futura rotina de transcrição/LLM. Nenhuma rotina automática foi conectada ainda. A política de retenção está persistida, mas ainda não existe worker de limpeza; não declarar os dados automaticamente apagados até essa próxima etapa.
+
+Validação: `pnpm check`, `pnpm test` (101 aprovados, 35 ignorados), `pnpm build`, journal e `git diff --check` passaram.

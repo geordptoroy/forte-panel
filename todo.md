@@ -264,7 +264,7 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Consolidar a árvore de migrations legada (MySQL) e manter apenas `drizzle-pg`.
 - [ ] Criar README e LICENSE; reduzir sobreposição entre handoff, roadmap e auditorias.
 - [ ] Adicionar correlation ID e logging estruturado.
-- [ ] Implementar governança LGPD (consentimento, exportação, exclusão, retenção).
+- [ ] Implementar governança LGPD (consentimento, exportação, exclusão, retenção). (consentimento versionado e retenção configurável do onboarding já entregues; exportação, exclusão e worker de limpeza ainda pendentes)
 - [ ] Remover bloco duplicado de `BAILEYS_*` em `.env.local.example`.
 
 ## Funil de cadastro com respostas em áudio — planejado
@@ -276,7 +276,7 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Estruturar transcrição em JSON validado por schema, com confiança por campo e pergunta de acompanhamento.
 - [ ] Pré-preencher catálogo, agenda, equipe e perfil da IA em rascunho, sem efeito colateral.
 - [ ] Manter formulário como caminho garantido quando o áudio falhar; áudio nunca é a única via.
-- [ ] Implementar consentimento de voz e retenção do áudio bruto.
+- [ ] Implementar consentimento de voz e retenção do áudio bruto. (guard genérico para `transcription`/`llm` e política de retenção já entregues; ingestão de áudio e expiração efetiva ainda pendentes)
 - [ ] Usar `workspaces.status = onboarding` de verdade e só promover para `active` com checklist obrigatório fechado.
 - [ ] Separar onboarding do negócio (empresário) de `leadIntake` conversacional (lead do WhatsApp); não reutilizar `OnboardingPage` como questionário do lead.
 - [ ] Modelar `leadIntakeSessions`, `leadIntakeQuestions`, `leadIntakeAnswers`, `leadConsents`, `mediaAssets`, `transcriptions` e `conversationHandoffs`.

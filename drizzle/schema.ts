@@ -328,6 +328,44 @@ export const onboardingConflictResolutions = pgTable(
   ]
 );
 
+export const onboardingSourceConsents = pgTable(
+  "onboardingSourceConsents",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    userId: integer("userId").notNull(),
+    source: varchar("source", { length: 24 }).notNull(),
+    purpose: varchar("purpose", { length: 80 }).notNull(),
+    policyVersion: varchar("policyVersion", { length: 64 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("onboarding_source_consents_workspace_idx").on(
+      table.workspaceId,
+      table.source,
+      table.createdAt
+    ),
+  ]
+);
+
+export const onboardingRetentionPolicies = pgTable(
+  "onboardingRetentionPolicies",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull().unique(),
+    rawArtifactDays: integer("rawArtifactDays").notNull().default(30),
+    derivedDataDays: integer("derivedDataDays").notNull().default(180),
+    policyVersion: varchar("policyVersion", { length: 64 }).notNull(),
+    updatedBy: integer("updatedBy").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    index("onboarding_retention_policies_workspace_idx").on(table.workspaceId),
+  ]
+);
+
 export const workspaces = pgTable("workspaces", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 160 }).notNull(),
@@ -1082,6 +1120,10 @@ export type OnboardingStepAnswerRevision = typeof onboardingStepAnswerRevisions.
 export type InsertOnboardingStepAnswerRevision = typeof onboardingStepAnswerRevisions.$inferInsert;
 export type OnboardingConflictResolution = typeof onboardingConflictResolutions.$inferSelect;
 export type InsertOnboardingConflictResolution = typeof onboardingConflictResolutions.$inferInsert;
+export type OnboardingSourceConsent = typeof onboardingSourceConsents.$inferSelect;
+export type InsertOnboardingSourceConsent = typeof onboardingSourceConsents.$inferInsert;
+export type OnboardingRetentionPolicy = typeof onboardingRetentionPolicies.$inferSelect;
+export type InsertOnboardingRetentionPolicy = typeof onboardingRetentionPolicies.$inferInsert;
 export type Workspace = typeof workspaces.$inferSelect;
 export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;

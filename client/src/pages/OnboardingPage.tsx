@@ -65,6 +65,14 @@ export default function OnboardingPage() {
   const startSession = trpc.onboarding.start.useMutation({
     onSuccess: () => void sessionQuery.refetch(),
   });
+  const governanceQuery = trpc.onboarding.governance.useQuery();
+  const [retention, setRetention] = useState({ rawArtifactDays: 30, derivedDataDays: 180 });
+  const setSourceConsent = trpc.onboarding.setSourceConsent.useMutation({
+    onSuccess: () => void governanceQuery.refetch(),
+  });
+  const saveRetentionPolicy = trpc.onboarding.saveRetentionPolicy.useMutation({
+    onSuccess: () => void governanceQuery.refetch(),
+  });
   const deferSession = trpc.onboarding.defer.useMutation({
     onSuccess: () => setLocation("/dashboard"),
   });
@@ -107,6 +115,15 @@ export default function OnboardingPage() {
       setAutosaveState("idle");
     }
   }, [profileQuery.data]);
+
+  useEffect(() => {
+    if (governanceQuery.data?.retention) {
+      setRetention({
+        rawArtifactDays: governanceQuery.data.retention.rawArtifactDays,
+        derivedDataDays: governanceQuery.data.retention.derivedDataDays,
+      });
+    }
+  }, [governanceQuery.data]);
 
   useEffect(() => {
     if (sessionQuery.isLoading || sessionStarted.current) return;
@@ -188,6 +205,46 @@ export default function OnboardingPage() {
           </p>
         )}
       </div>
+      {governanceQuery.data && (
+        <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+          <SectionTitle eyebrow="Governança" title="Consentimento e retenção" />
+          <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11 }}>
+            Fontes automáticas só poderão ser conectadas com consentimento vigente. Política {governanceQuery.data.policyVersion}.
+          </p>
+          <div style={{ display: "grid", gap: 8 }}>
+            {governanceQuery.data.consents.map(consent => (
+              <div key={consent.source} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "9px 10px", border: "1px solid rgba(255,255,255,.07)" }}>
+                <div>
+                  <strong style={{ color: "#ddd", fontSize: 11 }}>{consent.source === "llm" ? "Processamento por LLM" : "Transcrição de áudio"}</strong>
+                  <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{consent.status === "granted" ? "Consentimento ativo" : "Não autorizado"}</div>
+                </div>
+                <button
+                  className={consent.status === "granted" ? "btn-secondary" : "btn-primary"}
+                  disabled={setSourceConsent.isPending}
+                  onClick={() => setSourceConsent.mutate({ source: consent.source, granted: consent.status !== "granted", policyVersion: governanceQuery.data.policyVersion })}
+                >{consent.status === "granted" ? "Revogar" : "Conceder consentimento"}</button>
+              </div>
+            ))}
+          </div>
+          <div className="form-grid" style={{ marginTop: 14 }}>
+            <div className="form-field">
+              <label htmlFor="onboarding-raw-retention">Dados brutos (dias)</label>
+              <input id="onboarding-raw-retention" className="input-control" type="number" min={1} max={90} value={retention.rawArtifactDays} onChange={event => setRetention(current => ({ ...current, rawArtifactDays: Number(event.target.value) }))} />
+            </div>
+            <div className="form-field">
+              <label htmlFor="onboarding-derived-retention">Dados derivados (dias)</label>
+              <input id="onboarding-derived-retention" className="input-control" type="number" min={30} max={3650} value={retention.derivedDataDays} onChange={event => setRetention(current => ({ ...current, derivedDataDays: Number(event.target.value) }))} />
+            </div>
+          </div>
+          <button
+            className="btn-secondary"
+            style={{ marginTop: 12 }}
+            disabled={saveRetentionPolicy.isPending}
+            onClick={() => saveRetentionPolicy.mutate({ ...retention, policyVersion: governanceQuery.data.policyVersion })}
+          >Salvar política de retenção</button>
+          {(setSourceConsent.error || saveRetentionPolicy.error) && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} /> {(setSourceConsent.error || saveRetentionPolicy.error)?.message}</div>}
+        </section>
+      )}
       {profileQuery.data?.checklist && (
         <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start" }}>

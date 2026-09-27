@@ -69,6 +69,9 @@ import {
   PUBLIC_TERMS_VERSION,
   resetPasswordWithToken,
   resolveOnboardingConflict,
+  getOnboardingGovernance,
+  saveOnboardingRetentionPolicy,
+  setOnboardingSourceConsent,
   sendManualMessage,
   pauseOnboardingSession,
   saveOnboardingProfile,
@@ -1143,6 +1146,58 @@ export const appRouter = router({
     profile: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingProfile(ctx.workspace.workspaceId)
     ),
+    governance: requireOnboardingEditor.query(({ ctx }) =>
+      getOnboardingGovernance(ctx.workspace.workspaceId)
+    ),
+    setSourceConsent: requireOnboardingEditor
+      .input(z.object({
+        source: z.enum(["transcription", "llm"]),
+        granted: z.boolean(),
+        policyVersion: z.string().trim().min(1).max(64),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await setOnboardingSourceConsent(
+          ctx.workspace.workspaceId,
+          ctx.user.id,
+          input.source,
+          input.granted,
+          input.policyVersion
+        );
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: input.granted ? "onboarding_source_consent_granted" : "onboarding_source_consent_revoked",
+          summary: `${input.granted ? "Consentimento concedido" : "Consentimento revogado"}: ${input.source}`,
+        });
+        return result;
+      }),
+    saveRetentionPolicy: requireOnboardingEditor
+      .input(z.object({
+        rawArtifactDays: z.number().int().min(1).max(90),
+        derivedDataDays: z.number().int().min(30).max(3650),
+        policyVersion: z.string().trim().min(1).max(64),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const result = await saveOnboardingRetentionPolicy(
+            ctx.workspace.workspaceId,
+            ctx.user.id,
+            { rawArtifactDays: input.rawArtifactDays, derivedDataDays: input.derivedDataDays },
+            input.policyVersion
+          );
+          await logWorkspaceAction({
+            workspaceId: ctx.workspace.workspaceId,
+            actorUserId: ctx.user.id,
+            action: "onboarding_retention_policy_updated",
+            summary: `Retenção atualizada: bruto ${input.rawArtifactDays}d / derivado ${input.derivedDataDays}d`,
+          });
+          return result;
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith("ONBOARDING_RETENTION_INVALID:"))
+            throw new TRPCError({ code: "BAD_REQUEST", message: "A política de retenção está fora dos limites permitidos." });
+          throw error;
+        }
+      }),
     confirmStep: requireOnboardingEditor
       .input(z.object({ stepKey: z.enum(["identity", "offering", "operations", "guardrails", "voice"]) }))
       .mutation(async ({ input, ctx }) => {

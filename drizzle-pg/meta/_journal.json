@@ -232,6 +232,13 @@
       "when": 1790459000000,
       "tag": "0032_onboarding_conflict_resolutions",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790460000000,
+      "tag": "0033_onboarding_governance",
+      "breakpoints": true
     }
   ]
 }

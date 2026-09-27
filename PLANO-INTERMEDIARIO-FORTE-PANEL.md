@@ -535,3 +535,13 @@ Próximo corte: definir o contrato de resolução de conflitos e a política de 
 A resolução agora aceita `accepted_current` ou `dismissed`, exige nota, preserva snapshot e registra ator/tempo em `onboardingConflictResolutions`. Qualquer decisão rebaixa o bloco para `draft` e exige nova confirmação antes da publicação.
 
 Próximo corte: definir retenção e consentimento para dados de fontes automáticas, mantendo o mesmo fluxo de revisão humana.
+
+
+---
+## Etapa seguinte — governança de fontes automáticas — 2026-09-27
+
+A governança agora possui consentimentos versionados para `transcription`/`llm`, política de retenção por workspace e guard reutilizável `assertOnboardingSourceConsent`. A UI permite revisar consentimentos e ajustar retenção dentro dos limites aprovados.
+
+Importante: isso prepara e bloqueia o uso sem autorização, mas ainda não executa limpeza automática nem conecta provedores de áudio/LLM.
+
+Próximo corte: implementar job/rotina de expiração que respeite `rawArtifactDays` e `derivedDataDays`, com dry-run e testes de isolamento, antes de integrar ingestão automática.

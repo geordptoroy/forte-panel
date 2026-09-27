@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOnboardingStepAnswers,
   getOnboardingChecklist,
+  validateOnboardingRetentionPolicy,
   validateOnboardingAnswerMetadata,
   type OnboardingProfile,
 } from "./db";
@@ -62,5 +63,12 @@ describe("onboarding checklist", () => {
     expect(validateOnboardingAnswerMetadata({ source: "unknown", confidence: 80, missing: [], conflicts: [] }).errors).toContain("source_invalid");
     expect(validateOnboardingAnswerMetadata({ source: "human_form", confidence: 90, missing: [], conflicts: [] }).errors).toContain("human_form_confidence_must_be_100");
     expect(validateOnboardingAnswerMetadata({ source: "human_form", confidence: 100, missing: [""], conflicts: ["" ] }).valid).toBe(false);
+  });
+
+  it("fails closed on retention policies outside governance limits", () => {
+    expect(validateOnboardingRetentionPolicy({ rawArtifactDays: 30, derivedDataDays: 180 }).valid).toBe(true);
+    expect(validateOnboardingRetentionPolicy({ rawArtifactDays: 91, derivedDataDays: 180 }).errors).toContain("raw_artifact_days_out_of_range");
+    expect(validateOnboardingRetentionPolicy({ rawArtifactDays: 30, derivedDataDays: 29 }).errors).toContain("derived_data_days_out_of_range");
+    expect(validateOnboardingRetentionPolicy({ rawArtifactDays: 60, derivedDataDays: 30 }).errors).toContain("raw_retention_exceeds_derived_retention");
   });
 });

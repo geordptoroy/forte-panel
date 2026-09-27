@@ -32,6 +32,8 @@ import {
   notifications,
   onboardingSessions,
   onboardingConflictResolutions,
+  onboardingSourceConsents,
+  onboardingRetentionPolicies,
   onboardingStepAnswers,
   onboardingStepAnswerRevisions,
   passwordResetTokens,
@@ -2494,6 +2496,113 @@ export async function resolveOnboardingConflict(
     changedBy: resolvedBy,
   });
   return { stepKey, conflictKey, resolution, remainingConflicts, status: "draft" as const };
+}
+
+export const automatedOnboardingSources = ["transcription", "llm"] as const;
+export type AutomatedOnboardingSource = (typeof automatedOnboardingSources)[number];
+export const ONBOARDING_GOVERNANCE_POLICY_VERSION = "2026-09-27.v1";
+export const DEFAULT_ONBOARDING_RETENTION = {
+  rawArtifactDays: 30,
+  derivedDataDays: 180,
+} as const;
+
+export function validateOnboardingRetentionPolicy(input: {
+  rawArtifactDays: number;
+  derivedDataDays: number;
+}) {
+  const errors: string[] = [];
+  if (!Number.isInteger(input.rawArtifactDays) || input.rawArtifactDays < 1 || input.rawArtifactDays > 90)
+    errors.push("raw_artifact_days_out_of_range");
+  if (!Number.isInteger(input.derivedDataDays) || input.derivedDataDays < 30 || input.derivedDataDays > 3650)
+    errors.push("derived_data_days_out_of_range");
+  if (input.rawArtifactDays > input.derivedDataDays)
+    errors.push("raw_retention_exceeds_derived_retention");
+  return { valid: errors.length === 0, errors };
+}
+
+export async function getOnboardingGovernance(workspaceId: number) {
+  const db = await getDb();
+  if (!db) {
+    return {
+      policyVersion: ONBOARDING_GOVERNANCE_POLICY_VERSION,
+      retention: DEFAULT_ONBOARDING_RETENTION,
+      consents: automatedOnboardingSources.map(source => ({ source, status: "revoked" as const, policyVersion: null })),
+    };
+  }
+  const [policy] = await db
+    .select()
+    .from(onboardingRetentionPolicies)
+    .where(eq(onboardingRetentionPolicies.workspaceId, workspaceId))
+    .limit(1);
+  const consentRows = await db
+    .select({ source: onboardingSourceConsents.source, status: onboardingSourceConsents.status, policyVersion: onboardingSourceConsents.policyVersion, createdAt: onboardingSourceConsents.createdAt })
+    .from(onboardingSourceConsents)
+    .where(eq(onboardingSourceConsents.workspaceId, workspaceId))
+    .orderBy(desc(onboardingSourceConsents.createdAt));
+  const latest = new Map<string, (typeof consentRows)[number]>();
+  for (const row of consentRows) if (!latest.has(row.source)) latest.set(row.source, row);
+  return {
+    policyVersion: ONBOARDING_GOVERNANCE_POLICY_VERSION,
+    retention: policy
+      ? { rawArtifactDays: policy.rawArtifactDays, derivedDataDays: policy.derivedDataDays, policyVersion: policy.policyVersion }
+      : { ...DEFAULT_ONBOARDING_RETENTION, policyVersion: ONBOARDING_GOVERNANCE_POLICY_VERSION },
+    consents: automatedOnboardingSources.map(source => ({
+      source,
+      status: latest.get(source)?.status === "granted" ? "granted" as const : "revoked" as const,
+      policyVersion: latest.get(source)?.policyVersion ?? null,
+    })),
+  };
+}
+
+export async function setOnboardingSourceConsent(
+  workspaceId: number,
+  userId: number,
+  source: AutomatedOnboardingSource,
+  granted: boolean,
+  policyVersion = ONBOARDING_GOVERNANCE_POLICY_VERSION
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_UNAVAILABLE");
+  await db.insert(onboardingSourceConsents).values({
+    workspaceId,
+    userId,
+    source,
+    purpose: "onboarding_source_processing",
+    policyVersion,
+    status: granted ? "granted" : "revoked",
+  });
+  return getOnboardingGovernance(workspaceId);
+}
+
+export async function assertOnboardingSourceConsent(
+  workspaceId: number,
+  source: AutomatedOnboardingSource
+) {
+  const governance = await getOnboardingGovernance(workspaceId);
+  const consent = governance.consents.find(item => item.source === source);
+  if (!consent || consent.status !== "granted")
+    throw new Error(`ONBOARDING_SOURCE_CONSENT_REQUIRED:${source}`);
+  return consent;
+}
+
+export async function saveOnboardingRetentionPolicy(
+  workspaceId: number,
+  updatedBy: number,
+  input: { rawArtifactDays: number; derivedDataDays: number },
+  policyVersion = ONBOARDING_GOVERNANCE_POLICY_VERSION
+) {
+  const validation = validateOnboardingRetentionPolicy(input);
+  if (!validation.valid) throw new Error(`ONBOARDING_RETENTION_INVALID:${validation.errors.join(",")}`);
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_UNAVAILABLE");
+  await db
+    .insert(onboardingRetentionPolicies)
+    .values({ ...input, workspaceId, policyVersion, updatedBy, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: onboardingRetentionPolicies.workspaceId,
+      set: { ...input, policyVersion, updatedBy, updatedAt: new Date() },
+    });
+  return getOnboardingGovernance(workspaceId);
 }
 
 function buildBusinessPrompt(profile: OnboardingProfile, version: number) {
