@@ -1,3 +1,4 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import { toast } from "sonner";
@@ -22,6 +23,7 @@ import {
   Sparkles,
   Users,
   XCircle,
+  LogOut,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
@@ -64,6 +66,7 @@ function PlatformShell({
   active?: string;
 }) {
   const [, navigate] = useLocation();
+  const { logout } = useAuth();
   return (
     <div className="platform-console">
       <aside className="platform-sidebar">
@@ -104,6 +107,13 @@ function PlatformShell({
         <div className="platform-sidebar-foot">
           <small>Suporte read-only por padrão</small>
           <Link href="/platform-admin">Voltar ao console da plataforma</Link>
+          <button
+            className="platform-logout"
+            type="button"
+            onClick={() => void logout()}
+          >
+            <LogOut size={13} /> Sair do console
+          </button>
         </div>
       </aside>
       <main className="platform-main">
