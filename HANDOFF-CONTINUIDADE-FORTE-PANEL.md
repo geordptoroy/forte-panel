@@ -1293,3 +1293,8 @@ O guia de 72 perguntas foi considerado correto como mapa de descoberta, mas inad
 A pipeline prevista é captura → transcrição → extração em JSON validado → identificação de lacunas/conflitos → rascunho de prompt → resumo com exemplos → correção/aceite humano → publicação versionada → simulação → ativação. A IA pode fazer o trabalho pesado de redação, mas não inventa preço, prazo, serviço, disponibilidade, política ou promessa. O prompt publicado terá versão, origem dos fatos, autor, data e rollback.
 
 O administrador da plataforma terá acesso de suporte a respostas originais, transcrições, fatos extraídos e versões do prompt somente com workspace autorizado, motivo, masking e auditoria. Poderá sugerir correções e montar rascunhos para o prestador aprovar; não poderá publicar silenciosamente no lugar do cliente. A execução foi ordenada como P0 fundação, P1 onboarding textual, P2 áudio e P3 console de suporte/LGPD.
+
+
+### Ajuste de UX da revisão do prompt — 2026-09-27
+
+Correção de produto: não mostrar um prompt completo longo como etapa 10 do cadastro. Depois de cada resposta/bloco, a IA deve mostrar somente a regra curta daquela área, com um exemplo e ações rápidas para confirmar, corrigir ou deixar para depois. No fim, mostrar um resumo curto das decisões, lacunas e conflitos; o prompt consolidado completo fica disponível apenas por link/accordion opcional. A publicação continua exigindo confirmação, mas a leitura integral não é obrigatória.

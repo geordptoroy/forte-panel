@@ -37,7 +37,7 @@ O prestador não precisa responder as 72 perguntas para abrir a conta, mas preci
 | 7. Humano | Situações obrigatórias de transferência, quem assume, horário e como notificar | `handoffPolicy` |
 | 8. Limites | O que o bot nunca deve afirmar, assuntos proibidos, urgência, reclamação e segurança | `safetyAndEscalationPolicy` |
 | 9. Dados | Dados mínimos do cliente, consentimento, retenção, opt-out e notas internas permitidas | `dataPolicy` |
-| 10. Revisão | Resumo gerado, pontos em aberto, exemplos de conversa e confirmação para publicar | `promptDraftVersion` |
+| 10. Confirmação progressiva | Prévia curta da regra desta área, correção rápida e confirmação do bloco; leitura completa fica opcional | `promptDraftVersion` |
 
 O bloco de **recebimento** entra quando o negócio usa orçamento ou quer enviar a chave Pix, mas permanece operacional: meios aceitos e chave Pix exibida. O Forte Panel não cobra o cliente final, não cria checkout e não integra maquininha.
 
@@ -95,10 +95,11 @@ resposta em áudio ou texto
 → extração para schema por bloco
 → detecção de campos ausentes, conflitantes ou ambíguos
 → pergunta de acompanhamento curta
-→ geração de rascunho de prompt e regras operacionais
-→ mostrar resumo, regras e exemplos ao prestador
-→ prestador corrige, aceita ou rejeita
-→ publicar versão imutável
+→ geração de rascunho da regra daquela área
+→ mostrar prévia curta e exemplos daquela área
+→ prestador corrige, aceita ou segue sem ler tudo
+→ consolidar as áreas em uma versão completa
+→ publicar versão imutável após confirmação final curta
 → simular conversas antes de ativar no WhatsApp
 → monitorar e permitir rollback
 ```
@@ -115,18 +116,30 @@ Pode ser a mesma família de modelo em etapas diferentes, mas as responsabilidad
 
 ### 5.2 Formato do resultado mostrado ao prestador
 
-O prestador deve ver, em linguagem simples:
+O prestador deve ver, em linguagem simples e **a cada bloco**, somente o que acabou de ser configurado:
 
-- **O que entendemos:** fatos extraídos, com indicação de fonte áudio/texto.
-- **Como o bot vai agir:** regras em bullets, não apenas um prompt enorme.
-- **O que ainda falta:** perguntas pendentes e impacto de cada uma.
-- **Possíveis conflitos:** por exemplo, serviço com preço “a partir de” mas sem critério de orçamento.
-- **Exemplos:** primeira mensagem, triagem, orçamento, agendamento, fora do horário e handoff.
-- **Ações:** corrigir, aceitar este bloco, voltar ao áudio/texto, salvar como rascunho ou pedir ajuda.
+- **O que entendi desta resposta:** fatos extraídos, com indicação de fonte áudio/texto.
+- **Como esta parte ficará:** duas ou três regras curtas, não o prompt inteiro.
+- **Exemplo desta parte:** somente a resposta relacionada ao bloco atual.
+- **Ações rápidas:** corrigir, confirmar, responder novamente ou deixar para revisar depois.
 
-Mensagem de confirmação sugerida:
+Ao terminar todos os blocos, a IA consolida as áreas sem pedir que o prestador leia várias páginas. A tela final mostra apenas:
 
-> “Transformei suas respostas em regras de atendimento. Revisei preços, horários, serviços, limites e transferência para uma pessoa. O que está incorreto? Você pode responder em poucas palavras ou gravar um áudio. Nada será publicado até você confirmar.”
+- um resumo curto das decisões principais;
+- os campos que ainda faltam ou têm conflito;
+- alguns exemplos críticos de atendimento;
+- o botão para confirmar a publicação;
+- um link/accordion opcional: **“Ler prompt completo”**.
+
+O prompt completo deve existir para transparência, suporte e auditoria, mas a leitura integral não pode ser uma exigência para concluir o cadastro.
+
+Mensagem de confirmação por bloco sugerida:
+
+> “Nesta parte entendi que você atende de segunda a sexta, das 8h às 18h, e não agenda fora desse horário. Está certo? Responda ‘sim’, corrija em poucas palavras ou grave um áudio.”
+
+Mensagem final curta sugerida:
+
+> “Terminei o rascunho do seu atendimento. As principais regras estão resumidas acima. Quer publicar? Se preferir, você também pode [ler o prompt completo].”
 
 ## 6. Prompt profissional: estrutura e guardrails
 
@@ -211,7 +224,7 @@ Entidades previstas para essa capacidade incluem `onboardingSessions`, `onboardi
 - Pode responder qualquer pergunta por áudio ou texto e retomar depois.
 - O original, a transcrição, os fatos extraídos e o prompt são distinguíveis.
 - A IA não altera o sentido nem inventa informação sem marcar incerteza.
-- O prestador confirma o resumo antes de publicar.
+- O prestador confirma cada área de forma curta ou deixa a revisão para o final; antes da publicação, confirma o resumo sem ser obrigado a ler o prompt completo.
 - O prompt publicado tem versão, autor, data e rollback.
 - O administrador consegue dar suporte sem editar silenciosamente nem acessar outro workspace.
 - Uma falha de áudio nunca bloqueia o cadastro nem cria texto inventado.

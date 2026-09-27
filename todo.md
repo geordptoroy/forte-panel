@@ -298,6 +298,7 @@ Referência: `GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`.
 
 - [ ] Separar núcleo obrigatório curto de perguntas condicionais e aprofundamento; permitir áudio, texto, “não se aplica”, “decidir depois” e retomada.
 - [ ] Definir schemas por bloco, estados `draft/confirmed/published` e campos `missing/conflict/source/confidence`.
+- [ ] Mostrar após cada resposta/bloco apenas a regra curta daquela área; manter o prompt completo recolhido e opcional.
 - [ ] Definir confirmação humana obrigatória antes de publicar prompt ou regra operacional.
 - [ ] Definir guardrails: IA não inventa preço, prazo, disponibilidade, serviço, política ou promessa; fallback para humano quando faltar fonte.
 - [ ] Definir acesso administrativo de suporte com workspace autorizado, motivo, masking, auditoria e sem publicação silenciosa.
