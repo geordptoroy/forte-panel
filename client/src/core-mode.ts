@@ -10,5 +10,5 @@ export const CORE_ROUTE = "/whatsapp-connection";
 export const CORE_USAGE_ROUTE = "/plans-usage";
 
 export function isCoreAllowedRoute(pathname: string) {
-  return pathname === CORE_ROUTE || pathname === CORE_USAGE_ROUTE;
+  return pathname === CORE_ROUTE;
 }

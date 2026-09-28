@@ -82,3 +82,8 @@ Em 2026-09-27, o manifest `:dev` das duas imagens respondeu HTTP 200 pelo token 
 - `.env.docker.example` contém somente valores de exemplo; `scripts/docker-init-local.sh` gera `.env` com segredos aleatórios quando ele não existe.
 - As migrations versionadas são executadas pelo serviço `forte-panel-migrations` antes do painel/worker. Não use `db:push` para substituir esse histórico.
 - O Compose local publica o PostgreSQL apenas em `127.0.0.1`; não exponha essa porta à internet.
+
+
+## Interface WhatsApp — 28/09/2026
+
+A conexão Baileys/Forte Panel está funcional; esta revisão não altera gateway, sessão, banco ou contratos tRPC. O smoke test pendente é visual: criar instância pelo modal, avançar para QR ou número, conferir bandeira/DDI, responsividade, renomeação e exclusão. **Planos e consumo não aparece na sidebar nesta etapa**, pois a rota está temporariamente congelada junto das demais páginas não-core.

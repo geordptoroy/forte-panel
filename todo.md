@@ -1,7 +1,7 @@
 # Forte Panel — acompanhamento do produto público
 
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
-**Fase de código atual:** etapa 1 do core — CRUD de instâncias Baileys e consumo na única página ativa. Implementação pronta para revisão; migração e QR real ainda aguardam o Docker local do usuário.
+**Fase de código atual:** etapa 1 do core — CRUD e conexão de instâncias Baileys na única página ativa. A integração está funcional; a revisão pendente é visual e o consumo permanece congelado.
 **Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
 
 ## Direção registrada — 2026-09-27: core antes do restante
@@ -401,3 +401,12 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [ ] Renomear o fluxo para “registrar recebimento manual” e explicar que não é gateway nem confirmação bancária.
 - [ ] Separar visualmente original, transcrição, fatos extraídos, regra redigida, regra confirmada e prompt publicado.
 - [ ] Exibir conflitos e campos faltantes em linguagem simples, com correção guiada e fallback humano.
+
+
+### Interface WhatsApp — 28/09/2026
+
+- [x] Preservar contratos e conexão Baileys/Forte Panel já funcionais.
+- [x] Ocultar temporariamente Planos e consumo do Core/sidebar.
+- [x] Reorganizar criação de instância em modal: nome, escolha QR/número e DDI com bandeira.
+- [x] Manter renomeação, exclusão confirmada, QR e pareamento por número sem alterar o backend.
+- [ ] Fazer smoke test visual no Docker do usuário.

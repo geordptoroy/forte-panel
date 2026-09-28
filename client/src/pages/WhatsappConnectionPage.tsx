@@ -1,41 +1,59 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  getCountries,
-  getCountryCallingCode,
-  isPossiblePhoneNumber,
-  type CountryCode,
-} from "libphonenumber-js";
-import {
   CheckCircle2,
   Gauge,
+  Pencil,
   Plus,
   QrCode,
   RefreshCw,
   Trash2,
   Wifi,
   WifiOff,
+  X,
 } from "lucide-react";
+import {
+  getCountries,
+  getCountryCallingCode,
+  isPossiblePhoneNumber,
+  type CountryCode,
+} from "libphonenumber-js";
 import PanelLayout, { EmptyState, StatusBadge } from "@/components/PanelLayout";
 import { baileysStatusPollingInterval } from "@/lib/baileys-status";
 import { trpc } from "@/lib/trpc";
 
-const countryDisplayNames = new Intl.DisplayNames(["pt-BR"], {
-  type: "region",
-});
+function WhatsappMark({ size = 22 }: { size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="whatsapp-mark"
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      fill="none"
+    >
+      <circle cx="16" cy="16" r="15" fill="currentColor" />
+      <path
+        fill="#f5f5f5"
+        d="M22.3 9.7a8.8 8.8 0 0 0-13.8 10L7.4 24.8l5.2-1.1a8.8 8.8 0 0 0 9.7-14Zm-6.2 12.3a7.2 7.2 0 0 1-3.7-1l-.3-.2-2.3.5.5-2.2-.2-.3a7.2 7.2 0 1 1 6 3.2Zm3.9-5.4c-.2-.1-1.2-.6-1.4-.7-.2-.1-.3-.1-.5.1l-.6.8c-.2.2-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1 6.5 6.5 0 0 1-1.2-1.5c-.1-.2 0-.3.1-.4l.4-.5c.1-.1.1-.3.2-.4.1-.2 0-.3 0-.4l-.6-1.5c-.2-.4-.3-.4-.5-.4h-.4c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 2s.8 2.3.9 2.5c.1.2 1.6 2.5 3.9 3.4.5.2.9.3 1.2.4.5.1.9.1 1.2.1.4-.1 1.2-.5 1.3-1 .2-.5.2-.9.1-1-.1-.2-.3-.2-.5-.3Z"
+      />
+    </svg>
+  );
+}
+
 const countryFlag = (country: string) =>
   /^[A-Z]{2}$/.test(country)
     ? String.fromCodePoint(
         ...country.split("").map(character => 127397 + character.charCodeAt(0))
       )
-    : "🌐";
+    : "•";
+
 const phoneCountryOptions = getCountries()
   .map(country => ({
     country,
-    name: countryDisplayNames.of(country) ?? country,
     callingCode: getCountryCallingCode(country),
     flag: countryFlag(country),
   }))
-  .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+  .sort((left, right) => left.callingCode.localeCompare(right.callingCode));
 
 const connectionStatusDetails: Record<
   string,
@@ -88,12 +106,14 @@ const connectionStatusDetails: Record<
   },
 };
 
+type SetupStep = 1 | 2 | 3;
+
 export function WhatsappConnectionPage() {
   return (
     <PanelLayout
       eyebrow="Core · Baileys"
-      title="Instâncias WhatsApp"
-      description="Gerencie as conexões deste workspace. O status é atualizado automaticamente, inclusive enquanto você confirma o pareamento no celular."
+      title="Conectar WhatsApp"
+      description="Crie uma única instância para este workspace e escolha a forma mais simples de conectar seu número."
     >
       <BaileysConnectionManager />
     </PanelLayout>
@@ -102,10 +122,21 @@ export function WhatsappConnectionPage() {
 
 function BaileysConnectionManager() {
   const utils = trpc.useUtils();
-  const [name, setName] = useState("WhatsApp comercial");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [setupStep, setSetupStep] = useState<SetupStep>(1);
+  const [nameDraft, setNameDraft] = useState("");
+  const [createdInstanceId, setCreatedInstanceId] = useState<string | null>(
+    null
+  );
+  const [createdInstanceName, setCreatedInstanceName] = useState("");
+  const [connectionMode, setConnectionMode] = useState<"qr" | "phone">("qr");
+  const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState<CountryCode>("BR");
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [instanceStatuses, setInstanceStatuses] = useState<
     Record<string, string>
   >({});
+
   const instances = trpc.workspace.baileysInstances.useQuery(undefined, {
     refetchInterval: 10_000,
     refetchIntervalInBackground: true,
@@ -113,15 +144,30 @@ function BaileysConnectionManager() {
     refetchOnReconnect: "always",
   });
   const create = trpc.workspace.createBaileysInstance.useMutation({
-    onSuccess: async () => {
-      setName("");
+    onSuccess: async result => {
+      setCreatedInstanceId(result.instanceId);
+      setCreatedInstanceName(result.name);
+      setSetupStep(2);
       await utils.workspace.baileysInstances.invalidate();
     },
   });
+  const connect = trpc.workspace.connectBaileys.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.baileysInstances.invalidate();
+      setCreateOpen(false);
+    },
+  });
+  const pairing = trpc.workspace.requestBaileysPairingCode.useMutation({
+    onSuccess: async result => {
+      setPairingCode(result.code);
+      setSetupStep(3);
+      await utils.workspace.baileysInstances.invalidate();
+    },
+  });
+
   const instanceIds = (instances.data ?? [])
     .map(instance => instance.instanceId)
     .join("|");
-
   useEffect(() => {
     const validIds = new Set(instanceIds ? instanceIds.split("|") : []);
     setInstanceStatuses(current => {
@@ -156,12 +202,59 @@ function BaileysConnectionManager() {
   const pendingCount = Object.values(instanceStatuses).filter(status =>
     ["connecting", "pairing", "qr"].includes(status)
   ).length;
+  const localPhoneDigits = phone.replace(/\D/g, "");
+  const fullPhone = `+${getCountryCallingCode(countryCode)}${localPhoneDigits}`;
+  const phoneIsPossible = isPossiblePhoneNumber(fullPhone);
+
+  const openCreate = () => {
+    setNameDraft("");
+    setCreatedInstanceId(null);
+    setCreatedInstanceName("");
+    setConnectionMode("qr");
+    setPhone("");
+    setCountryCode("BR");
+    setPairingCode(null);
+    setSetupStep(1);
+    create.reset();
+    pairing.reset();
+    setCreateOpen(true);
+  };
+  const closeCreate = () => {
+    if (create.isPending || connect.isPending || pairing.isPending) return;
+    setCreateOpen(false);
+  };
 
   return (
     <div className="whatsapp-page-stack">
       <section
+        className="whatsapp-hero surface"
+        aria-labelledby="whatsapp-hero-title"
+      >
+        <div className="whatsapp-hero-mark">
+          <WhatsappMark size={34} />
+        </div>
+        <div className="whatsapp-hero-copy">
+          <span className="eyebrow">Conexão oficial do workspace</span>
+          <h2 id="whatsapp-hero-title">
+            Uma instância. Dois caminhos para conectar.
+          </h2>
+          <p>
+            Use QR Code para ser mais rápido ou escolha o código por telefone
+            quando estiver sem acesso à câmera.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn-primary whatsapp-create-button"
+          onClick={openCreate}
+        >
+          <Plus size={15} /> Criar instância
+        </button>
+      </section>
+
+      <section
         className="whatsapp-summary-grid"
-        aria-label="Resumo das conexões WhatsApp"
+        aria-label="Resumo da conexão WhatsApp"
       >
         <article className="surface whatsapp-summary-card">
           <span>Instâncias</span>
@@ -181,57 +274,6 @@ function BaileysConnectionManager() {
       </section>
 
       <section
-        className="surface whatsapp-create-card"
-        aria-labelledby="new-instance-title"
-      >
-        <div className="whatsapp-create-heading">
-          <div className="whatsapp-create-icon">
-            <Plus size={18} />
-          </div>
-          <div>
-            <span className="eyebrow">Comece por aqui</span>
-            <h2 id="new-instance-title">Nova instância</h2>
-            <p>
-              Crie uma sessão Baileys para este workspace. Você poderá renomear
-              ou excluir depois.
-            </p>
-          </div>
-        </div>
-        <form
-          className="whatsapp-create-form"
-          onSubmit={event => {
-            event.preventDefault();
-            if (name.trim().length >= 2) create.mutate({ name: name.trim() });
-          }}
-        >
-          <label className="form-field" htmlFor="new-whatsapp-instance-name">
-            <span>Nome da conexão</span>
-            <input
-              id="new-whatsapp-instance-name"
-              className="input-control"
-              value={name}
-              maxLength={120}
-              onChange={event => setName(event.target.value)}
-              placeholder="Ex.: WhatsApp comercial"
-            />
-          </label>
-          <button
-            className="btn-primary"
-            type="submit"
-            disabled={create.isPending || name.trim().length < 2}
-          >
-            <Plus size={15} />{" "}
-            {create.isPending ? "Criando instância..." : "Criar instância"}
-          </button>
-        </form>
-        {create.error && (
-          <div className="form-error" role="alert">
-            {create.error.message}
-          </div>
-        )}
-      </section>
-
-      <section
         className="whatsapp-instances-section"
         aria-labelledby="instance-list-title"
       >
@@ -239,10 +281,7 @@ function BaileysConnectionManager() {
           <div>
             <span className="eyebrow">Sessões do workspace</span>
             <h2 id="instance-list-title">Suas instâncias</h2>
-            <p>
-              QR Code e código por telefone são duas formas de parear a mesma
-              sessão.
-            </p>
+            <p>O status é atualizado automaticamente pelo gateway Baileys.</p>
           </div>
           <div className="whatsapp-list-tools">
             {total !== undefined && (
@@ -260,12 +299,11 @@ function BaileysConnectionManager() {
               <RefreshCw
                 size={14}
                 className={instances.isFetching ? "spin" : undefined}
-              />
+              />{" "}
               Atualizar
             </button>
           </div>
         </div>
-
         {instances.isLoading ? (
           <div className="surface whatsapp-empty-panel" role="status">
             Carregando instâncias do workspace...
@@ -290,11 +328,203 @@ function BaileysConnectionManager() {
             <EmptyState
               icon={QrCode}
               title="Nenhuma instância criada"
-              description="Crie sua primeira instância para iniciar a conexão com um número do WhatsApp."
+              description="Clique em Criar instância para começar a conexão do seu WhatsApp."
             />
           </div>
         )}
       </section>
+
+      {createOpen && (
+        <div
+          className="connection-wizard-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-instance-title"
+        >
+          <div className="connection-wizard connection-setup-dialog">
+            <button
+              type="button"
+              className="connection-wizard-close"
+              onClick={closeCreate}
+              aria-label="Fechar criação de instância"
+            >
+              <X size={16} />
+            </button>
+            <div className="setup-dialog-brand">
+              <WhatsappMark size={26} />
+              <span>Nova conexão</span>
+              <small>Etapa {setupStep} de 3</small>
+            </div>
+            {setupStep === 1 && (
+              <>
+                <h2 id="create-instance-title">Dê um nome à sua instância</h2>
+                <p className="muted">
+                  Esse nome ajuda sua equipe a reconhecer o número conectado.
+                  Você poderá alterá-lo depois.
+                </p>
+                <label className="form-field" htmlFor="new-instance-name">
+                  <span>Nome da instância</span>
+                  <input
+                    id="new-instance-name"
+                    className="input-control"
+                    autoFocus
+                    maxLength={120}
+                    value={nameDraft}
+                    onChange={event => setNameDraft(event.target.value)}
+                    placeholder="Ex.: WhatsApp Comercial"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={create.isPending || nameDraft.trim().length < 2}
+                  onClick={() => create.mutate({ name: nameDraft.trim() })}
+                >
+                  {create.isPending ? "Criando..." : "Avançar"}
+                  <span aria-hidden="true">→</span>
+                </button>
+                {create.error && (
+                  <div className="form-error" role="alert">
+                    {create.error.message}
+                  </div>
+                )}
+              </>
+            )}
+            {setupStep === 2 && (
+              <>
+                <h2 id="create-instance-title">Como você quer conectar?</h2>
+                <p className="muted">
+                  Instância{" "}
+                  <strong className="dialog-instance-name">
+                    {createdInstanceName}
+                  </strong>{" "}
+                  criada. Escolha um método para parear o WhatsApp.
+                </p>
+                <div className="connection-mode-switch">
+                  <button
+                    type="button"
+                    className={connectionMode === "qr" ? "is-active" : ""}
+                    onClick={() => setConnectionMode("qr")}
+                  >
+                    <QrCode size={19} />
+                    <strong>QR Code</strong>
+                    <small>Leia com a câmera do celular</small>
+                  </button>
+                  <button
+                    type="button"
+                    className={connectionMode === "phone" ? "is-active" : ""}
+                    onClick={() => setConnectionMode("phone")}
+                  >
+                    <span className="mode-phone-icon">#</span>
+                    <strong>Por número</strong>
+                    <small>Receba um código no WhatsApp</small>
+                  </button>
+                </div>
+                {connectionMode === "qr" ? (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={connect.isPending || !createdInstanceId}
+                    onClick={() =>
+                      createdInstanceId &&
+                      connect.mutate({ instanceId: createdInstanceId })
+                    }
+                  >
+                    {connect.isPending
+                      ? "Gerando QR Code..."
+                      : "Continuar com QR Code"}
+                    <span aria-hidden="true">→</span>
+                  </button>
+                ) : (
+                  <>
+                    <div className="phone-entry-group setup-phone-entry">
+                      <label className="form-field">
+                        <span>DDI</span>
+                        <select
+                          className="input-control flag-ddi-select"
+                          value={countryCode}
+                          aria-label="Bandeira e DDI"
+                          onChange={event =>
+                            setCountryCode(event.target.value as CountryCode)
+                          }
+                        >
+                          {phoneCountryOptions.map(option => (
+                            <option key={option.country} value={option.country}>
+                              {option.flag} +{option.callingCode}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="form-field">
+                        <span>Número</span>
+                        <input
+                          className="input-control"
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="tel-national"
+                          value={phone}
+                          onChange={event => setPhone(event.target.value)}
+                          placeholder="DDD e número"
+                        />
+                      </label>
+                    </div>
+                    <small className="muted phone-number-hint">
+                      Digite o número sem o DDI; a bandeira selecionada
+                      acrescenta o código automaticamente.
+                    </small>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={
+                        pairing.isPending ||
+                        !phoneIsPossible ||
+                        !createdInstanceId
+                      }
+                      onClick={() => {
+                        if (createdInstanceId)
+                          pairing.mutate({
+                            instanceId: createdInstanceId,
+                            phone: fullPhone,
+                          });
+                      }}
+                    >
+                      {pairing.isPending
+                        ? "Aguardando WhatsApp..."
+                        : "Continuar com número"}
+                      <span aria-hidden="true">→</span>
+                    </button>
+                  </>
+                )}
+                {(connect.error || pairing.error) && (
+                  <div className="form-error" role="alert">
+                    {connect.error?.message ?? pairing.error?.message}
+                  </div>
+                )}
+              </>
+            )}
+            {setupStep === 3 && (
+              <div className="connection-wizard-finish">
+                <span className="setup-success-icon">
+                  <CheckCircle2 size={28} />
+                </span>
+                <h2 id="create-instance-title">Código pronto</h2>
+                <p className="muted">
+                  No celular, abra WhatsApp → Aparelhos conectados → Conectar
+                  aparelho → Conectar com número de telefone.
+                </p>
+                <div className="pairing-code">{pairingCode}</div>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={closeCreate}
+                >
+                  Fechar e acompanhar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -309,11 +539,12 @@ function BaileysInstanceCard({
   onStatusUpdate: (instanceId: string, status?: string) => void;
 }) {
   const utils = trpc.useUtils();
-  const [nameDraft, setNameDraft] = useState(name);
   const [phone, setPhone] = useState("");
   const [countryCode, setCountryCode] = useState<CountryCode>("BR");
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
   const status = trpc.workspace.baileysStatus.useQuery(
     { instanceId },
     {
@@ -359,6 +590,7 @@ function BaileysInstanceCard({
   });
   const rename = trpc.workspace.renameBaileysInstance.useMutation({
     onSuccess: async () => {
+      setRenameOpen(false);
       await utils.workspace.baileysInstances.invalidate();
     },
   });
@@ -377,11 +609,9 @@ function BaileysInstanceCard({
       await utils.workspace.baileysInstances.invalidate();
     },
   });
-
   useEffect(() => {
     onStatusUpdate(instanceId, status.error ? undefined : current?.status);
   }, [current?.status, instanceId, onStatusUpdate, status.error]);
-
   useEffect(() => {
     if (
       ["connected", "disconnected", "logged_out", "error"].includes(
@@ -390,7 +620,6 @@ function BaileysInstanceCard({
     )
       setPairingCode(null);
   }, [current?.status]);
-
   const badge = status.error
     ? { label: "Gateway indisponível", tone: "red" as const }
     : status.isLoading
@@ -406,7 +635,7 @@ function BaileysInstanceCard({
         <div
           className={`whatsapp-instance-mark ${connected ? "is-online" : ""}`}
         >
-          {connected ? <Wifi size={18} /> : <WifiOff size={18} />}
+          <WhatsappMark size={23} />
         </div>
         <div className="whatsapp-instance-identity">
           <div className="whatsapp-instance-overline">
@@ -420,9 +649,7 @@ function BaileysInstanceCard({
           </p>
         </div>
         <div className="whatsapp-instance-status">
-          <div aria-live="polite">
-            <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
-          </div>
+          <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
           <button
             type="button"
             className="btn-ghost whatsapp-refresh-status"
@@ -433,12 +660,11 @@ function BaileysInstanceCard({
             <RefreshCw
               size={13}
               className={status.isFetching ? "spin" : undefined}
-            />
+            />{" "}
             Atualizar status
           </button>
         </div>
       </header>
-
       {status.error && (
         <div className="form-error whatsapp-instance-error" role="alert">
           {status.error.message}
@@ -449,37 +675,19 @@ function BaileysInstanceCard({
           {current.lastError}
         </div>
       )}
-
-      <div className="whatsapp-rename-form">
-        <label className="form-field" htmlFor={`instance-name-${instanceId}`}>
-          <span>Nome da instância</span>
-          <input
-            id={`instance-name-${instanceId}`}
-            className="input-control"
-            value={nameDraft}
-            maxLength={120}
-            onChange={event => setNameDraft(event.target.value)}
-          />
-        </label>
+      <div className="whatsapp-instance-toolbar">
+        <span>Nome da instância</span>
         <button
           type="button"
-          className="btn-secondary"
-          disabled={
-            rename.isPending ||
-            nameDraft.trim().length < 2 ||
-            nameDraft.trim() === name
-          }
-          onClick={() => rename.mutate({ instanceId, name: nameDraft.trim() })}
+          className="btn-ghost"
+          onClick={() => {
+            setNameDraft(name);
+            setRenameOpen(true);
+          }}
         >
-          {rename.isPending ? "Salvando..." : "Salvar nome"}
+          <Pencil size={13} /> Renomear
         </button>
       </div>
-      {rename.error && (
-        <div className="form-error whatsapp-instance-error" role="alert">
-          {rename.error.message}
-        </div>
-      )}
-
       {connected ? (
         <section
           className="whatsapp-connected-panel"
@@ -518,13 +726,13 @@ function BaileysInstanceCard({
             aria-labelledby={`qr-method-${instanceId}`}
           >
             <div className="whatsapp-method-heading">
-              <span className="whatsapp-method-number">01</span>
+              <span className="whatsapp-method-icon">
+                <QrCode size={17} />
+              </span>
               <div>
-                <span className="eyebrow">Conexão recomendada</span>
+                <span className="eyebrow">Recomendado</span>
                 <h4 id={`qr-method-${instanceId}`}>Conectar com QR Code</h4>
-                <p>
-                  Leia o código pela opção Aparelhos conectados no WhatsApp.
-                </p>
+                <p>Leia o código em Aparelhos conectados.</p>
               </div>
             </div>
             <button
@@ -539,12 +747,10 @@ function BaileysInstanceCard({
             >
               <QrCode size={15} />
               {connect.isPending
-                ? "Preparando QR Code..."
-                : current?.status === "pairing"
-                  ? "Pareamento por telefone em andamento"
-                  : waitingQr
-                    ? "Atualizar QR Code"
-                    : "Gerar QR Code"}
+                ? "Preparando..."
+                : waitingQr
+                  ? "Atualizar QR Code"
+                  : "Gerar QR Code"}
             </button>
             {waitingQr && (
               <div
@@ -563,111 +769,94 @@ function BaileysInstanceCard({
             )}
             {qr.error && (
               <small className="qr-error">
-                QR temporariamente indisponível. Atualize a conexão para tentar
-                novamente.
+                QR temporariamente indisponível. Atualize a conexão.
               </small>
             )}
-            {(connect.error || disconnect.error) && (
+            {connect.error && (
               <div className="form-error" role="alert">
-                {connect.error?.message ?? disconnect.error?.message}
+                {connect.error.message}
               </div>
             )}
           </section>
-
           <section
             className="whatsapp-method-card whatsapp-phone-method"
             aria-labelledby={`phone-method-${instanceId}`}
           >
             <div className="whatsapp-method-heading">
-              <span className="whatsapp-method-number">02</span>
+              <span className="whatsapp-method-icon mode-phone-icon">#</span>
               <div>
-                <span className="eyebrow">Alternativa ao QR</span>
+                <span className="eyebrow">Alternativa</span>
                 <h4 id={`phone-method-${instanceId}`}>Conectar com número</h4>
-                <p>
-                  Solicite um código para vincular este aparelho ao WhatsApp.
-                </p>
+                <p>Use um código quando não puder ler o QR.</p>
               </div>
             </div>
-            <details className="whatsapp-pairing-details">
-              <summary>Informar número e gerar código</summary>
-              <div className="phone-entry-group">
-                <label className="form-field">
-                  <span>País e DDI</span>
-                  <select
-                    className="input-control"
-                    value={countryCode}
-                    aria-label="País e código DDI"
-                    onChange={event =>
-                      setCountryCode(event.target.value as CountryCode)
-                    }
-                  >
-                    {phoneCountryOptions.map(option => (
-                      <option key={option.country} value={option.country}>
-                        {option.flag} {option.name} (+{option.callingCode})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="form-field">
-                  <span>Número nacional</span>
-                  <input
-                    className="input-control"
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel-national"
-                    value={phone}
-                    onChange={event => setPhone(event.target.value)}
-                    placeholder="DDD e telefone"
-                    aria-label="Número nacional incluindo DDD ou código de área"
-                  />
-                </label>
+            <div className="phone-entry-group">
+              <label className="form-field">
+                <span>DDI</span>
+                <select
+                  className="input-control flag-ddi-select"
+                  value={countryCode}
+                  aria-label="Bandeira e DDI"
+                  onChange={event =>
+                    setCountryCode(event.target.value as CountryCode)
+                  }
+                >
+                  {phoneCountryOptions.map(option => (
+                    <option key={option.country} value={option.country}>
+                      {option.flag} +{option.callingCode}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-field">
+                <span>Número</span>
+                <input
+                  className="input-control"
+                  type="tel"
+                  inputMode="tel"
+                  value={phone}
+                  onChange={event => setPhone(event.target.value)}
+                  placeholder="DDD e número"
+                />
+              </label>
+            </div>
+            <small className="muted phone-number-hint">
+              O DDI é acrescentado automaticamente.
+            </small>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={
+                pairing.isPending || !phoneIsPossible || !current?.configured
+              }
+              onClick={() => {
+                setPairingCode(null);
+                pairing.reset();
+                pairing.mutate({ instanceId, phone: fullPhone });
+              }}
+            >
+              {pairing.isPending ? "Aguardando WhatsApp..." : "Gerar código"}
+            </button>
+            {pairingCode && (
+              <div className="whatsapp-pairing-result" aria-live="polite">
+                <span className="eyebrow">Código aceito pelo WhatsApp</span>
+                <div className="pairing-code">{pairingCode}</div>
+                <small>
+                  No celular: Aparelhos conectados → Conectar aparelho →
+                  Conectar com número de telefone.
+                </small>
               </div>
-              <small className="muted phone-number-hint">
-                Inclua DDD/código de área e digite o número sem o DDI; o país
-                selecionado acrescenta o DDI automaticamente.
-              </small>
-              <button
-                type="button"
-                className="btn-secondary"
-                disabled={
-                  pairing.isPending || !phoneIsPossible || !current?.configured
-                }
-                onClick={() => {
-                  setPairingCode(null);
-                  pairing.reset();
-                  pairing.mutate({ instanceId, phone: fullPhone });
-                }}
-              >
-                {pairing.isPending
-                  ? "Aguardando confirmação do WhatsApp..."
-                  : "Gerar código de pareamento"}
-              </button>
-              {pairingCode && (
-                <div className="whatsapp-pairing-result" aria-live="polite">
-                  <span className="eyebrow">Código aceito pelo WhatsApp</span>
-                  <div className="pairing-code">{pairingCode}</div>
-                  <small>
-                    No celular: Configurações → Aparelhos conectados → Conectar
-                    aparelho → Conectar com número de telefone. Digite
-                    exatamente os 8 caracteres; podem incluir letras.
-                  </small>
-                </div>
-              )}
-              {pairing.error && (
-                <div className="form-error" role="alert">
-                  {pairing.error.message}
-                </div>
-              )}
-            </details>
+            )}
+            {pairing.error && (
+              <div className="form-error" role="alert">
+                {pairing.error.message}
+              </div>
+            )}
           </section>
         </div>
       )}
-
       <footer className="whatsapp-instance-footer">
-        <span>
-          O estado acompanha o gateway em segundo plano; nenhuma atualização
-          manual é necessária.
-        </span>
+        <span>Status sincronizado automaticamente com o gateway.</span>
         <button
           type="button"
           className="btn-ghost whatsapp-delete-button"
@@ -676,7 +865,58 @@ function BaileysInstanceCard({
           <Trash2 size={14} /> Excluir instância
         </button>
       </footer>
-
+      {renameOpen && (
+        <div
+          className="connection-wizard-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`rename-${instanceId}`}
+        >
+          <div className="connection-wizard compact-dialog">
+            <button
+              type="button"
+              className="connection-wizard-close"
+              onClick={() => setRenameOpen(false)}
+              aria-label="Fechar renomeação"
+            >
+              <X size={16} />
+            </button>
+            <span className="eyebrow">Editar instância</span>
+            <h2 id={`rename-${instanceId}`}>Renomear conexão</h2>
+            <p className="muted">
+              O novo nome será exibido para toda a equipe.
+            </p>
+            <label className="form-field">
+              <span>Nome da instância</span>
+              <input
+                className="input-control"
+                autoFocus
+                value={nameDraft}
+                onChange={event => setNameDraft(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={
+                rename.isPending ||
+                nameDraft.trim().length < 2 ||
+                nameDraft.trim() === name
+              }
+              onClick={() =>
+                rename.mutate({ instanceId, name: nameDraft.trim() })
+              }
+            >
+              {rename.isPending ? "Salvando..." : "Salvar nome"}
+            </button>
+            {rename.error && (
+              <div className="form-error" role="alert">
+                {rename.error.message}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {confirmDelete && (
         <div
           className="connection-wizard-backdrop"
@@ -684,13 +924,20 @@ function BaileysInstanceCard({
           aria-modal="true"
           aria-labelledby={`delete-${instanceId}`}
         >
-          <div className="connection-wizard">
+          <div className="connection-wizard compact-dialog">
+            <button
+              type="button"
+              className="connection-wizard-close"
+              onClick={() => setConfirmDelete(false)}
+              aria-label="Cancelar exclusão"
+            >
+              <X size={16} />
+            </button>
+            <span className="eyebrow">Ação permanente</span>
             <h2 id={`delete-${instanceId}`}>Excluir “{name}”?</h2>
             <p className="muted">
-              A sessão desta instância será encerrada e removida do gateway. O
-              histórico de mensagens do workspace não será apagado. Para voltar
-              a usar este número, será necessário criar e parear uma nova
-              instância.
+              A sessão será encerrada e removida do gateway. Para usar este
+              número novamente, será necessário criar e parear outra instância.
             </p>
             <div className="qr-actions">
               <button
@@ -712,11 +959,7 @@ function BaileysInstanceCard({
               </button>
             </div>
             {remove.error && (
-              <div
-                className="form-error"
-                role="alert"
-                style={{ marginTop: 12 }}
-              >
+              <div className="form-error" role="alert">
                 {remove.error.message}
               </div>
             )}
@@ -752,12 +995,11 @@ export function WorkspaceUsagePage() {
         second: "2-digit",
       })
     : null;
-
   return (
     <PanelLayout
       eyebrow="Workspace · Plano"
       title="Planos e consumo"
-      description="Acompanhe o plano atual, os limites do workspace e a janela de renovação, separados da configuração das instâncias WhatsApp."
+      description="Acompanhe o plano atual, os limites do workspace e a janela de renovação."
       actions={
         <button
           type="button"
@@ -768,7 +1010,7 @@ export function WorkspaceUsagePage() {
           <RefreshCw
             size={14}
             className={usageQuery.isFetching ? "spin" : undefined}
-          />
+          />{" "}
           Atualizar consumo
         </button>
       }
@@ -792,7 +1034,6 @@ export function WorkspaceUsagePage() {
                 : "Ao vivo"}
           </StatusBadge>
         </section>
-
         {usageQuery.isLoading ? (
           <div className="surface workspace-usage-message" role="status">
             Carregando cotas e consumo...
@@ -849,10 +1090,9 @@ export function WorkspaceUsagePage() {
             Não há dados de consumo para exibir neste momento.
           </div>
         )}
-
         <p className="workspace-usage-note">
           Os limites apresentados são do workspace. Esta página é apenas
-          informativa; não altera o plano nem as chaves de integração.
+          informativa.
         </p>
       </div>
     </PanelLayout>

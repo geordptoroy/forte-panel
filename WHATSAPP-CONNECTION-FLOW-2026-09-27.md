@@ -14,9 +14,9 @@ O desenvolvimento passa a avançar **uma página/função principal por vez**. O
 2. editar o nome da instância;
 3. conectar, parear, desconectar e encerrar uma sessão;
 4. excluir uma instância, com confirmação e sem apagar o histórico de mensagens do workspace;
-5. consultar plano e consumo do workspace na página separada **Planos e consumo**.
+5. deixar plano e consumo congelados até a revisão da próxima área.
 
-Enquanto essa etapa estiver em revisão, a aplicação mantém as outras páginas e o backend no repositório, mas as rotas não-core ficam temporariamente redirecionadas para Instâncias WhatsApp; **Planos e consumo** é a segunda rota liberada. Isso é um congelamento de produto reversível, **não substitui autorização no servidor**.
+Enquanto essa etapa estiver em revisão, a aplicação mantém as outras páginas e o backend no repositório, mas as rotas não-core — inclusive **Planos e consumo** — ficam temporariamente redirecionadas para Instâncias WhatsApp. Isso é um congelamento de produto reversível, **não substitui autorização no servidor**.
 
 ### Sequência solicitada para as próximas fatias
 
@@ -86,9 +86,9 @@ As procedures tRPC usam o workspace autenticado e permissão de gerente/owner/ad
 
 - Flag central: `client/src/core-mode.ts`, `CORE_ONLY_MODE = true`, rota principal `/whatsapp-connection`.
 - `App.tsx` encaminha rotas fora do Core para `/whatsapp-connection`; as duas rotas liberadas são WhatsApp e `/plans-usage`. Login, recuperação e aceite de convite continuam disponíveis.
-- `PanelLayout.tsx` mostra **Instâncias WhatsApp** e **Planos e consumo** no menu responsivo; não consulta dados da Inbox em segundo plano neste modo.
+- `PanelLayout.tsx` mostra somente **Conectar WhatsApp** no menu responsivo do Core; não consulta dados da Inbox em segundo plano neste modo.
 - **Instâncias WhatsApp** contém apenas criação, renomeação, status, QR, pareamento por telefone, controles de sessão e exclusão confirmada. O consumo não aparece nessa tela.
-- **Planos e consumo** é a página própria para o plano atual, cotas, uso e janela de renovação do workspace.
+- **Planos e consumo** continua implementado no código, mas está temporariamente oculto e bloqueado pela flag do Core até a revisão da área.
 - Demais páginas e módulos não foram deletados: permanecem no código e backend para que possam ser reabertos em uma etapa revisada. A flag não é barreira de segurança.
 
 ### Reconhecimento automático da conexão
@@ -190,3 +190,14 @@ Validação sandbox desta correção de pareamento/DDI: 142 testes passaram e 41
 ## 8. Próxima decisão do usuário
 
 Revisar este fluxo e a UI de **Instâncias WhatsApp**. Depois, indicar correções de ordem/escopo ou aprovar a próxima fatia. Não iniciar configuração de modelos nem automação de respostas antes desse retorno.
+
+
+---
+
+## Atualização de interface — 28/09/2026
+
+A integração entre o **Forte Panel** e o gateway **Baileys** permanece funcional: os contratos tRPC, polling de status, QR Code, pareamento por número, desconexão, renomeação e exclusão confirmada não foram alterados. O estado `connecting` durante o restart `515` esperado continua sendo tratado pelo gateway e pela tela.
+
+Nesta etapa, o trabalho é exclusivamente visual: a criação começa por um botão único **Criar instância**; o nome é solicitado em um modal central com fundo desfocado; depois do nome, o mesmo modal oferece QR Code ou conexão por número; o seletor de telefone mostra somente bandeira e DDI; o branding usa o símbolo WhatsApp monocromático; e renomeação e exclusão continuam separadas e protegidas. **Planos e consumo** foi temporariamente removido da sidebar e deixou de ser uma rota liberada no Core enquanto a área não for revisada.
+
+O próximo teste deve avaliar apenas layout, responsividade, modal e clareza do fluxo. Não há mudança de protocolo, sessão, banco, gateway ou contrato de conexão nesta revisão.

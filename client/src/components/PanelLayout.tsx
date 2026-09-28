@@ -279,12 +279,6 @@ const coreOnlyNav: NavGroup[] = [
     label: "Etapa 1 · WhatsApp",
     items: [
       managementNav[0].items[0],
-      {
-        href: CORE_USAGE_ROUTE,
-        label: "Planos e consumo",
-        description: "Plano atual e cotas do workspace",
-        icon: BarChart3,
-      },
     ],
   },
 ];

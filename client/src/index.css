@@ -740,3 +740,39 @@ a { color: inherit; text-decoration: none; }
   .workspace-plan-hero { align-items: flex-start; flex-direction: column; padding: 17px; }
   .workspace-usage-metric { padding: 15px; }
 }
+
+
+/* WhatsApp connection polish — interface only; Baileys contracts stay untouched. */
+.whatsapp-hero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 24px; border-color: rgba(255,255,255,.1); background: radial-gradient(circle at 0 0, rgba(255,255,255,.07), transparent 42%), linear-gradient(135deg, #171717, #0c0c0c); }
+.whatsapp-hero-mark { display: grid; place-items: center; width: 64px; height: 64px; color: #080808; border: 1px solid rgba(255,255,255,.18); background: #f2f2f2; box-shadow: 0 12px 35px rgba(0,0,0,.25); }
+.whatsapp-mark { display: block; color: #080808; }
+.whatsapp-hero-mark .whatsapp-mark { color: #080808; }
+.whatsapp-hero-mark .whatsapp-mark circle { fill: #080808; }
+.whatsapp-hero-copy h2 { margin: 6px 0 0; color: #f3f3f3; font-size: clamp(20px, 3vw, 30px); letter-spacing: -.055em; }
+.whatsapp-hero-copy p { max-width: 600px; margin: 8px 0 0; color: #8a8a8a; font-size: 11px; line-height: 1.6; }
+.whatsapp-create-button { min-height: 42px; white-space: nowrap; }
+.setup-dialog-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 20px; color: #eee; font-size: 10px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.setup-dialog-brand .whatsapp-mark { color: #f5f5f5; }
+.setup-dialog-brand small { margin-left: auto; color: #666; font-size: 8px; letter-spacing: .1em; }
+.connection-setup-dialog h2 { max-width: 420px; font-size: 28px; }
+.connection-setup-dialog .btn-primary { display: inline-flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; margin-top: 16px; }
+.connection-setup-dialog .btn-primary > span { font-size: 17px; }
+.dialog-instance-name { color: #eee; }
+.connection-mode-switch button { min-height: 94px; transition: transform .16s ease-out, border-color .16s ease-out, background .16s ease-out; }
+.connection-mode-switch button:hover { transform: translateY(-1px); border-color: rgba(255,255,255,.25); }
+.connection-mode-switch button.is-active { color: #fff; border-color: rgba(255,255,255,.55); background: rgba(255,255,255,.09); }
+.connection-mode-switch button.is-active strong { color: #fff; }
+.connection-mode-switch button svg { color: #f4f4f4; }
+.mode-phone-icon { display: grid; grid-row: span 2; place-items: center; width: 19px; height: 19px; color: #111; background: #eee; border-radius: 50%; font-size: 12px; font-weight: 900; }
+.setup-phone-entry { grid-template-columns: minmax(94px, .55fr) minmax(0, 1.45fr); margin-top: 14px; }
+.flag-ddi-select { font-size: 13px; }
+.setup-success-icon { display: grid; place-items: center; width: 58px; height: 58px; color: #111; background: #eee; border-radius: 50%; }
+.connection-wizard-finish h2 { margin-top: 17px; }
+.compact-dialog { width: min(100%, 430px); }
+.whatsapp-instance-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px 0; color: #6e6e6e; font-size: 9px; }
+.whatsapp-instance-toolbar .btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 5px 0; color: #a6a6a6; font-size: 9px; }
+.whatsapp-instance-toolbar .btn-ghost:hover { color: #fff; }
+.whatsapp-method-icon { display: grid; flex: 0 0 auto; place-items: center; width: 28px; height: 28px; color: #e8e8e8; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); }
+.whatsapp-method-card > .btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 38px; margin-top: 13px; }
+@media (max-width: 760px) { .whatsapp-hero { grid-template-columns: auto minmax(0,1fr); padding: 18px; }.whatsapp-create-button { grid-column: 1 / -1; width: 100%; }.whatsapp-hero-mark { width: 52px; height: 52px; }.whatsapp-instance-toolbar { padding-left: 15px; padding-right: 15px; } }
+@media (max-width: 520px) { .whatsapp-hero { align-items: start; gap: 12px; }.whatsapp-hero-copy h2 { font-size: 22px; }.whatsapp-summary-grid { grid-template-columns: 1fr; }.whatsapp-method-grid { grid-template-columns: 1fr; padding-left: 15px; padding-right: 15px; }.whatsapp-instance-header { align-items: flex-start; flex-wrap: wrap; padding: 15px; }.whatsapp-instance-status { margin-left: 55px; justify-items: start; }.whatsapp-connected-panel { align-items: flex-start; flex-direction: column; margin-left: 15px; margin-right: 15px; }.whatsapp-session-actions { width: 100%; }.whatsapp-session-actions button { flex: 1; } }
