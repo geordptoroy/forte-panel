@@ -227,32 +227,6 @@ function BaileysConnectionManager() {
   return (
     <div className="whatsapp-page-stack">
       <section
-        className="whatsapp-hero surface"
-        aria-labelledby="whatsapp-hero-title"
-      >
-        <div className="whatsapp-hero-mark">
-          <WhatsappMark size={34} />
-        </div>
-        <div className="whatsapp-hero-copy">
-          <span className="eyebrow">Conexão oficial do workspace</span>
-          <h2 id="whatsapp-hero-title">
-            Uma instância. Dois caminhos para conectar.
-          </h2>
-          <p>
-            Use QR Code para ser mais rápido ou escolha o código por telefone
-            quando estiver sem acesso à câmera.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="btn-primary whatsapp-create-button"
-          onClick={openCreate}
-        >
-          <Plus size={15} /> Criar instância
-        </button>
-      </section>
-
-      <section
         className="whatsapp-summary-grid"
         aria-label="Resumo da conexão WhatsApp"
       >
@@ -271,6 +245,17 @@ function BaileysConnectionManager() {
           <strong>{statusesReady ? pendingCount : "—"}</strong>
           <small>QR, pareamento ou handshake</small>
         </article>
+      </section>
+
+      <section className="whatsapp-create-strip surface" aria-labelledby="create-instance-strip-title">
+        <div>
+          <span className="eyebrow">Próximo passo</span>
+          <h2 id="create-instance-strip-title">Conecte uma instância WhatsApp</h2>
+          <p>Crie o nome uma vez e escolha QR Code ou número no próximo passo.</p>
+        </div>
+        <button type="button" className="btn-primary" onClick={openCreate}>
+          <Plus size={15} /> Criar instância
+        </button>
       </section>
 
       <section
