@@ -3,6 +3,7 @@ import {
   normalizeBaileysMessage,
   normalizeBaileysOutgoingMessage,
   PanelMessageEchoTracker,
+  shouldForwardLiveUpsert,
 } from "./message-normalization.js";
 
 describe("Baileys message normalization", () => {
@@ -60,6 +61,24 @@ describe("Baileys message normalization", () => {
     expect(normalizeBaileysMessage({ imageMessage: {} }).content).toBe(
       "[imagem recebida]"
     );
+  });
+
+  it("marks an unknown text fallback without mistaking valid media placeholders for text", () => {
+    expect(
+      normalizeBaileysMessage({ protocolMessage: { type: 0 } })
+    ).toMatchObject({
+      messageType: "text",
+      content: "[mensagem recebida]",
+      isPlaceholder: true,
+    });
+    expect(normalizeBaileysMessage({ conversation: "oi" })).toMatchObject({
+      content: "oi",
+      isPlaceholder: false,
+    });
+    expect(normalizeBaileysMessage({ audioMessage: { ptt: true } })).toMatchObject({
+      messageType: "audio",
+      isPlaceholder: true,
+    });
   });
 
   it.each([
@@ -138,6 +157,14 @@ describe("Baileys message normalization", () => {
         buttonsMessage: { contentText: "Escolha", buttons: [] },
       })
     ).toMatchObject({ messageType: "button", echoContent: "Escolha" });
+  });
+});
+
+describe("Baileys live upsert routing", () => {
+  it("only forwards online notify events without a backfill request id", () => {
+    expect(shouldForwardLiveUpsert("notify")).toBe(true);
+    expect(shouldForwardLiveUpsert("append")).toBe(false);
+    expect(shouldForwardLiveUpsert("notify", "history-request-1")).toBe(false);
   });
 });
 

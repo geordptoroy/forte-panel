@@ -6586,39 +6586,24 @@ export async function ingestInboundWhatsApp(
   if (!db) throw new Error("Database unavailable");
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
-  const phone = normalizeContactPhone(
-    typeof input.metadata?.jid === "string" ? input.metadata.jid : input.phone
-  );
-  if (!phone) throw new Error("Phone is invalid after normalization");
+  const sourceMetadata = input.metadata ?? {};
+  const isBaileys = sourceMetadata.provider === "baileys";
+  const instanceId =
+    typeof sourceMetadata.instanceId === "string"
+      ? sourceMetadata.instanceId.trim()
+      : "";
   const normalizedJid = normalizeWhatsappJid(
-    typeof input.metadata?.jid === "string" ? input.metadata.jid : undefined
+    typeof sourceMetadata.jid === "string" ? sourceMetadata.jid : undefined
   );
-  const metadata = await persistInboundMedia(
-    workspace.id,
-    input.eventId,
-    {
-      ...(input.metadata ?? {}),
-      ...(normalizedJid ? { jid: normalizedJid } : {}),
-    }
-  );
-  const isGroup = input.metadata?.isGroup === true;
+  const isGroup = sourceMetadata.isGroup === true;
   const groupJid = normalizeWhatsappJid(
-    typeof input.metadata?.groupJid === "string"
-      ? input.metadata.groupJid
+    typeof sourceMetadata.groupJid === "string"
+      ? sourceMetadata.groupJid
       : normalizedJid
   );
-  const instanceId =
-    typeof input.metadata?.instanceId === "string"
-      ? input.metadata.instanceId.trim()
-      : "";
-  if (
-    isGroup &&
-    (input.metadata?.provider !== "baileys" ||
-      !groupJid?.endsWith("@g.us") ||
-      !instanceId)
-  )
-    throw new Error("Baileys group requires an owned instance and exact group JID");
-  if (isGroup) {
+  if (isBaileys) {
+    if (!instanceId)
+      throw new Error("Baileys message requires a registered instance");
     const ownedInstance = await db
       .select({ id: whatsappInstances.id })
       .from(whatsappInstances)
@@ -6626,13 +6611,47 @@ export async function ingestInboundWhatsApp(
         and(
           eq(whatsappInstances.workspaceId, workspace.id),
           eq(whatsappInstances.instanceId, instanceId),
-          eq(whatsappInstances.provider, "baileys")
+          eq(whatsappInstances.provider, "baileys"),
+          eq(whatsappInstances.active, 1)
         )
       )
       .limit(1);
     if (!ownedInstance[0])
-      throw new Error("WhatsApp group instance is not owned by this workspace");
+      throw new Error("Baileys instance is not active or owned by this workspace");
   }
+  if (
+    isGroup &&
+    (!isBaileys || !groupJid?.endsWith("@g.us") || !instanceId)
+  )
+    throw new Error("Baileys group requires an owned instance and exact group JID");
+  const upsertType =
+    sourceMetadata.upsertType === "notify" || sourceMetadata.upsertType === "append"
+      ? sourceMetadata.upsertType
+      : undefined;
+  if (
+    isBaileys &&
+    ((upsertType !== undefined && upsertType !== "notify") ||
+      (typeof sourceMetadata.requestId === "string" &&
+        sourceMetadata.requestId.length > 0))
+  )
+    return { ignored: true, reason: "non_live_baileys_event" };
+  const messageType = input.messageType ?? "text";
+  if (
+    isBaileys &&
+    (!input.content.trim() ||
+      (messageType === "text" &&
+        (sourceMetadata.isPlaceholder === true ||
+          input.content.trim() === "[mensagem recebida]")))
+  )
+    return { ignored: true, reason: "empty_or_unrecognized_baileys_payload" };
+  const phone = normalizeContactPhone(
+    typeof sourceMetadata.jid === "string" ? sourceMetadata.jid : input.phone
+  );
+  if (!phone) throw new Error("Phone is invalid after normalization");
+  const metadata = await persistInboundMedia(workspace.id, input.eventId, {
+    ...sourceMetadata,
+    ...(normalizedJid ? { jid: normalizedJid } : {}),
+  });
   const priorMessage = await db
     .select({
       messageId: messages.id,

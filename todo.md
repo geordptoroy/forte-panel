@@ -447,3 +447,17 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [ ] Corrigir ACL legacy de IA, SSRF/egress, limites de mídia e autorização server-side das tools.
 - [ ] Consolidar cards de IA, hierarquia imutável de políticas, orquestrador de capabilities, transcrição comum, métricas/quotas, suporte isolado e TTS explicitamente desativado.
 - [ ] Validar com PostgreSQL de dois workspaces, CI, staging e número dedicado antes de habilitar respostas automáticas em produção.
+
+
+## Proteção inicial da ingestão Baileys — 2026-09-28
+
+- [x] Carregar `type` e `requestId`; encaminhar somente `notify` sem backfill para o fluxo ao vivo e observar sync-history sem guardar conteúdo.
+- [x] Marcar texto-placeholder; ignorar payload Baileys desconhecido/vazio e lote histórico antes da criação de contato/conversa.
+- [x] Exigir instância Baileys ativa e do workspace antes de persistir mídia ou mensagem.
+- [x] Adicionar regressões unitárias/adaptador e testes PostgreSQL para append, placeholder e instância de outro workspace.
+- [x] Passar localmente `pnpm check`, `pnpm test` (197 aprovados/46 ignorados), `pnpm build`, typecheck do gateway e `git diff --check`.
+- [ ] Aguardar workflow PostgreSQL com as novas regressões; localmente esses testes foram ignorados por ausência de `DATABASE_URL` e Docker.
+- [ ] Fazer pairing autorizado em gateway isolado sem IA, sem envio/outbound e com webhook que retenha apenas metadados mínimos; sandbox atual ainda não tem Docker nem banco.
+- [ ] Diagnosticar read-only a conversa específica no banco Windows do usuário; o sandbox não tem acesso a esse banco.
+- [ ] Implementar importação histórica automática idempotente; `messaging-history.set` atual é observado, não persistido.
+- [ ] Decidir após evidência/teste o tratamento de `fromMe` live válido sem conversa conhecida; no momento esse envio real ainda é aceito.

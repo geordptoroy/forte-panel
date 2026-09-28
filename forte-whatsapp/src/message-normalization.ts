@@ -1,3 +1,5 @@
+import type { MessageUpsertType } from "baileys";
+
 export type BaileysMessageKind =
   | "text"
   | "image"
@@ -11,6 +13,13 @@ export type BaileysMessageKind =
   | "list"
   | "button"
   | "react";
+
+export function shouldForwardLiveUpsert(
+  type: MessageUpsertType,
+  requestId?: string
+): boolean {
+  return type === "notify" && !requestId;
+}
 
 type AnyRecord = Record<string, any>;
 
@@ -40,6 +49,7 @@ export function normalizeBaileysMessage(value: unknown): {
   messageType: BaileysMessageKind;
   content: string;
   echoContent: string;
+  isPlaceholder: boolean;
 } {
   const body = unwrapBaileysMessage(value);
   const image = record(body.imageMessage);
@@ -120,6 +130,7 @@ export function normalizeBaileysMessage(value: unknown): {
     body,
     messageType,
     content: typeof text === "string" && text.length > 0 ? text : fallback[messageType],
+    isPlaceholder: typeof text !== "string" || text.trim().length === 0,
     // Media URLs are not echoed back in WAMessage; captions are stable and text is exact.
     echoContent:
       messageType === "text"

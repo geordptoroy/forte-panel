@@ -1971,3 +1971,26 @@ O usuário escolheu explicitamente a opção **3 — limpeza Docker global** par
 - Implementar em blocos com critérios de aceite e testes antes de ampliar escopo. Rodar `pnpm check`, typecheck/build/test do gateway, suíte relevante, `pnpm build` e `git diff --check`; reportar precisamente quando PostgreSQL/staging/WhatsApp não foram validados.
 - Preservar dados e alterações do usuário. A opção anterior de limpeza Docker global continua registrada como pendente; não afirmar que foi executada. Qualquer comando entregue deve ser para o PowerShell do usuário e descrever que volumes/sessões apaga.
 - Atualizar o handoff, `todo.md`, índice e contrato afetado; não salvar chaves, QR, mensagens ou dumps reais. Revisar o diff antes de commit/push e verificar CI depois.
+
+
+## 18. Primeira fatia de proteção da ingestão Baileys — 2026-09-28 19:15 BRT
+
+### Mudanças desta fatia
+
+O gateway passou a encaminhar ao Inbox somente `messages.upsert` de tipo `notify` sem `requestId`; `append` e backfill ficam fora do fluxo live. Foram adicionados listeners de `messaging-history.set` e `messaging-history.status` que registram contagens/progresso e nunca o corpo das mensagens. O history importer ainda não existe.
+
+`normalizeBaileysMessage` agora sinaliza fallback textual; a normalização server preserva `upsertType`, `requestId` e `isPlaceholder`; `ingestInboundWhatsApp` retorna `ignored` para história/backfill e texto desconhecido/vazio. Para qualquer mensagem Baileys, valida instância **ativa**, `provider=baileys` e `workspaceId` antes de salvar mídia. O webhook devolve `accepted: true, ignored: true`, concluindo com segurança o item da outbox. `notify` válido `fromMe` continua aceito para não quebrar mensagens humanas e takeover; `fromMe` órfão real ainda requer decisão/validação após diagnóstico.
+
+### Testes e acesso ao ambiente
+
+O sandbox verificou `pnpm check`, `pnpm test` (**197 aprovados, 46 ignorados**), `pnpm build`, typecheck separado do gateway e `git diff --check`. A suíte de PostgreSQL não executou localmente: `DATABASE_URL` não está configurada e `docker` não está disponível. Os testes de integração novos estão escritos e devem ser confirmados pelo workflow PostgreSQL depois do push. Não houve acesso ao PostgreSQL Windows, pareamento, QR/código ou envio de mensagem.
+
+O usuário autorizou parear seu número dedicado para testar. **Antes de gerar uma credencial temporária de pareamento**, preparar gateway isolado e observador/mock webhook; manter IA e envio/outbound desativados e não persistir corpos, além do mínimo que o usuário pedir para verificar. A conta teste só deve ser pareada no runtime com esses controles. Para o primeiro teste, observar tipo/progresso de sync e uma mensagem live; não afirmar que o histórico está importado. O sandbox atual não oferece banco nem Docker, então avaliar dependências/runtime temporário antes de enviar QR/código.
+
+### Próxima ordem
+
+1. Confirmar CI PostgreSQL.
+2. Se aprovado, subir serviço de teste isolado; o usuário já autorizou o pareamento, mas não foi pedido nem compartilhado número telefônico.
+3. Correlacionar o chat real no PostgreSQL Windows do usuário somente por consulta read-only, caso se torne acessível.
+4. Implementar `messaging-history.set` idempotente e busca incremental sem acionar IA, unread, notificações ou takeover.
+5. Não fazer limpeza global Docker nem alteração de dados no banco persistente como parte deste bloco.

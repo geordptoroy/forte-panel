@@ -7,6 +7,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
   type AnyMessageContent,
+  type MessageUpsertType,
   type WAMessage,
   type WASocket,
 } from "baileys";
@@ -33,6 +34,7 @@ import {
   normalizeBaileysMessage,
   normalizeBaileysOutgoingMessage,
   PanelMessageEchoTracker,
+  shouldForwardLiveUpsert,
 } from "./message-normalization.js";
 
 function instanceScopedEventId(instanceId: string, sourceId: string) {
@@ -214,9 +216,30 @@ export class InstanceManager {
       socket.ev.on("connection.update", update =>
         this.handleConnection(update, socket)
       );
-      socket.ev.on("messages.upsert", ({ messages }) =>
-        this.handleMessages(messages)
+      socket.ev.on("messages.upsert", ({ messages, type, requestId }) =>
+        this.handleMessages(messages, type, requestId)
       );
+      socket.ev.on("messaging-history.set", ({ chats, contacts, messages, syncType, progress, isLatest, chunkOrder }) => {
+        logger.info(
+          {
+            instanceId: this.instanceId,
+            chatCount: chats.length,
+            contactCount: contacts.length,
+            messageCount: messages.length,
+            syncType,
+            progress,
+            isLatest,
+            chunkOrder,
+          },
+          "Baileys history batch observed; import is not enabled yet"
+        );
+      });
+      socket.ev.on("messaging-history.status", status => {
+        logger.info(
+          { instanceId: this.instanceId, ...status },
+          "Baileys history sync status"
+        );
+      });
       socket.ev.on("call", calls => this.handleCalls(calls));
     } catch (error) {
       this.set({
@@ -653,7 +676,23 @@ export class InstanceManager {
     }
   }
 
-  private async handleMessages(messages: WAMessage[]) {
+  private async handleMessages(
+    messages: WAMessage[],
+    upsertType: MessageUpsertType,
+    requestId?: string
+  ) {
+    if (!shouldForwardLiveUpsert(upsertType, requestId)) {
+      logger.info(
+        {
+          instanceId: this.instanceId,
+          upsertType,
+          requestId,
+          messageCount: messages.length,
+        },
+        "ignoring Baileys history/backfill batch in the live Inbox"
+      );
+      return;
+    }
     if (!config.webhookUrl) return;
     for (const message of messages) {
       const remoteJid = message.key?.remoteJid;
@@ -694,6 +733,8 @@ export class InstanceManager {
       };
       const metadata: Record<string, unknown> = {
         provider: "baileys",
+        upsertType,
+        ...(normalized.isPlaceholder ? { isPlaceholder: true } : {}),
         messageId: message.key.id,
         jid: remoteJid,
         ...(isGroup

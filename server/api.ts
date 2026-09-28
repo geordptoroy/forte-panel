@@ -1192,7 +1192,8 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
     await markWebhookEvent(workspaceId, parsed.data.eventId, "processed");
     return res.status(202).json({
       accepted: true,
-      duplicate: result.duplicate === true,
+      duplicate: "duplicate" in result && result.duplicate === true,
+      ignored: "ignored" in result && result.ignored === true,
       eventId: parsed.data.eventId,
       data: result,
     });
@@ -1316,7 +1317,8 @@ async function handleBaileysWebhook(req: Request, res: Response) {
     await markWebhookEvent(workspaceId, eventId, "processed");
     return res.status(202).json({
       accepted: true,
-      duplicate: result.duplicate === true,
+      duplicate: "duplicate" in result && result.duplicate === true,
+      ignored: "ignored" in result && result.ignored === true,
       eventId,
       data: result,
     });

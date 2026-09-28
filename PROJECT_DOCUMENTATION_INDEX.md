@@ -2,7 +2,7 @@
 
 Este arquivo organiza a documentação do projeto e aponta qual documento consultar em cada decisão.
 
-> **Auditoria WhatsApp/IA (2026-09-28):** consulte [`docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`](./docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md) para a causa provável da conversa LID, limites do histórico Baileys, inventário de IA, riscos P0–P2 e roteiro de implementação. É uma auditoria somente leitura; importação histórica automática e novo console/capabilities de IA ainda não foram implementados.
+> **Auditoria e proteção de ingestão WhatsApp/IA (2026-09-28):** consulte [`docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`](./docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md). A primeira fatia de proteção agora filtra `append`/backfill e texto-placeholder e verifica ownership da instância antes de salvar mídia; a importação histórica e o Console unificado de IA continuam pendentes.
 >
 > **Core ativo (2026-09-27):** consulte [`WHATSAPP-CONNECTION-FLOW-2026-09-27.md`](./WHATSAPP-CONNECTION-FLOW-2026-09-27.md) para a fase 1: CRUD de instâncias Baileys, consumo, decisões de escopo e sequência solicitada das próximas etapas. Não iniciar o console de modelos nem respostas automáticas antes da revisão do usuário.
 >

@@ -172,6 +172,29 @@ describe("Baileys adapter JID routing", () => {
     });
   });
 
+  it("preserves Baileys history and placeholder provenance for the server guard", () => {
+    const normalized = createBaileysAdapter().normalizeInbound({
+      eventId: "fixture-placeholder-1",
+      instanceId: "workspace-a-instance-1",
+      phone: "5511999999999",
+      content: "[mensagem recebida]",
+      messageType: "text",
+      metadata: {
+        upsertType: "notify",
+        isPlaceholder: true,
+        requestId: "offline-backfill-1",
+      },
+    });
+
+    expect(normalized.metadata).toMatchObject({
+      provider: "baileys",
+      instanceId: "workspace-a-instance-1",
+      upsertType: "notify",
+      isPlaceholder: true,
+      requestId: "offline-backfill-1",
+    });
+  });
+
   it.each([
     {
       eventId: "fixture-image-1",

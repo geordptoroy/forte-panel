@@ -33,6 +33,8 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
   const phoneB = `551188${suffix.slice(-8)}`;
   const phoneExisting = `551166${suffix.slice(-8)}`;
   const phoneFromMe = `551177${suffix.slice(-8)}`;
+  const phoneIgnored = `551155${suffix.slice(-8)}`;
+  const phoneForeignInstance = `551144${suffix.slice(-8)}`;
   let workspaceAId = 0;
   let workspaceBId = 0;
   let contactAId = 0;
@@ -301,6 +303,7 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
         provider: "baileys",
         instanceId: instanceA1,
         jid: `${phoneFromMe}@s.whatsapp.net`,
+        upsertType: "notify",
       },
     });
 
@@ -364,6 +367,7 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
         provider: "baileys",
         instanceId: instanceA2,
         jid: `${phoneExisting}@s.whatsapp.net`,
+        upsertType: "notify",
       },
     });
     const existingContact = (
@@ -406,6 +410,90 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
       pushName: "Push name atualizado",
       nameSource: "manual",
     });
+  });
+
+  it("ignores Baileys history and unknown text placeholders without creating a lead", async () => {
+    const history = await ingestInboundWhatsApp(workspaceAId, {
+      eventId: `history-append-${suffix}`,
+      phone: phoneIgnored,
+      name: "Histórico antigo",
+      content: "oi",
+      messageType: "text",
+      fromMe: true,
+      metadata: {
+        provider: "baileys",
+        instanceId: instanceA1,
+        jid: `${phoneIgnored}@s.whatsapp.net`,
+        upsertType: "append",
+      },
+    });
+    expect(history).toMatchObject({
+      ignored: true,
+      reason: "non_live_baileys_event",
+    });
+
+    const placeholder = await ingestInboundWhatsApp(workspaceAId, {
+      eventId: `placeholder-text-${suffix}`,
+      phone: phoneIgnored,
+      name: "Conteúdo desconhecido",
+      content: "[mensagem recebida]",
+      messageType: "text",
+      fromMe: true,
+      metadata: {
+        provider: "baileys",
+        instanceId: instanceA1,
+        jid: `${phoneIgnored}@s.whatsapp.net`,
+        upsertType: "notify",
+        isPlaceholder: true,
+      },
+    });
+    expect(placeholder).toMatchObject({
+      ignored: true,
+      reason: "empty_or_unrecognized_baileys_payload",
+    });
+
+    const db = await getDb();
+    if (!db) throw new Error("database unavailable");
+    const contactsCreated = await db
+      .select({ id: contacts.id })
+      .from(contacts)
+      .where(
+        and(
+          eq(contacts.workspaceId, workspaceAId),
+          eq(contacts.externalPhone, phoneIgnored)
+        )
+      );
+    expect(contactsCreated).toHaveLength(0);
+  });
+
+  it("rejects individual Baileys messages from an instance owned by another workspace", async () => {
+    await expect(
+      ingestInboundWhatsApp(workspaceAId, {
+        eventId: `foreign-instance-message-${suffix}`,
+        phone: phoneForeignInstance,
+        content: "Mensagem de instância alheia",
+        messageType: "text",
+        metadata: {
+          provider: "baileys",
+          instanceId: instanceB1,
+          jid: `${phoneForeignInstance}@s.whatsapp.net`,
+          upsertType: "notify",
+        },
+      })
+    ).rejects.toThrow("Baileys instance is not active or owned by this workspace");
+
+    const db = await getDb();
+    if (!db) throw new Error("database unavailable");
+    const foreignContact = await db
+      .select({ id: contacts.id })
+      .from(contacts)
+      .where(
+        and(
+          eq(contacts.workspaceId, workspaceAId),
+          eq(contacts.externalPhone, phoneForeignInstance)
+        )
+      );
+    expect(foreignContact).toHaveLength(0);
   });
 
   it("persists Baileys groups by instance, tracks authors, and never sends them to AI", async () => {

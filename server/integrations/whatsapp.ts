@@ -189,6 +189,13 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
       ...(typeof data?.metadata?.fileLength === "number"
         ? { fileLength: data.metadata.fileLength }
         : {}),
+      ...(sourceMetadata.upsertType === "notify" || sourceMetadata.upsertType === "append"
+        ? { upsertType: sourceMetadata.upsertType }
+        : {}),
+      ...(sourceMetadata.isPlaceholder === true ? { isPlaceholder: true } : {}),
+      ...(typeof sourceMetadata.requestId === "string"
+        ? { requestId: sourceMetadata.requestId }
+        : {}),
       rawType,
       messageId,
     },

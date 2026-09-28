@@ -106,3 +106,18 @@ Na configuração guiada, a IA de onboarding pode transcrever a voz e redigir um
 [5]: https://baileys.wiki/concepts/socket-config "Baileys — Socket config"
 [6]: https://baileys.wiki/migration/v7 "Baileys — v7 migration"
 [7]: https://github.com/WhiskeySockets/Baileys/blob/master/Example/example.ts "Baileys — official example"
+
+
+## Implementação da primeira fatia de proteção — 2026-09-28
+
+O primeiro bloco preventivo foi aplicado ao código: o gateway só encaminha `messages.upsert` com `type: notify` e sem `requestId`; `append`/backfill é descartado do fluxo ao vivo. Os eventos `messaging-history.set` e `messaging-history.status` agora geram observabilidade de contagens, progresso e tipo, sem logar o conteúdo. **Isso ainda não importa nem persiste o histórico.**
+
+O normalizador marca quando o texto exibido é apenas fallback. O adaptador leva a proveniência até a API, e `ingestInboundWhatsApp` reconhece backfill, corpo vazio e placeholder textual como eventos ignorados, sem criar lead/conversa. Antes de qualquer persistência de mídia, a função também exige que a instância Baileys esteja ativa e pertença ao workspace recebido. O webhook confirma `ignored: true` para não manter esses eventos na outbox. `notify` válido `fromMe` continua permitido para preservar mensagens humanas/takeover; a política de `fromMe` real sem conversa conhecida permanece uma decisão/validação pendente, não foi silenciosamente bloqueada.
+
+### Validação e limitações desta fatia
+
+`pnpm check`, `pnpm build`, typecheck separado do gateway, testes unitários direcionados e `git diff --check` passaram. A suíte local completa ficou em **197 aprovados / 46 ignorados** (42 arquivos passaram, 18 foram ignorados). Os testes PostgreSQL novos estão no arquivo `server/inbox-instance-filter.integration.test.ts`, mas foram ignorados localmente porque este sandbox não tem `DATABASE_URL` e não tem Docker; a integração precisa ser confirmada pelo workflow PostgreSQL do GitHub. Não houve consulta ao banco Windows, pareamento, QR/código gerado nem envio de mensagem. O usuário autorizou um teste com seu número dedicado, mas ele deve acontecer num runtime isolado, sem IA/outbound ativado e sem gravar corpo de mensagem além do necessário. O motivo exato do chat da captura ainda depende de diagnóstico read-only da linha real.
+
+### Próximo passo
+
+Verificar CI PostgreSQL; se passar, preparar um gateway temporário de observação para o teste de pareamento autorizado. Em seguida implementar o importer idempotente do sync inicial, mantendo história fora da automação de IA, unread, notificações e takeover. O comportamento atual ainda não atende o pedido de importar automaticamente todas as conversas.

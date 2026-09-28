@@ -64,6 +64,8 @@ Cada profissional traz `serviceIds` e `weeklyAvailability` (faixas com `weekday`
 
 O evento deve conter `eventId`, `phone`, `content` e `receivedAt`; `name`, `messageType` e `metadata` são opcionais. Toda requisição exige `Idempotency-Key` igual ao `eventId`; o `eventId` deve ser único por instância/canal. Ele também é gravado em `messages.externalId` sob índice único, impedindo duplicação no histórico mesmo se um processamento anterior falhar depois da gravação. A mesma chave com outro payload retorna conflito. Eventos com status `failed` podem ser reprocessados; eventos em `received` ou `processed` são tratados como duplicados. O endpoint poderá exigir `X-Webhook-Signature` com HMAC quando `WEBHOOK_SIGNING_SECRET` estiver configurado.
 
+O callback interno `/api/v1/webhooks/providers/baileys` pode responder `202 accepted` com `ignored: true` quando o gateway/API filtrar história/backfill, corpo vazio ou texto-placeholder. O evento ignorado é reconhecido para encerrar a outbox e não cria lead, conversa ou mensagem. A resposta inclui `eventId` e o motivo em `data.reason`; não significa que o histórico foi importado.
+
 ### Operações de memória comercial
 
 Use o Forte Panel como fonte única para CRM, anotações e agenda; não mantenha uma segunda base privada de estado do lead. A API disponível para clientes autorizados é `POST /api/v1/lead-memory`, que aceita `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota` com `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`.
@@ -91,7 +93,7 @@ O composer manual do Inbox aceita arquivos de até 8 MB para `image`, `audio`, `
   "phone": "5511999999999",
   "content": "Olá, gostaria de agendar",
   "messageType": "text",
-  "metadata": { "instanceId": "ID_DA_INSTANCIA" },
+  "metadata": { "provider": "baileys", "instanceId": "ID_DA_INSTANCIA", "upsertType": "notify" },
   "receivedAt": "2026-09-24T12:00:00.000Z"
 }
 ```
@@ -133,5 +135,7 @@ O gateway `forte-whatsapp` preserva o contrato `WhatsappAdapter` e não altera a
 - download de mídia e entrega multimodal ao agente;
 - eventos de chamadas recebidas;
 - sessão persistente em volume Docker e chave interna nunca exposta ao browser.
+
+Para evitar materializar histórico como conversa nova, o caminho live só encaminha `messages.upsert` com `type: "notify"` e sem `requestId`. `append` e backfill são ignorados. `messaging-history.set/status` registra apenas contagens/progresso; ainda não existe importação automática do histórico. Fallback textual desconhecido é marcado como placeholder e ignorado antes de criar lead, enquanto placeholders de mídia continuam válidos conforme `messageType`. Antes de persistir mídia, o backend confirma que a instância Baileys está ativa e pertence ao workspace autenticado.
 
 Ainda são pendências de produção: storage privado de mídia com URL assinada, store de sessão durável/criptografado, lifecycle multi-instância e E2E real em staging. Iniciar chamada não é tratado como envio normal de mensagem; requer signaling próprio.
