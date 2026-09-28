@@ -784,3 +784,32 @@ a { color: inherit; text-decoration: none; }
 .whatsapp-instance-mark .whatsapp-mark { color: #f2f2f2; }
 .whatsapp-instance-identity p { max-width: 245px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 560px) { .whatsapp-instance-list { grid-template-columns: 1fr; }.whatsapp-instance-card { max-width: none; } }
+
+/* WhatsApp connector modal and compact status cards. */
+.whatsapp-instance-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 286px), 330px)); justify-content: start; }
+.whatsapp-instance-card { width: 100%; max-width: 330px; min-height: 420px; border-radius: 16px; border: 1px solid rgba(255,255,255,.09); box-shadow: 0 18px 45px rgba(0,0,0,.2); }
+.whatsapp-instance-card.status-connected { border-color: rgba(86,214,138,.65); box-shadow: 0 18px 50px rgba(0,0,0,.28), 0 0 22px rgba(86,214,138,.08); }
+.whatsapp-instance-card.status-disconnected { border-color: rgba(224,180,72,.72); }
+.whatsapp-instance-card.status-logged_out, .whatsapp-instance-card.status-error { border-color: rgba(215,91,91,.72); }
+.whatsapp-instance-card.status-connecting, .whatsapp-instance-card.status-pairing, .whatsapp-instance-card.status-qr { border-color: rgba(224,180,72,.55); }
+.whatsapp-modal-form { display: grid; gap: 13px; }
+.whatsapp-modal-divider { height: 1px; margin: 3px 0 0; background: rgba(255,255,255,.09); }
+.whatsapp-modal-section-label { color: #aaa; font-size: 10px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.whatsapp-modal-method-body { display: grid; gap: 10px; }
+.whatsapp-modal-qr-panel { display: grid; min-height: 250px; place-items: center; padding: 14px; background: #f8f8f8; }
+.whatsapp-modal-qr-panel img { display: block; width: min(100%, 236px); aspect-ratio: 1; image-rendering: pixelated; }
+.whatsapp-modal-qr-panel > span, .whatsapp-modal-loading { display: grid; justify-items: center; gap: 8px; color: #777; font-size: 10px; }
+.whatsapp-modal-loading { padding: 18px; border: 1px solid rgba(224,180,72,.2); background: rgba(224,180,72,.05); }
+.whatsapp-modal-code { display: grid; gap: 7px; width: 100%; padding: 14px; color: #eee; border: 1px solid rgba(86,214,138,.35); background: rgba(86,214,138,.07); text-align: left; cursor: copy; }
+.whatsapp-modal-code strong { color: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 27px; letter-spacing: .18em; text-align: center; }
+.forte-phone-input { width: 100%; }
+.forte-phone-input .react-international-phone-country-selector-button, .forte-phone-input-control { height: 48px !important; border-color: rgba(255,255,255,.14) !important; background: rgba(255,255,255,.035) !important; color: #eee !important; }
+.forte-phone-input-control { width: 100% !important; font-size: 14px !important; }
+.forte-phone-input .react-international-phone-country-selector-dropdown { z-index: 100; background: #171717; border-color: rgba(255,255,255,.14); color: #eee; }
+.forte-phone-input .react-international-phone-country-selector-dropdown__list-item:hover, .forte-phone-input .react-international-phone-country-selector-dropdown__list-item--focused { background: rgba(255,255,255,.08); }
+.forte-phone-input .react-international-phone-country-selector-dropdown__list-item-country-name { color: #ddd; }
+.forte-phone-input .react-international-phone-country-selector-dropdown__list-item-dial-code { color: #888; }
+.whatsapp-instance-card .forte-phone-input-control, .whatsapp-instance-card .react-international-phone-country-selector-button { height: 38px !important; }
+@media (max-width: 560px) { .whatsapp-instance-list { grid-template-columns: 1fr; }.whatsapp-instance-card { max-width: none; } }
+.whatsapp-modal-cancel { width: 100%; min-height: 34px; color: #888; font-size: 10px; }
+.whatsapp-modal-cancel:hover { color: #eee; }

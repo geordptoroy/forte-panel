@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { PhoneInput } from "react-international-phone";
+import "react-international-phone/style.css";
 import {
   CheckCircle2,
   Gauge,
@@ -13,9 +15,7 @@ import {
 } from "lucide-react";
 import {
   getCountries,
-  getCountryCallingCode,
   isPossiblePhoneNumber,
-  type CountryCode,
 } from "libphonenumber-js";
 import PanelLayout, { EmptyState, StatusBadge } from "@/components/PanelLayout";
 import { baileysStatusPollingInterval } from "@/lib/baileys-status";
@@ -39,21 +39,6 @@ function WhatsappMark({ size = 22 }: { size?: number }) {
     </svg>
   );
 }
-
-const countryFlag = (country: string) =>
-  /^[A-Z]{2}$/.test(country)
-    ? String.fromCodePoint(
-        ...country.split("").map(character => 127397 + character.charCodeAt(0))
-      )
-    : "•";
-
-const phoneCountryOptions = getCountries()
-  .map(country => ({
-    country,
-    callingCode: getCountryCallingCode(country),
-    flag: countryFlag(country),
-  }))
-  .sort((left, right) => left.callingCode.localeCompare(right.callingCode));
 
 const connectionStatusDetails: Record<
   string,
@@ -106,14 +91,12 @@ const connectionStatusDetails: Record<
   },
 };
 
-type SetupStep = 1 | 2 | 3;
-
 export function WhatsappConnectionPage() {
   return (
     <PanelLayout
       eyebrow="Core · Baileys"
-      title="Conectar WhatsApp"
-      description="Crie uma única instância para este workspace e escolha a forma mais simples de conectar seu número."
+      title="Whats Conector"
+      showHeading={false}
     >
       <BaileysConnectionManager />
     </PanelLayout>
@@ -123,7 +106,6 @@ export function WhatsappConnectionPage() {
 function BaileysConnectionManager() {
   const utils = trpc.useUtils();
   const [createOpen, setCreateOpen] = useState(false);
-  const [setupStep, setSetupStep] = useState<SetupStep>(1);
   const [nameDraft, setNameDraft] = useState("");
   const [createdInstanceId, setCreatedInstanceId] = useState<string | null>(
     null
@@ -131,8 +113,8 @@ function BaileysConnectionManager() {
   const [createdInstanceName, setCreatedInstanceName] = useState("");
   const [connectionMode, setConnectionMode] = useState<"qr" | "phone">("qr");
   const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState<CountryCode>("BR");
   const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [instanceStatuses, setInstanceStatuses] = useState<
     Record<string, string>
   >({});
@@ -147,23 +129,44 @@ function BaileysConnectionManager() {
     onSuccess: async result => {
       setCreatedInstanceId(result.instanceId);
       setCreatedInstanceName(result.name);
-      setSetupStep(2);
       await utils.workspace.baileysInstances.invalidate();
     },
   });
   const connect = trpc.workspace.connectBaileys.useMutation({
     onSuccess: async () => {
       await utils.workspace.baileysInstances.invalidate();
-      setCreateOpen(false);
+      await utils.workspace.baileysStatus.invalidate({
+        instanceId: createdInstanceId ?? "",
+      });
     },
   });
   const pairing = trpc.workspace.requestBaileysPairingCode.useMutation({
     onSuccess: async result => {
       setPairingCode(result.code);
-      setSetupStep(3);
       await utils.workspace.baileysInstances.invalidate();
     },
   });
+  const modalStatus = trpc.workspace.baileysStatus.useQuery(
+    { instanceId: createdInstanceId ?? "" },
+    {
+      enabled: Boolean(createdInstanceId),
+      refetchInterval: query =>
+        baileysStatusPollingInterval(query.state.data?.status),
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: "always",
+      retry: false,
+    }
+  );
+  const modalQr = trpc.workspace.baileysQr.useQuery(
+    { instanceId: createdInstanceId ?? "" },
+    {
+      enabled: modalStatus.data?.status === "qr",
+      refetchInterval: 3_000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: "always",
+      retry: false,
+    }
+  );
 
   const instanceIds = (instances.data ?? [])
     .map(instance => instance.instanceId)
@@ -197,13 +200,12 @@ function BaileysConnectionManager() {
     if (
       !createOpen ||
       !createdInstanceId ||
-      instanceStatuses[createdInstanceId] !== "connected"
+      modalStatus.data?.status !== "connected"
     )
       return;
     setCreateOpen(false);
     setPairingCode(null);
-    setSetupStep(1);
-  }, [createOpen, createdInstanceId, instanceStatuses]);
+  }, [createOpen, createdInstanceId, modalStatus.data?.status]);
 
   const total = instances.data?.length;
   const statusesReady =
@@ -214,9 +216,8 @@ function BaileysConnectionManager() {
   const pendingCount = Object.values(instanceStatuses).filter(status =>
     ["connecting", "pairing", "qr"].includes(status)
   ).length;
-  const localPhoneDigits = phone.replace(/\D/g, "");
-  const fullPhone = `+${getCountryCallingCode(countryCode)}${localPhoneDigits}`;
-  const phoneIsPossible = isPossiblePhoneNumber(fullPhone);
+  const fullPhone = phone;
+  const phoneIsPossible = isPossiblePhoneNumber(phone);
 
   const openCreate = () => {
     setNameDraft("");
@@ -224,9 +225,7 @@ function BaileysConnectionManager() {
     setCreatedInstanceName("");
     setConnectionMode("qr");
     setPhone("");
-    setCountryCode("BR");
     setPairingCode(null);
-    setSetupStep(1);
     create.reset();
     pairing.reset();
     setCreateOpen(true);
@@ -357,175 +356,179 @@ function BaileysConnectionManager() {
             <div className="setup-dialog-brand">
               <WhatsappMark size={26} />
               <span>Nova conexão</span>
-              <small>Etapa {setupStep} de 3</small>
+              <small>{createdInstanceId ? "Conexão" : "Nova instância"}</small>
             </div>
-            {setupStep === 1 && (
-              <>
-                <h2 id="create-instance-title">Dê um nome à sua instância</h2>
-                <p className="muted">
-                  Esse nome ajuda sua equipe a reconhecer o número conectado.
-                  Você poderá alterá-lo depois.
-                </p>
-                <label className="form-field" htmlFor="new-instance-name">
-                  <span>Nome da instância</span>
-                  <input
-                    id="new-instance-name"
-                    className="input-control"
-                    autoFocus
-                    maxLength={120}
-                    value={nameDraft}
-                    onChange={event => setNameDraft(event.target.value)}
-                    placeholder="Ex.: WhatsApp Comercial"
-                  />
-                </label>
+            <div className="whatsapp-modal-form">
+              <label className="form-field" htmlFor="new-instance-name">
+                <span>Nome da instância</span>
+                <input
+                  id="new-instance-name"
+                  className="input-control"
+                  autoFocus
+                  maxLength={120}
+                  value={createdInstanceId ? createdInstanceName : nameDraft}
+                  disabled={Boolean(createdInstanceId) || create.isPending}
+                  onChange={event => setNameDraft(event.target.value)}
+                  placeholder="Ex.: WhatsApp Comercial"
+                />
+              </label>
+              {!createdInstanceId ? (
                 <button
                   type="button"
                   className="btn-primary"
                   disabled={create.isPending || nameDraft.trim().length < 2}
                   onClick={() => create.mutate({ name: nameDraft.trim() })}
                 >
-                  {create.isPending ? "Criando..." : "Avançar"}
+                  {create.isPending ? "Criando instância..." : "Próximo"}
                   <span aria-hidden="true">→</span>
                 </button>
-                {create.error && (
-                  <div className="form-error" role="alert">
-                    {create.error.message}
+              ) : (
+                <>
+                  <div className="whatsapp-modal-divider" />
+                  <div className="whatsapp-modal-section-label">
+                    Método de conexão
                   </div>
-                )}
-              </>
-            )}
-            {setupStep === 2 && (
-              <>
-                <h2 id="create-instance-title">Como você quer conectar?</h2>
-                <p className="muted">
-                  Instância{" "}
-                  <strong className="dialog-instance-name">
-                    {createdInstanceName}
-                  </strong>{" "}
-                  criada. Escolha um método para parear o WhatsApp.
-                </p>
-                <div className="connection-mode-switch">
-                  <button
-                    type="button"
-                    className={connectionMode === "qr" ? "is-active" : ""}
-                    onClick={() => setConnectionMode("qr")}
-                  >
-                    <QrCode size={19} />
-                    <strong>QR Code</strong>
-                    <small>Leia com a câmera do celular</small>
-                  </button>
-                  <button
-                    type="button"
-                    className={connectionMode === "phone" ? "is-active" : ""}
-                    onClick={() => setConnectionMode("phone")}
-                  >
-                    <span className="mode-phone-icon">#</span>
-                    <strong>Por número</strong>
-                    <small>Receba um código no WhatsApp</small>
-                  </button>
-                </div>
-                {connectionMode === "qr" ? (
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={connect.isPending || !createdInstanceId}
-                    onClick={() =>
-                      createdInstanceId &&
-                      connect.mutate({ instanceId: createdInstanceId })
-                    }
-                  >
-                    {connect.isPending
-                      ? "Gerando QR Code..."
-                      : "Continuar com QR Code"}
-                    <span aria-hidden="true">→</span>
-                  </button>
-                ) : (
-                  <>
-                    <div className="phone-entry-group setup-phone-entry">
-                      <label className="form-field">
-                        <span>DDI</span>
-                        <select
-                          className="input-control flag-ddi-select"
-                          value={countryCode}
-                          aria-label="Bandeira e DDI"
-                          onChange={event =>
-                            setCountryCode(event.target.value as CountryCode)
-                          }
-                        >
-                          {phoneCountryOptions.map(option => (
-                            <option key={option.country} value={option.country}>
-                              {option.flag} +{option.callingCode}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="form-field">
-                        <span>Número</span>
-                        <input
-                          className="input-control"
-                          type="tel"
-                          inputMode="tel"
-                          autoComplete="tel-national"
-                          value={phone}
-                          onChange={event => setPhone(event.target.value)}
-                          placeholder="DDD e número"
-                        />
-                      </label>
-                    </div>
-                    <small className="muted phone-number-hint">
-                      Digite o número sem o DDI; a bandeira selecionada
-                      acrescenta o código automaticamente.
-                    </small>
+                  <div className="connection-mode-switch">
                     <button
                       type="button"
-                      className="btn-primary"
-                      disabled={
-                        pairing.isPending ||
-                        !phoneIsPossible ||
-                        !createdInstanceId
-                      }
-                      onClick={() => {
-                        if (createdInstanceId)
+                      className={connectionMode === "qr" ? "is-active" : ""}
+                      onClick={() => setConnectionMode("qr")}
+                    >
+                      <QrCode size={19} />
+                      <strong>QR Code</strong>
+                      <small>Leia com a câmera do celular</small>
+                    </button>
+                    <button
+                      type="button"
+                      className={connectionMode === "phone" ? "is-active" : ""}
+                      onClick={() => setConnectionMode("phone")}
+                    >
+                      <span className="mode-phone-icon">#</span>
+                      <strong>Por número</strong>
+                      <small>Receba um código no WhatsApp</small>
+                    </button>
+                  </div>
+                  {connectionMode === "qr" ? (
+                    <div className="whatsapp-modal-method-body">
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={
+                          connect.isPending ||
+                          modalStatus.data?.status === "pairing"
+                        }
+                        onClick={() =>
+                          connect.mutate({ instanceId: createdInstanceId })
+                        }
+                      >
+                        <QrCode size={15} />
+                        {connect.isPending
+                          ? "Preparando QR Code..."
+                          : modalStatus.data?.status === "qr"
+                            ? "Atualizar QR Code"
+                            : "Mostrar QR Code"}
+                      </button>
+                      {modalStatus.data?.status === "qr" && (
+                        <div
+                          className="whatsapp-modal-qr-panel"
+                          aria-live="polite"
+                        >
+                          {modalQr.data ? (
+                            <img
+                              src={modalQr.data}
+                              alt={`QR Code para conectar ${createdInstanceName}`}
+                            />
+                          ) : (
+                            <span>
+                              <QrCode size={28} /> Carregando QR Code...
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {modalStatus.data?.status === "connecting" && (
+                        <div className="whatsapp-modal-loading">
+                          Preparando a sessão segura...
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="whatsapp-modal-method-body">
+                      <PhoneInput
+                        defaultCountry="br"
+                        value={phone}
+                        onChange={(value, data) => {
+                          setPhone(value);
+                        }}
+                        placeholder="Número do telefone"
+                        inputProps={{
+                          "aria-label": "Número do telefone com DDI",
+                        }}
+                        className="forte-phone-input"
+                        inputClassName="forte-phone-input-control"
+                      />
+                      <small className="muted phone-number-hint">
+                        Selecione a bandeira para trocar o DDI.
+                      </small>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={pairing.isPending || !phoneIsPossible}
+                        onClick={() => {
+                          setPairingCode(null);
+                          setCopiedCode(false);
+                          pairing.reset();
                           pairing.mutate({
                             instanceId: createdInstanceId,
                             phone: fullPhone,
                           });
-                      }}
-                    >
-                      {pairing.isPending
-                        ? "Aguardando WhatsApp..."
-                        : "Continuar com número"}
-                      <span aria-hidden="true">→</span>
-                    </button>
-                  </>
-                )}
-                {(connect.error || pairing.error) && (
-                  <div className="form-error" role="alert">
-                    {connect.error?.message ?? pairing.error?.message}
-                  </div>
-                )}
-              </>
-            )}
-            {setupStep === 3 && (
-              <div className="connection-wizard-finish">
-                <span className="setup-success-icon">
-                  <CheckCircle2 size={28} />
-                </span>
-                <h2 id="create-instance-title">Código pronto</h2>
-                <p className="muted">
-                  No celular, abra WhatsApp → Aparelhos conectados → Conectar
-                  aparelho → Conectar com número de telefone.
-                </p>
-                <div className="pairing-code">{pairingCode}</div>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={closeCreate}
-                >
-                  Fechar e acompanhar
-                </button>
-              </div>
-            )}
+                        }}
+                      >
+                        {pairing.isPending
+                          ? "Aguardando WhatsApp..."
+                          : "Gerar código"}
+                        <span aria-hidden="true">→</span>
+                      </button>
+                      {pairingCode && (
+                        <button
+                          type="button"
+                          className="whatsapp-modal-code"
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(pairingCode);
+                            setCopiedCode(true);
+                          }}
+                        >
+                          <span className="eyebrow">
+                            Código de pareamento ·{" "}
+                            {copiedCode ? "copiado" : "clique para copiar"}
+                          </span>
+                          <strong>{pairingCode}</strong>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {(connect.error || pairing.error || modalStatus.error) && (
+                    <div className="form-error" role="alert">
+                      {connect.error?.message ??
+                        pairing.error?.message ??
+                        modalStatus.error?.message}
+                    </div>
+                  )}
+                </>
+              )}
+              {create.error && (
+                <div className="form-error" role="alert">
+                  {create.error.message}
+                </div>
+              )}
+              <button
+                type="button"
+                className="btn-ghost whatsapp-modal-cancel"
+                onClick={closeCreate}
+                disabled={create.isPending || connect.isPending || pairing.isPending}
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -544,7 +547,6 @@ function BaileysInstanceCard({
 }) {
   const utils = trpc.useUtils();
   const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState<CountryCode>("BR");
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -580,9 +582,8 @@ function BaileysInstanceCard({
   );
   const profilePhone = profile.data?.phoneNumber ?? current?.phoneNumber;
   const waitingQr = current?.status === "qr";
-  const localPhoneDigits = phone.replace(/\D/g, "");
-  const fullPhone = `+${getCountryCallingCode(countryCode)}${localPhoneDigits}`;
-  const phoneIsPossible = isPossiblePhoneNumber(fullPhone);
+  const fullPhone = phone;
+  const phoneIsPossible = isPossiblePhoneNumber(phone);
   const qr = trpc.workspace.baileysQr.useQuery(
     { instanceId },
     {
@@ -643,7 +644,7 @@ function BaileysInstanceCard({
 
   return (
     <article
-      className={`surface whatsapp-instance-card ${connected ? "is-connected" : ""}`}
+      className={`surface whatsapp-instance-card status-${stateKey}`}
       aria-label={`Instância ${name}`}
     >
       <header className="whatsapp-instance-header">
@@ -660,9 +661,7 @@ function BaileysInstanceCard({
           )}
         </div>
         <div className="whatsapp-instance-identity">
-          <div className="whatsapp-instance-overline">
-            SESSÃO BAILEYS <code>{instanceId}</code>
-          </div>
+          <div className="whatsapp-instance-overline">CONEXÃO WHATSAPP</div>
           <h3>{name}</h3>
           <p>
             {profile.data?.pushName ? `${profile.data.pushName} · ` : ""}
@@ -720,7 +719,7 @@ function BaileysInstanceCard({
             <CheckCircle2 size={18} />
             <div>
               <strong>WhatsApp conectado</strong>
-              <span>A sessão está ativa no gateway Baileys.</span>
+              <span>Esta conexão está ativa e pronta para uso.</span>
             </div>
           </div>
           <div className="whatsapp-session-actions">
@@ -813,38 +812,19 @@ function BaileysInstanceCard({
                 <p>Use um código quando não puder ler o QR.</p>
               </div>
             </div>
-            <div className="phone-entry-group">
-              <label className="form-field">
-                <span>DDI</span>
-                <select
-                  className="input-control flag-ddi-select"
-                  value={countryCode}
-                  aria-label="Bandeira e DDI"
-                  onChange={event =>
-                    setCountryCode(event.target.value as CountryCode)
-                  }
-                >
-                  {phoneCountryOptions.map(option => (
-                    <option key={option.country} value={option.country}>
-                      {option.flag} +{option.callingCode}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="form-field">
-                <span>Número</span>
-                <input
-                  className="input-control"
-                  type="tel"
-                  inputMode="tel"
-                  value={phone}
-                  onChange={event => setPhone(event.target.value)}
-                  placeholder="DDD e número"
-                />
-              </label>
-            </div>
+            <PhoneInput
+              defaultCountry="br"
+              value={phone}
+              onChange={(value, data) => {
+                setPhone(value);
+              }}
+              placeholder="Número do telefone"
+              inputProps={{ "aria-label": "Número do telefone com DDI" }}
+              className="forte-phone-input"
+              inputClassName="forte-phone-input-control"
+            />
             <small className="muted phone-number-hint">
-              O DDI é acrescentado automaticamente.
+              Selecione a bandeira para trocar o DDI.
             </small>
             <button
               type="button"
@@ -879,7 +859,7 @@ function BaileysInstanceCard({
         </div>
       )}
       <footer className="whatsapp-instance-footer">
-        <span>Status sincronizado automaticamente com o gateway.</span>
+        <span>Atualizado automaticamente</span>
         <button
           type="button"
           className="btn-ghost whatsapp-delete-button"

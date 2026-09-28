@@ -310,9 +310,7 @@ const workspaceUsageNav: NavGroup[] = [
 const coreOnlyNav: NavGroup[] = [
   {
     label: "Etapa 1 · WhatsApp",
-    items: [
-      managementNav[0].items[0],
-    ],
+    items: [managementNav[0].items[0]],
   },
 ];
 
@@ -322,6 +320,7 @@ type PanelLayoutProps = {
   title?: string;
   description?: string;
   actions?: ReactNode;
+  showHeading?: boolean;
 };
 
 const LOGO_URL = "https://img.icons8.com/comic/100/skull.png";
@@ -365,7 +364,9 @@ function navForAccess(access: AccessProfile): NavGroup[] {
       ? [...managementNav, ...workspaceUsageNav, ...onboardingNav]
       : managementNav;
   if (access.operationalRole === "professional")
-    return access.canRegisterPayments ? [...professionalNav, ...financialNav] : professionalNav;
+    return access.canRegisterPayments
+      ? [...professionalNav, ...financialNav]
+      : professionalNav;
   return attendantNav;
 }
 
@@ -497,6 +498,7 @@ export default function PanelLayout({
   title = "Dashboard",
   description,
   actions,
+  showHeading = true,
 }: PanelLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -710,14 +712,16 @@ export default function PanelLayout({
               </PopoverContent>
             </Popover>
           </div>
-          <div className="page-heading">
-            <div>
-              <span className="eyebrow">{eyebrow}</span>
-              <h1>{title}</h1>
-              {description && <p>{description}</p>}
+          {showHeading && (
+            <div className="page-heading">
+              <div>
+                <span className="eyebrow">{eyebrow}</span>
+                <h1>{title}</h1>
+                {description && <p>{description}</p>}
+              </div>
+              {actions && <div className="page-actions">{actions}</div>}
             </div>
-            {actions && <div className="page-actions">{actions}</div>}
-          </div>
+          )}
         </header>
         <div className="panel-content">{children}</div>
       </main>
