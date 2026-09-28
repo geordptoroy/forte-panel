@@ -193,6 +193,18 @@ function BaileysConnectionManager() {
     });
   }, []);
 
+  useEffect(() => {
+    if (
+      !createOpen ||
+      !createdInstanceId ||
+      instanceStatuses[createdInstanceId] !== "connected"
+    )
+      return;
+    setCreateOpen(false);
+    setPairingCode(null);
+    setSetupStep(1);
+  }, [createOpen, createdInstanceId, instanceStatuses]);
+
   const total = instances.data?.length;
   const statusesReady =
     total !== undefined && Object.keys(instanceStatuses).length >= total;
