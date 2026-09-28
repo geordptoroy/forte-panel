@@ -1,12 +1,19 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
+import {
+  DEFAULT_BAILEYS_INSTANCE_SETTINGS,
+  normalizeBaileysInstanceSettings,
+  parseBaileysInstanceSettings,
+  type BaileysInstanceSettings,
+} from "./instance-settings.js";
 import { InstanceManager, type InstanceSnapshot } from "./instance-manager.js";
 
 type InstanceRecord = {
   instanceId: string;
   name: string;
   autoStart: boolean;
+  settings: BaileysInstanceSettings;
 };
 
 type RegistryEntry = {
@@ -16,7 +23,8 @@ type RegistryEntry = {
 
 type InstanceManagerFactory = (
   instanceId: string,
-  name: string
+  name: string,
+  settings: BaileysInstanceSettings
 ) => InstanceManager;
 
 type InstanceRegistryOptions = {
@@ -60,7 +68,7 @@ export class InstanceRegistry {
     this.maxInstances = options.maxInstances ?? config.maxInstances;
     this.managerFactory =
       options.managerFactory ??
-      ((instanceId, name) => new InstanceManager(instanceId, name));
+      ((instanceId, name, settings) => new InstanceManager(instanceId, name, settings));
     if (!validateInstanceId(this.defaultInstanceId))
       throw new Error("WHATSAPP_INSTANCE_ID inválido");
   }
@@ -83,7 +91,7 @@ export class InstanceRegistry {
       const record = await this.readRecord(directory, instanceId);
       this.instances.set(instanceId, {
         record,
-        manager: this.managerFactory(instanceId, record.name),
+        manager: this.managerFactory(instanceId, record.name, record.settings),
       });
       await this.writeRecord(record);
     }
@@ -125,8 +133,9 @@ export class InstanceRegistry {
       instanceId,
       name: validateName(name),
       autoStart: false,
+      settings: { ...DEFAULT_BAILEYS_INSTANCE_SETTINGS },
     };
-    const manager = this.managerFactory(instanceId, record.name);
+    const manager = this.managerFactory(instanceId, record.name, record.settings);
     await this.writeRecord(record);
     this.instances.set(instanceId, { record, manager });
     return manager.getStatus();
@@ -138,6 +147,16 @@ export class InstanceRegistry {
     await this.writeRecord(updated);
     entry.record = updated;
     entry.manager.setName(updated.name);
+    return entry.manager.getStatus();
+  }
+
+  async updateSettings(instanceId: string, settings: unknown) {
+    const entry = this.requireEntry(instanceId);
+    const normalized = parseBaileysInstanceSettings(settings);
+    const updated = { ...entry.record, settings: normalized };
+    await this.writeRecord(updated);
+    entry.record = updated;
+    entry.manager.setSettings(normalized);
     return entry.manager.getStatus();
   }
 
@@ -244,6 +263,7 @@ export class InstanceRegistry {
           instanceId,
           name: validateName(parsed.name),
           autoStart: parsed.autoStart,
+          settings: normalizeBaileysInstanceSettings(parsed.settings),
         };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
@@ -257,6 +277,7 @@ export class InstanceRegistry {
         instanceId === this.defaultInstanceId
           ? this.defaultInstanceName
           : `WhatsApp · ${instanceId}`,
+      settings: { ...DEFAULT_BAILEYS_INSTANCE_SETTINGS },
       // Existing folders without a marker are legacy sessions and must resume.
       autoStart: true,
     };

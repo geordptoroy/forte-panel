@@ -281,6 +281,13 @@
       "when": 1790552065604,
       "tag": "0039_baileys_workspace_default_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790622926178,
+      "tag": "0040_white_mysterio",
+      "breakpoints": true
     }
   ]
 }

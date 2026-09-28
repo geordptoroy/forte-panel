@@ -139,9 +139,11 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
   const fromMe = Boolean(
     message?.fromMe ?? key?.fromMe ?? data?.fromMe ?? event?.fromMe
   );
-  const isGroup = String(key?.remoteJid ?? message?.remoteJid ?? "").endsWith(
-    "@g.us"
-  );
+  const sourceMetadata = message?.metadata ?? data?.metadata ?? {};
+  const isGroup =
+    sourceMetadata.isGroup === true ||
+    jid.endsWith("@g.us") ||
+    String(key?.remoteJid ?? message?.remoteJid ?? "").endsWith("@g.us");
   return {
     eventId,
     phone,
@@ -153,8 +155,28 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
       provider: "papi",
       ...(instanceId ? { instanceId: String(instanceId) } : {}),
       ...(fromMe ? { fromMe: true } : {}),
-      ...(isGroup ? { isGroup: true } : {}),
+      ...(isGroup
+        ? {
+            isGroup: true,
+            ...(jid.endsWith("@g.us") ? { groupJid: jid } : {}),
+            ...(typeof sourceMetadata.groupSubject === "string"
+              ? { groupSubject: sourceMetadata.groupSubject.slice(0, 160) }
+              : {}),
+            ...(typeof sourceMetadata.authorJid === "string"
+              ? { authorJid: sourceMetadata.authorJid }
+              : {}),
+            ...(typeof sourceMetadata.authorJidAlt === "string"
+              ? { authorJidAlt: sourceMetadata.authorJidAlt }
+              : {}),
+            ...(typeof sourceMetadata.authorName === "string"
+              ? { authorName: sourceMetadata.authorName.slice(0, 160) }
+              : {}),
+          }
+        : {}),
       ...(jid ? { jid } : {}),
+      ...(typeof sourceMetadata.remoteJidAlt === "string"
+        ? { remoteJidAlt: sourceMetadata.remoteJidAlt }
+        : {}),
       ...(typeof data?.metadata?.mediaData === "string"
         ? { mediaData: data.metadata.mediaData }
         : {}),

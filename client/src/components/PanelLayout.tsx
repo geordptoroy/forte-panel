@@ -79,8 +79,8 @@ const managementNav: NavGroup[] = [
     items: [
       {
         href: "/whatsapp-connection",
-        label: "Whats Conector",
-        description: "Instâncias e sessões WhatsApp",
+        label: "Conexões",
+        description: "Instâncias e preferências WhatsApp",
         icon: WhatsappNavIcon,
       },
       {
@@ -91,8 +91,8 @@ const managementNav: NavGroup[] = [
       },
       {
         href: "/inbox",
-        label: "Atendimento",
-        description: "Conversas com clientes",
+        label: "WhatsApp",
+        description: "Conversas e grupos",
         icon: Inbox,
       },
       {

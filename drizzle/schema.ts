@@ -977,13 +977,66 @@ export const domainEvents = pgTable(
   ]
 );
 
+export const whatsappGroups = pgTable(
+  "whatsappGroups",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    instanceId: varchar("instanceId", { length: 160 }).notNull(),
+    jid: varchar("jid", { length: 180 }).notNull(),
+    subject: varchar("subject", { length: 160 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("whatsapp_groups_workspace_instance_jid_unique_idx").on(
+      table.workspaceId,
+      table.instanceId,
+      table.jid
+    ),
+    index("whatsapp_groups_workspace_instance_idx").on(
+      table.workspaceId,
+      table.instanceId,
+      table.updatedAt
+    ),
+  ]
+);
+
+export const whatsappGroupParticipants = pgTable(
+  "whatsappGroupParticipants",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("groupId").notNull(),
+    jid: varchar("jid", { length: 180 }).notNull(),
+    jidAlt: varchar("jidAlt", { length: 180 }),
+    name: varchar("name", { length: 160 }),
+    isAdmin: integer("isAdmin").default(0).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("whatsapp_group_participants_group_jid_unique_idx").on(
+      table.groupId,
+      table.jid
+    ),
+    index("whatsapp_group_participants_group_idx").on(
+      table.groupId,
+      table.updatedAt
+    ),
+  ]
+);
+
 export const contacts = pgTable(
   "contacts",
   {
     id: serial("id").primaryKey(),
     workspaceId: integer("workspaceId"),
+    groupId: integer("groupId"),
     externalPhone: varchar("externalPhone", { length: 32 }).notNull(),
     name: varchar("name", { length: 160 }).notNull(),
+    pushName: varchar("pushName", { length: 160 }),
+    nameSource: varchar("nameSource", { length: 16 }).default("auto").notNull(),
+    nameUpdatedAt: timestamp("nameUpdatedAt"),
+    nameUpdatedBy: integer("nameUpdatedBy"),
     city: varchar("city", { length: 100 }),
     neighborhood: varchar("neighborhood", { length: 100 }),
     serviceRequested: varchar("serviceRequested", { length: 180 }),
@@ -1001,7 +1054,10 @@ export const contacts = pgTable(
     uniqueIndex("contacts_workspace_phone_unique_idx").on(
       table.workspaceId,
       table.externalPhone
-    ),
+    ).where(sql`${table.groupId} IS NULL`),
+    uniqueIndex("contacts_whatsapp_group_unique_idx")
+      .on(table.groupId)
+      .where(sql`${table.groupId} IS NOT NULL`),
   ]
 );
 

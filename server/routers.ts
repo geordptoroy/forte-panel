@@ -81,6 +81,7 @@ import {
   markInAppNotificationRead,
   markWorkspaceInviteSent,
   moveContactStage,
+  renameContact as renameInboxContact,
   PUBLIC_PRIVACY_VERSION,
   PUBLIC_TERMS_VERSION,
   resetPasswordWithToken,
@@ -165,6 +166,7 @@ import {
   getBaileysQr,
   getBaileysStatus,
   updateBaileysInstanceName,
+  updateBaileysInstanceSettings,
 } from "./baileys-gateway";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
@@ -196,16 +198,37 @@ async function resolveInboxInstanceSelection(
 type ContactRow = Awaited<ReturnType<typeof listInboxContacts>>[number];
 type MappableContact = Omit<
   ContactRow,
-  "awaitingResponse" | "needsOperatorResponse"
+  | "awaitingResponse"
+  | "needsOperatorResponse"
+  | "isGroup"
+  | "groupJid"
+  | "groupSubject"
+  | "groupInstanceId"
+  | "groupParticipantCount"
+  | "groupParticipants"
 > & {
   awaitingResponse?: boolean;
   needsOperatorResponse?: boolean;
+  isGroup?: boolean;
+  groupJid?: string | null;
+  groupSubject?: string | null;
+  groupInstanceId?: string | null;
+  groupParticipantCount?: number;
+  groupParticipants?: ContactRow["groupParticipants"];
 };
 
 const mapContact = (contact: MappableContact) => ({
   id: String(contact.id),
   name: contact.name,
-  phone: contact.externalPhone,
+  phone: contact.groupId ? "" : contact.externalPhone,
+  isGroup: contact.groupId !== null,
+  groupJid: contact.groupJid ?? null,
+  groupSubject: contact.groupSubject ?? null,
+  groupInstanceId: contact.groupInstanceId ?? null,
+  groupParticipantCount: contact.groupParticipantCount ?? 0,
+  groupParticipants: contact.groupParticipants ?? [],
+  pushName: contact.pushName,
+  nameSource: contact.nameSource,
   city: contact.city ?? "",
   neighborhood: contact.neighborhood ?? "",
   service: contact.serviceRequested ?? "Não informado",
@@ -1275,6 +1298,33 @@ export const appRouter = router({
           );
           throw error;
         }
+      }),
+    updateBaileysInstanceSettings: requireManager
+      .input(
+        z.object({
+          instanceId: z.string().trim().min(1).max(160),
+          settings: z
+            .object({
+              rejectCalls: z.boolean(),
+              rejectGroups: z.boolean(),
+              logCalls: z.boolean(),
+              ignoreStatusUpdates: z.boolean(),
+            })
+            .strict(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const instance = await getBaileysInstance(
+          ctx.workspace.workspaceId,
+          input.instanceId
+        );
+        if (!instance)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        await updateBaileysInstanceSettings(input.instanceId, input.settings);
+        return getBaileysStatus(input.instanceId);
       }),
     deleteBaileysInstance: requireManager
       .input(
@@ -2681,7 +2731,11 @@ export const appRouter = router({
       return listBaileysInstances(ctx.workspace.workspaceId);
     }),
     contacts: requireInbox
-      .input(inboxInstanceFilterSchema.optional())
+      .input(
+        inboxInstanceFilterSchema
+          .extend({ includeGroups: z.boolean().optional() })
+          .optional()
+      )
       .query(async ({ ctx, input }) => {
         const instanceIds = await resolveInboxInstanceSelection(
           ctx.workspace.workspaceId,
@@ -2690,9 +2744,32 @@ export const appRouter = router({
         const items = await listInboxContacts(
           ctx.workspace.workspaceId,
           ctx.user.id,
-          instanceIds
+          instanceIds,
+          input?.includeGroups === true
         );
         return items.map(mapContact);
+      }),
+    renameContact: requireInbox
+      .input(contactIdInput.extend({ name: z.string().trim().min(2).max(160) }))
+      .mutation(async ({ input, ctx }) => {
+        const existing = await getContactById(
+          ctx.workspace.workspaceId,
+          input.contactId
+        );
+        if (!existing)
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lead não encontrado" });
+        if (existing.groupId)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "O nome do grupo vem do WhatsApp; edite apenas leads individuais.",
+          });
+        const contact = await renameInboxContact(
+          ctx.workspace.workspaceId,
+          input.contactId,
+          input.name,
+          ctx.user.id
+        );
+        return contact ? mapContact(contact) : null;
       }),
     createContact: requireInbox
       .input(

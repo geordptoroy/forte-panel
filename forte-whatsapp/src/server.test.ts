@@ -7,6 +7,12 @@ type FakeStatus = {
   instanceName: string;
   status: string;
   qr: string | null;
+  settings: {
+    rejectCalls: boolean;
+    rejectGroups: boolean;
+    logCalls: boolean;
+    ignoreStatusUpdates: boolean;
+  };
 };
 
 type FakeManager = {
@@ -18,6 +24,7 @@ type FakeRegistry = {
   get: (instanceId: string) => FakeManager | undefined;
   create: (instanceId: string, name: string) => Promise<FakeStatus>;
   rename: (instanceId: string, name: string) => Promise<FakeStatus>;
+  updateSettings: (instanceId: string, settings: unknown) => Promise<FakeStatus>;
   remove: (instanceId: string) => Promise<{ success: boolean; instanceId: string }>;
   qr: (instanceId: string) => Promise<string | null>;
   connect: (instanceId: string) => Promise<FakeStatus>;
@@ -51,6 +58,12 @@ function saveStatus(instanceId: string, instanceName = `WhatsApp · ${instanceId
     instanceName,
     status: "disconnected",
     qr: qrById.get(instanceId) ?? null,
+    settings: {
+      rejectCalls: false,
+      rejectGroups: true,
+      logCalls: true,
+      ignoreStatusUpdates: true,
+    },
   };
   statusById.set(instanceId, status);
   managerById.set(instanceId, { getStatus: () => statusById.get(instanceId)! });
@@ -69,6 +82,11 @@ beforeAll(async () => {
     get: instanceId => managerById.get(instanceId),
     create: async (instanceId, name) => saveStatus(instanceId, name),
     rename: async (instanceId, name) => saveStatus(instanceId, name),
+    updateSettings: async (instanceId, settings) => {
+      const status = statusById.get(instanceId)!;
+      status.settings = settings as FakeStatus["settings"];
+      return status;
+    },
     remove: async instanceId => {
       deletedInstance = instanceId;
       statusById.delete(instanceId);
@@ -134,6 +152,37 @@ describe("Baileys gateway HTTP contract", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "unauthorized",
     });
+  });
+
+  it("protects and validates per-instance policy updates", async () => {
+    const settings = {
+      rejectCalls: true,
+      rejectGroups: false,
+      logCalls: true,
+      ignoreStatusUpdates: false,
+    };
+    const url = `${baseUrl}/api/instances/test-instance/settings`;
+    const unauthorized = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ settings }),
+    });
+    expect(unauthorized.status).toBe(401);
+
+    const updated = await fetch(url, {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ settings }),
+    });
+    expect(updated.status).toBe(200);
+    await expect(updated.json()).resolves.toMatchObject({ settings });
+
+    const invalid = await fetch(url, {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ settings: { ...settings, rejectCalls: "yes" } }),
+    });
+    expect(invalid.status).toBe(400);
   });
 
   it("creates, lists, renames, and deletes an instance by stable ID", async () => {

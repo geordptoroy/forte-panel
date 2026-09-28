@@ -2,6 +2,12 @@ const gatewayBaseUrl = () => (process.env.BAILEYS_BASE_URL ?? "").replace(/\/$/,
 const defaultInstanceId = () => process.env.BAILEYS_INSTANCE_ID ?? "default";
 const defaultInstanceName = () =>
   process.env.BAILEYS_INSTANCE_NAME?.trim() || `WhatsApp · ${defaultInstanceId()}`;
+const defaultInstanceSettings = {
+  rejectCalls: false,
+  rejectGroups: true,
+  logCalls: true,
+  ignoreStatusUpdates: true,
+};
 const maskSecret = (value: string | undefined) =>
   value ? `${value.slice(0, 3)}••••${value.slice(-3)}` : null;
 
@@ -62,6 +68,20 @@ export async function updateBaileysInstanceName(
   return response.json();
 }
 
+export async function updateBaileysInstanceSettings(
+  instanceId: string,
+  settings: typeof defaultInstanceSettings
+) {
+  const id = encodeURIComponent(instanceId);
+  const response = await gatewayRequest(`/api/instances/${id}/settings`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ settings }),
+  });
+  if (!response) throw new Error("Gateway WhatsApp não está configurado");
+  return response.json();
+}
+
 export async function deleteBaileysInstance(instanceId: string) {
   const id = encodeURIComponent(instanceId);
   const response = await gatewayRequest(`/api/instances/${id}`, {
@@ -100,6 +120,7 @@ export async function getBaileysStatus(instanceId = defaultInstanceId()) {
     phone?: string;
     lastError?: string;
     updatedAt?: string;
+    settings?: Partial<typeof defaultInstanceSettings>;
   };
   return {
     configured: true,
@@ -110,6 +131,24 @@ export async function getBaileysStatus(instanceId = defaultInstanceId()) {
         ? defaultInstanceName()
         : `WhatsApp · ${instanceId}`),
     status: body.status ?? "unknown",
+    settings: {
+      rejectCalls:
+        typeof body.settings?.rejectCalls === "boolean"
+          ? body.settings.rejectCalls
+          : defaultInstanceSettings.rejectCalls,
+      rejectGroups:
+        typeof body.settings?.rejectGroups === "boolean"
+          ? body.settings.rejectGroups
+          : defaultInstanceSettings.rejectGroups,
+      logCalls:
+        typeof body.settings?.logCalls === "boolean"
+          ? body.settings.logCalls
+          : defaultInstanceSettings.logCalls,
+      ignoreStatusUpdates:
+        typeof body.settings?.ignoreStatusUpdates === "boolean"
+          ? body.settings.ignoreStatusUpdates
+          : defaultInstanceSettings.ignoreStatusUpdates,
+    },
     phoneNumber: body.phoneNumber ?? body.phone ?? null,
     qrAvailable: body.status === "qr",
     lastError: body.lastError ?? null,

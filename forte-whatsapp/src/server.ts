@@ -1,6 +1,7 @@
 import http from "node:http";
 import QRCode from "qrcode";
 import { config } from "./config.js";
+import { parseBaileysInstanceSettings } from "./instance-settings.js";
 import type { InstanceRegistry } from "./instance-registry.js";
 
 export function createServer(registry: InstanceRegistry) {
@@ -64,6 +65,25 @@ export function createServer(registry: InstanceRegistry) {
       }
       if (action === "profile" && req.method === "GET")
         return json(res, 200, await registry.profile(instanceId));
+      if (action === "settings" && req.method === "PATCH") {
+        const body = await readJson(req);
+        let settings;
+        try {
+          settings = parseBaileysInstanceSettings(body.settings);
+        } catch (error) {
+          return json(res, 400, {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Configurações WhatsApp inválidas",
+          });
+        }
+        return json(
+          res,
+          200,
+          await registry.updateSettings(instanceId, settings)
+        );
+      }
       if (!action && req.method === "PATCH") {
         const body = await readJson(req);
         if (typeof body.name !== "string")

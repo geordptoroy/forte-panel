@@ -1266,14 +1266,24 @@ async function handleBaileysWebhook(req: Request, res: Response) {
           : "O evento não identifica uma instância Baileys",
         instanceId ? "unknown_baileys_instance" : "instance_id_required"
       );
-    if (normalized.metadata?.isGroup === true)
-      return res.status(202).json({
-        accepted: true,
-        ignored: true,
-        reason: "group_message",
-        eventId,
-      });
-    if (normalized.phone.length < 8 || !normalized.content.trim())
+    const isGroup = normalized.metadata?.isGroup === true;
+    const groupJid =
+      typeof normalized.metadata?.groupJid === "string"
+        ? normalized.metadata.groupJid
+        : typeof normalized.metadata?.jid === "string"
+          ? normalized.metadata.jid
+          : "";
+    if (
+      isGroup &&
+      (!instanceId || !instanceOwner || !groupJid.endsWith("@g.us"))
+    )
+      return fail(
+        res,
+        400,
+        "Evento de grupo sem JID ou instância Baileys verificável",
+        "invalid_group_payload"
+      );
+    if ((!isGroup && normalized.phone.length < 8) || !normalized.content.trim())
       return fail(
         res,
         400,

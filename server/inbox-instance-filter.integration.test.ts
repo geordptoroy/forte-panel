@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 import {
+  auditLogs,
   contacts,
   conversations,
   domainEvents,
   messages,
+  whatsappGroupParticipants,
+  whatsappGroups,
   whatsappInstances,
   workspaces,
 } from "../drizzle/schema";
@@ -13,6 +16,8 @@ import {
   ingestInboundWhatsApp,
   listInboxContacts,
   listMessagesForContact,
+  renameContact,
+  sendManualMessage,
 } from "./db";
 
 const hasDatabase = Boolean(
@@ -38,6 +43,8 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
   let existingConversationId = 0;
   let fromMeContactId = 0;
   let fromMeConversationId = 0;
+  const groupContactIds: number[] = [];
+  const groupConversationIds: number[] = [];
   const messageIds: number[] = [];
 
   beforeAll(async () => {
@@ -195,11 +202,16 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
       await db
         .delete(domainEvents)
         .where(inArray(domainEvents.workspaceId, [workspaceAId, workspaceBId].filter(Boolean)));
+    if (workspaceAId || workspaceBId)
+      await db
+        .delete(auditLogs)
+        .where(inArray(auditLogs.workspaceId, [workspaceAId, workspaceBId].filter(Boolean)));
     const conversationIds = [
       conversationAId,
       conversationBId,
       existingConversationId,
       fromMeConversationId,
+      ...groupConversationIds,
     ].filter(Boolean);
     if (conversationIds.length)
       await db.delete(messages).where(inArray(messages.conversationId, conversationIds));
@@ -208,11 +220,30 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
       contactBId,
       existingContactId,
       fromMeContactId,
+      ...groupContactIds,
     ].filter(Boolean);
     if (contactIds.length)
       await db.delete(conversations).where(inArray(conversations.contactId, contactIds));
     if (contactIds.length)
       await db.delete(contacts).where(inArray(contacts.id, contactIds));
+    if (workspaceAId || workspaceBId) {
+      const groupRows = await db
+        .select({ id: whatsappGroups.id })
+        .from(whatsappGroups)
+        .where(
+          inArray(
+            whatsappGroups.workspaceId,
+            [workspaceAId, workspaceBId].filter(Boolean)
+          )
+        );
+      const ids = groupRows.map(row => row.id);
+      if (ids.length) {
+        await db
+          .delete(whatsappGroupParticipants)
+          .where(inArray(whatsappGroupParticipants.groupId, ids));
+        await db.delete(whatsappGroups).where(inArray(whatsappGroups.id, ids));
+      }
+    }
     if (workspaceAId || workspaceBId)
       await db
         .delete(whatsappInstances)
@@ -354,5 +385,211 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
       humanControlled: 1,
       unreadCount: 0,
     });
+
+    await renameContact(workspaceAId, contactAId, "Nome real do lead");
+    await ingestInboundWhatsApp(workspaceAId, {
+      eventId: `push-name-after-rename-${suffix}`,
+      phone: phoneA,
+      name: "Push name atualizado",
+      content: "nova mensagem depois da correção do nome",
+      metadata: {
+        provider: "baileys",
+        instanceId: instanceA1,
+        jid: `${phoneA}@s.whatsapp.net`,
+      },
+    });
+    const renamedContact = (
+      await db.select().from(contacts).where(eq(contacts.id, contactAId)).limit(1)
+    )[0]!;
+    expect(renamedContact).toMatchObject({
+      name: "Nome real do lead",
+      pushName: "Push name atualizado",
+      nameSource: "manual",
+    });
+  });
+
+  it("persists Baileys groups by instance, tracks authors, and never sends them to AI", async () => {
+    const db = await getDb();
+    if (!db) throw new Error("database unavailable");
+    const groupJid = `120363${suffix.slice(-8)}@g.us`;
+    const groupSubject = "Reforma 2026";
+    const addGroupMessage = (
+      eventId: string,
+      instanceId: string,
+      authorJid: string,
+      authorName: string,
+      content: string
+    ) =>
+      ingestInboundWhatsApp(workspaceAId, {
+        eventId,
+        phone: groupJid,
+        name: groupSubject,
+        content,
+        messageType: "text",
+        metadata: {
+          provider: "baileys",
+          instanceId,
+          jid: groupJid,
+          groupJid,
+          groupSubject,
+          isGroup: true,
+          authorJid,
+          authorName,
+        },
+      });
+
+    await addGroupMessage(
+      `group-ana-${suffix}`,
+      instanceA1,
+      `55110001@s.whatsapp.net`,
+      "Ana",
+      "Alguém consegue ver o orçamento?"
+    );
+    await addGroupMessage(
+      `group-bruno-${suffix}`,
+      instanceA1,
+      `55110002@s.whatsapp.net`,
+      "Bruno",
+      "Vou verificar"
+    );
+    await addGroupMessage(
+      `group-other-instance-${suffix}`,
+      instanceA2,
+      `55110001@s.whatsapp.net`,
+      "Ana",
+      "Mensagem pela outra sessão"
+    );
+
+    const groups = await db
+      .select()
+      .from(whatsappGroups)
+      .where(and(eq(whatsappGroups.workspaceId, workspaceAId), eq(whatsappGroups.jid, groupJid)));
+    expect(groups).toHaveLength(2);
+    const groupA1 = groups.find(group => group.instanceId === instanceA1)!;
+    const groupA2 = groups.find(group => group.instanceId === instanceA2)!;
+    expect(groupA1.subject).toBe(groupSubject);
+
+    const participants = await db
+      .select()
+      .from(whatsappGroupParticipants)
+      .where(eq(whatsappGroupParticipants.groupId, groupA1.id));
+    expect(participants.map(participant => participant.name).sort()).toEqual([
+      "Ana",
+      "Bruno",
+    ]);
+
+    const groupContactA1 = (
+      await db.select().from(contacts).where(eq(contacts.groupId, groupA1.id)).limit(1)
+    )[0]!;
+    const groupContactA2 = (
+      await db.select().from(contacts).where(eq(contacts.groupId, groupA2.id)).limit(1)
+    )[0]!;
+    groupContactIds.push(groupContactA1.id, groupContactA2.id);
+    expect(groupContactA1).toMatchObject({
+      name: groupSubject,
+      aiEnabled: 0,
+      nameSource: "auto",
+    });
+    expect(groupContactA2.id).not.toBe(groupContactA1.id);
+    await expect(
+      renameContact(workspaceAId, groupContactA1.id, "Nome CRM para grupo")
+    ).rejects.toThrow("Lead não encontrado");
+
+    const groupConversationA1 = (
+      await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.contactId, groupContactA1.id))
+        .limit(1)
+    )[0]!;
+    const groupConversationA2 = (
+      await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.contactId, groupContactA2.id))
+        .limit(1)
+    )[0]!;
+    groupConversationIds.push(groupConversationA1.id, groupConversationA2.id);
+    expect(groupConversationA1.humanControlled).toBe(1);
+
+    const visibleA1 = await listMessagesForContact(
+      workspaceAId,
+      groupContactA1.id,
+      { instanceIds: [instanceA1] }
+    );
+    expect(visibleA1.map(message => message.content)).toEqual([
+      "Alguém consegue ver o orçamento?",
+      "Vou verificar",
+    ]);
+    expect(visibleA1[0]?.metadata).toMatchObject({
+      isGroup: true,
+      groupJid,
+      authorJid: "55110001@s.whatsapp.net",
+      authorName: "Ana",
+    });
+    const groupInbox = await listInboxContacts(
+      workspaceAId,
+      undefined,
+      [instanceA1],
+      true
+    );
+    const groupContactDto = groupInbox.find(
+      contact => contact.id === groupContactA1.id
+    );
+    expect(groupContactDto).toMatchObject({
+      isGroup: true,
+      groupSubject,
+      groupInstanceId: instanceA1,
+      groupParticipantCount: 2,
+    });
+    expect(
+      groupContactDto?.groupParticipants.map(participant => participant.name).sort()
+    ).toEqual(["Ana", "Bruno"]);
+    expect(groupInbox.map(contact => contact.id)).not.toContain(
+      groupContactA2.id
+    );
+    const crmContacts = await listInboxContacts(workspaceAId);
+    expect(crmContacts.map(contact => contact.id)).not.toContain(groupContactA1.id);
+    const groupReply = await sendManualMessage(
+      workspaceAId,
+      groupContactA1.id,
+      "Resposta no grupo",
+      undefined,
+      "text",
+      undefined,
+      [instanceA1]
+    );
+    expect(groupReply).toMatchObject({
+      provider: "baileys",
+      direction: "outbound",
+      metadata: {
+        instanceId: instanceA1,
+        jid: groupJid,
+        routingSource: "inbound_origin",
+      },
+    });
+    const visibleA2Contacts = await listInboxContacts(
+      workspaceAId,
+      undefined,
+      [instanceA2],
+      true
+    );
+    expect(visibleA2Contacts.map(contact => contact.id)).toContain(groupContactA2.id);
+    expect(visibleA2Contacts.map(contact => contact.id)).not.toContain(groupContactA1.id);
+
+    const receivedEvents = await db
+      .select({ id: domainEvents.id })
+      .from(domainEvents)
+      .where(
+        and(
+          eq(domainEvents.workspaceId, workspaceAId),
+          inArray(domainEvents.eventKey, [
+            `message.received:group-ana-${suffix}`,
+            `message.received:group-bruno-${suffix}`,
+            `message.received:group-other-instance-${suffix}`,
+          ])
+        )
+      );
+    expect(receivedEvents).toHaveLength(0);
   });
 });

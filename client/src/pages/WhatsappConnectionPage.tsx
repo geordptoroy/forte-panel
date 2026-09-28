@@ -91,8 +91,8 @@ const connectionStatusDetails: Record<
 export function WhatsappConnectionPage() {
   return (
     <PanelLayout
-      eyebrow="Core · Baileys"
-      title="Whats Conector"
+      eyebrow="WhatsApp · Conexões"
+      title="Conexões e configurações WhatsApp"
       showHeading={false}
     >
       <BaileysConnectionManager />
@@ -306,7 +306,7 @@ function BaileysConnectionManager() {
           <div>
             <span className="eyebrow">Sessões do workspace</span>
             <h2 id="instance-list-title">Suas instâncias</h2>
-            <p>O status é atualizado automaticamente pelo gateway Baileys.</p>
+            <p>Gerencie as sessões e preferências de cada conexão WhatsApp.</p>
           </div>
           <div className="whatsapp-list-tools">
             {total !== undefined && (
@@ -638,6 +638,11 @@ function BaileysInstanceCard({
       await utils.workspace.baileysInstances.invalidate();
     },
   });
+  const updateSettings = trpc.workspace.updateBaileysInstanceSettings.useMutation({
+    onSuccess: async () => {
+      await status.refetch();
+    },
+  });
   useEffect(() => {
     onStatusUpdate(instanceId, status.error ? undefined : current?.status);
   }, [current?.status, instanceId, onStatusUpdate, status.error]);
@@ -654,6 +659,21 @@ function BaileysInstanceCard({
     : status.isLoading
       ? { label: "Consultando gateway...", tone: "neutral" as const }
       : { label: stateDetails.label, tone: stateDetails.tone };
+  const settings = current?.settings ?? {
+    rejectCalls: false,
+    rejectGroups: true,
+    logCalls: true,
+    ignoreStatusUpdates: true,
+  };
+  const updateSetting = (
+    key: keyof typeof settings,
+    value: boolean
+  ) => {
+    updateSettings.mutate({
+      instanceId,
+      settings: { ...settings, [key]: value },
+    });
+  };
 
   return (
     <article
@@ -711,7 +731,7 @@ function BaileysInstanceCard({
         </div>
       )}
       <div className="whatsapp-instance-toolbar">
-        <span>Configurações da instância</span>
+        <span>Preferências da conexão</span>
         <button
           type="button"
           className="btn-ghost"
@@ -723,6 +743,73 @@ function BaileysInstanceCard({
           <Pencil size={13} /> Alterar
         </button>
       </div>
+      <section
+        className="whatsapp-instance-settings"
+        aria-label={`Preferências da conexão ${name}`}
+      >
+        <div className="whatsapp-settings-heading">
+          <strong>Comportamento da instância</strong>
+          <small>Salvo nesta conexão</small>
+        </div>
+        <label className="whatsapp-setting-row">
+          <input
+            type="checkbox"
+            checked={settings.rejectCalls}
+            disabled={!current?.configured || status.isLoading || updateSettings.isPending}
+            onChange={event => updateSetting("rejectCalls", event.target.checked)}
+          />
+          <span className="whatsapp-setting-copy">
+            <strong>Rejeitar chamadas automaticamente</strong>
+            <small>Recusa tentativas recebidas enquanto esta opção estiver ativa.</small>
+          </span>
+        </label>
+        <label className="whatsapp-setting-row">
+          <input
+            type="checkbox"
+            checked={settings.rejectGroups}
+            disabled={!current?.configured || status.isLoading || updateSettings.isPending}
+            onChange={event => updateSetting("rejectGroups", event.target.checked)}
+          />
+          <span className="whatsapp-setting-copy">
+            <strong>Ignorar mensagens de grupos</strong>
+            <small>Não salva nem encaminha mensagens de grupo; não sai do grupo.</small>
+          </span>
+        </label>
+        <label className="whatsapp-setting-row">
+          <input
+            type="checkbox"
+            checked={settings.logCalls}
+            disabled={!current?.configured || status.isLoading || updateSettings.isPending}
+            onChange={event => updateSetting("logCalls", event.target.checked)}
+          />
+          <span className="whatsapp-setting-copy">
+            <strong>Registrar chamadas no histórico</strong>
+            <small>Exibe eventos de chamada na conversa correspondente.</small>
+          </span>
+        </label>
+        <label className="whatsapp-setting-row">
+          <input
+            type="checkbox"
+            checked={settings.ignoreStatusUpdates}
+            disabled={!current?.configured || status.isLoading || updateSettings.isPending}
+            onChange={event => updateSetting("ignoreStatusUpdates", event.target.checked)}
+          />
+          <span className="whatsapp-setting-copy">
+            <strong>Ignorar atualizações de Status</strong>
+            <small>Evita tratar Status do WhatsApp como conversa com cliente.</small>
+          </span>
+        </label>
+        {updateSettings.error && (
+          <div className="form-error" role="alert">
+            {updateSettings.error.message}
+          </div>
+        )}
+        {updateSettings.isSuccess && (
+          <small className="whatsapp-settings-saved" role="status">
+            Preferências salvas nesta instância.
+          </small>
+        )}
+      </section>
       {connected ? (
         <section
           className="whatsapp-connected-panel"

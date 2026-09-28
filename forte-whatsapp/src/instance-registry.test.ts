@@ -4,6 +4,10 @@ import path from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { InstanceRegistry as RegistryType } from "./instance-registry.js";
 import type { InstanceManager, InstanceSnapshot } from "./instance-manager.js";
+import {
+  DEFAULT_BAILEYS_INSTANCE_SETTINGS,
+  type BaileysInstanceSettings,
+} from "./instance-settings.js";
 
 const roots: string[] = [];
 let InstanceRegistryClass: typeof import("./instance-registry.js").InstanceRegistry;
@@ -25,8 +29,12 @@ async function makeRoot() {
 
 function managerFactory(sessionDir: string) {
   const managers = new Map<string, FakeManager>();
-  const factory = (instanceId: string, name: string) => {
-    const manager = new FakeManager(instanceId, name, sessionDir);
+  const factory = (
+    instanceId: string,
+    name: string,
+    settings: BaileysInstanceSettings = DEFAULT_BAILEYS_INSTANCE_SETTINGS
+  ) => {
+    const manager = new FakeManager(instanceId, name, sessionDir, settings);
     managers.set(instanceId, manager);
     return manager as unknown as InstanceManager;
   };
@@ -36,20 +44,29 @@ function managerFactory(sessionDir: string) {
 class FakeManager {
   status: InstanceSnapshot["status"] = "idle";
   starts = 0;
+  settings: BaileysInstanceSettings = { ...DEFAULT_BAILEYS_INSTANCE_SETTINGS };
 
   constructor(
     readonly instanceId: string,
     private name: string,
-    private readonly sessionDir: string
-  ) {}
+    private readonly sessionDir: string,
+    settings: BaileysInstanceSettings = DEFAULT_BAILEYS_INSTANCE_SETTINGS
+  ) {
+    this.settings = { ...settings };
+  }
 
   getStatus(): InstanceSnapshot {
     return {
       instanceId: this.instanceId,
       instanceName: this.name,
       status: this.status,
+      settings: { ...this.settings },
       updatedAt: new Date(0).toISOString(),
     };
+  }
+
+  setSettings(settings: BaileysInstanceSettings) {
+    this.settings = { ...settings };
   }
 
   setName(name: string) {
@@ -107,6 +124,14 @@ describe("Baileys InstanceRegistry lifecycle", () => {
     const created = await registry.create("ws3-sales", "Vendas");
     expect(created).toMatchObject({ instanceId: "ws3-sales", instanceName: "Vendas", status: "idle" });
     expect(await fs.readFile(path.join(sessionDir, "ws3-sales", ".instance.json"), "utf8")).toContain('"autoStart":false');
+    const settings = {
+      ...DEFAULT_BAILEYS_INSTANCE_SETTINGS,
+      rejectCalls: true,
+      rejectGroups: false,
+    };
+    expect(await registry.updateSettings("ws3-sales", settings)).toMatchObject({
+      settings,
+    });
 
     const renamed = await registry.rename("ws3-sales", "Atendimento");
     expect(renamed.instanceName).toBe("Atendimento");
@@ -117,7 +142,12 @@ describe("Baileys InstanceRegistry lifecycle", () => {
     const restored = new InstanceRegistryClass({ ...options, managerFactory: restoredManagers.factory });
     await restored.initialize();
     expect(restored.list()).toEqual([
-      expect.objectContaining({ instanceId: "ws3-sales", instanceName: "Atendimento", status: "connected" }),
+      expect.objectContaining({
+        instanceId: "ws3-sales",
+        instanceName: "Atendimento",
+        status: "connected",
+        settings,
+      }),
     ]);
     expect(restoredManagers.managers.get("ws3-sales")?.starts).toBe(1);
 

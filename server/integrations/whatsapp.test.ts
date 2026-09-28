@@ -108,6 +108,42 @@ describe("PAPI outbound adapter", () => {
 });
 
 describe("Baileys adapter JID routing", () => {
+  it("preserves an instance-scoped group JID, subject, and author identity", () => {
+    const normalized = createBaileysAdapter().normalizeInbound({
+      eventId: "instance-a:message:group-fixture",
+      instanceId: "instance-a",
+      phone: "120363012345678901",
+      jid: "120363012345678901@g.us",
+      name: "Reforma 2026",
+      content: "Alguém consegue ver o orçamento?",
+      messageType: "text",
+      metadata: {
+        provider: "baileys",
+        jid: "120363012345678901@g.us",
+        isGroup: true,
+        groupJid: "120363012345678901@g.us",
+        groupSubject: "Reforma 2026",
+        authorJid: "55110001@s.whatsapp.net",
+        authorName: "Ana",
+      },
+    });
+
+    expect(normalized).toMatchObject({
+      eventId: "instance-a:message:group-fixture",
+      name: "Reforma 2026",
+      content: "Alguém consegue ver o orçamento?",
+      metadata: {
+        provider: "baileys",
+        instanceId: "instance-a",
+        isGroup: true,
+        groupJid: "120363012345678901@g.us",
+        groupSubject: "Reforma 2026",
+        authorJid: "55110001@s.whatsapp.net",
+        authorName: "Ana",
+      },
+    });
+  });
+
   it("preserves the exact plain-text `oi` from the gateway outbox envelope", () => {
     const normalized = createBaileysAdapter().normalizeInbound({
       eventId: "fixture-oi-1",

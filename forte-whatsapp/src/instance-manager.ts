@@ -13,6 +13,13 @@ import makeWASocket, {
 import { config } from "./config.js";
 import { useEncryptedAuthState } from "./encrypted-auth-state.js";
 import { logger } from "./logger.js";
+import {
+  DEFAULT_BAILEYS_INSTANCE_SETTINGS,
+  isGroupJid,
+  shouldIgnoreInboundJid,
+  shouldRejectIncomingCall,
+  type BaileysInstanceSettings,
+} from "./instance-settings.js";
 import { acquireSessionLock, type SessionLock } from "./session-lock.js";
 import {
   clearUnregisteredPairingCredentials,
@@ -27,6 +34,13 @@ import {
   normalizeBaileysOutgoingMessage,
   PanelMessageEchoTracker,
 } from "./message-normalization.js";
+
+function instanceScopedEventId(instanceId: string, sourceId: string) {
+  return `baileys-${crypto
+    .createHash("sha256")
+    .update(`${instanceId}\0${sourceId}`)
+    .digest("hex")}`;
+}
 
 export type InstanceStatus =
   | "idle"
@@ -44,6 +58,7 @@ export type InstanceSnapshot = {
   phone?: string;
   qr?: string;
   lastError?: string;
+  settings: BaileysInstanceSettings;
   webhookOutboxPending?: number;
   webhookLastError?: string;
   updatedAt: string;
@@ -69,17 +84,25 @@ export class InstanceManager {
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private readonly webhookOutbox: WebhookOutbox;
   private readonly panelMessageEchoes = new PanelMessageEchoTracker();
+  private readonly groupSubjectCache = new Map<
+    string,
+    { subject: string; expiresAt: number }
+  >();
+  private settings: BaileysInstanceSettings;
 
   constructor(
     private readonly instanceId = config.instanceId,
     private instanceName = instanceId === config.instanceId
       ? config.instanceName
-      : `WhatsApp · ${instanceId}`
+      : `WhatsApp · ${instanceId}`,
+    settings: BaileysInstanceSettings = DEFAULT_BAILEYS_INSTANCE_SETTINGS
   ) {
+    this.settings = { ...settings };
     this.snapshot = {
       instanceId,
       instanceName,
       status: "idle",
+      settings: { ...this.settings },
       updatedAt: new Date().toISOString(),
     };
     this.webhookOutbox = new WebhookOutbox({
@@ -132,6 +155,11 @@ export class InstanceManager {
   setName(name: string) {
     this.instanceName = name;
     this.set({ instanceName: name });
+  }
+
+  setSettings(settings: BaileysInstanceSettings) {
+    this.settings = { ...settings };
+    this.set({ settings: { ...this.settings } });
   }
 
   async start(): Promise<void> {
@@ -628,11 +656,12 @@ export class InstanceManager {
   private async handleMessages(messages: WAMessage[]) {
     if (!config.webhookUrl) return;
     for (const message of messages) {
-      if (
-        !message.key?.remoteJid ||
-        message.key.remoteJid.endsWith("@g.us")
-      )
-        continue;
+      const remoteJid = message.key?.remoteJid;
+      if (!remoteJid || shouldIgnoreInboundJid(this.settings, remoteJid)) continue;
+      const isGroup = isGroupJid(remoteJid);
+      const groupSubject = isGroup
+        ? await this.getGroupSubject(remoteJid)
+        : undefined;
       const normalized = normalizeBaileysMessage(message.message);
       const body = normalized.body;
       const fromMe = message.key.fromMe === true;
@@ -640,7 +669,7 @@ export class InstanceManager {
         fromMe &&
         this.panelMessageEchoes.isPanelEcho(
           message.key.id,
-          message.key.remoteJid,
+          remoteJid,
           normalized.messageType,
           normalized.echoContent
         )
@@ -659,10 +688,31 @@ export class InstanceManager {
       const reaction = body?.reactionMessage;
       const { messageType, content } = normalized;
       const media = image || audio || video || document || sticker;
+      const keyWithAlternates = message.key as typeof message.key & {
+        participantAlt?: string | null;
+        remoteJidAlt?: string | null;
+      };
       const metadata: Record<string, unknown> = {
         provider: "baileys",
         messageId: message.key.id,
-        jid: message.key.remoteJid,
+        jid: remoteJid,
+        ...(isGroup
+          ? {
+              isGroup: true,
+              groupJid: remoteJid,
+              groupSubject,
+              ...(message.key.participant
+                ? { authorJid: message.key.participant }
+                : {}),
+              ...(keyWithAlternates.participantAlt
+                ? { authorJidAlt: keyWithAlternates.participantAlt }
+                : {}),
+              ...(message.pushName ? { authorName: message.pushName } : {}),
+            }
+          : {}),
+        ...(keyWithAlternates.remoteJidAlt
+          ? { remoteJidAlt: keyWithAlternates.remoteJidAlt }
+          : {}),
         ...([location, contact, poll, list, button, reaction].some(Boolean)
           ? { payload: { location, contact, poll, list, button, reaction } }
           : {}),
@@ -695,18 +745,50 @@ export class InstanceManager {
         message.messageTimestamp ?? Math.floor(Date.now() / 1000)
       );
       await this.webhookOutbox.enqueue({
-        eventId: message.key.id ?? crypto.randomUUID(),
+        eventId: message.key.id
+          ? instanceScopedEventId(this.instanceId, `message:${message.key.id}`)
+          : crypto.randomUUID(),
         instanceId: this.instanceId,
-        phone: message.key.remoteJid.replace(/@s\.whatsapp\.net$/, ""),
-        name: message.pushName,
+        phone: remoteJid.replace(/@s\.whatsapp\.net$/, ""),
+        name: isGroup
+          ? groupSubject ?? `Grupo ${remoteJid.split("@")[0]}`
+          : message.pushName,
         content,
         messageType,
         receivedAt: new Date(timestamp * 1000).toISOString(),
-        jid: message.key.remoteJid,
+        jid: remoteJid,
         fromMe,
         metadata,
       });
     }
+  }
+
+  private async getGroupSubject(groupJid: string) {
+    const cached = this.groupSubjectCache.get(groupJid);
+    if (cached && cached.expiresAt > Date.now()) return cached.subject;
+    try {
+      const details = await this.socket?.groupMetadata(groupJid);
+      const subject = details?.subject?.trim();
+      if (subject) {
+        const normalizedSubject = subject.slice(0, 160);
+        this.groupSubjectCache.set(groupJid, {
+          subject: normalizedSubject,
+          expiresAt: Date.now() + 5 * 60_000,
+        });
+        return normalizedSubject;
+      }
+    } catch (error) {
+      logger.warn(
+        { err: error, instanceId: this.instanceId, groupJid },
+        "failed to resolve Baileys group subject"
+      );
+    }
+    const fallback = `Grupo ${groupJid.split("@")[0]}`;
+    this.groupSubjectCache.set(groupJid, {
+      subject: fallback,
+      expiresAt: Date.now() + 30_000,
+    });
+    return fallback;
   }
 
   private async handleCalls(
@@ -719,11 +801,25 @@ export class InstanceManager {
       date?: Date;
     }>
   ) {
-    if (!config.webhookUrl) return;
     for (const call of calls) {
       if (!call.from || call.chatId?.endsWith("@g.us")) continue;
+      const rejected = shouldRejectIncomingCall(this.settings, call.status);
+      if (rejected) {
+        try {
+          await this.socket?.rejectCall(call.id, call.from);
+        } catch (error) {
+          logger.warn(
+            { err: error, instanceId: this.instanceId, callId: call.id },
+            "failed to reject incoming WhatsApp call"
+          );
+        }
+      }
+      if (!this.settings.logCalls || !config.webhookUrl) continue;
       await this.webhookOutbox.enqueue({
-        eventId: `call-${call.id}-${call.status}`,
+        eventId: instanceScopedEventId(
+          this.instanceId,
+          `call:${call.id}:${call.status}`
+        ),
         instanceId: this.instanceId,
         phone: call.from.replace(/@s\.whatsapp\.net$/, ""),
         content: `[ligação ${call.isVideo ? "de vídeo" : "de áudio"}: ${call.status}]`,
@@ -735,6 +831,7 @@ export class InstanceManager {
           callId: call.id,
           callStatus: call.status,
           isVideo: call.isVideo === true,
+          autoRejected: rejected,
           jid: call.chatId,
         },
       });

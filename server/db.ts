@@ -48,6 +48,8 @@ import {
   users,
   webhookEvents,
   whatsappChannels,
+  whatsappGroupParticipants,
+  whatsappGroups,
   whatsappInstances,
   workspaceInvites,
   workspaceMembers,
@@ -101,7 +103,7 @@ import {
   mergeAgentProviderSettings,
   type AgentProviderSettings,
 } from "./llm-providers";
-import { persistInboundMedia } from "./media-storage";
+import { persistInboundMedia, resolvePrivateMediaUrl } from "./media-storage";
 import { onboardingFollowUpFieldKeys } from "./onboarding-followups";
 
 const DOMAIN_EVENT_WORKER_ID =
@@ -1358,6 +1360,7 @@ export async function processDailySummaryNotificationsOnce(
         .where(
           and(
             eq(contacts.workspaceId, workspace.id),
+            isNull(contacts.groupId),
             gte(contacts.createdAt, bounds.start),
             lt(contacts.createdAt, bounds.end)
           )
@@ -4474,6 +4477,17 @@ export async function resetWorkspaceDevelopmentData(workspaceId?: number) {
       .delete(webhookEvents)
       .where(eq(webhookEvents.workspaceId, workspace.id));
     await tx
+      .delete(whatsappGroupParticipants)
+      .where(
+        inArray(
+          whatsappGroupParticipants.groupId,
+          sql`(SELECT "id" FROM "whatsappGroups" WHERE "workspaceId" = ${workspace.id})`
+        )
+      );
+    await tx
+      .delete(whatsappGroups)
+      .where(eq(whatsappGroups.workspaceId, workspace.id));
+    await tx
       .delete(apiIdempotency)
       .where(eq(apiIdempotency.workspaceId, workspace.id));
     await tx
@@ -5138,7 +5152,8 @@ export async function createAgendaAppointment(
         .where(
           and(
             eq(contacts.id, input.contactId),
-            eq(contacts.workspaceId, workspaceId)
+            eq(contacts.workspaceId, workspaceId),
+            isNull(contacts.groupId)
           )
         )
         .limit(1)
@@ -5307,7 +5322,8 @@ function inboxMessageWorkspaceOwnershipFilter(workspaceId: number) {
 export async function listInboxContacts(
   workspaceId: number,
   viewerUserId?: number,
-  instanceIds?: readonly string[] | null
+  instanceIds?: readonly string[] | null,
+  includeGroups = false
 ) {
   const db = await getDb();
   if (!db) return [];
@@ -5331,8 +5347,76 @@ export async function listInboxContacts(
   const contactRows = await db
     .select()
     .from(contacts)
-    .where(eq(contacts.workspaceId, workspaceId))
+    .where(
+      and(
+        eq(contacts.workspaceId, workspaceId),
+        ...(includeGroups ? [] : [isNull(contacts.groupId)])
+      )
+    )
     .orderBy(desc(contacts.lastMessageAt), desc(contacts.id));
+  const groupIds = contactRows
+    .map(contact => contact.groupId)
+    .filter((id): id is number => id !== null);
+  const groupRows = groupIds.length
+    ? await db
+        .select({
+          id: whatsappGroups.id,
+          jid: whatsappGroups.jid,
+          subject: whatsappGroups.subject,
+          instanceId: whatsappGroups.instanceId,
+        })
+        .from(whatsappGroups)
+        .where(
+          and(
+            eq(whatsappGroups.workspaceId, workspaceId),
+            inArray(whatsappGroups.id, groupIds)
+          )
+        )
+    : [];
+  const groupById = new Map(groupRows.map(group => [group.id, group]));
+  const groupParticipantRows = groupRows.length
+    ? await db
+        .select({
+          groupId: whatsappGroupParticipants.groupId,
+          jid: whatsappGroupParticipants.jid,
+          jidAlt: whatsappGroupParticipants.jidAlt,
+          name: whatsappGroupParticipants.name,
+          isAdmin: whatsappGroupParticipants.isAdmin,
+        })
+        .from(whatsappGroupParticipants)
+        .innerJoin(
+          whatsappGroups,
+          eq(whatsappGroupParticipants.groupId, whatsappGroups.id)
+        )
+        .where(
+          and(
+            eq(whatsappGroups.workspaceId, workspaceId),
+            inArray(
+              whatsappGroupParticipants.groupId,
+              groupRows.map(group => group.id)
+            )
+          )
+        )
+        .orderBy(
+          desc(whatsappGroupParticipants.isAdmin),
+          asc(whatsappGroupParticipants.name),
+          asc(whatsappGroupParticipants.jid)
+        )
+    : [];
+  const participantsByGroupId = new Map<
+    number,
+    Array<{
+      jid: string;
+      jidAlt: string | null;
+      name: string | null;
+      isAdmin: number;
+    }>
+  >();
+  for (const participant of groupParticipantRows) {
+    const participants = participantsByGroupId.get(participant.groupId) ?? [];
+    participants.push(participant);
+    participantsByGroupId.set(participant.groupId, participants);
+  }
   const messageRows = await db
     .select({
       contactId: conversations.contactId,
@@ -5405,8 +5489,19 @@ export async function listInboxContacts(
       const filteredLastMessage = instanceIds?.length
         ? lastMessageByContact.get(contact.id)
         : undefined;
+      const group = contact.groupId ? groupById.get(contact.groupId) : undefined;
       return {
         ...contact,
+        isGroup: Boolean(contact.groupId),
+        groupJid: group?.jid ?? null,
+        groupSubject: group?.subject ?? null,
+        groupInstanceId: group?.instanceId ?? null,
+        groupParticipantCount: group
+          ? (participantsByGroupId.get(group.id)?.length ?? 0)
+          : 0,
+        groupParticipants: group
+          ? (participantsByGroupId.get(group.id) ?? []).slice(0, 20)
+          : [],
         ...(filteredLastMessage
           ? {
               lastMessagePreview: filteredLastMessage.content,
@@ -5530,7 +5625,28 @@ export async function listMessagesForContact(
     )
     .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(limit);
-  return rows.reverse();
+  const hydratedRows: typeof rows = [];
+  for (let offset = 0; offset < rows.length; offset += 10) {
+    const batch = await Promise.all(
+      rows.slice(offset, offset + 10).map(async row => {
+        const metadata =
+          row.metadata && typeof row.metadata === "object"
+            ? (row.metadata as Record<string, unknown>)
+            : undefined;
+        if (typeof metadata?.mediaStorageKey !== "string") return row;
+        try {
+          const mediaUrl = await resolvePrivateMediaUrl(metadata);
+          if (!mediaUrl) return row;
+          return { ...row, metadata: { ...metadata, mediaUrl } };
+        } catch {
+          // A media signing outage must not make authorized text history unavailable.
+          return row;
+        }
+      })
+    );
+    hydratedRows.push(...batch);
+  }
+  return hydratedRows.reverse();
 }
 
 export async function setContactAi(
@@ -5545,7 +5661,11 @@ export async function setContactAi(
     .update(contacts)
     .set({ aiEnabled: enabled ? 1 : 0, updatedAt: new Date() })
     .where(
-      and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
+      and(
+        eq(contacts.id, contactId),
+        eq(contacts.workspaceId, workspaceId),
+        isNull(contacts.groupId)
+      )
     )
     .returning({ id: contacts.id });
   if (!updated[0]) throw new Error("Contact not found");
@@ -5812,7 +5932,8 @@ export async function countContacts() {
   if (!db) return 0;
   const result = await db
     .select({ count: sql<number>`count(*)` })
-    .from(contacts);
+    .from(contacts)
+    .where(isNull(contacts.groupId));
   return Number(result[0]?.count ?? 0);
 }
 
@@ -5952,7 +6073,8 @@ export async function createQuote(
     .where(
       and(
         eq(contacts.id, input.contactId),
-        eq(contacts.workspaceId, workspaceId)
+        eq(contacts.workspaceId, workspaceId),
+        isNull(contacts.groupId)
       )
     )
     .limit(1);
@@ -6479,6 +6601,38 @@ export async function ingestInboundWhatsApp(
       ...(normalizedJid ? { jid: normalizedJid } : {}),
     }
   );
+  const isGroup = input.metadata?.isGroup === true;
+  const groupJid = normalizeWhatsappJid(
+    typeof input.metadata?.groupJid === "string"
+      ? input.metadata.groupJid
+      : normalizedJid
+  );
+  const instanceId =
+    typeof input.metadata?.instanceId === "string"
+      ? input.metadata.instanceId.trim()
+      : "";
+  if (
+    isGroup &&
+    (input.metadata?.provider !== "baileys" ||
+      !groupJid?.endsWith("@g.us") ||
+      !instanceId)
+  )
+    throw new Error("Baileys group requires an owned instance and exact group JID");
+  if (isGroup) {
+    const ownedInstance = await db
+      .select({ id: whatsappInstances.id })
+      .from(whatsappInstances)
+      .where(
+        and(
+          eq(whatsappInstances.workspaceId, workspace.id),
+          eq(whatsappInstances.instanceId, instanceId),
+          eq(whatsappInstances.provider, "baileys")
+        )
+      )
+      .limit(1);
+    if (!ownedInstance[0])
+      throw new Error("WhatsApp group instance is not owned by this workspace");
+  }
   const priorMessage = await db
     .select({
       messageId: messages.id,
@@ -6498,16 +6652,88 @@ export async function ingestInboundWhatsApp(
   if (priorMessage[0]) return { ...priorMessage[0], duplicate: true };
   const receivedAt = input.receivedAt ?? new Date();
   const fromMe = input.fromMe === true || metadata?.fromMe === true;
+  let groupId: number | undefined;
+  let groupSubject: string | undefined;
+  if (isGroup) {
+    const subject =
+      (typeof input.metadata?.groupSubject === "string"
+        ? input.metadata.groupSubject
+        : input.name
+      )
+        ?.trim()
+        .slice(0, 160) || `Grupo ${groupJid!.split("@")[0]}`;
+    groupSubject = subject;
+    const groupRows = await db
+      .insert(whatsappGroups)
+      .values({
+        workspaceId: workspace.id,
+        instanceId,
+        jid: groupJid!,
+        subject,
+        updatedAt: receivedAt,
+      })
+      .onConflictDoUpdate({
+        target: [
+          whatsappGroups.workspaceId,
+          whatsappGroups.instanceId,
+          whatsappGroups.jid,
+        ],
+        set: { subject, updatedAt: receivedAt },
+      })
+      .returning({ id: whatsappGroups.id });
+    groupId = groupRows[0]?.id;
+    if (!groupId) throw new Error("WhatsApp group could not be created");
+    const authorJid =
+      typeof input.metadata?.authorJid === "string"
+        ? input.metadata.authorJid
+        : undefined;
+    if (authorJid) {
+      await db
+        .insert(whatsappGroupParticipants)
+        .values({
+          groupId,
+          jid: authorJid,
+          jidAlt:
+            typeof input.metadata?.authorJidAlt === "string"
+              ? input.metadata.authorJidAlt
+              : null,
+          name:
+            typeof input.metadata?.authorName === "string"
+              ? input.metadata.authorName.slice(0, 160)
+              : null,
+          updatedAt: receivedAt,
+        })
+        .onConflictDoUpdate({
+          target: [
+            whatsappGroupParticipants.groupId,
+            whatsappGroupParticipants.jid,
+          ],
+          set: {
+            jidAlt:
+              typeof input.metadata?.authorJidAlt === "string"
+                ? input.metadata.authorJidAlt
+                : null,
+            name:
+              typeof input.metadata?.authorName === "string"
+                ? input.metadata.authorName.slice(0, 160)
+                : null,
+            updatedAt: receivedAt,
+          },
+        });
+    }
+  }
+  const contactPredicate = groupId
+    ? and(eq(contacts.groupId, groupId), eq(contacts.workspaceId, workspace.id))
+    : and(
+        eq(contacts.externalPhone, phone),
+        eq(contacts.workspaceId, workspace.id),
+        isNull(contacts.groupId)
+      );
   let contact = (
     await db
       .select()
       .from(contacts)
-      .where(
-        and(
-          eq(contacts.externalPhone, phone),
-          eq(contacts.workspaceId, workspace.id)
-        )
-      )
+      .where(contactPredicate)
       .limit(1)
   )[0];
   if (!contact) {
@@ -6515,11 +6741,14 @@ export async function ingestInboundWhatsApp(
       .insert(contacts)
       .values({
         workspaceId: workspace.id,
-        externalPhone: phone,
-        name: input.name?.trim() || phone,
+        groupId: groupId ?? null,
+        externalPhone: groupId ? `group:${groupId}` : phone,
+        name: groupSubject ?? (input.name?.trim() || phone),
+        pushName: groupId ? null : input.name?.trim().slice(0, 160) || null,
+        nameSource: "auto",
         urgency: "Média",
         stage: "Novo contato",
-        aiEnabled: fromMe ? 0 : 1,
+        aiEnabled: fromMe || groupId ? 0 : 1,
         quoteCents: 0,
         unreadCount: fromMe ? 0 : 1,
         lastMessagePreview: input.content.slice(0, 500),
@@ -6530,15 +6759,10 @@ export async function ingestInboundWhatsApp(
       await db
         .select()
         .from(contacts)
-        .where(
-          and(
-            eq(contacts.externalPhone, phone),
-            eq(contacts.workspaceId, workspace.id)
-          )
-        )
+        .where(contactPredicate)
         .limit(1)
     )[0];
-    if (contact) {
+    if (contact && !groupId) {
       await enqueueDomainEvent({
         workspaceId: workspace.id,
         event: "contact.created",
@@ -6557,8 +6781,11 @@ export async function ingestInboundWhatsApp(
     await db
       .update(contacts)
       .set({
-        name: input.name?.trim() || contact.name,
-        ...(fromMe ? { aiEnabled: 0 } : {}),
+        name: sql`CASE WHEN ${contacts.nameSource} = 'manual' THEN ${contacts.name} ELSE ${groupSubject ?? (input.name?.trim() || contact.name)} END`,
+        ...(!groupId && input.name?.trim()
+          ? { pushName: input.name.trim().slice(0, 160) }
+          : {}),
+        ...(fromMe || groupId ? { aiEnabled: 0 } : {}),
         unreadCount: fromMe ? 0 : sql`${contacts.unreadCount} + 1`,
         lastMessagePreview: input.content.slice(0, 500),
         lastMessageAt: receivedAt,
@@ -6579,7 +6806,7 @@ export async function ingestInboundWhatsApp(
       .insert(conversations)
       .values({
         contactId: contact.id,
-        humanControlled: fromMe ? 1 : 0,
+        humanControlled: fromMe || groupId ? 1 : 0,
         unreadCount: fromMe ? 0 : 1,
         lastMessageAt: receivedAt,
       })
@@ -6613,7 +6840,7 @@ export async function ingestInboundWhatsApp(
       createdAt: receivedAt,
     })
     .returning();
-  if (created[0] && !fromMe) {
+  if (created[0] && !fromMe && !groupId) {
     await enqueueDomainEvent({
       workspaceId: workspace.id,
       event: "message.received",
@@ -6638,7 +6865,7 @@ export async function ingestInboundWhatsApp(
   await db
     .update(conversations)
     .set({
-      ...(fromMe ? { humanControlled: 1 } : {}),
+      ...(fromMe || groupId ? { humanControlled: 1 } : {}),
       unreadCount: fromMe ? 0 : sql`${conversations.unreadCount} + 1`,
       lastMessageAt: receivedAt,
       updatedAt: receivedAt,
@@ -6684,7 +6911,10 @@ export async function upsertApiContact(
     await db
       .update(contacts)
       .set({
-        name: input.name?.trim() || existing.name,
+        name: sql`CASE WHEN ${contacts.nameSource} = 'manual' THEN ${contacts.name} ELSE ${input.name?.trim() || existing.name} END`,
+        ...(!existing.pushName && input.name?.trim()
+          ? { pushName: input.name.trim().slice(0, 160) }
+          : {}),
         city: input.city ?? existing.city,
         neighborhood: input.neighborhood ?? existing.neighborhood,
         serviceRequested: input.serviceRequested ?? existing.serviceRequested,
@@ -6714,9 +6944,7 @@ export async function upsertApiContact(
       quoteCents: 0,
       unreadCount: 0,
     })
-    .onConflictDoNothing({
-      target: [contacts.workspaceId, contacts.externalPhone],
-    });
+    .onConflictDoNothing();
   const created = (
     await db
       .select()
@@ -7708,4 +7936,45 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
     }
   }
   return { processed: delivered + failed, delivered, failed, skipped: false };
+}
+export async function renameContact(
+  workspaceId: number,
+  contactId: number,
+  rawName: string,
+  actorUserId?: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const name = rawName.trim();
+  if (name.length < 2 || name.length > 160)
+    throw new Error("O nome deve ter entre 2 e 160 caracteres");
+  const contact = await getContactById(workspaceId, contactId);
+  if (!contact || contact.groupId) throw new Error("Lead não encontrado");
+  const updatedAt = new Date();
+  const saved = await db
+    .update(contacts)
+    .set({
+      name,
+      nameSource: "manual",
+      nameUpdatedAt: updatedAt,
+      nameUpdatedBy: actorUserId ?? null,
+      updatedAt,
+    })
+    .where(
+      and(
+        eq(contacts.id, contactId),
+        eq(contacts.workspaceId, workspaceId),
+        isNull(contacts.groupId)
+      )
+    )
+    .returning({ id: contacts.id });
+  if (!saved[0]) throw new Error("Lead não encontrado");
+  await db.insert(auditLogs).values({
+    workspaceId,
+    actorUserId,
+    contactId,
+    action: "contact_renamed",
+    summary: `Nome alterado de “${contact.name}” para “${name}”`,
+  });
+  return getContactById(workspaceId, contactId);
 }

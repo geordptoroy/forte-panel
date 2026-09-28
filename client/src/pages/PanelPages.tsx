@@ -18,6 +18,7 @@ import {
   Info,
   KanbanSquare,
   MapPin,
+  Mic,
   MessageCircle,
   MoreHorizontal,
   Paperclip,
@@ -31,6 +32,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Square,
   Tag,
   UserRound,
   UsersRound,
@@ -151,7 +153,22 @@ function EventIcon({ type }: { type: string }) {
   return <MessageCircle size={15} />;
 }
 
-type ContactLike = Omit<Contact, "stage"> & { stage: string };
+type ContactLike = Omit<Contact, "stage"> & {
+  stage: string;
+  isGroup?: boolean;
+  groupJid?: string | null;
+  groupSubject?: string | null;
+  groupInstanceId?: string | null;
+  groupParticipantCount?: number;
+  groupParticipants?: Array<{
+    jid: string;
+    jidAlt: string | null;
+    name: string | null;
+    isAdmin: number;
+  }>;
+  pushName?: string | null;
+  nameSource?: string;
+};
 
 function formatChatTime(value: string) {
   if (value === "agora" || value === "ontem") return value;
@@ -420,6 +437,9 @@ function ConversationList({
           <div className="conversation-copy">
             <div className="conversation-title">
               <strong>{contact.name}</strong>
+              {contact.isGroup && (
+                <StatusBadge tone="blue">Grupo</StatusBadge>
+              )}
               {contact.unread > 0 && (
                 <span className="unread-pill">{contact.unread}</span>
               )}
@@ -430,7 +450,11 @@ function ConversationList({
               <span
                 className={`ai-indicator ${contact.aiEnabled ? "" : "paused"}`}
               >
-                {contact.aiEnabled ? "IA ativa" : "IA pausada"}
+                {contact.isGroup
+                  ? "WhatsApp · manual"
+                  : contact.aiEnabled
+                    ? "IA ativa"
+                    : "IA pausada"}
               </span>
             </div>
           </div>
@@ -448,24 +472,31 @@ function ConversationList({
 }
 
 function MessageBubble({ message }: { message: Message }) {
+  const metadata =
+    message.metadata && typeof message.metadata === "object"
+      ? message.metadata
+      : {};
+  const groupAuthor =
+    typeof metadata.authorName === "string" ? metadata.authorName.trim() : "";
+  const groupAuthorJid =
+    typeof metadata.authorJid === "string" ? metadata.authorJid.trim() : "";
+  const groupAuthorId = groupAuthorJid
+    ? groupAuthorJid.split("@")[0]
+    : "";
   const author =
-    message.sender === "lead"
+    groupAuthor || groupAuthorId || (message.sender === "lead"
       ? "Lead"
       : message.sender === "ai"
         ? "IA automática"
         : message.sender === "human"
           ? "Gabriel"
-          : "Sistema";
+          : "Sistema");
   const time = message.time.includes("T")
     ? new Date(message.time).toLocaleTimeString("pt-BR", {
         hour: "2-digit",
         minute: "2-digit",
       })
     : message.time;
-  const metadata =
-    message.metadata && typeof message.metadata === "object"
-      ? message.metadata
-      : {};
   const mediaUrlValue =
     typeof metadata.mediaUrl === "string"
       ? metadata.mediaUrl
@@ -481,7 +512,7 @@ function MessageBubble({ message }: { message: Message }) {
     )
       return mediaUrlValue;
     try {
-      const url = new URL(mediaUrlValue);
+      const url = new URL(mediaUrlValue, window.location.origin);
       return url.protocol === "https:" || url.protocol === "http:"
         ? url.href
         : "";
@@ -526,7 +557,9 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div className={`message-row from-${message.sender}`}>
       <div className="message-bubble">
-        <div className="message-author">{author}</div>
+        <div className="message-author" title={groupAuthorJid || undefined}>
+          {author}
+        </div>
         <div className="message-text">
           {message.messageType === "audio" && safeMediaUrl ? (
             <audio
@@ -610,80 +643,220 @@ function MessageBubble({ message }: { message: Message }) {
 
 function ConversationProfile({
   contact,
-  onToggleAi,
+  isOpen,
+  onClose,
+  onRenamed,
 }: {
   contact: ContactLike;
-  onToggleAi: () => void;
+  isOpen: boolean;
+  onClose: () => void;
+  onRenamed: () => void;
 }) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(contact.name);
+  const renameMutation = trpc.inbox.renameContact.useMutation({
+    onSuccess: () => {
+      setEditingName(false);
+      onRenamed();
+    },
+  });
+  useEffect(() => {
+    setNameDraft(contact.name);
+    setEditingName(false);
+  }, [contact.id, contact.name]);
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [isOpen, onClose]);
+  const saveName = () => {
+    renameMutation.mutate({
+      contactId: Number(contact.id),
+      name: nameDraft.trim(),
+    });
+  };
   return (
-    <div className="inbox-profile">
-      <div className="profile-header">
-        <h3>Ficha resumida</h3>
-      </div>
-      <div className="profile-body">
-        <div className="profile-main">
-          <div className="avatar">{contact.initials}</div>
-          <h3>{contact.name}</h3>
-          <p>{contact.phone}</p>
+    <div className={`inbox-profile-drawer ${isOpen ? "is-open" : ""}`}>
+      <button
+        type="button"
+        className="inbox-profile-backdrop"
+        onClick={onClose}
+        aria-label="Fechar ficha do contato"
+        tabIndex={isOpen ? 0 : -1}
+      />
+      <aside
+        id="inbox-profile-panel"
+        className="inbox-profile-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={contact.isGroup ? "Detalhes do grupo" : "Ficha do lead"}
+        aria-hidden={!isOpen}
+      >
+        <div className="profile-header inbox-drawer-header">
+          <h3>{contact.isGroup ? "Grupo WhatsApp" : "Ficha do lead"}</h3>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onClose}
+            aria-label="Fechar ficha"
+          >
+            <X size={15} />
+          </button>
         </div>
-        <div className="profile-fields">
-          <div className="profile-field">
-            <span>Serviço</span>
-            <strong>{contact.service}</strong>
-          </div>
-          <div className="profile-field">
-            <span>Local</span>
-            <strong>
-              {contact.neighborhood}, {contact.city}
-            </strong>
-          </div>
-          <div className="profile-field">
-            <span>Urgência</span>
-            <strong
-              className={
-                contact.urgency === "Crítica" || contact.urgency === "Alta"
-                  ? "red"
-                  : "amber"
-              }
-            >
-              {contact.urgency}
-            </strong>
-          </div>
-          <div className="profile-field">
-            <span>Estágio</span>
-            <strong>{contact.stage}</strong>
-          </div>
-          <div className="profile-field">
-            <span>Orçamento</span>
-            <strong>{formatCurrency(contact.quote)}</strong>
-          </div>
-          <div className="profile-field">
-            <span>Próxima ação</span>
-            <strong>
-              {contact.daysNoReply > 0 ? "Fazer follow-up" : "Aguardar retorno"}
-            </strong>
-          </div>
-        </div>
-        <div className="profile-actions">
-          <button className="btn-secondary" onClick={onToggleAi}>
-            {contact.aiEnabled ? (
-              <>
-                <Pause size={13} /> Pausar IA
-              </>
+        <div className="profile-body">
+          <div className="profile-main">
+            <div className="avatar">{contact.initials}</div>
+            <h3>{contact.name}</h3>
+            {contact.isGroup ? (
+              <p>{contact.groupJid || "Grupo sem JID disponível"}</p>
             ) : (
               <>
-                <Play size={13} /> Reativar IA
+                <p>{contact.phone}</p>
+                <small className="contact-name-source">
+                  {contact.nameSource === "manual"
+                    ? "Nome salvo manualmente"
+                    : "Nome sugerido pelo WhatsApp"}
+                </small>
+                {contact.pushName && contact.pushName !== contact.name && (
+                  <small className="contact-push-name">
+                    Push name: {contact.pushName}
+                  </small>
+                )}
               </>
             )}
-          </button>
-          <PageLink href={`/contacts/${contact.id}`} className="btn-secondary">
-            <UserRound size={13} /> Abrir ficha completa
-          </PageLink>
-          <button className="btn-ghost">
-            <Tag size={13} /> Adicionar nota
-          </button>
+          </div>
+          {contact.isGroup ? (
+            <>
+              <div className="profile-fields">
+                <div className="profile-field">
+                  <span>Instância</span>
+                  <strong>{contact.groupInstanceId || "Não identificada"}</strong>
+                </div>
+                <div className="profile-field">
+                  <span>Participantes observados</span>
+                  <strong>{contact.groupParticipantCount ?? 0}</strong>
+                </div>
+                <div className="profile-field">
+                  <span>Automação</span>
+                  <strong>Desativada para grupos</strong>
+                </div>
+              </div>
+              {contact.groupParticipants?.length ? (
+                <div className="group-participant-list" aria-label="Participantes observados no grupo">
+                  <strong>Remetentes identificados</strong>
+                  {contact.groupParticipants.map(participant => (
+                    <div key={participant.jid} className="group-participant-row">
+                      <span>{participant.name || participant.jidAlt || participant.jid.split("@")[0]}</span>
+                      {participant.isAdmin ? <small>Admin</small> : null}
+                    </div>
+                  ))}
+                  {(contact.groupParticipantCount ?? 0) > contact.groupParticipants.length && (
+                    <small>Exibindo os primeiros {contact.groupParticipants.length} remetentes identificados.</small>
+                  )}
+                </div>
+              ) : null}
+              <p className="group-safety-note">
+                Mensagens de grupos ficam em atendimento humano e não iniciam fluxos da IA nem entram no funil de leads.
+              </p>
+            </>
+          ) : (
+            <>
+              {editingName ? (
+                <div className="profile-name-editor">
+                  <label htmlFor="inbox-lead-name">Nome do lead</label>
+                  <input
+                    id="inbox-lead-name"
+                    className="input-control"
+                    maxLength={160}
+                    value={nameDraft}
+                    onChange={event => setNameDraft(event.target.value)}
+                    onKeyDown={event => {
+                      if (event.key === "Enter") saveName();
+                    }}
+                  />
+                  {renameMutation.error && (
+                    <small role="alert">{renameMutation.error.message}</small>
+                  )}
+                  <div className="profile-name-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        setNameDraft(contact.name);
+                        setEditingName(false);
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={saveName}
+                      disabled={renameMutation.isPending || nameDraft.trim().length < 2}
+                    >
+                      {renameMutation.isPending ? "Salvando..." : "Salvar nome"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-secondary profile-rename-button"
+                  onClick={() => setEditingName(true)}
+                >
+                  <UserRound size={13} /> Alterar nome do lead
+                </button>
+              )}
+              <div className="profile-fields">
+                <div className="profile-field">
+                  <span>Serviço</span>
+                  <strong>{contact.service}</strong>
+                </div>
+                <div className="profile-field">
+                  <span>Local</span>
+                  <strong>
+                    {[contact.neighborhood, contact.city].filter(Boolean).join(", ") || "Não informado"}
+                  </strong>
+                </div>
+                <div className="profile-field">
+                  <span>Urgência</span>
+                  <strong
+                    className={
+                      contact.urgency === "Crítica" || contact.urgency === "Alta"
+                        ? "red"
+                        : "amber"
+                    }
+                  >
+                    {contact.urgency}
+                  </strong>
+                </div>
+                <div className="profile-field">
+                  <span>Estágio</span>
+                  <strong>{contact.stage}</strong>
+                </div>
+                <div className="profile-field">
+                  <span>Orçamento</span>
+                  <strong>{formatCurrency(contact.quote)}</strong>
+                </div>
+                <div className="profile-field">
+                  <span>Próxima ação</span>
+                  <strong>
+                    {contact.daysNoReply > 0 ? "Fazer follow-up" : "Aguardar retorno"}
+                  </strong>
+                </div>
+              </div>
+              <div className="profile-actions">
+                <PageLink href={`/contacts/${contact.id}`} className="btn-secondary">
+                  <UserRound size={13} /> Abrir ficha completa
+                </PageLink>
+              </div>
+            </>
+          )}
         </div>
-      </div>
+      </aside>
     </div>
   );
 }
@@ -692,25 +865,72 @@ export function InboxPage() {
   const [selectedId, setSelectedId] = useState("");
   const [location] = useLocation();
   const [search, setSearch] = useState("");
-  const [stageFilter, setStageFilter] = useState("Todos");
+  const [kindFilter, setKindFilter] = useState<"Todas" | "Individuais" | "Grupos">("Todas");
   const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[] | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordingError, setRecordingError] = useState("");
   const [attachment, setAttachment] = useState<{
     name: string;
     type: "image" | "audio" | "video" | "document";
     mimeType: string;
     dataUrl: string;
+    previewUrl?: string;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef(0);
+  const recordingTimerRef = useRef<number | null>(null);
+  const attachmentPreviewUrlRef = useRef("");
   const markedReadRef = useRef(new Set<string>());
+  const clearAttachment = () => {
+    if (attachmentPreviewUrlRef.current)
+      URL.revokeObjectURL(attachmentPreviewUrlRef.current);
+    attachmentPreviewUrlRef.current = "";
+    setAttachment(null);
+    setRecordingError("");
+  };
+  useEffect(
+    () => () => {
+      const recorder = mediaRecorderRef.current;
+      if (recorder?.state === "recording") {
+        recorder.ondataavailable = null;
+        recorder.onstop = null;
+        recorder.stop();
+      }
+      mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+      if (recordingTimerRef.current !== null)
+        window.clearInterval(recordingTimerRef.current);
+      if (attachmentPreviewUrlRef.current)
+        URL.revokeObjectURL(attachmentPreviewUrlRef.current);
+    },
+    []
+  );
   const instancesQuery = trpc.inbox.instances.useQuery();
   const contactsQuery = trpc.inbox.contacts.useQuery({
     instanceIds: selectedInstanceIds,
+    includeGroups: true,
   });
-  const channelsQuery = trpc.workspace.channels.useQuery();
   const remoteContacts = contactsQuery.data ?? [];
   const items = remoteContacts;
+  const filtered = useMemo(
+    () =>
+      items.filter(contact => {
+        const matchesSearch = `${contact.name} ${contact.phone} ${contact.groupJid ?? ""}`
+          .toLowerCase()
+          .includes(search.toLowerCase());
+        const matchesKind =
+          kindFilter === "Todas" ||
+          (kindFilter === "Grupos" ? contact.isGroup === true : contact.isGroup !== true);
+        return matchesSearch && matchesKind;
+      }),
+    [items, search, kindFilter]
+  );
 
   useEffect(() => {
     if (!instancesQuery.data || selectedInstanceIds === null) return;
@@ -724,16 +944,21 @@ export function InboxPage() {
     const requestedId = new URLSearchParams(location.split("?")[1] ?? "").get(
       "contactId"
     );
-    if (requestedId && items.some(contact => contact.id === requestedId))
+    if (requestedId && filtered.some(contact => contact.id === requestedId))
       setSelectedId(requestedId);
     else if (
-      items.length > 0 &&
-      !items.some(contact => contact.id === selectedId)
+      filtered.length > 0 &&
+      !filtered.some(contact => contact.id === selectedId)
     )
-      setSelectedId(items[0].id);
-  }, [items, selectedId, location]);
+      setSelectedId(filtered[0].id);
+    else if (filtered.length === 0 && selectedId)
+      setSelectedId("");
+  }, [filtered, selectedId, location]);
 
-  const selected = items.find(contact => contact.id === selectedId) ?? items[0];
+  const selected = filtered.find(contact => contact.id === selectedId) ?? filtered[0];
+  useEffect(() => {
+    setProfileOpen(false);
+  }, [selected?.id]);
   const selectedNumericId = Number(selected?.id ?? 0);
   const threadInput = useMemo(
     () => ({ contactId: selectedNumericId, instanceIds: selectedInstanceIds }),
@@ -774,26 +999,18 @@ export function InboxPage() {
     onSuccess: refresh,
   });
   const sendMutation = trpc.inbox.sendMessage.useMutation({
-    onSuccess: refresh,
+    onSuccess: async () => {
+      setDraft("");
+      clearAttachment();
+      await refresh();
+    },
   });
-  const filtered = useMemo(
-    () =>
-      items.filter(
-        contact =>
-          `${contact.name} ${contact.phone}`
-            .toLowerCase()
-            .includes(search.toLowerCase()) &&
-          (stageFilter === "Todos" || contact.stage === stageFilter)
-      ),
-    [items, search, stageFilter]
-  );
-
   if (!selected)
     return (
       <PanelLayout
-        eyebrow="Operação / Atendimento"
-        title="Atendimento"
-        description="Converse com seus clientes sem sair do painel."
+        eyebrow="WhatsApp / Conversas"
+        title="WhatsApp"
+        description="Conversas individuais e grupos conectados ao Forte Panel."
       >
         {contactsQuery.isLoading || instancesQuery.isLoading ? (
           <EmptyState
@@ -818,8 +1035,8 @@ export function InboxPage() {
         ) : (
           <EmptyState
             icon={MessageCircle}
-            title={selectedInstanceIds ? "Nenhuma conversa nestas instâncias" : "Nenhuma conversa encontrada"}
-            description={selectedInstanceIds ? "Escolha outras instâncias ou selecione Todas." : "Quando o primeiro WhatsApp chegar, a conversa aparecerá aqui."}
+            title={selectedInstanceIds ? "Nenhuma conversa nestas instâncias" : kindFilter === "Grupos" ? "Nenhum grupo encontrado" : "Nenhuma conversa encontrada"}
+            description={selectedInstanceIds ? "Escolha outras instâncias ou selecione Todas." : kindFilter !== "Todas" ? "Altere o filtro de conversas para ver outros chats." : "Quando o primeiro WhatsApp chegar, a conversa aparecerá aqui."}
           />
         )}
       </PanelLayout>
@@ -827,6 +1044,7 @@ export function InboxPage() {
 
   const messages = threadQuery.data?.messages ?? [];
   const toggleAi = () => {
+    if (selected.isGroup) return;
     toggleAiMutation.mutate({
       contactId: selectedNumericId,
       enabled: !selected.aiEnabled,
@@ -849,15 +1067,16 @@ export function InboxPage() {
         : undefined,
       instanceIds: selectedInstanceIds,
     });
-    setDraft("");
-    setAttachment(null);
   };
   const selectAttachment = (file?: File) => {
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
-      window.alert("Escolha um arquivo de até 8 MB.");
+      setRecordingError("O áudio/anexo excede o limite de 8 MB.");
       return;
     }
+    if (attachmentPreviewUrlRef.current)
+      URL.revokeObjectURL(attachmentPreviewUrlRef.current);
+    attachmentPreviewUrlRef.current = "";
     const type = file.type.startsWith("image/")
       ? "image"
       : file.type.startsWith("audio/")
@@ -865,6 +1084,8 @@ export function InboxPage() {
         : file.type.startsWith("video/")
           ? "video"
           : "document";
+    const previewUrl = type === "audio" ? URL.createObjectURL(file) : undefined;
+    attachmentPreviewUrlRef.current = previewUrl ?? "";
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string")
@@ -873,29 +1094,98 @@ export function InboxPage() {
           type,
           mimeType: file.type || "application/octet-stream",
           dataUrl: reader.result,
+          previewUrl,
         });
     };
+    reader.onerror = () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      attachmentPreviewUrlRef.current = "";
+      setRecordingError("Não foi possível ler o arquivo selecionado.");
+    };
+    setRecordingError("");
     reader.readAsDataURL(file);
+  };
+  const stopRecording = () => {
+    if (mediaRecorderRef.current?.state === "recording")
+      mediaRecorderRef.current.stop();
+  };
+  const startRecording = async () => {
+    setRecordingError("");
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setRecordingError("Este navegador não permite gravação de áudio.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      recordingChunksRef.current = [];
+      const preferredMime = [
+        "audio/webm;codecs=opus",
+        "audio/ogg;codecs=opus",
+        "audio/mp4",
+      ].find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(
+        stream,
+        preferredMime ? { mimeType: preferredMime } : undefined
+      );
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setRecordingError("A gravação falhou. Verifique o microfone e tente novamente.");
+        stopRecording();
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
+        if (recordingTimerRef.current !== null) {
+          window.clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+        const mimeType = recorder.mimeType || "audio/webm";
+        const blob = new Blob(recordingChunksRef.current, { type: mimeType });
+        recordingChunksRef.current = [];
+        if (!blob.size) {
+          setRecordingError("A gravação ficou vazia; tente novamente.");
+          return;
+        }
+        const extension = mimeType.includes("ogg")
+          ? "ogg"
+          : mimeType.includes("mp4")
+            ? "m4a"
+            : "webm";
+        selectAttachment(
+          new File([blob], `gravacao-whatsapp.${extension}`, { type: mimeType })
+        );
+      };
+      recorder.start();
+      recordingStartedAtRef.current = Date.now();
+      setRecordingSeconds(0);
+      setIsRecording(true);
+      recordingTimerRef.current = window.setInterval(() => {
+        const elapsed = Math.floor((Date.now() - recordingStartedAtRef.current) / 1000);
+        setRecordingSeconds(elapsed);
+        if (elapsed >= 600) {
+          setRecordingError("Gravação encerrada no limite de 10 minutos.");
+          stopRecording();
+        }
+      }, 1000);
+    } catch {
+      mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+      setRecordingError("Permita o acesso ao microfone para gravar um áudio.");
+    }
   };
   return (
     <PanelLayout
-      eyebrow="Operação / Atendimento"
-      title="Atendimento"
-      description="Converse com seus clientes sem sair do painel."
+      eyebrow="WhatsApp / Conversas"
+      title="WhatsApp"
+      description="Conversas individuais e grupos conectados ao Forte Panel."
       showHeading={false}
-      actions={
-        <PageLink href="/contacts" className="btn-primary">
-          <Plus size={13} /> Nova conversa
-        </PageLink>
-      }
     >
-      <DemoBanner />
-      <ChannelStatusBanner
-        loading={channelsQuery.isLoading}
-        channel={(channelsQuery.data ?? []).find(
-          channel => channel.provider === "baileys"
-        )}
-      />
       <div className="filter-bar">
         <div className="search-field">
           <Search size={14} />
@@ -903,20 +1193,23 @@ export function InboxPage() {
             className="input-control"
             value={search}
             onChange={event => setSearch(event.target.value)}
-            placeholder="Buscar por nome ou telefone"
+            placeholder="Buscar conversas, contatos ou grupos"
           />
         </div>
-        <select
-          className="select-control"
-          style={{ width: 160 }}
-          value={stageFilter}
-          onChange={event => setStageFilter(event.target.value)}
-        >
-          <option>Todos</option>
-          {stageOrder.map(stage => (
-            <option key={stage}>{stage}</option>
+        <div className="inbox-kind-tabs" role="tablist" aria-label="Tipo de conversa">
+          {(["Todas", "Individuais", "Grupos"] as const).map(kind => (
+            <button
+              key={kind}
+              type="button"
+              role="tab"
+              aria-selected={kindFilter === kind}
+              className={kindFilter === kind ? "is-active" : ""}
+              onClick={() => setKindFilter(kind)}
+            >
+              {kind}
+            </button>
           ))}
-        </select>
+        </div>
         <details className="inbox-instance-filter">
           <summary className="btn-secondary">
             <Filter size={13} /> Instâncias: {selectedInstanceIds === null ? "Todas" : `${selectedInstanceIds.length} selecionada(s)`}
@@ -977,16 +1270,36 @@ export function InboxPage() {
               <div>
                 <strong>{selected.name}</strong>
                 <small>
-                  {selected.phone} · {selected.service}
+                  {selected.isGroup
+                    ? `Grupo${selected.groupInstanceId ? ` · ${selected.groupInstanceId}` : ""}`
+                    : selected.phone}
                 </small>
               </div>
             </div>
             <div className="chat-actions">
-              <StatusBadge tone={selected.aiEnabled ? "green" : "amber"}>
-                {selected.aiEnabled ? "IA ativa" : "IA pausada"}
-              </StatusBadge>
-              <button className="icon-button">
-                <MoreHorizontal size={17} />
+              {selected.isGroup ? (
+                <StatusBadge tone="blue">Atendimento humano</StatusBadge>
+              ) : (
+                <button
+                  type="button"
+                  className={`chat-ai-toggle ${selected.aiEnabled ? "is-active" : "is-paused"}`}
+                  onClick={toggleAi}
+                  disabled={toggleAiMutation.isPending}
+                  aria-label={selected.aiEnabled ? "Pausar IA nesta conversa" : "Reativar IA nesta conversa"}
+                  title={selected.aiEnabled ? "Pausar IA nesta conversa" : "Reativar IA nesta conversa"}
+                >
+                  {selected.aiEnabled ? <Pause size={13} /> : <Play size={13} />}
+                  {selected.aiEnabled ? "Pausar IA" : "Reativar IA"}
+                </button>
+              )}
+              <button
+                type="button"
+                className={`btn-secondary chat-profile-toggle ${profileOpen ? "is-active" : ""}`}
+                aria-expanded={profileOpen}
+                aria-controls="inbox-profile-panel"
+                onClick={() => setProfileOpen(open => !open)}
+              >
+                <UserRound size={13} /> {selected.isGroup ? "Grupo" : "Ficha"}
               </button>
             </div>
           </div>
@@ -1016,14 +1329,30 @@ export function InboxPage() {
                 <strong>{attachment.name}</strong>
                 <small>{attachment.type} · até 8 MB</small>
               </div>
+              {attachment.previewUrl && (
+                <audio controls preload="metadata" src={attachment.previewUrl} aria-label="Prévia do áudio" />
+              )}
               <button
                 className="icon-button"
                 type="button"
                 aria-label="Remover anexo"
-                onClick={() => setAttachment(null)}
+                onClick={clearAttachment}
               >
                 <X size={14} />
               </button>
+            </div>
+          )}
+          {(isRecording || recordingError) && (
+            <div className={`chat-recording-status ${isRecording ? "is-recording" : ""}`} aria-live="polite">
+              {isRecording && <span className="recording-dot" />}
+              {isRecording
+                ? `Gravando áudio · ${String(Math.floor(recordingSeconds / 60)).padStart(2, "0")}:${String(recordingSeconds % 60).padStart(2, "0")}`
+                : recordingError}
+            </div>
+          )}
+          {sendMutation.error && (
+            <div className="chat-send-error" role="alert">
+              Não foi possível enviar. O texto/anexo foi mantido para tentar novamente.
             </div>
           )}
           <div className="chat-composer">
@@ -1058,32 +1387,49 @@ export function InboxPage() {
             <button
               className="icon-button"
               type="button"
-              aria-label="Anexar áudio"
-              title="Enviar arquivo de áudio"
+              aria-label="Anexar arquivo de áudio"
+              title="Anexar um áudio existente"
+              disabled={isRecording || sendMutation.isPending}
               onClick={() => audioFileInputRef.current?.click()}
             >
               <Headphones size={16} />
+            </button>
+            <button
+              className={`icon-button chat-record-button ${isRecording ? "is-recording" : ""}`}
+              type="button"
+              aria-label={isRecording ? "Parar gravação" : "Gravar áudio"}
+              aria-pressed={isRecording}
+              title={isRecording ? "Parar gravação" : "Gravar áudio pelo microfone"}
+              disabled={sendMutation.isPending}
+              onClick={() => (isRecording ? stopRecording() : void startRecording())}
+            >
+              {isRecording ? <Square size={14} /> : <Mic size={16} />}
             </button>
             <input
               className="input-control"
               value={draft}
               onChange={event => setDraft(event.target.value)}
               onKeyDown={event => {
-                if (event.key === "Enter") send();
+                if (event.key === "Enter" && !event.shiftKey) send();
               }}
-              placeholder="Escrever resposta manual..."
+              placeholder={selected.isGroup ? "Mensagem para o grupo..." : "Escrever resposta..."}
             />
             <button
               className="btn-primary"
               onClick={send}
-              disabled={sendMutation.isPending}
+              disabled={sendMutation.isPending || isRecording || (!draft.trim() && !attachment)}
               aria-label="Enviar mensagem"
             >
               <Send size={14} />
             </button>
           </div>
         </section>
-        <ConversationProfile contact={selected} onToggleAi={toggleAi} />
+        <ConversationProfile
+          contact={selected}
+          isOpen={profileOpen}
+          onClose={() => setProfileOpen(false)}
+          onRenamed={refresh}
+        />
       </div>
     </PanelLayout>
   );
