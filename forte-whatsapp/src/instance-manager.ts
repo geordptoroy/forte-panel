@@ -17,6 +17,7 @@ import { acquireSessionLock, type SessionLock } from "./session-lock.js";
 import {
   clearUnregisteredPairingCredentials,
   getBaileysBrowser,
+  getStatusAfterSocketClose,
   requestPairingCodeWhenReady,
   shouldUseRemoteLogout,
 } from "./pairing-code.js";
@@ -59,10 +60,9 @@ export class InstanceManager {
 
   constructor(
     private readonly instanceId = config.instanceId,
-    private instanceName =
-      instanceId === config.instanceId
-        ? config.instanceName
-        : `WhatsApp · ${instanceId}`
+    private instanceName = instanceId === config.instanceId
+      ? config.instanceName
+      : `WhatsApp · ${instanceId}`
   ) {
     this.snapshot = {
       instanceId,
@@ -135,15 +135,17 @@ export class InstanceManager {
       });
       this.socket = socket;
       socket.ev.on("creds.update", () => {
-        this.credsSaveQueue = this.credsSaveQueue.then(saveCreds).catch(error => {
-          logger.error(
-            {
-              instanceId: this.instanceId,
-              message: error instanceof Error ? error.message : String(error),
-            },
-            "failed to persist Baileys credentials"
-          );
-        });
+        this.credsSaveQueue = this.credsSaveQueue
+          .then(saveCreds)
+          .catch(error => {
+            logger.error(
+              {
+                instanceId: this.instanceId,
+                message: error instanceof Error ? error.message : String(error),
+              },
+              "failed to persist Baileys credentials"
+            );
+          });
       });
       socket.ev.on("connection.update", update =>
         this.handleConnection(update, socket)
@@ -171,7 +173,10 @@ export class InstanceManager {
     this.pairingAwaitingAcceptance = false;
     this.pairingAcceptedRestartPending = false;
     if (!this.socket) {
-      this.set({ status: logout ? "logged_out" : "disconnected", qr: undefined });
+      this.set({
+        status: logout ? "logged_out" : "disconnected",
+        qr: undefined,
+      });
       await this.webhookOutbox.stop();
       await this.credsSaveQueue;
       await this.releaseSessionLock();
@@ -234,11 +239,15 @@ export class InstanceManager {
     if (this.pairingCleanup) await this.pairingCleanup;
     if (this.pairingAwaitingAcceptance) await this.deleteSession();
     if (!this.socket) await this.start();
-    if (!this.socket) throw new Error("Não foi possível iniciar a sessão WhatsApp");
+    if (!this.socket)
+      throw new Error("Não foi possível iniciar a sessão WhatsApp");
     const socket = this.socket;
     this.pairingRequestInProgress = true;
     try {
-      logger.info({ instanceId: this.instanceId }, "requesting WhatsApp pairing code");
+      logger.info(
+        { instanceId: this.instanceId },
+        "requesting WhatsApp pairing code"
+      );
       const code = await requestPairingCodeWhenReady(
         () => this.waitForPairingReady(socket),
         () => {
@@ -268,7 +277,9 @@ export class InstanceManager {
         this.set({
           status: "error",
           lastError:
-            error instanceof Error ? error.message : "Falha ao pedir código WhatsApp",
+            error instanceof Error
+              ? error.message
+              : "Falha ao pedir código WhatsApp",
         });
       }
       throw error;
@@ -357,7 +368,8 @@ export class InstanceManager {
         );
         this.set({
           status: "error",
-          lastError: "Não foi possível limpar a tentativa de pareamento incompleta.",
+          lastError:
+            "Não foi possível limpar a tentativa de pareamento incompleta.",
         });
       });
     this.pairingCleanup = cleanup;
@@ -455,12 +467,15 @@ export class InstanceManager {
     };
   }
 
-  private handleConnection(update: {
-    connection?: string;
-    lastDisconnect?: { error?: unknown };
-    qr?: string;
-    isNewLogin?: boolean;
-  }, socket: WASocket) {
+  private handleConnection(
+    update: {
+      connection?: string;
+      lastDisconnect?: { error?: unknown };
+      qr?: string;
+      isNewLogin?: boolean;
+    },
+    socket: WASocket
+  ) {
     if (this.socket !== socket) return;
     if (update.isNewLogin) {
       this.pairingAwaitingAcceptance = false;
@@ -495,7 +510,8 @@ export class InstanceManager {
         disconnectError?.data?.reason == null
           ? undefined
           : String(disconnectError.data.reason);
-      const message = disconnectError?.message ?? "Conexão encerrada pelo WhatsApp";
+      const message =
+        disconnectError?.message ?? "Conexão encerrada pelo WhatsApp";
       const detail = reason ? `${message} (motivo ${reason})` : message;
       const loggedOut = statusCode === DisconnectReason.loggedOut;
       const pairingWasPending = this.pairingAwaitingAcceptance;
@@ -505,7 +521,7 @@ export class InstanceManager {
         "Baileys connection closed"
       );
       this.set({
-        status: loggedOut ? "logged_out" : "disconnected",
+        status: getStatusAfterSocketClose(loggedOut, acceptedRestart),
         qr: undefined,
         lastError: acceptedRestart
           ? undefined

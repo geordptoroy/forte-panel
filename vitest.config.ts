@@ -18,6 +18,7 @@ export default defineConfig({
       "server/**/*.test.ts",
       "server/**/*.spec.ts",
       "forte-whatsapp/src/**/*.test.ts",
+      "client/src/**/*.test.ts",
     ],
   },
 });

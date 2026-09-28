@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   clearUnregisteredPairingCredentials,
   getBaileysBrowser,
+  getStatusAfterSocketClose,
   requestPairingCodeWhenReady,
   shouldUseRemoteLogout,
 } from "./pairing-code.js";
@@ -88,5 +89,11 @@ describe("Baileys pairing code", () => {
     expect(shouldUseRemoteLogout(true, true)).toBe(false);
     expect(shouldUseRemoteLogout(false, true)).toBe(false);
     expect(shouldUseRemoteLogout(true, false)).toBe(true);
+  });
+
+  it("keeps the UI in a connecting state during the accepted-pairing restart", () => {
+    expect(getStatusAfterSocketClose(false, true)).toBe("connecting");
+    expect(getStatusAfterSocketClose(true, true)).toBe("logged_out");
+    expect(getStatusAfterSocketClose(false, false)).toBe("disconnected");
   });
 });

@@ -1,28 +1,28 @@
 # Core do Forte Panel — instâncias Baileys
 
 **Documento canônico desta etapa · 27/09/2026**
-**Estado:** CRUD implementado; CI de integração PostgreSQL 16, verificação e publicação aprovadas para a revisão atual. As imagens públicas `ghcr.io/geordptoroy/forte-panel:dev` e `ghcr.io/geordptoroy/forte-whatsapp:dev` foram verificadas por pull anônimo. Causa provável do código de pareamento inválido corrigida (identidade `Chrome (Ubuntu)` canônica, confirmação IQ, persistência de credenciais e retry seguro); 147 testes do monorepo e 32 do gateway passam no sandbox. Falta validar no Docker/WhatsApp real do usuário.
+**Estado:** O usuário confirmou o pareamento real no celular; a revisão atual refatora a tela de instâncias e atualiza o reconhecimento do estado, além de separar consumo em `/plans-usage`. Nesta worktree, 158 testes do monorepo passaram (41 dependentes de banco skipped sem `DATABASE_URL`), incluindo 33 do gateway; typecheck e builds de frontend/backend passaram. Esta revisão ainda aguarda CI e publicação GHCR. **A sessão WhatsApp já conectada deve ser preservada**: para testar a atualização visual, usar `pull`/`up` sem reset; o teste com volume limpo continua disponível apenas quando o usuário realmente quiser apagar dados.
 **Fonte de verdade para esta fatia:** este documento, `todo.md` e `PROJECT_DOCUMENTATION_INDEX.md`.
 
 ---
 
 ## 1. Direção do produto registrada
 
-O desenvolvimento passa a avançar **uma página/função principal por vez**. O primeiro core depois do login é **Instâncias WhatsApp**, com somente:
+O desenvolvimento passa a avançar **uma página/função principal por vez**. O primeiro core depois do login é **Instâncias WhatsApp**, com somente a gestão e conexão de sessões:
 
 1. criar uma instância Baileys;
 2. editar o nome da instância;
 3. conectar, parear, desconectar e encerrar uma sessão;
 4. excluir uma instância, com confirmação e sem apagar o histórico de mensagens do workspace;
-5. consultar consumo do workspace.
+5. consultar plano e consumo do workspace na página separada **Planos e consumo**.
 
-Enquanto essa etapa estiver em revisão, a aplicação mantém as outras páginas e o backend no repositório, mas as rotas não-core ficam temporariamente redirecionadas para a conexão. Isso é um congelamento de produto reversível, **não substitui autorização no servidor**.
+Enquanto essa etapa estiver em revisão, a aplicação mantém as outras páginas e o backend no repositório, mas as rotas não-core ficam temporariamente redirecionadas para Instâncias WhatsApp; **Planos e consumo** é a segunda rota liberada. Isso é um congelamento de produto reversível, **não substitui autorização no servidor**.
 
 ### Sequência solicitada para as próximas fatias
 
 | Ordem | Core | Estado |
 |---:|---|---|
-| 1 | CRUD e conexão de instâncias Baileys; consumo visível na mesma página | Implementado neste branch; aguarda revisão e teste Docker local |
+| 1 | CRUD e conexão de instâncias Baileys; página própria para plano e consumo | CRUD/conexão implementados; esta revisão da interface aguarda CI e teste visual no Docker sem reset |
 | 2 | Console administrativo de providers/modelos, URLs, credenciais e roteamento por capacidade | Planejado; ainda não começar antes da revisão da etapa 1 |
 | 3 | Enviar e receber mensagens pelos tipos necessários, com roteamento por instância e tratamento correto de mídia | Próximo depois da etapa 2; precisa de testes end-to-end com número de teste |
 | 4 | Resposta automática do agente WhatsApp, inicialmente com prompt fictício claramente marcado e modo de simulação antes do envio real | Depois de transporte/mídia aprovados |
@@ -85,11 +85,17 @@ As procedures tRPC usam o workspace autenticado e permissão de gerente/owner/ad
 ## 4. O que está na interface
 
 - Flag central: `client/src/core-mode.ts`, `CORE_ONLY_MODE = true`, rota principal `/whatsapp-connection`.
-- `App.tsx` encaminha rotas não-core para essa rota; login, recuperação e aceite de convite continuam disponíveis.
-- `PanelLayout.tsx` mostra somente o item **Etapa 1 · WhatsApp** no menu responsivo e não consulta dados da Inbox em segundo plano neste modo.
-- A página chama-se **Instâncias WhatsApp** e mostra a lista do workspace, formulário de criação, nome/ID, status, QR, pareamento por telefone, controles de sessão e exclusão confirmada.
-- O card **Consumo do workspace** permanece abaixo das instâncias, consultando a cota atual e a janela de renovação.
+- `App.tsx` encaminha rotas fora do Core para `/whatsapp-connection`; as duas rotas liberadas são WhatsApp e `/plans-usage`. Login, recuperação e aceite de convite continuam disponíveis.
+- `PanelLayout.tsx` mostra **Instâncias WhatsApp** e **Planos e consumo** no menu responsivo; não consulta dados da Inbox em segundo plano neste modo.
+- **Instâncias WhatsApp** contém apenas criação, renomeação, status, QR, pareamento por telefone, controles de sessão e exclusão confirmada. O consumo não aparece nessa tela.
+- **Planos e consumo** é a página própria para o plano atual, cotas, uso e janela de renovação do workspace.
 - Demais páginas e módulos não foram deletados: permanecem no código e backend para que possam ser reabertos em uma etapa revisada. A flag não é barreira de segurança.
+
+### Reconhecimento automático da conexão
+
+- O log do teste em 28/09 mostra: `pairing configured successfully` → fechamento `515` (`restart required`) → nova conexão/logging in → `opened connection to WA` e `Baileys session is open`. Esse `515` após a aceitação é o reinício esperado do protocolo, não uma rejeição; o gateway recebeu o pareamento e abriu a sessão.
+- O endpoint `workspace.baileysStatus` consulta o snapshot atual do gateway. A tela já tinha polling de 4 s, mas TanStack Query não executa intervalos em segundo plano por padrão; ao alternar para o WhatsApp no celular, a aba podia pausar esse polling. A tela agora consulta em segundo plano (2 s em estados transitórios e 15 s em estado estável) e força revalidação ao voltar o foco ou reconectar a rede. Durante o `515` esperado após aceitação, o gateway expõe `connecting`, não `disconnected`, para conservar o polling rápido ao longo do restart.
+- A interface apresenta o estado individual da instância e o resumo de conexões. O check de regressão confirma a política de intervalo; o reteste visual/real continua sendo feito no Docker local.
 
 ### Pareamento por número
 

@@ -242,6 +242,17 @@ Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
 - [ ] Validar o seletor de país/bandeira/DDI e o código de 8 caracteres (incluindo letras, se presentes) em número real; repetir geração após tentativa não aceita e confirmar que não volta `Connection Closed`.
 - [ ] Validar webhook inbound e status no Inbox depois da conexão real.
 
+## Pós-pareamento: atualização de status e refatoração da tela — 2026-09-28
+
+- [x] Ler o log fornecido: o WhatsApp aceitou o pareamento, pediu o restart `515` esperado e o gateway registrou `opened connection to WA` / `Baileys session is open`.
+- [x] Representar esse restart como `connecting` no snapshot Baileys; teste cobre o estado após o close e o caso real de logout.
+- [x] Corrigir polling React Query: 2 s para connecting/pairing/QR, ativo em segundo plano, além de revalidar ao foco e à reconexão de rede.
+- [x] Extrair a tela WhatsApp para `client/src/pages/WhatsappConnectionPage.tsx`, mantendo CRUD e métodos de conexão, sem o cartão de consumo; adicionar status por instância, resumo, atualização manual e layout responsivo.
+- [x] Mover plano/cotas/janela para a rota **Planos e consumo** (`/plans-usage`) e disponibilizá-la como a única outra rota do Core congelado.
+- [x] Suíte local: 158 testes aprovados, 41 dependentes de banco skipped; typecheck, build frontend e build backend passaram.
+- [ ] Confirmar CI e publicação das imagens GHCR desta revisão.
+- [ ] Atualizar localmente com `pull`/`up` sem reset para preservar o número já conectado; verificar Conectado no painel, inclusive após deixar a aba em segundo plano, e confirmar a página Planos e consumo.
+
 
 ## Auditoria de melhoria contínua — 2026-09-27
 

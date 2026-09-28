@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import {
-  getCountries,
-  getCountryCallingCode,
-  isPossiblePhoneNumber,
-  type CountryCode,
-} from "libphonenumber-js";
-import {
   ArrowDownRight,
   ArrowUpRight,
   Bell,
@@ -20,7 +14,6 @@ import {
   Copy,
   FileText,
   Filter,
-  Gauge,
   Headphones,
   Info,
   KanbanSquare,
@@ -32,7 +25,6 @@ import {
   Phone,
   Play,
   Plus,
-  QrCode,
   RefreshCw,
   Search,
   Send,
@@ -57,6 +49,10 @@ import PanelLayout, {
 } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 import {
+  WhatsappConnectionPage,
+  WorkspaceUsagePage,
+} from "./WhatsappConnectionPage";
+import {
   appointments,
   contacts,
   events,
@@ -69,22 +65,7 @@ import {
   type Message,
   type Stage,
 } from "@/lib/demoData";
-
-const countryDisplayNames = new Intl.DisplayNames(["pt-BR"], { type: "region" });
-const countryFlag = (country: string) =>
-  /^[A-Z]{2}$/.test(country)
-    ? String.fromCodePoint(
-        ...country.split("").map(character => 127397 + character.charCodeAt(0))
-      )
-    : "🌐";
-const phoneCountryOptions = getCountries()
-  .map(country => ({
-    country,
-    name: countryDisplayNames.of(country) ?? country,
-    callingCode: getCountryCallingCode(country),
-    flag: countryFlag(country),
-  }))
-  .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+export { WhatsappConnectionPage, WorkspaceUsagePage };
 
 function DemoBanner() {
   return (
@@ -135,277 +116,6 @@ function ChannelStatusBanner({
         </span>
       </div>
     </div>
-  );
-}
-
-function BaileysConnectionCard() {
-  const utils = trpc.useUtils();
-  const [name, setName] = useState("WhatsApp comercial");
-  const instances = trpc.workspace.baileysInstances.useQuery(undefined, {
-    refetchInterval: 10_000,
-  });
-  const create = trpc.workspace.createBaileysInstance.useMutation({
-    onSuccess: async () => {
-      setName("");
-      await utils.workspace.baileysInstances.invalidate();
-    },
-  });
-
-  return (
-    <section className="surface whatsapp-connection-card" aria-labelledby="whatsapp-connection-title">
-      <SectionTitle
-        eyebrow="Core · Baileys"
-        title="Instâncias WhatsApp"
-        action={<StatusBadge tone="green">{instances.data?.length ?? 0} instâncias</StatusBadge>}
-      />
-      <h2 id="whatsapp-connection-title" className="sr-only">Instâncias WhatsApp</h2>
-      <p className="muted" style={{ marginTop: 8 }}>
-        Cada instância pertence a este workspace. Crie, renomeie ou exclua as conexões; o QR e a sessão são administrados pelo gateway Baileys.
-      </p>
-
-      <form
-        className="core-instance-form"
-        onSubmit={event => {
-          event.preventDefault();
-          if (name.trim().length >= 2) create.mutate({ name: name.trim() });
-        }}
-      >
-        <label className="form-field">
-          <span>Nome da nova instância</span>
-          <input
-            className="input-control"
-            value={name}
-            maxLength={120}
-            onChange={event => setName(event.target.value)}
-            placeholder="Ex.: WhatsApp comercial"
-          />
-        </label>
-        <button className="btn-primary" type="submit" disabled={create.isPending || name.trim().length < 2}>
-          {create.isPending ? "Criando..." : "Criar instância"}
-        </button>
-      </form>
-      {create.error && <div className="form-error" role="alert" style={{ marginTop: 10 }}>{create.error.message}</div>}
-
-      {instances.isLoading ? (
-        <div className="muted" role="status" style={{ marginTop: 20 }}>Carregando instâncias...</div>
-      ) : instances.error ? (
-        <div className="form-error" role="alert" style={{ marginTop: 20 }}>{instances.error.message}</div>
-      ) : instances.data?.length ? (
-        <div style={{ display: "grid", gap: 14, marginTop: 20 }}>
-          {instances.data.map(instance => (
-            <BaileysInstanceCard
-              key={instance.instanceId}
-              instanceId={instance.instanceId}
-              name={instance.name}
-            />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={QrCode}
-          title="Nenhuma instância criada"
-          description="Crie uma instância para iniciar a conexão com um número do WhatsApp."
-        />
-      )}
-    </section>
-  );
-}
-
-function BaileysInstanceCard({
-  instanceId,
-  name,
-}: {
-  instanceId: string;
-  name: string;
-}) {
-  const utils = trpc.useUtils();
-  const [nameDraft, setNameDraft] = useState(name);
-  const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState<CountryCode>("BR");
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const status = trpc.workspace.baileysStatus.useQuery({ instanceId }, {
-    refetchInterval: 4_000,
-    retry: false,
-  });
-  const current = status.data;
-  const localPhoneDigits = phone.replace(/\D/g, "");
-  const fullPhone = `+${getCountryCallingCode(countryCode)}${localPhoneDigits}`;
-  const phoneIsPossible = isPossiblePhoneNumber(fullPhone);
-  const connected = current?.status === "connected";
-  const waitingQr = current?.status === "qr";
-  const qr = trpc.workspace.baileysQr.useQuery({ instanceId }, {
-    enabled: waitingQr,
-    refetchInterval: 3_000,
-    retry: false,
-  });
-  const refresh = async () => {
-    await Promise.all([
-      utils.workspace.baileysStatus.invalidate({ instanceId }),
-      utils.workspace.baileysQr.invalidate({ instanceId }),
-      utils.workspace.baileysInstances.invalidate(),
-    ]);
-  };
-  const connect = trpc.workspace.connectBaileys.useMutation({ onSuccess: refresh });
-  const rename = trpc.workspace.renameBaileysInstance.useMutation({
-    onSuccess: async () => {
-      await utils.workspace.baileysInstances.invalidate();
-    },
-  });
-  const disconnect = trpc.workspace.disconnectBaileys.useMutation({ onSuccess: refresh });
-  const pairing = trpc.workspace.requestBaileysPairingCode.useMutation({
-    onSuccess: async result => {
-      setPairingCode(result.code);
-      await refresh();
-    },
-  });
-  const remove = trpc.workspace.deleteBaileysInstance.useMutation({
-    onSuccess: async () => {
-      setConfirmDelete(false);
-      await utils.workspace.baileysInstances.invalidate();
-    },
-  });
-  const statusLabels: Record<string, string> = {
-    unconfigured: "Gateway não configurado",
-    idle: "Aguardando conexão",
-    connecting: "Conectando",
-    pairing: "Aguardando pareamento",
-    qr: "QR disponível",
-    connected: "Conectado",
-    disconnected: "Desconectado",
-    logged_out: "Sessão encerrada",
-    error: "Erro na conexão",
-  };
-  const statusTone = connected ? "green" : waitingQr || current?.status === "connecting" ? "amber" : current?.status === "error" ? "red" : "neutral";
-
-  useEffect(() => {
-    if (["connected", "disconnected", "logged_out", "error"].includes(current?.status ?? ""))
-      setPairingCode(null);
-  }, [current?.status]);
-
-  return (
-    <article className="surface surface-hover" style={{ padding: 18 }} aria-label={`Instância ${name}`}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <span className="eyebrow">Sessão Baileys</span>
-          <h3 style={{ margin: "6px 0 4px", fontSize: 18 }}>{name}</h3>
-          <code className="muted" style={{ overflowWrap: "anywhere" }}>{instanceId}</code>
-        </div>
-        <StatusBadge tone={statusTone}>
-          {status.isLoading ? "Consultando gateway..." : status.error ? "Gateway indisponível" : statusLabels[current?.status ?? "idle"] ?? current?.status ?? "Verificando"}
-        </StatusBadge>
-      </div>
-
-      {status.error && <div className="form-error" role="alert" style={{ marginTop: 12 }}>{status.error.message}</div>}
-      {current?.phoneNumber && <p className="muted" style={{ margin: "12px 0 0" }}>Número conectado: <strong>{current.phoneNumber}</strong></p>}
-      {current?.lastError && <div className="form-error" role="alert" style={{ marginTop: 12 }}>{current.lastError}</div>}
-
-      <div className="core-instance-form" style={{ marginTop: 14 }}>
-        <label className="form-field">
-          <span>Editar nome</span>
-          <input className="input-control" value={nameDraft} maxLength={120} onChange={event => setNameDraft(event.target.value)} />
-        </label>
-        <button
-          className="btn-secondary"
-          disabled={rename.isPending || nameDraft.trim().length < 2 || nameDraft.trim() === name}
-          onClick={() => rename.mutate({ instanceId, name: nameDraft.trim() })}
-        >
-          {rename.isPending ? "Salvando..." : "Salvar nome"}
-        </button>
-      </div>
-      {rename.error && <div className="form-error" role="alert" style={{ marginTop: 10 }}>{rename.error.message}</div>}
-
-      <div className="qr-actions" style={{ marginTop: 16, flexWrap: "wrap" }}>
-        {!connected ? (
-          <button className="btn-primary" disabled={connect.isPending || !current?.configured || current?.status === "pairing"} onClick={() => connect.mutate({ instanceId })}>
-            <QrCode size={14} /> {connect.isPending ? "Gerando QR..." : current?.status === "pairing" ? "Pareamento por código em andamento" : waitingQr ? "Atualizar conexão" : "Conectar e gerar QR"}
-          </button>
-        ) : (
-          <>
-            <button className="btn-secondary" disabled={disconnect.isPending} onClick={() => disconnect.mutate({ instanceId, logout: false })}>Desconectar temporariamente</button>
-            <button className="btn-ghost" disabled={disconnect.isPending} onClick={() => disconnect.mutate({ instanceId, logout: true })}>Encerrar sessão</button>
-          </>
-        )}
-        <button className="btn-ghost" onClick={() => setConfirmDelete(true)}>Excluir instância</button>
-      </div>
-      {(connect.error || disconnect.error) && <div className="form-error" role="alert" style={{ marginTop: 10 }}>{connect.error?.message ?? disconnect.error?.message}</div>}
-
-      {waitingQr && (
-        <div className="qr-code-panel" style={{ marginTop: 16, minHeight: 220 }} aria-live="polite" aria-label={`QR Code de ${name}`}>
-          {qr.data ? <img src={qr.data} alt={`QR Code para conectar ${name}`} /> : <div className="muted"><QrCode size={28} /> Carregando QR Code...</div>}
-        </div>
-      )}
-      {qr.error && <small className="qr-error">QR temporariamente indisponível; atualize a conexão para tentar novamente.</small>}
-
-      <details style={{ marginTop: 14 }}>
-        <summary className="muted" style={{ cursor: "pointer" }}>Conectar com código de pareamento</summary>
-        <div className="core-instance-form" style={{ marginTop: 12 }}>
-          <div className="phone-entry-group">
-            <label className="form-field">
-              <span>País e DDI</span>
-              <select
-                className="input-control"
-                value={countryCode}
-                aria-label="País e código DDI"
-                onChange={event => setCountryCode(event.target.value as CountryCode)}
-              >
-                {phoneCountryOptions.map(option => (
-                  <option key={option.country} value={option.country}>
-                    {option.flag} {option.name} (+{option.callingCode})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="form-field">
-              <span>Número nacional</span>
-              <input
-                className="input-control"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel-national"
-                value={phone}
-                onChange={event => setPhone(event.target.value)}
-                placeholder="DDD e telefone"
-                aria-label="Número nacional incluindo DDD ou código de área"
-              />
-            </label>
-          </div>
-          <button className="btn-secondary" disabled={pairing.isPending || !phoneIsPossible} onClick={() => {
-            setPairingCode(null);
-            pairing.reset();
-            pairing.mutate({ instanceId, phone: fullPhone });
-          }}>
-            {pairing.isPending ? "Gerando..." : "Gerar código"}
-          </button>
-        </div>
-        <small className="muted phone-number-hint">Inclua o DDD/código de área e digite o número sem o DDI. O país selecionado acrescenta o DDI automaticamente.</small>
-        {pairingCode && (
-          <>
-            <div className="pairing-code" style={{ marginTop: 12 }} aria-live="polite">{pairingCode}</div>
-            <small className="muted phone-number-hint" style={{ display: "block", marginTop: 8 }}>
-              No WhatsApp, abra Configurações → Aparelhos conectados → Conectar aparelho → Conectar com número de telefone. Digite exatamente os 8 caracteres exibidos; o código pode conter letras e números.
-            </small>
-          </>
-        )}
-        {pairing.error && <div className="form-error" role="alert" style={{ marginTop: 10 }}>{pairing.error.message}</div>}
-      </details>
-
-      {confirmDelete && (
-        <div className="connection-wizard-backdrop" role="alertdialog" aria-modal="true" aria-labelledby={`delete-${instanceId}`}>
-          <div className="connection-wizard">
-            <h2 id={`delete-${instanceId}`}>Excluir “{name}”?</h2>
-            <p className="muted">A sessão desta instância será encerrada e removida do gateway. O histórico de mensagens do workspace não será apagado. Para voltar a usar este número, será necessário criar e parear uma nova instância.</p>
-            <div className="qr-actions">
-              <button className="btn-secondary" onClick={() => setConfirmDelete(false)}>Cancelar</button>
-              <button className="btn-primary" disabled={remove.isPending} onClick={() => remove.mutate({ instanceId, confirmDeletion: true })}>
-                {remove.isPending ? "Excluindo..." : "Confirmar exclusão"}
-              </button>
-            </div>
-            {remove.error && <div className="form-error" role="alert" style={{ marginTop: 12 }}>{remove.error.message}</div>}
-          </div>
-        </div>
-      )}
-    </article>
   );
 }
 
@@ -2495,107 +2205,6 @@ export function BillingPage() {
           </section>
         )}
       </div>
-    </PanelLayout>
-  );
-}
-
-export function WhatsappConnectionPage() {
-  const usageQuery = trpc.workspace.usage.useQuery(undefined, {
-    refetchInterval: 30_000,
-  });
-  const usage = usageQuery.data;
-  const usageMetrics = usage
-    ? (
-        [
-          ["apiRequests", "API"],
-          ["aiRequests", "Execuções de IA"],
-          ["outboundMessages", "Mensagens outbound"],
-        ] as const
-      ).map(([key, label]) => ({ key, label, ...usage.workspace[key] }))
-    : [];
-  const usagePercent = (used: number, limit: number) =>
-    limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  return (
-    <PanelLayout
-      eyebrow="Core · Etapa 1"
-      title="Instâncias WhatsApp"
-      description="Crie, edite e exclua as conexões Baileys deste workspace. As demais áreas ficam temporariamente ocultas enquanto este core é validado."
-    >
-      <section className="surface" style={{ marginTop: 20, padding: 20 }}>
-        <SectionTitle
-          eyebrow="Consumo do workspace"
-          title={usage ? `Plano ${usage.plan}` : "Cotas e consumo"}
-          action={
-            <StatusBadge tone={usageQuery.isError ? "red" : "green"}>
-              {usageQuery.isFetching ? "Atualizando" : "Ao vivo"}
-            </StatusBadge>
-          }
-        />
-        {usageQuery.isLoading ? (
-          <div className="muted">Carregando consumo atual...</div>
-        ) : usageQuery.error ? (
-          <div className="form-error">{usageQuery.error.message}</div>
-        ) : usage ? (
-          <>
-            <p className="muted">
-              Janela atual até{" "}
-              {new Date(usage.resetsAt).toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
-              .
-            </p>
-            <div className="stat-grid" style={{ marginTop: 16 }}>
-              {usageMetrics.map(metric => {
-                const percent = usagePercent(metric.used, metric.limit);
-                return (
-                  <div
-                    className="surface surface-hover stat-card"
-                    key={metric.key}
-                  >
-                    <div className="stat-top">
-                      <span className="stat-label">{metric.label}</span>
-                      <Gauge
-                        size={16}
-                        className={percent >= 80 ? "amber" : "green"}
-                      />
-                    </div>
-                    <strong className="stat-value">
-                      {metric.used}{" "}
-                      <small style={{ fontSize: 12, fontWeight: 500 }}>
-                        / {metric.limit}
-                      </small>
-                    </strong>
-                    <span className="stat-foot">
-                      {Math.max(0, metric.limit - metric.used)} restantes ·{" "}
-                      {percent}% usado
-                    </span>
-                    <div
-                      style={{
-                        height: 5,
-                        background: "rgba(0,0,0,.08)",
-                        borderRadius: 99,
-                        marginTop: 10,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${percent}%`,
-                          height: "100%",
-                          background: percent >= 80 ? "#d28a24" : "#2d8a61",
-                          borderRadius: 99,
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        ) : null}
-      </section>
-      <BaileysConnectionCard />
     </PanelLayout>
   );
 }

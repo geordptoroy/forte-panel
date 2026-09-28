@@ -40,3 +40,12 @@ export function shouldUseRemoteLogout(
 ) {
   return logoutRequested && !pairingAwaitingAcceptance;
 }
+
+export function getStatusAfterSocketClose(
+  loggedOut: boolean,
+  acceptedPairingRestart: boolean
+): "logged_out" | "connecting" | "disconnected" {
+  if (loggedOut) return "logged_out";
+  if (acceptedPairingRestart) return "connecting";
+  return "disconnected";
+}

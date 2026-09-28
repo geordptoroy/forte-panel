@@ -39,17 +39,19 @@ docker compose --project-name forte-local --env-file .env --file docker-compose.
 docker compose --project-name forte-local --env-file .env --file docker-compose.local.yml up -d --remove-orphans
 ```
 
-O comando de reinstalação acima é o recomendado nesta fase de desenvolvimento, pois você pediu para zerar os volumes em cada teste.
+**Para uma atualização somente de interface, use os comandos acima sem `down --volumes` nem `-ResetData`: isso preserva o banco e a sessão WhatsApp já conectada.** Use `-ResetData` apenas quando quiser intencionalmente apagar PostgreSQL, Redis e sessões Baileys do projeto `forte-local`.
 
 ## Reteste do pareamento por número
 
-Depois que a nova imagem `:dev` for publicada, execute o reset/reinstall acima, entre com as credenciais do `.env` e:
+Depois que a nova imagem `:dev` for publicada, atualize com o bloco **Atualização sem apagar os dados** acima para preservar a conexão existente, entre no painel e:
 
 1. Em **Instâncias WhatsApp**, crie uma instância de teste.
 2. No seletor, escolha país/bandeira/DDI; digite o número nacional com DDD/código de área, sem repetir o DDI.
 3. Clique em **Gerar código**. O painel agora só exibe o código se o servidor do WhatsApp confirmar o pedido IQ; códigos têm 8 caracteres e podem incluir letras.
 4. No aplicativo WhatsApp do aparelho, abra **Configurações → Aparelhos conectados → Conectar aparelho → Conectar com número de telefone** e informe exatamente o código exibido.
-5. Aguarde o status da instância mudar de pareamento pendente para conectada. Se o IQ retornar erro/timeout, o painel deve mostrar o erro em vez de entregar um código que o servidor não aceitou.
+5. Deixe a aba do painel em segundo plano enquanto confirma no celular. O status deve mudar automaticamente de pareamento/conexão para **Conectado** após o gateway abrir a sessão; ao voltar para a aba, o estado também é revalidado imediatamente.
+6. Abra **Planos e consumo** na barra lateral e confirme que plano, cotas e janela de renovação estão nessa página, não na página das instâncias.
+7. Se o IQ retornar erro/timeout, o painel deve mostrar o erro em vez de entregar um código que o servidor não aceitou.
 
 O código exibido significa que o pedido foi aceito pelo servidor; ainda é necessário digitá-lo no telefone para concluir o vínculo. O QR continua disponível como alternativa.
 
