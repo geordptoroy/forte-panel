@@ -15,7 +15,7 @@
 - **Dispositivo:** `DESKTOP-QQ66S0L`, Windows 64-bit/x64, Windows Terminal com PowerShell, Docker Desktop e WSL; contexto Docker observado: `desktop-linux`.
 - **CPU:** AMD Ryzen 5 5600G com Radeon Graphics, 3.90 GHz.
 - **Memória:** 16.0 GB instalados (13.8 GB utilizáveis).
-- **Armazenamento informado:** SSD XrayDisk de 480 GB (447 GB reportados como disponíveis) e HDD WDC WD10JPCX-24UE4T0 de 932 GB.
+- **Armazenamento informado:** SSD XrayDisk identificado como 480 GB (Windows reporta 447 GB) e HDD WDC WD10JPCX-24UE4T0 de 932 GB.
 - **GPU:** AMD Radeon(TM) Graphics, 2 GB.
 - Os Device ID e Product ID foram intencionalmente omitidos deste repositório público.
 
