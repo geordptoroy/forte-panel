@@ -10,6 +10,22 @@
 - O shell/container de trabalho do agente é um sandbox Linux separado; não presumir que enxerga o daemon Docker, volumes, `.env`, sessão do WhatsApp ou arquivos locais do WSL do usuário. Só declarar Docker/E2E local testado se o comando foi executado e observado nesse ambiente.
 - **Oracle Cloud Infrastructure (OCI/Oracle Cloud)** é o destino futuro de hospedagem. A aplicação ainda está na fase de desenvolvimento local; este registro não inicia provisionamento, migração, mudança de DNS, deploy, cobrança ou exposição de tráfego.
 
+### Máquina local de teste
+
+- **Dispositivo:** `DESKTOP-QQ66S0L`, Windows 64-bit/x64, Windows Terminal com PowerShell, Docker Desktop e WSL; contexto Docker observado: `desktop-linux`.
+- **CPU:** AMD Ryzen 5 5600G com Radeon Graphics, 3.90 GHz.
+- **Memória:** 16.0 GB instalados (13.8 GB utilizáveis).
+- **Armazenamento informado:** SSD XrayDisk de 480 GB (447 GB reportados como disponíveis) e HDD WDC WD10JPCX-24UE4T0 de 932 GB.
+- **GPU:** AMD Radeon(TM) Graphics, 2 GB.
+- Os Device ID e Product ID foram intencionalmente omitidos deste repositório público.
+
+### Estado Docker observado no incidente de 2026-09-27
+
+- `docker context show` retornou `desktop-linux`; `docker ps -a` e `docker volume ls` não listaram containers nem volumes. `docker inspect` não encontrou `forte_postgres_panel` nem `forte_panel_migrations`; o inventário de volumes também saiu vazio ao consultar os contextos tentados.
+- Antes disso, um log mostrou o PostgreSQL inicializando um cluster novo e, em seguida, o serviço de migrations falhando com `./docker-entrypoint.sh: not found`. O entrypoint de migrations não rodou, portanto esse log não comprova aplicação das migrations do app.
+- O histórico do PowerShell/PSReadLine indica uma tentativa de digitar `docker compose down -v`, mas o crash do terminal impede confirmar o resultado do comando. Como nenhum volume está visível no inventário observado, **não assumir que os dados/sessões anteriores continuam disponíveis nem que foram recuperados**.
+- Antes de iniciar outro `compose up`, verificar possíveis backups e mounts do host. Não executar `down -v`, remoção de volume ou reset como tentativa de recuperação; documentar qualquer novo resultado antes de prosseguir.
+
 ## 2. Decisão sobre n8n e API REST de integração
 
 A intenção inicial de conectar o fluxo de mensagens a um n8n foi abandonada. Não há arquivo/workflow/configuração n8n nem chamadas da interface do browser aos endpoints REST empresariais no repositório atual. Os consumidores encontrados da REST v1 são testes de contrato e o workflow manual de E2E de staging.
