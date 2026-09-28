@@ -11,6 +11,7 @@ export const BAILEYS_LOG_REDACTION_PATHS = [
   "phoneNumber",
   "node.attrs.jid",
   "attrs.jid",
+  "histNotification",
   "xml",
 ] as const;
 

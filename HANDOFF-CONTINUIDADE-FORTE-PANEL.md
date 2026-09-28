@@ -1983,14 +1983,16 @@ O gateway passou a encaminhar ao Inbox somente `messages.upsert` de tipo `notify
 
 ### Testes e acesso ao ambiente
 
-O sandbox verificou `pnpm check`, `pnpm test` (**197 aprovados, 46 ignorados**), `pnpm build`, typecheck separado do gateway e `git diff --check`. A suíte local PostgreSQL foi ignorada por ausência de `DATABASE_URL` e Docker, mas o workflow `PostgreSQL integration` **36491464735** executou migrations, typecheck do gateway e a suíte completa contra PostgreSQL com sucesso. O workflow de publicação **36491464730** também publicou `forte-panel` e `forte-whatsapp` em `:dev`. Não houve acesso ao PostgreSQL Windows, pareamento, QR/código ou envio de mensagem.
+O sandbox verificou `pnpm check`, `pnpm test` (**197 aprovados, 46 ignorados**), `pnpm build`, typecheck separado do gateway e `git diff --check`. A suíte local PostgreSQL foi ignorada por ausência de `DATABASE_URL` e Docker, mas o workflow `PostgreSQL integration` **36491464735** executou migrations, typecheck do gateway e a suíte completa contra PostgreSQL com sucesso. O workflow de publicação **36491464730** também publicou `forte-panel` e `forte-whatsapp` em `:dev`. O pareamento autorizado foi testado em gateway temporário sem webhook, banco, IA ou envio: Baileys reportou sync `FULL` (100%), 38 chats, 39 contatos e 4.452 mensagens; outbox zero. Nenhum corpo foi encaminhado/logado/persistido. A sessão foi despareada, o serviço encerrado e o runtime/segredos temporários removidos. O banco Windows do usuário não foi acessado.
+
+Durante o probe, o logger interno do Baileys emitiu um objeto `histNotification` que pode conter referências/chaves criptografadas de mídia. A configuração de logger no worktree foi ajustada para redigir o objeto inteiro; **a suíte gateway completa passou com 62/62 testes**, incluindo `forte-whatsapp/src/logger.test.ts`, e o typecheck do gateway e `git diff --check` passaram. Essa correção ainda precisa de commit e CI antes de produção.
 
 O usuário autorizou parear seu número dedicado para testar. **Antes de gerar uma credencial temporária de pareamento**, preparar gateway isolado e observador/mock webhook; manter IA e envio/outbound desativados e não persistir corpos, além do mínimo que o usuário pedir para verificar. A conta teste só deve ser pareada no runtime com esses controles. Para o primeiro teste, observar tipo/progresso de sync e uma mensagem live; não afirmar que o histórico está importado. O sandbox atual não oferece banco nem Docker, então avaliar dependências/runtime temporário antes de enviar QR/código.
 
 ### Próxima ordem
 
-1. CI PostgreSQL e publicação passaram; o código está no HEAD atual.
-2. Se for fazer o teste autorizado, subir serviço de gateway isolado e sem webhook/IA/outbound; não foi gerado QR nem pedido número. Preferir QR para evitar pedir telefone.
-3. Correlacionar o chat real no PostgreSQL Windows do usuário somente por consulta read-only, caso se torne acessível.
-4. Implementar `messaging-history.set` idempotente e busca incremental sem acionar IA, unread, notificações ou takeover.
+1. Finalizar suíte completa, commit e CI para a redaction de `histNotification` antes de habilitar sync em produção.
+2. Correlacionar o chat real no PostgreSQL Windows do usuário somente por consulta read-only, caso se torne acessível; não foi provado que o registro específico veio do histórico.
+3. Implementar importer `messaging-history.set` idempotente e busca incremental separada do fluxo live; histórico não pode acionar IA, unread, notificações ou takeover.
+4. Manter ownership workspace/instância validado antes da persistência de todo batch; limitar tamanho, serialização, progresso, retry e retenção.
 5. Não fazer limpeza global Docker nem alteração de dados no banco persistente como parte deste bloco.

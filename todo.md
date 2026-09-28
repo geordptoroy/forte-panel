@@ -442,7 +442,7 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Inventariar runtime/provedores de IA, prompts, tools, transcrição, REST/tRPC, ACL do Console, suporte, mídia, quotas e isolamento; registrar achados no `docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`.
 - [x] Atualizar handoff e índice documental para que uma nova sessão comece pelo estado atual e não confunda auditoria com implementação.
 - [ ] Consultar com segurança o PostgreSQL persistente do usuário para confirmar a origem da conversa, correlacionando IDs/eventos e preservando evidência; não executar limpeza de dados nesta etapa.
-- [ ] Implementar proteção contra eventos históricos/vazios/fromMe órfãos, ownership de instância em toda ingestão e testes de regressão antes do sync histórico.
+- [x] Implementar primeira proteção contra eventos históricos/vazios e validar ownership de instância antes da ingestão; `fromMe` live órfão continua pendente de política.
 - [ ] Implementar importação inicial Baileys após conexão, com progresso, dedupe, provenance e nenhuma resposta IA para conteúdo histórico.
 - [ ] Corrigir ACL legacy de IA, SSRF/egress, limites de mídia e autorização server-side das tools.
 - [ ] Consolidar cards de IA, hierarquia imutável de políticas, orquestrador de capabilities, transcrição comum, métricas/quotas, suporte isolado e TTS explicitamente desativado.
@@ -457,7 +457,8 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Adicionar regressões unitárias/adaptador e testes PostgreSQL para append, placeholder e instância de outro workspace.
 - [x] Passar localmente `pnpm check`, `pnpm test` (197 aprovados/46 ignorados), `pnpm build`, typecheck do gateway e `git diff --check`.
 - [x] Workflow `PostgreSQL integration` executou migrations, typecheck e suíte completa contra PostgreSQL com sucesso; os testes locais foram ignorados por ausência de `DATABASE_URL` e Docker.
-- [ ] Fazer pairing autorizado em gateway isolado sem IA, sem envio/outbound e com webhook que retenha apenas metadados mínimos; sandbox atual ainda não tem Docker nem banco.
+- [x] Parear em gateway isolado sem webhook/DB/IA/outbound: sync FULL reportou progresso 100%, 38 chats, 39 contatos e 4.452 mensagens; outbox zero, sem corpo encaminhado/logado/persistido; sessão despareada e runtime removido.
+- [x] Redigir o objeto interno `histNotification` do Pino após observação de referências/chaves criptografadas de mídia; suíte completa do gateway 62/62, teste de logger, typecheck e `git diff --check` passaram localmente. Commit/CI pendentes.
 - [ ] Diagnosticar read-only a conversa específica no banco Windows do usuário; o sandbox não tem acesso a esse banco.
-- [ ] Implementar importação histórica automática idempotente; `messaging-history.set` atual é observado, não persistido.
+- [ ] Implementar importação histórica automática idempotente; `messaging-history.set` atual é observado, não persistido, embora o sync FULL real tenha entregue lote inicial.
 - [ ] Decidir após evidência/teste o tratamento de `fromMe` live válido sem conversa conhecida; no momento esse envio real ainda é aceito.

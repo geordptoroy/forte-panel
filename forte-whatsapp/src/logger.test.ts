@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { BAILEYS_LOG_REDACTION_PATHS } from "./logger.js";
 
 describe("Baileys log redaction", () => {
-  it("redacts pairing keys, ephemeral values, phone numbers and raw XML in child logs", async () => {
+  it("redacts pairing secrets, history notifications, phone numbers and raw XML in child logs", async () => {
     const lines: string[] = [];
     const destination = new Writable({
       write(chunk, _encoding, callback) {
@@ -36,6 +36,13 @@ describe("Baileys log redaction", () => {
         helloMsg: { clientHello: { ephemeral: "secret-ephemeral" } },
         pairingCode: "secret-pairing-code",
         phone: "+5511999999999",
+        histNotification: {
+          mediaKey: "secret-history-media-key",
+          directPath: "/secret/encrypted/history-media-path",
+          fileSha256: "secret-history-file-hash",
+          fileEncSha256: "secret-encrypted-file-hash",
+          encHandle: "secret-history-enc-handle",
+        },
         xml: "secret-raw-protocol-node",
       },
       "test log"
@@ -51,10 +58,15 @@ describe("Baileys log redaction", () => {
       "secret-pairing-code",
       "+5511999999999",
       "5511999999999@s.whatsapp.net",
+      "secret-history-media-key",
+      "/secret/encrypted/history-media-path",
+      "secret-history-file-hash",
+      "secret-encrypted-file-hash",
+      "secret-history-enc-handle",
       "secret-raw-protocol-node",
     ]) {
       expect(output).not.toContain(secret);
     }
-    expect(output.match(/\[REDACTED\]/g)?.length).toBeGreaterThanOrEqual(6);
+    expect(output.match(/\[REDACTED\]/g)?.length).toBeGreaterThanOrEqual(7);
   });
 });
