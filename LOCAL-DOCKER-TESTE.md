@@ -61,7 +61,7 @@ docker pull ghcr.io/geordptoroy/forte-panel:dev
 docker pull ghcr.io/geordptoroy/forte-whatsapp:dev
 ```
 
-Se o GHCR informar que os pacotes não são públicos, o owner precisa publicar a visibilidade dos pacotes `forte-panel` e `forte-whatsapp` uma vez nas configurações do GitHub Packages. Depois disso, o script funciona sem login no GHCR.
+Em 2026-09-27, o manifest `:dev` das duas imagens respondeu HTTP 200 pelo token anônimo do GHCR; o pull não exige login no registry.
 
 ## Segredos e migrations
 

@@ -85,4 +85,4 @@ A auditoria completa e os gates de cada fatia estão em [`AUDITORIA-IA-CONSOLE-A
 
 - Push validado na branch de desenvolvimento publica imagens versionadas como `ghcr.io/geordptoroy/forte-panel:dev` e `ghcr.io/geordptoroy/forte-whatsapp:dev`, além de tags imutáveis `sha-*`; `latest` fica reservado para `main`.
 - `docker-compose.local.yml` consome `:dev`. O comando preferido no Windows/PowerShell para reset dos volumes locais, baixar as imagens publicadas e subir é `scripts/dev-reinstall.ps1 -ResetData`; a operação não compila imagens nem afeta outros projetos Docker.
-- Para pull sem autenticação, os dois pacotes GHCR precisam estar com visibilidade pública. Conferir isso após o primeiro push; se a credencial de automação não tiver permissão para mudar a visibilidade, pedir ao responsável que ajuste cada pacote nas configurações do GitHub Packages.
+- Em 2026-09-27, os manifests `:dev` de ambos os pacotes foram confirmados acessíveis anonimamente no GHCR (token anônimo e manifest HTTP 200); o pull não requer login no registry.
