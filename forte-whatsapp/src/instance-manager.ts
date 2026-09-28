@@ -194,6 +194,7 @@ export class InstanceManager {
     try {
       return await requestPairingCodeWithAcceptedRestart(
         code,
+        () => socket.waitForSocketOpen(),
         requestedCode => socket.requestPairingCode(digits, requestedCode),
         () => this.acceptedPairingCode === code
       );

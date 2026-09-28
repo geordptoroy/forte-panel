@@ -14,9 +14,11 @@ export function createPairingCode() {
 
 export async function requestPairingCodeWithAcceptedRestart(
   code: string,
+  waitForSocketOpen: () => Promise<void>,
   request: (code: string) => Promise<string>,
   pairingWasAccepted: () => boolean
 ) {
+  await waitForSocketOpen();
   try {
     return await request(code);
   } catch (error) {

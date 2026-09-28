@@ -15,12 +15,32 @@ describe("Baileys pairing code", () => {
     ).toBe(true);
   });
 
+  it("waits for the WebSocket to open before requesting the code", async () => {
+    const calls: string[] = [];
+    const code = "AB12CD34";
+    await expect(
+      requestPairingCodeWithAcceptedRestart(
+        code,
+        async () => {
+          calls.push("socket-open");
+        },
+        async requestedCode => {
+          calls.push("request-code");
+          return requestedCode;
+        },
+        () => false
+      )
+    ).resolves.toBe(code);
+    expect(calls).toEqual(["socket-open", "request-code"]);
+  });
+
   it("returns the requested code when WhatsApp accepted pairing before closing the stream", async () => {
     const code = "AB12CD34";
     let accepted = false;
     await expect(
       requestPairingCodeWithAcceptedRestart(
         code,
+        async () => {},
         async requestedCode => {
           expect(requestedCode).toBe(code);
           accepted = true;
@@ -35,6 +55,7 @@ describe("Baileys pairing code", () => {
     await expect(
       requestPairingCodeWithAcceptedRestart(
         "AB12CD34",
+        async () => {},
         async () => {
           throw new Error("Connection Closed");
         },
@@ -47,6 +68,7 @@ describe("Baileys pairing code", () => {
     await expect(
       requestPairingCodeWithAcceptedRestart(
         "AB12CD34",
+        async () => {},
         async () => {
           throw new Error("Pairing request timed out");
         },
