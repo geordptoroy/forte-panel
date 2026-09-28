@@ -1080,3 +1080,20 @@ A Inbox foi liberada como a segunda área operacional do modo Core, sem reativar
 O fluxo contempla recebimento e persistência de texto, imagem, áudio, vídeo, documento e sticker; preservação de payload para localização, contato, enquete, lista, botão e reação; identificação por telefone/JID, `pushName`, `instanceId` e `messageId`; download de mídia recebida pelo gateway; e envio por texto e anexos roteado pelo `instanceId` da origem.
 
 A interface manteve o desenho existente da Inbox; o cabeçalho redundante foi ocultado nessa rota porque a identificação já é feita pela sidebar. O smoke test visual e o teste com mensagens reais no Docker do usuário continuam sendo a validação final do ambiente local.
+
+
+## 14. Histórico inicial após conexão
+
+O evento `messaging-history.set` é encaminhado pelo gateway para a outbox assinada com `metadata.historySync=true`. Cada mensagem recebe um `eventId` determinístico derivado do `instanceId` e da chave Baileys, e o Panel valida novamente a ownership da instância antes de persistir.
+
+O histórico inicial é deliberadamente separado do fluxo live:
+
+- usa a deduplicação existente por `messages.externalId`;
+- não baixa blobs de mídia durante o batch inicial;
+- não incrementa unread;
+- não altera takeover/human control ou pausa a IA em conversas existentes;
+- não cria `message.received` para o worker/agente;
+- não sobrescreve preview/última mensagem atual de uma conversa existente com conteúdo antigo;
+- preserva a proveniência `historySync` no metadata.
+
+O progresso de `messaging-history.set`/`messaging-history.status` ainda é observado em logs. Persistência de progresso, busca incremental via `fetchMessageHistory`, retry específico e importação de mídia histórica são etapas posteriores. O WhatsApp/Baileys pode fornecer apenas o histórico disponível para o dispositivo; a integração não promete importação integral.

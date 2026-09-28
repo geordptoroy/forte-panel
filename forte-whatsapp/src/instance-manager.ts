@@ -231,7 +231,13 @@ export class InstanceManager {
             isLatest,
             chunkOrder,
           },
-          "Baileys history batch observed; import is not enabled yet"
+          "Baileys history batch observed; forwarding for isolated import"
+        );
+        void this.handleMessages(messages, "append", undefined, true).catch(error =>
+          logger.error(
+            { err: error, instanceId: this.instanceId },
+            "failed to forward Baileys history batch"
+          )
         );
       });
       socket.ev.on("messaging-history.status", status => {
@@ -679,9 +685,10 @@ export class InstanceManager {
   private async handleMessages(
     messages: WAMessage[],
     upsertType: MessageUpsertType,
-    requestId?: string
+    requestId?: string,
+    historical = false
   ) {
-    if (!shouldForwardLiveUpsert(upsertType, requestId)) {
+    if (!historical && !shouldForwardLiveUpsert(upsertType, requestId)) {
       logger.info(
         {
           instanceId: this.instanceId,
@@ -758,7 +765,7 @@ export class InstanceManager {
           ? { payload: { location, contact, poll, list, button, reaction } }
           : {}),
       };
-      if (media) {
+      if (media && !historical) {
         try {
           const buffer = await downloadMediaMessage(message, "buffer", {});
           const mimeType =
@@ -787,7 +794,10 @@ export class InstanceManager {
       );
       await this.webhookOutbox.enqueue({
         eventId: message.key.id
-          ? instanceScopedEventId(this.instanceId, `message:${message.key.id}`)
+          ? instanceScopedEventId(
+              this.instanceId,
+              `${historical ? "history" : "message"}:${message.key.id}`
+            )
           : crypto.randomUUID(),
         instanceId: this.instanceId,
         phone: remoteJid.replace(/@s\.whatsapp\.net$/, ""),
@@ -800,6 +810,7 @@ export class InstanceManager {
         jid: remoteJid,
         fromMe,
         metadata,
+        ...(historical ? { historySync: true } : {}),
       });
     }
   }

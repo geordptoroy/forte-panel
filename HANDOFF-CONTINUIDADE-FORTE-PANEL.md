@@ -1996,3 +1996,33 @@ O usuário autorizou parear seu número dedicado para testar. **Antes de gerar u
 3. Implementar importer `messaging-history.set` idempotente e busca incremental separada do fluxo live; histórico não pode acionar IA, unread, notificações ou takeover.
 4. Manter ownership workspace/instância validado antes da persistência de todo batch; limitar tamanho, serialização, progresso, retry e retenção.
 5. Não fazer limpeza global Docker nem alteração de dados no banco persistente como parte deste bloco.
+
+
+## 19. Importação histórica inicial Baileys — 2026-09-28 19:59 BRT
+
+### Implementado
+
+- `messaging-history.set` agora encaminha cada mensagem para a mesma outbox assinada do gateway, mas com `historySync: true` e event ID determinístico por `instanceId` + chave da mensagem.
+- O gateway não baixa mídia durante o histórico inicial; isso evita materializar grandes blobs e mantém a importação limitada ao conteúdo/metadados disponíveis no batch.
+- O backend preserva `historySync` no normalizador e valida a instância Baileys ativa e pertencente ao workspace antes de persistir.
+- A deduplicação usa o `externalId` já existente; reentrega do batch não duplica mensagem, contato ou conversa.
+- Mensagens históricas não incrementam unread, não alteram `humanControlled`/`aiEnabled` em conversas existentes, não sobrescrevem preview/última mensagem atual e não criam `message.received` para o worker/IA. `fromMe` histórico também não dispara takeover.
+- O fixture PostgreSQL em `server/inbox-instance-filter.integration.test.ts` cobre importação idempotente e ausência de evento de IA; a execução local fica condicionada à disponibilidade de PostgreSQL.
+
+### Validação desta sessão
+
+```text
+pnpm check ✅
+pnpm exec tsc --noEmit -p forte-whatsapp/tsconfig.json ✅
+npm test --prefix forte-whatsapp ✅ — 10 arquivos / 62 testes
+pnpm build ✅ — permanece somente o aviso existente de bundle frontend > 500 kB
+pnpm test direcionado ✅ — 42 arquivos / 197 aprovados / 47 ignorados por ausência de PostgreSQL
+git diff --check ✅
+```
+
+### Limites e próximo bloco
+
+- Progresso de sync ainda é somente observado em logs; não há tabela de estado/progresso por instância.
+- Busca incremental via `fetchMessageHistory`, retry específico de batch e importação de mídia histórica continuam pendentes.
+- O teste com dois workspaces/instâncias precisa ser executado novamente contra PostgreSQL real/CI; o sandbox desta sessão não tinha `DATABASE_URL` configurado.
+- Não foi feito pareamento nem teste E2E com número WhatsApp real nesta sessão.

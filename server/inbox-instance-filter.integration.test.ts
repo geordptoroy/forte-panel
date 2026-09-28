@@ -34,6 +34,7 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
   const phoneExisting = `551166${suffix.slice(-8)}`;
   const phoneFromMe = `551177${suffix.slice(-8)}`;
   const phoneIgnored = `551155${suffix.slice(-8)}`;
+  const phoneHistorical = `551133${suffix.slice(-8)}`;
   const phoneForeignInstance = `551144${suffix.slice(-8)}`;
   let workspaceAId = 0;
   let workspaceBId = 0;
@@ -464,6 +465,58 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
         )
       );
     expect(contactsCreated).toHaveLength(0);
+  });
+
+  it("imports history idempotently without unread, takeover or AI domain events", async () => {
+    const input = {
+      eventId: `history-import-${suffix}`,
+      phone: phoneHistorical,
+      name: "Contato histórico",
+      content: "mensagem antiga",
+      messageType: "text" as const,
+      fromMe: true,
+      receivedAt: new Date("2026-09-01T12:00:00.000Z"),
+      metadata: {
+        provider: "baileys",
+        instanceId: instanceA1,
+        jid: `${phoneHistorical}@s.whatsapp.net`,
+        upsertType: "append",
+        historySync: true,
+      },
+    };
+    const first = await ingestInboundWhatsApp(workspaceAId, input);
+    const second = await ingestInboundWhatsApp(workspaceAId, input);
+    expect(first).toMatchObject({ duplicate: false });
+    expect(second).toMatchObject({ duplicate: true });
+    const db = await getDb();
+    if (!db) throw new Error("database unavailable");
+    const contact = (
+      await db
+        .select()
+        .from(contacts)
+        .where(
+          and(eq(contacts.workspaceId, workspaceAId), eq(contacts.externalPhone, phoneHistorical))
+        )
+        .limit(1)
+    )[0]!;
+    const conversation = (
+      await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.contactId, contact.id))
+        .limit(1)
+    )[0]!;
+    expect(contact).toMatchObject({ aiEnabled: 1, unreadCount: 0 });
+    expect(conversation).toMatchObject({ humanControlled: 0, unreadCount: 0 });
+    expect(
+      await db.select({ id: messages.id }).from(messages).where(eq(messages.externalId, input.eventId))
+    ).toHaveLength(1);
+    expect(
+      await db
+        .select({ id: domainEvents.id })
+        .from(domainEvents)
+        .where(eq(domainEvents.eventKey, `message.received:${input.eventId}`))
+    ).toHaveLength(0);
   });
 
   it("rejects individual Baileys messages from an instance owned by another workspace", async () => {

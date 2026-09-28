@@ -6588,6 +6588,7 @@ export async function ingestInboundWhatsApp(
   if (!workspace) throw new Error("Workspace unavailable");
   const sourceMetadata = input.metadata ?? {};
   const isBaileys = sourceMetadata.provider === "baileys";
+  const isHistorical = isBaileys && sourceMetadata.historySync === true;
   const instanceId =
     typeof sourceMetadata.instanceId === "string"
       ? sourceMetadata.instanceId.trim()
@@ -6630,6 +6631,7 @@ export async function ingestInboundWhatsApp(
       : undefined;
   if (
     isBaileys &&
+    !isHistorical &&
     ((upsertType !== undefined && upsertType !== "notify") ||
       (typeof sourceMetadata.requestId === "string" &&
         sourceMetadata.requestId.length > 0))
@@ -6767,9 +6769,9 @@ export async function ingestInboundWhatsApp(
         nameSource: "auto",
         urgency: "Média",
         stage: "Novo contato",
-        aiEnabled: fromMe || groupId ? 0 : 1,
+        aiEnabled: (fromMe && !isHistorical) || groupId ? 0 : 1,
         quoteCents: 0,
-        unreadCount: fromMe ? 0 : 1,
+        unreadCount: isHistorical || fromMe ? 0 : 1,
         lastMessagePreview: input.content.slice(0, 500),
         lastMessageAt: receivedAt,
       })
@@ -6796,7 +6798,7 @@ export async function ingestInboundWhatsApp(
         },
       });
     }
-  } else {
+  } else if (!isHistorical) {
     await db
       .update(contacts)
       .set({
@@ -6804,8 +6806,8 @@ export async function ingestInboundWhatsApp(
         ...(!groupId && input.name?.trim()
           ? { pushName: input.name.trim().slice(0, 160) }
           : {}),
-        ...(fromMe || groupId ? { aiEnabled: 0 } : {}),
-        unreadCount: fromMe ? 0 : sql`${contacts.unreadCount} + 1`,
+        ...((fromMe && !isHistorical) || groupId ? { aiEnabled: 0 } : {}),
+        unreadCount: isHistorical || fromMe ? 0 : sql`${contacts.unreadCount} + 1`,
         lastMessagePreview: input.content.slice(0, 500),
         lastMessageAt: receivedAt,
         updatedAt: receivedAt,
@@ -6825,8 +6827,8 @@ export async function ingestInboundWhatsApp(
       .insert(conversations)
       .values({
         contactId: contact.id,
-        humanControlled: fromMe || groupId ? 1 : 0,
-        unreadCount: fromMe ? 0 : 1,
+        humanControlled: (fromMe && !isHistorical) || groupId ? 1 : 0,
+        unreadCount: isHistorical || fromMe ? 0 : 1,
         lastMessageAt: receivedAt,
       })
       .onConflictDoNothing({ target: conversations.contactId });
@@ -6859,7 +6861,7 @@ export async function ingestInboundWhatsApp(
       createdAt: receivedAt,
     })
     .returning();
-  if (created[0] && !fromMe && !groupId) {
+  if (created[0] && !fromMe && !groupId && !isHistorical) {
     await enqueueDomainEvent({
       workspaceId: workspace.id,
       event: "message.received",
@@ -6881,15 +6883,17 @@ export async function ingestInboundWhatsApp(
       },
     });
   }
-  await db
-    .update(conversations)
-    .set({
-      ...(fromMe || groupId ? { humanControlled: 1 } : {}),
-      unreadCount: fromMe ? 0 : sql`${conversations.unreadCount} + 1`,
-      lastMessageAt: receivedAt,
-      updatedAt: receivedAt,
-    })
-    .where(eq(conversations.id, conversation.id));
+  if (!isHistorical) {
+    await db
+      .update(conversations)
+      .set({
+        ...((fromMe || groupId) ? { humanControlled: 1 } : {}),
+        unreadCount: fromMe ? 0 : sql`${conversations.unreadCount} + 1`,
+        lastMessageAt: receivedAt,
+        updatedAt: receivedAt,
+      })
+      .where(eq(conversations.id, conversation.id));
+  }
   return {
     contactId: contact.id,
     conversationId: conversation.id,

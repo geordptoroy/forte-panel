@@ -443,7 +443,7 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Atualizar handoff e índice documental para que uma nova sessão comece pelo estado atual e não confunda auditoria com implementação.
 - [ ] Consultar com segurança o PostgreSQL persistente do usuário para confirmar a origem da conversa, correlacionando IDs/eventos e preservando evidência; não executar limpeza de dados nesta etapa.
 - [x] Implementar primeira proteção contra eventos históricos/vazios e validar ownership de instância antes da ingestão; `fromMe` live órfão continua pendente de política.
-- [ ] Implementar importação inicial Baileys após conexão, com progresso, dedupe, provenance e nenhuma resposta IA para conteúdo histórico.
+- [x] Implementar importação inicial Baileys após conexão, com dedupe por `externalId`, provenance `historySync` e nenhuma resposta IA/unread/takeover para conteúdo histórico; progresso persistido e busca incremental continuam pendentes.
 - [ ] Corrigir ACL legacy de IA, SSRF/egress, limites de mídia e autorização server-side das tools.
 - [ ] Consolidar cards de IA, hierarquia imutável de políticas, orquestrador de capabilities, transcrição comum, métricas/quotas, suporte isolado e TTS explicitamente desativado.
 - [ ] Validar com PostgreSQL de dois workspaces, CI, staging e número dedicado antes de habilitar respostas automáticas em produção.
@@ -460,5 +460,5 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Parear em gateway isolado sem webhook/DB/IA/outbound: sync FULL reportou progresso 100%, 38 chats, 39 contatos e 4.452 mensagens; outbox zero, sem corpo encaminhado/logado/persistido; sessão despareada e runtime removido.
 - [x] Redigir o objeto interno `histNotification` do Pino após observação de referências/chaves criptografadas de mídia; suíte do gateway 62/62, typecheck e `git diff --check` passaram. Commit `1b8d9a1` e CI PostgreSQL/publicação (`36492929091`, `36492928824`) passaram.
 - [ ] Diagnosticar read-only a conversa específica no banco Windows do usuário; o sandbox não tem acesso a esse banco.
-- [ ] Implementar importação histórica automática idempotente; `messaging-history.set` atual é observado, não persistido, embora o sync FULL real tenha entregue lote inicial.
+- [x] Encaminhar `messaging-history.set` para importação automática idempotente; batches usam IDs determinísticos, não baixam mídia histórica e ficam fora de IA/unread/takeover. Persistência de progresso e busca incremental continuam pendentes.
 - [ ] Decidir após evidência/teste o tratamento de `fromMe` live válido sem conversa conhecida; no momento esse envio real ainda é aceito.

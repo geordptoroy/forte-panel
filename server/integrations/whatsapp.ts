@@ -193,6 +193,7 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
         ? { upsertType: sourceMetadata.upsertType }
         : {}),
       ...(sourceMetadata.isPlaceholder === true ? { isPlaceholder: true } : {}),
+      ...(sourceMetadata.historySync === true ? { historySync: true } : {}),
       ...(typeof sourceMetadata.requestId === "string"
         ? { requestId: sourceMetadata.requestId }
         : {}),
