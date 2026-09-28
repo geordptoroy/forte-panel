@@ -1933,4 +1933,41 @@ docker compose -f .\docker-compose.local.yml logs --tail 100 forte-panel-migrati
 
 - Causa confirmada do rótulo **Gabriel** nas mensagens enviadas: `client/src/pages/PanelPages.tsx` (`MessageBubble`) tinha o fallback de `sender === "human"` fixado literalmente como `"Gabriel"`. Isso não vinha do nome do usuário nem do banco. A correção local substitui o fallback por **Atendente**, neutro para workspaces com vários operadores.
 - Há também conteúdo demo com nomes como “Gabriel” e “Gabriel Barbosa” em `server/db.ts`, dentro das funções de seed. `ensureDemoInbox` só popula a demonstração quando `DEMO_MODE === "true"`; `docker-compose.local.yml` atualmente define `DEMO_MODE: "false"`. Desligar a flag não apaga dados de demonstração que já tenham sido inseridos anteriormente.
-- O usuário pediu teste com o banco limpo. **Ainda não foi executado nenhum reset nem remoção de volumes.** Antes de dar o comando destrutivo, confirmar se deve apagar só o volume PostgreSQL (remove usuários/workspaces/conversas/mensagens/configurações persistidas, preservando a sessão pareada), ou todos os volumes da stack Forte (incluindo Redis e sessão/pareamento WhatsApp). O script existente `scripts/docker-reset-all-local.sh` é mais amplo: além dos recursos da stack, executa `docker system prune --all --volumes` e pode remover recursos não usados de outros projetos Docker; não recomendá-lo sem consentimento explícito para essa limpeza global.
+- No horário desse registro, o usuário ainda não havia escolhido o escopo e nenhum reset tinha sido executado. Às 17:47 BRT ele confirmou a opção 3 (limpeza Docker global); a operação continua pendente de execução manual no Windows. O escopo confirmado e os efeitos estão registrados na seção 16.
+
+
+## 16. Escopo autorizado para reset Docker — 2026-09-28 17:47 BRT
+
+O usuário escolheu explicitamente a opção **3 — limpeza Docker global** para preparar um teste com banco limpo. A escolha abrange a stack Forte local e recursos Docker não utilizados de outros projetos na mesma máquina. A operação **não foi executada pelo assistente** porque os containers e volumes estão na máquina Windows do usuário; entregar os comandos PowerShell é o próximo passo. Usar `docker-compose.local.yml` e imagens `:dev`; não usar o Compose padrão `:latest`. A sessão/pareamento do WhatsApp também será apagada na remoção dos volumes da stack e precisará ser refeita por QR. A limpeza global de Docker pode apagar volumes de outros projetos parados, imagens/cache/redes não usados; recursos ligados a containers que continuam rodando não são removidos.
+
+
+## 17. Auditoria WhatsApp, histórico Baileys e arquitetura de IA — 2026-09-28 18:53 BRT
+
+### Estado verificado
+
+- Auditoria somente leitura no checkout `/home/ubuntu/forte-panel`, `main`, commit de referência `33d2ea7`. Nenhuma consulta ao PostgreSQL persistente do Windows, pareamento, chamada de provedor, importação ou mutação de dados foi feita.
+- O relatório completo está em `docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`; a fonte externa primária para histórico é a documentação oficial do Baileys citada ali.
+- O gateway atual assina `messages.upsert`, mas ignora `type` (`notify`/`append`), e não assina `messaging-history.set`. O normalizador converte conteúdo texto desconhecido em `[mensagem recebida]`; a ingestão pode materializar evento `fromMe` como conversa e mensagem humana mesmo sem chat conhecido. Essa é a causa técnica provável para o print, não prova do evento concreto.
+- `lid:<id>` é identidade WhatsApp válida/esperada em Baileys 7.x, não evidência de seed. O demo seed tem `DEMO_MODE=false` no Compose local e não contém o LID mostrado; dados inseridos antes não somem quando a flag é desligada. Nenhuma exclusão/reset foi executada.
+- O usuário solicitou que o histórico disponível seja sincronizado automaticamente após conectar a instância. O plano é começar o sync assíncrono no gateway quando o WhatsApp o disponibilizar, mostrar progresso, deduplicar e manter o histórico fora do fluxo que chama IA/unread/takeover. Não prometer histórico integral; Baileys só pode entregar o que o WhatsApp fornecer ao dispositivo.
+- O Console `/platform-admin/ai` já configura provider e quatro capacidades (`text`, `vision`, `audio`, `document`); `audio` não é TTS. Há rotas antigas `agent.save/testConnection` com guard menos forte que a rota nova. Os prompts atuais deixam o workspace sobrepor o global, sem guardrail global imutável. STT do onboarding tem escopo/consentimento próprios; não existe endpoint geral de transcrição do chat, nem TTS, nem copiloto conversacional de suporte.
+- Outras pendências de segurança/confiabilidade estão detalhadas no relatório: SSRF por base URL/URL de áudio, limite de áudio conferido após `arrayBuffer`, ferramentas mutáveis protegidas principalmente pelo prompt, consumo `aiRequests` antes do gate de agente desligado, falta de custo/tokens por execução, retenção e reconciliação incompletas, unread sem filtro da instância selecionada.
+- Os agentes da auditoria executaram conjuntos de testes direcionados separados. Isso não constitui uma suíte única completa nem validação do PostgreSQL persistente, staging ou WhatsApp real.
+
+### Próxima execução aprovada pelo pedido de auditoria
+
+1. Diagnosticar o registro no banco do usuário sem alterá-lo, correlacionando `externalPhone`, `externalId`, direction/senderType, `instanceId`, `fromMe`, JID/remoteJidAlt, webhook/domain event e timestamps.
+2. Corrigir primeiro a criação de conversas indevidas: carregar tipo/origem do evento; não criar lead por conteúdo vazio ou `fromMe` sem conversa; validar ownership da instância no ponto central de ingestão; impedir que importação dispare IA.
+3. Adicionar listener/armazenamento idempotente de `messaging-history.set` e estado de sync por instância; depois implementar busca incremental com `fetchMessageHistory` no gateway.
+4. Fechar ACL read-only das mutations antigas, egress/SSRF, limites de mídia e autorização server-side das ferramentas antes de habilitar atendimento automático.
+5. Consolidar uma só aba de IA em cards de capability, construir orquestrador central, hierarquia de política/prompt versionada, quotas/custo e endpoints server-side; depois ligar onboarding, Inbox, visão e suporte isolado. TTS permanece desativado até implementação.
+6. Cobrir cada fatia com testes unitários e PostgreSQL com dois workspaces/instâncias; executar E2E em staging com número dedicado.
+
+### Método de continuidade que funcionou nesta auditoria
+
+- Começar confirmando o ambiente atual, branch, HEAD e worktree; não reutilizar caminhos, DB, credenciais ou browser presumidos de outro dispositivo/sessão.
+- Ler `PROJECT_DOCUMENTATION_INDEX.md`, este handoff, `todo.md`, `docs/BAILEYS-INTEGRATION.md` e o relatório novo antes de mexer no código. Para pesquisa/automação, reler as skills pertinentes e consultar documentação oficial quando a capacidade depende do fornecedor.
+- Para auditoria extensa, separar áreas independentes em workflow determinístico com resultados estruturados; o agente principal valida os achados decisivos no código e sintetiza. Identificar fatos, hipóteses e lacunas separadamente.
+- Implementar em blocos com critérios de aceite e testes antes de ampliar escopo. Rodar `pnpm check`, typecheck/build/test do gateway, suíte relevante, `pnpm build` e `git diff --check`; reportar precisamente quando PostgreSQL/staging/WhatsApp não foram validados.
+- Preservar dados e alterações do usuário. A opção anterior de limpeza Docker global continua registrada como pendente; não afirmar que foi executada. Qualquer comando entregue deve ser para o PowerShell do usuário e descrever que volumes/sessões apaga.
+- Atualizar o handoff, `todo.md`, índice e contrato afetado; não salvar chaves, QR, mensagens ou dumps reais. Revisar o diff antes de commit/push e verificar CI depois.

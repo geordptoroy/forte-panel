@@ -433,3 +433,17 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Repetir `git diff --check` após a revisão final.
 - [x] Publicar a fatia validada em `main` (`e9d800d`) e acompanhar [Publish Forte Panel image](https://github.com/geordptoroy/forte-panel/actions/runs/36454030781) e [PostgreSQL integration](https://github.com/geordptoroy/forte-panel/actions/runs/36454030684): ambos passaram.
 - [ ] Validar rendering responsivo e envio/recebimento real de texto, imagem e áudio com número WhatsApp dedicado; confirmar o PostgreSQL persistente de staging. O banco efêmero usado acima pertence somente ao sandbox.
+
+
+## Auditoria WhatsApp/IA — estado em 2026-09-28
+
+- [x] Auditar a origem provável do chat LID e as rotas de seed, `fromMe`, normalização e persistência sem alterar o banco do usuário.
+- [x] Verificar documentação oficial e versão instalada do Baileys para `messaging-history.set`, `messages.upsert`, `fetchMessageHistory`, LID e limites do sync.
+- [x] Inventariar runtime/provedores de IA, prompts, tools, transcrição, REST/tRPC, ACL do Console, suporte, mídia, quotas e isolamento; registrar achados no `docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`.
+- [x] Atualizar handoff e índice documental para que uma nova sessão comece pelo estado atual e não confunda auditoria com implementação.
+- [ ] Consultar com segurança o PostgreSQL persistente do usuário para confirmar a origem da conversa, correlacionando IDs/eventos e preservando evidência; não executar limpeza de dados nesta etapa.
+- [ ] Implementar proteção contra eventos históricos/vazios/fromMe órfãos, ownership de instância em toda ingestão e testes de regressão antes do sync histórico.
+- [ ] Implementar importação inicial Baileys após conexão, com progresso, dedupe, provenance e nenhuma resposta IA para conteúdo histórico.
+- [ ] Corrigir ACL legacy de IA, SSRF/egress, limites de mídia e autorização server-side das tools.
+- [ ] Consolidar cards de IA, hierarquia imutável de políticas, orquestrador de capabilities, transcrição comum, métricas/quotas, suporte isolado e TTS explicitamente desativado.
+- [ ] Validar com PostgreSQL de dois workspaces, CI, staging e número dedicado antes de habilitar respostas automáticas em produção.

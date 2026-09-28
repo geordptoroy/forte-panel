@@ -2,6 +2,8 @@
 
 Este arquivo organiza a documentação do projeto e aponta qual documento consultar em cada decisão.
 
+> **Auditoria WhatsApp/IA (2026-09-28):** consulte [`docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`](./docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md) para a causa provável da conversa LID, limites do histórico Baileys, inventário de IA, riscos P0–P2 e roteiro de implementação. É uma auditoria somente leitura; importação histórica automática e novo console/capabilities de IA ainda não foram implementados.
+>
 > **Core ativo (2026-09-27):** consulte [`WHATSAPP-CONNECTION-FLOW-2026-09-27.md`](./WHATSAPP-CONNECTION-FLOW-2026-09-27.md) para a fase 1: CRUD de instâncias Baileys, consumo, decisões de escopo e sequência solicitada das próximas etapas. Não iniciar o console de modelos nem respostas automáticas antes da revisão do usuário.
 >
 > **Limpeza total de providers (apenas plano):** [`MIGRACAO-PAPI-BAILEYS.md`](./MIGRACAO-PAPI-BAILEYS.md) propõe a remoção integral dos adapters/configurações legadas, migração segura dos dados e comandos para testar a branch atual. Nenhuma remoção de código, migration ou volume ocorreu; revisar e aprovar o plano antes de implementar.
