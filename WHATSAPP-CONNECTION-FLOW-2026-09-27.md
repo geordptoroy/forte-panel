@@ -201,3 +201,9 @@ A integração entre o **Forte Panel** e o gateway **Baileys** permanece funcion
 Nesta etapa, o trabalho é exclusivamente visual: a criação começa por um botão único **Criar instância**; o nome é solicitado em um modal central com fundo desfocado; depois do nome, o mesmo modal oferece QR Code ou conexão por número; o seletor de telefone mostra somente bandeira e DDI; o branding usa o símbolo WhatsApp monocromático; e renomeação e exclusão continuam separadas e protegidas. **Planos e consumo** foi temporariamente removido da sidebar e deixou de ser uma rota liberada no Core enquanto a área não for revisada.
 
 O próximo teste deve avaliar apenas layout, responsividade, modal e clareza do fluxo. Não há mudança de protocolo, sessão, banco, gateway ou contrato de conexão nesta revisão.
+
+## Refatoração progressiva e responsiva — 28/09/2026
+
+O cadastro agora usa um único modal progressivo, sem a etapa ou botão intermediário “Próximo”. O campo de nome aparece primeiro; ao atingir dois caracteres, os métodos QR Code e Por número surgem abaixo no mesmo modal. A instância só é criada quando um método é iniciado, evitando registros vazios durante a digitação.
+
+QR Code, número, código de pareamento e carregamentos permanecem dentro do modal. A janela tem altura máxima baseada no viewport, rolagem interna, botão X sticky e layout de uma coluna em telas pequenas. Foram removidos seletores CSS sem uso da versão anterior do wizard e do formulário inline.

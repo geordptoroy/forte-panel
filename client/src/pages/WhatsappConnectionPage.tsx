@@ -13,10 +13,7 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import {
-  getCountries,
-  isPossiblePhoneNumber,
-} from "libphonenumber-js";
+import { getCountries, isPossiblePhoneNumber } from "libphonenumber-js";
 import PanelLayout, { EmptyState, StatusBadge } from "@/components/PanelLayout";
 import { baileysStatusPollingInterval } from "@/lib/baileys-status";
 import { trpc } from "@/lib/trpc";
@@ -234,6 +231,33 @@ function BaileysConnectionManager() {
     if (create.isPending || connect.isPending || pairing.isPending) return;
     setCreateOpen(false);
   };
+  const ensureCreatedInstance = async () => {
+    if (createdInstanceId) return createdInstanceId;
+    const result = await create.mutateAsync({ name: nameDraft.trim() });
+    setCreatedInstanceId(result.instanceId);
+    setCreatedInstanceName(result.name);
+    await utils.workspace.baileysInstances.invalidate();
+    return result.instanceId;
+  };
+  const startQrConnection = async () => {
+    try {
+      const instanceId = await ensureCreatedInstance();
+      connect.mutate({ instanceId });
+    } catch {
+      // The mutation exposes the localized error inside the modal.
+    }
+  };
+  const startPhoneConnection = async () => {
+    try {
+      const instanceId = await ensureCreatedInstance();
+      setPairingCode(null);
+      setCopiedCode(false);
+      pairing.reset();
+      pairing.mutate({ instanceId, phone: fullPhone });
+    } catch {
+      // The mutation exposes the localized error inside the modal.
+    }
+  };
 
   return (
     <div className="whatsapp-page-stack">
@@ -263,13 +287,11 @@ function BaileysConnectionManager() {
         aria-labelledby="create-instance-strip-title"
       >
         <div>
-          <span className="eyebrow">Próximo passo</span>
+          <span className="eyebrow">Conexão WhatsApp</span>
           <h2 id="create-instance-strip-title">
             Conecte uma instância WhatsApp
           </h2>
-          <p>
-            Crie o nome uma vez e escolha QR Code ou número no próximo passo.
-          </p>
+          <p>Dê um nome à instância e escolha como conectar seu WhatsApp.</p>
         </div>
         <button type="button" className="btn-primary" onClick={openCreate}>
           <Plus size={15} /> Criar instância
@@ -355,7 +377,7 @@ function BaileysConnectionManager() {
             </button>
             <div className="setup-dialog-brand">
               <WhatsappMark size={26} />
-              <span>Nova conexão</span>
+              <span>Nova instância</span>
               <small>{createdInstanceId ? "Conexão" : "Nova instância"}</small>
             </div>
             <div className="whatsapp-modal-form">
@@ -372,16 +394,10 @@ function BaileysConnectionManager() {
                   placeholder="Ex.: WhatsApp Comercial"
                 />
               </label>
-              {!createdInstanceId ? (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={create.isPending || nameDraft.trim().length < 2}
-                  onClick={() => create.mutate({ name: nameDraft.trim() })}
-                >
-                  {create.isPending ? "Criando instância..." : "Próximo"}
-                  <span aria-hidden="true">→</span>
-                </button>
+              {nameDraft.trim().length < 2 ? (
+                <small className="whatsapp-modal-hint">
+                  Preencha o nome para escolher como conectar.
+                </small>
               ) : (
                 <>
                   <div className="whatsapp-modal-divider" />
@@ -414,12 +430,11 @@ function BaileysConnectionManager() {
                         type="button"
                         className="btn-primary"
                         disabled={
+                          create.isPending ||
                           connect.isPending ||
                           modalStatus.data?.status === "pairing"
                         }
-                        onClick={() =>
-                          connect.mutate({ instanceId: createdInstanceId })
-                        }
+                        onClick={() => void startQrConnection()}
                       >
                         <QrCode size={15} />
                         {connect.isPending
@@ -472,16 +487,12 @@ function BaileysConnectionManager() {
                       <button
                         type="button"
                         className="btn-primary"
-                        disabled={pairing.isPending || !phoneIsPossible}
-                        onClick={() => {
-                          setPairingCode(null);
-                          setCopiedCode(false);
-                          pairing.reset();
-                          pairing.mutate({
-                            instanceId: createdInstanceId,
-                            phone: fullPhone,
-                          });
-                        }}
+                        disabled={
+                          create.isPending ||
+                          pairing.isPending ||
+                          !phoneIsPossible
+                        }
+                        onClick={() => void startPhoneConnection()}
                       >
                         {pairing.isPending
                           ? "Aguardando WhatsApp..."
@@ -524,7 +535,9 @@ function BaileysConnectionManager() {
                 type="button"
                 className="btn-ghost whatsapp-modal-cancel"
                 onClick={closeCreate}
-                disabled={create.isPending || connect.isPending || pairing.isPending}
+                disabled={
+                  create.isPending || connect.isPending || pairing.isPending
+                }
               >
                 Cancelar
               </button>
