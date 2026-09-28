@@ -458,7 +458,7 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Passar localmente `pnpm check`, `pnpm test` (197 aprovados/46 ignorados), `pnpm build`, typecheck do gateway e `git diff --check`.
 - [x] Workflow `PostgreSQL integration` executou migrations, typecheck e suíte completa contra PostgreSQL com sucesso; os testes locais foram ignorados por ausência de `DATABASE_URL` e Docker.
 - [x] Parear em gateway isolado sem webhook/DB/IA/outbound: sync FULL reportou progresso 100%, 38 chats, 39 contatos e 4.452 mensagens; outbox zero, sem corpo encaminhado/logado/persistido; sessão despareada e runtime removido.
-- [x] Redigir o objeto interno `histNotification` do Pino após observação de referências/chaves criptografadas de mídia; suíte completa do gateway 62/62, teste de logger, typecheck e `git diff --check` passaram localmente. Commit/CI pendentes.
+- [x] Redigir o objeto interno `histNotification` do Pino após observação de referências/chaves criptografadas de mídia; suíte do gateway 62/62, typecheck e `git diff --check` passaram. Commit `1b8d9a1` e CI PostgreSQL/publicação (`36492929091`, `36492928824`) passaram.
 - [ ] Diagnosticar read-only a conversa específica no banco Windows do usuário; o sandbox não tem acesso a esse banco.
 - [ ] Implementar importação histórica automática idempotente; `messaging-history.set` atual é observado, não persistido, embora o sync FULL real tenha entregue lote inicial.
 - [ ] Decidir após evidência/teste o tratamento de `fromMe` live válido sem conversa conhecida; no momento esse envio real ainda é aceito.
