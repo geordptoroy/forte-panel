@@ -250,7 +250,7 @@ Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
 - [x] Extrair a tela WhatsApp para `client/src/pages/WhatsappConnectionPage.tsx`, mantendo CRUD e métodos de conexão, sem o cartão de consumo; adicionar status por instância, resumo, atualização manual e layout responsivo.
 - [x] Mover plano/cotas/janela para a rota **Planos e consumo** (`/plans-usage`) e disponibilizá-la como a única outra rota do Core congelado.
 - [x] Suíte local: 158 testes aprovados, 41 dependentes de banco skipped; typecheck, build frontend e build backend passaram.
-- [ ] Confirmar CI e publicação das imagens GHCR desta revisão.
+- [x] CI `verify`, `postgres-integration` e `publish` aprovados; pull anônimo confirmado para as tags `:dev` do painel e do gateway.
 - [ ] Atualizar localmente com `pull`/`up` sem reset para preservar o número já conectado; verificar Conectado no painel, inclusive após deixar a aba em segundo plano, e confirmar a página Planos e consumo.
 
 

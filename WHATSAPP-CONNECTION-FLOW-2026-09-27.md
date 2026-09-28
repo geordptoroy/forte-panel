@@ -1,7 +1,7 @@
 # Core do Forte Panel — instâncias Baileys
 
 **Documento canônico desta etapa · 27/09/2026**
-**Estado:** O usuário confirmou o pareamento real no celular; a revisão atual refatora a tela de instâncias e atualiza o reconhecimento do estado, além de separar consumo em `/plans-usage`. Nesta worktree, 158 testes do monorepo passaram (41 dependentes de banco skipped sem `DATABASE_URL`), incluindo 33 do gateway; typecheck e builds de frontend/backend passaram. Esta revisão ainda aguarda CI e publicação GHCR. **A sessão WhatsApp já conectada deve ser preservada**: para testar a atualização visual, usar `pull`/`up` sem reset; o teste com volume limpo continua disponível apenas quando o usuário realmente quiser apagar dados.
+**Estado:** O usuário confirmou o pareamento real no celular; a revisão `850b5a9` refatora a tela de instâncias, atualiza o reconhecimento do estado e separa consumo em `/plans-usage`. Os checks `verify`, `postgres-integration` e `publish` passaram; as tags públicas `ghcr.io/geordptoroy/forte-panel:dev` e `ghcr.io/geordptoroy/forte-whatsapp:dev` respondem a pull anônimo. Nesta revisão, 158 testes do monorepo passaram (41 dependentes de banco skipped no sandbox), incluindo 33 do gateway; typecheck e builds de frontend/backend também passaram. Resta o smoke test visual no Docker do usuário. **A sessão WhatsApp já conectada deve ser preservada**: para testar a atualização visual, usar `pull`/`up` sem reset.
 **Fonte de verdade para esta fatia:** este documento, `todo.md` e `PROJECT_DOCUMENTATION_INDEX.md`.
 
 ---
@@ -22,7 +22,7 @@ Enquanto essa etapa estiver em revisão, a aplicação mantém as outras página
 
 | Ordem | Core | Estado |
 |---:|---|---|
-| 1 | CRUD e conexão de instâncias Baileys; página própria para plano e consumo | CRUD/conexão implementados; esta revisão da interface aguarda CI e teste visual no Docker sem reset |
+| 1 | CRUD e conexão de instâncias Baileys; página própria para plano e consumo | CI/publicação aprovados; aguarda apenas teste visual no Docker sem reset |
 | 2 | Console administrativo de providers/modelos, URLs, credenciais e roteamento por capacidade | Planejado; ainda não começar antes da revisão da etapa 1 |
 | 3 | Enviar e receber mensagens pelos tipos necessários, com roteamento por instância e tratamento correto de mídia | Próximo depois da etapa 2; precisa de testes end-to-end com número de teste |
 | 4 | Resposta automática do agente WhatsApp, inicialmente com prompt fictício claramente marcado e modo de simulação antes do envio real | Depois de transporte/mídia aprovados |
