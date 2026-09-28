@@ -28,6 +28,9 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Install WhatsApp gateway dependencies
+        working-directory: forte-whatsapp
+        run: npm ci
       - name: Typecheck
         run: pnpm check
       - name: Tests
@@ -37,7 +40,6 @@ jobs:
       - name: WhatsApp gateway tests and build
         working-directory: forte-whatsapp
         run: |
-          npm ci
           npm test
           npm run check
           npm run build
