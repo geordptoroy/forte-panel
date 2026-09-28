@@ -247,11 +247,18 @@ function BaileysConnectionManager() {
         </article>
       </section>
 
-      <section className="whatsapp-create-strip surface" aria-labelledby="create-instance-strip-title">
+      <section
+        className="whatsapp-create-strip surface"
+        aria-labelledby="create-instance-strip-title"
+      >
         <div>
           <span className="eyebrow">Próximo passo</span>
-          <h2 id="create-instance-strip-title">Conecte uma instância WhatsApp</h2>
-          <p>Crie o nome uma vez e escolha QR Code ou número no próximo passo.</p>
+          <h2 id="create-instance-strip-title">
+            Conecte uma instância WhatsApp
+          </h2>
+          <p>
+            Crie o nome uma vez e escolha QR Code ou número no próximo passo.
+          </p>
         </div>
         <button type="button" className="btn-primary" onClick={openCreate}>
           <Plus size={15} /> Criar instância
@@ -661,7 +668,7 @@ function BaileysInstanceCard({
         </div>
       )}
       <div className="whatsapp-instance-toolbar">
-        <span>Nome da instância</span>
+        <span>Configurações da instância</span>
         <button
           type="button"
           className="btn-ghost"
@@ -670,7 +677,7 @@ function BaileysInstanceCard({
             setRenameOpen(true);
           }}
         >
-          <Pencil size={13} /> Renomear
+          <Pencil size={13} /> Alterar
         </button>
       </div>
       {connected ? (

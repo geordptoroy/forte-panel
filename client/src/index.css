@@ -652,9 +652,9 @@ a { color: inherit; text-decoration: none; }
 .whatsapp-list-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
 .whatsapp-list-tools { display: flex; align-items: center; gap: 8px; }
 .whatsapp-refresh-list { min-height: 34px; padding: 0 11px; font-size: 9px; }
-.whatsapp-instance-list { display: grid; gap: 13px; }
+.whatsapp-instance-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 410px), 1fr)); align-items: start; gap: 13px; }
 .whatsapp-empty-panel { display: grid; min-height: 185px; place-items: center; padding: 20px; }
-.whatsapp-instance-card { overflow: hidden; padding: 0; border-color: rgba(255,255,255,.09); background: linear-gradient(145deg, rgba(255,255,255,.028), rgba(255,255,255,.012)); }
+.whatsapp-instance-card { display: flex; min-width: 0; overflow: hidden; flex-direction: column; padding: 0; border-color: rgba(255,255,255,.09); background: linear-gradient(145deg, rgba(255,255,255,.028), rgba(255,255,255,.012)); }
 .whatsapp-instance-card.is-connected { border-color: rgba(86,214,138,.22); }
 .whatsapp-instance-header { display: flex; align-items: center; gap: 13px; padding: 19px 20px; border-bottom: 1px solid rgba(255,255,255,.065); }
 .whatsapp-instance-mark { width: 42px; height: 42px; color: #777; border-color: rgba(255,255,255,.08); background: rgba(255,255,255,.025); }
