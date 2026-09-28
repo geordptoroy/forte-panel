@@ -15,6 +15,10 @@ import pino from "pino";
 import { config } from "./config.js";
 import { useEncryptedAuthState } from "./encrypted-auth-state.js";
 import { acquireSessionLock, type SessionLock } from "./session-lock.js";
+import {
+  createPairingCode,
+  requestPairingCodeWithAcceptedRestart,
+} from "./pairing-code.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
 
 export type InstanceStatus =
@@ -46,6 +50,8 @@ export class InstanceManager {
   private starting = false;
   private sessionLock?: SessionLock;
   private suppressReconnectUntil = 0;
+  private pendingPairingCode?: string;
+  private acceptedPairingCode?: string;
   private readonly webhookOutbox: WebhookOutbox;
 
   constructor(
@@ -181,7 +187,19 @@ export class InstanceManager {
     if (!this.socket) await this.start();
     if (!this.socket) throw new Error("Não foi possível iniciar a sessão WhatsApp");
     this.set({ status: "pairing", qr: undefined, lastError: undefined });
-    return this.socket.requestPairingCode(digits);
+    const socket = this.socket;
+    const code = createPairingCode();
+    this.pendingPairingCode = code;
+    this.acceptedPairingCode = undefined;
+    try {
+      return await requestPairingCodeWithAcceptedRestart(
+        code,
+        requestedCode => socket.requestPairingCode(digits, requestedCode),
+        () => this.acceptedPairingCode === code
+      );
+    } finally {
+      this.pendingPairingCode = undefined;
+    }
   }
 
   private async releaseSessionLock() {
@@ -283,7 +301,10 @@ export class InstanceManager {
     connection?: string;
     lastDisconnect?: { error?: unknown };
     qr?: string;
+    isNewLogin?: boolean;
   }) {
+    if (update.isNewLogin && this.pendingPairingCode)
+      this.acceptedPairingCode = this.pendingPairingCode;
     if (update.qr) this.set({ status: "qr", qr: update.qr });
     if (update.connection === "open") {
       const user = this.socket?.user?.id;

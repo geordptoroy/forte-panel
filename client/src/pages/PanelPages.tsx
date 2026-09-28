@@ -2449,7 +2449,6 @@ export function WhatsappConnectionPage() {
       title="Instâncias WhatsApp"
       description="Crie, edite e exclua as conexões Baileys deste workspace. As demais áreas ficam temporariamente ocultas enquanto este core é validado."
     >
-      <BaileysConnectionCard />
       <section className="surface" style={{ marginTop: 20, padding: 20 }}>
         <SectionTitle
           eyebrow="Consumo do workspace"
@@ -2524,6 +2523,7 @@ export function WhatsappConnectionPage() {
           </>
         ) : null}
       </section>
+      <BaileysConnectionCard />
     </PanelLayout>
   );
 }
