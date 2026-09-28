@@ -1894,3 +1894,36 @@ O painel aplica as migrations versionadas automaticamente no primeiro start (`RU
 - O commit de implementação `e9d800d` foi enviado a `main`. A [publicação de imagens `dev` (workflow 36454030781)](https://github.com/geordptoroy/forte-panel/actions/runs/36454030781) concluiu `verify` e publicou as imagens Forte Panel e forte-whatsapp; o [PostgreSQL integration (workflow 36454030684)](https://github.com/geordptoroy/forte-panel/actions/runs/36454030684) também passou.
 - Não foi pareado número WhatsApp real nesta etapa. Envio/recebimento E2E manual real de texto/imagem/áudio, comportamento visual no navegador e validação no PostgreSQL persistente de staging permanecem pendentes.
 - Não declarar a integração real pronta até concluir esses gates; as fixtures reproduzíveis cobrem a regressão de código, não substituem E2E com número dedicado.
+
+
+## 14. Handoff de atualização Docker no Windows PowerShell — 2026-09-28 17:19 BRT
+
+### Diagnóstico confirmado pelo usuário
+
+- Diretório local informado: `C:\Users\Rafae\Desktop\forte-panel`.
+- O terminal é uma versão do PowerShell que **não aceita `&&`**. Portanto, `docker compose pull && docker compose up -d` falhou no parser antes de executar qualquer comando Docker; a mensagem não indica erro do Docker nem falha no pull.
+- O `docker compose ps` subsequente mostrou a stack ainda ativa com imagens `ghcr.io/geordptoroy/forte-panel:dev` e `ghcr.io/geordptoroy/forte-whatsapp:dev`; logo, a atualização ainda não havia sido aplicada.
+- Para esse ambiente deve ser usado explicitamente `docker-compose.local.yml`, que aponta para as tags `:dev` e inclui o serviço de migrations. Não usar o `docker-compose.yml` padrão, que aponta para `:latest`.
+- O commit da Inbox `cc27439` e seus workflows foram publicados com sucesso; a publicação inclui as imagens `dev` dos dois serviços.
+
+### Comando para executar no PowerShell compatível com o terminal do usuário
+
+```powershell
+Set-Location 'C:\Users\Rafae\Desktop\forte-panel'
+
+docker compose -f .\docker-compose.local.yml pull
+if ($LASTEXITCODE -ne 0) { throw 'Falha no pull; não continue com o up.' }
+
+docker compose -f .\docker-compose.local.yml up -d
+if ($LASTEXITCODE -ne 0) { throw 'Falha ao subir a stack; confira a saída acima.' }
+
+docker compose -f .\docker-compose.local.yml ps
+```
+
+Se for necessário verificar a migração depois do comando:
+
+```powershell
+docker compose -f .\docker-compose.local.yml logs --tail 100 forte-panel-migrations
+```
+
+**Não executar `docker compose down -v`**: isso pode apagar volumes persistentes de PostgreSQL, Redis e sessões WhatsApp. Após o usuário rodar o procedimento, confirmar que os containers do painel e gateway foram recriados com as imagens `:dev` atuais e validar pareamento/mensagens reais; ainda não há confirmação de que esse update local tenha sido executado.
