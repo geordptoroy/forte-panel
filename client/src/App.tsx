@@ -2,6 +2,12 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch, Redirect, useLocation } from "wouter";
 import { trpc } from "./lib/trpc";
+import {
+  CORE_ONLY_MODE,
+  CORE_ROUTE,
+  CORE_USAGE_ROUTE,
+  isCoreAllowedRoute,
+} from "./core-mode";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import {
@@ -12,6 +18,7 @@ import {
   InboxPage,
   IntegrationsPage,
   WhatsappConnectionPage,
+  WorkspaceUsagePage,
   KanbanPage,
   NotFoundPage,
 } from "./pages/PanelPages";
@@ -19,7 +26,10 @@ import { ProfessionalsPage, ServicesPage } from "./pages/CatalogPage";
 import { ProfessionalPortalPage } from "./pages/ProfessionalPortal";
 import { SettingsTabsPage } from "./pages/SettingsTabs";
 import TeamPage from "./pages/TeamPage";
-import AccessGuard, { OnboardingGuard, PlatformOnlyGuard } from "./components/AccessGuard";
+import AccessGuard, {
+  OnboardingGuard,
+  PlatformOnlyGuard,
+} from "./components/AccessGuard";
 import OnboardingPage from "./pages/OnboardingPage";
 import AiConfigPage from "./pages/AiConfigPage";
 import AiPromptPage from "./pages/AiPromptPage";
@@ -38,16 +48,30 @@ import {
 } from "./pages/PlatformAdminPage";
 
 function Router() {
+  const [location] = useLocation();
+  if (
+    CORE_ONLY_MODE &&
+    !isCoreAllowedRoute(location) &&
+    !location.startsWith("/invite/")
+  )
+    return <Redirect to={CORE_ROUTE} />;
   return (
     <Switch>
       <Route path="/">
-        <Redirect to="/dashboard" />
+        <Redirect to={CORE_ONLY_MODE ? CORE_ROUTE : "/dashboard"} />
       </Route>
       <Route path="/dashboard" component={DashboardPage} />
       <Route path="/whatsapp-connection">
         {() => (
           <AccessGuard requirement="manager" title="Conectar WhatsApp">
             <WhatsappConnectionPage />
+          </AccessGuard>
+        )}
+      </Route>
+      <Route path={CORE_USAGE_ROUTE}>
+        {() => (
+          <AccessGuard requirement="manager" title="Planos e consumo">
+            <WorkspaceUsagePage />
           </AccessGuard>
         )}
       </Route>

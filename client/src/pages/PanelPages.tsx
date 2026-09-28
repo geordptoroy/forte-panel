@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PhoneInput } from "react-international-phone";
-import "react-international-phone/style.css";
 import { Link, useLocation, useRoute } from "wouter";
 import {
   ArrowDownRight,
@@ -16,7 +14,6 @@ import {
   Copy,
   FileText,
   Filter,
-  Gauge,
   Headphones,
   Info,
   KanbanSquare,
@@ -28,9 +25,10 @@ import {
   Phone,
   Play,
   Plus,
-  QrCode,
+  RefreshCw,
   Search,
   Send,
+  Settings2,
   ShieldCheck,
   Sparkles,
   Tag,
@@ -51,6 +49,10 @@ import PanelLayout, {
 } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 import {
+  WhatsappConnectionPage,
+  WorkspaceUsagePage,
+} from "./WhatsappConnectionPage";
+import {
   appointments,
   contacts,
   events,
@@ -63,6 +65,7 @@ import {
   type Message,
   type Stage,
 } from "@/lib/demoData";
+export { WhatsappConnectionPage, WorkspaceUsagePage };
 
 function DemoBanner() {
   return (
@@ -116,111 +119,6 @@ function ChannelStatusBanner({
   );
 }
 
-function BaileysConnectionCard() {
-  const utils = trpc.useUtils();
-  const qrRef = useRef<HTMLDivElement>(null);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
-  const [connectionMode, setConnectionMode] = useState<"qr" | "phone">("qr");
-  const [nameDraft, setNameDraft] = useState("");
-  const [phoneDraft, setPhoneDraft] = useState("");
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const status = trpc.workspace.baileysStatus.useQuery(undefined, { refetchInterval: 4_000 });
-  const current = status.data;
-  const channelsQuery = trpc.workspace.channels.useQuery();
-  const baileysChannel = channelsQuery.data?.find(channel => channel.provider === "baileys");
-  const connected = current?.status === "connected";
-  const waitingQr = current?.status === "qr";
-  const qrIssuedAt = current?.updatedAt ? Date.parse(current.updatedAt) : NaN;
-  const qrExpiresAt = Number.isFinite(qrIssuedAt) ? qrIssuedAt + 60_000 : NaN;
-  const qrExpired = waitingQr && Number.isFinite(qrExpiresAt) && now >= qrExpiresAt;
-  const remainingSeconds = Number.isFinite(qrExpiresAt) ? Math.max(0, Math.ceil((qrExpiresAt - now) / 1000)) : null;
-  const qr = trpc.workspace.baileysQr.useQuery(undefined, {
-    enabled: Boolean(current?.status !== "connected" && (waitingQr || (wizardOpen && wizardStep === 3 && connectionMode === "qr")) && !qrExpired),
-    refetchInterval: 3_000,
-    retry: false,
-  });
-  const saveName = trpc.workspace.updateBaileysChannelName.useMutation({
-    onSuccess: () => utils.workspace.channels.invalidate(),
-  });
-  const connect = trpc.workspace.connectBaileys.useMutation({
-    onSuccess: async () => {
-      await Promise.all([utils.workspace.baileysStatus.invalidate(), utils.workspace.baileysQr.invalidate()]);
-      setWizardStep(3);
-    },
-  });
-  const pairing = trpc.workspace.requestBaileysPairingCode.useMutation({
-    onSuccess: result => { setPairingCode(result.code); setWizardStep(3); },
-  });
-  const disconnect = trpc.workspace.disconnectBaileys.useMutation({
-    onSuccess: async () => {
-      await Promise.all([utils.workspace.baileysStatus.invalidate(), utils.workspace.baileysQr.invalidate()]);
-    },
-  });
-  useEffect(() => {
-    if (!waitingQr) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [waitingQr]);
-  useEffect(() => {
-    if (!waitingQr || !current?.updatedAt) return;
-    const timer = window.setTimeout(() => { qrRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); qrRef.current?.focus({ preventScroll: true }); }, 0);
-    return () => window.clearTimeout(timer);
-  }, [waitingQr, current?.updatedAt]);
-  const labels: Record<string, string> = {
-    unconfigured: "Gateway não configurado", idle: "Aguardando conexão", connecting: "Iniciando conexão",
-    pairing: "Aguardando código no WhatsApp", qr: qrExpired ? "QR expirado" : "Aguardando leitura do QR Code",
-    connected: "WhatsApp conectado", disconnected: "Desconectado", logged_out: "Sessão encerrada", error: "Erro na conexão",
-  };
-  const hasNamedInstance = Boolean(baileysChannel?.name && baileysChannel.name !== "WhatsApp Comercial");
-  const busy = saveName.isPending || connect.isPending || pairing.isPending;
-  const openWizard = () => {
-    setNameDraft(hasNamedInstance ? baileysChannel?.name ?? "" : "");
-    setPhoneDraft(""); setPairingCode(null); setConnectionMode("qr");
-    setWizardStep(connected || hasNamedInstance ? 2 : 1); setWizardOpen(true);
-  };
-  const closeWizard = () => { if (!busy) setWizardOpen(false); };
-  const startConnection = (mode: "qr" | "phone") => {
-    setConnectionMode(mode);
-    const begin = () => mode === "qr" ? (connected ? setWizardStep(3) : connect.mutate()) : pairing.mutate({ phone: phoneDraft });
-    if (hasNamedInstance && !nameDraft.trim()) begin();
-    else saveName.mutate({ name: nameDraft.trim() }, { onSuccess: begin });
-  };
-  return (
-    <section className="surface whatsapp-connection-card" aria-labelledby="whatsapp-connection-title">
-      <SectionTitle eyebrow="Conexão WhatsApp" title="Sua instância de atendimento" action={<StatusBadge tone={connected ? "green" : waitingQr && !qrExpired ? "amber" : current?.status === "error" ? "red" : "neutral"}>{labels[current?.status ?? "idle"] ?? current?.status ?? "Verificando"}</StatusBadge>} />
-      <h2 id="whatsapp-connection-title" className="sr-only">Conexão WhatsApp</h2>
-      {status.isLoading ? <div className="muted" role="status">Consultando o gateway...</div> : status.error ? <div className="form-error" role="alert">{status.error.message}</div> : !current?.configured ? (
-        <div className="demo-banner" style={{ marginBottom: 0 }}><Info size={14} /> Configure o gateway no ambiente do servidor para habilitar a conexão.</div>
-      ) : (
-        <>
-          <div className="whatsapp-instance-summary">
-            <div className="whatsapp-instance-identity"><span className="whatsapp-instance-icon"><MessageCircle size={21} /></span><div><strong>{baileysChannel?.name ?? "Nova instância"}</strong><span>{current.phoneNumber ? `+${current.phoneNumber.replace(/^\+/, "")}` : "Nenhum número conectado"}</span></div></div>
-            <div className="whatsapp-instance-meta"><span><small>Instância</small><b>{current.instanceId}</b></span><span><small>Sessão</small><b>{current.configuration?.sessionEncrypted ? "Criptografada" : "Persistente"}</b></span></div>
-          </div>
-          <div className="qr-actions whatsapp-instance-actions">
-            <button className="btn-primary" onClick={openWizard}><Plus size={14} /> {connected ? "Gerenciar conexão" : hasNamedInstance ? "Conectar instância" : "Criar instância"}</button>
-            {connected && <><button className="btn-secondary" disabled={disconnect.isPending} onClick={() => disconnect.mutate({ logout: false })}>Desconectar temporariamente</button><button className="btn-ghost" disabled={disconnect.isPending} onClick={() => disconnect.mutate({ logout: true })}>Encerrar sessão</button></>}
-          </div>
-          {(connect.error || pairing.error || saveName.error || disconnect.error || current.lastError) && <div className="form-error" role="alert">{connect.error?.message ?? pairing.error?.message ?? saveName.error?.message ?? disconnect.error?.message ?? current.lastError}</div>}
-        </>
-      )}
-      {wizardOpen && <div className="connection-wizard-backdrop" role="dialog" aria-modal="true" aria-labelledby="connection-wizard-title" onMouseDown={event => event.target === event.currentTarget && closeWizard()}>
-        <div className="connection-wizard">
-          <button className="connection-wizard-close" onClick={closeWizard} aria-label="Fechar configuração" disabled={busy}><X size={16} /></button>
-          <div className="connection-wizard-header"><span className="eyebrow">Nova instância · etapa {wizardStep}/3</span><div className="connection-wizard-progress" aria-label={`Etapa ${wizardStep} de 3`}>{[1, 2, 3].map(step => <span key={step} className={step <= wizardStep ? "is-active" : ""} />)}</div></div>
-          <h2 id="connection-wizard-title">{wizardStep === 1 ? "Dê um nome à instância" : wizardStep === 2 ? "Como você quer conectar?" : connected ? "WhatsApp conectado" : pairingCode ? "Finalize no seu celular" : "Leia o QR Code"}</h2>
-          <p className="muted">{wizardStep === 1 ? "Escolha um nome curto para identificar este número no seu workspace." : wizardStep === 2 ? "Escolha uma das opções. Você poderá retomar esta instância depois sem criar outra." : pairingCode ? "Abra Dispositivos conectados no WhatsApp e informe o código abaixo." : connected ? "Sua sessão está pronta para receber e enviar mensagens." : "Abra o WhatsApp no celular e escaneie o código para continuar."}</p>
-          {wizardStep === 1 && <div className="connection-wizard-content"><label className="form-field"><span>Nome da instância</span><input className="input-control" autoFocus value={nameDraft} onChange={event => setNameDraft(event.target.value)} placeholder="Ex.: WhatsApp Comercial" onKeyDown={event => event.key === "Enter" && nameDraft.trim().length >= 2 && setWizardStep(2)} /></label><div className="connection-wizard-tip"><CheckCircle2 size={15} /><span>O nome só será salvo quando você escolher como deseja conectar o número.</span></div><button className="btn-primary" disabled={nameDraft.trim().length < 2} onClick={() => setWizardStep(2)}>Avançar <ArrowDownRight size={14} /></button></div>}
-          {wizardStep === 2 && <div className="connection-wizard-content"><div className="connection-mode-switch"><button className="connection-mode-card" disabled={busy} onClick={() => startConnection("qr")}><span className="connection-mode-icon"><QrCode size={20} /></span><strong>Conectar com QR Code</strong><small>Escaneie com o celular</small><ChevronDown size={14} className="connection-mode-arrow" /></button><button className="connection-mode-card" disabled={busy} onClick={() => { setConnectionMode("phone"); setWizardStep(3); }}><span className="connection-mode-icon"><Phone size={20} /></span><strong>Conectar com número</strong><small>Use um código de pareamento</small><ChevronDown size={14} className="connection-mode-arrow" /></button></div>{saveName.isPending && <div className="muted" role="status">Preparando sua instância...</div>}{connect.isPending && <div className="muted" role="status">Gerando um novo QR Code...</div>}</div>}
-          {wizardStep === 3 && connectionMode === "phone" && !pairingCode && !connected && <div className="connection-wizard-content"><label className="form-field"><span>Número do WhatsApp</span><PhoneInput defaultCountry="br" value={phoneDraft} onChange={phone => setPhoneDraft(phone)} className="connection-phone-input" inputClassName="connection-phone-field" countrySelectorStyleProps={{ buttonClassName: "connection-phone-country" }} placeholder="(11) 99999-9999" inputProps={{ inputMode: "tel", "aria-label": "Número do WhatsApp com DDI" }} /></label><div className="connection-wizard-tip"><Info size={15} /><span>O menu ao lado do campo mostra a bandeira e o DDI. O código só aparece depois que o gateway confirmar o pedido.</span></div><button className="btn-primary" disabled={busy || phoneDraft.replace(/\D/g, "").length < 8} onClick={() => startConnection("phone")}>{pairing.isPending ? "Gerando código..." : "Gerar código de pareamento"}</button><button className="btn-ghost wizard-back-button" disabled={busy} onClick={() => setWizardStep(2)}>Voltar</button></div>}
-          {wizardStep === 3 && connectionMode === "qr" && (pairingCode || connected || qr.data || qr.isFetching) && <div ref={qrRef} className="connection-wizard-content connection-wizard-finish" tabIndex={-1}>{pairingCode ? <div className="pairing-code">{pairingCode}</div> : connected ? <CheckCircle2 size={46} className="green" /> : qr.data ? <img className="wizard-qr" src={qr.data} alt="QR Code para conectar o WhatsApp" /> : <div className="wizard-qr-loading"><QrCode size={28} /><span>Gerando QR Code...</span></div>}<strong>{connected ? "WhatsApp conectado com sucesso" : pairingCode ? "Digite este código no WhatsApp" : qr.data ? `QR Code pronto${remainingSeconds ? ` · expira em ${remainingSeconds}s` : ""}` : "Preparando conexão"}</strong>{pairingCode && <p className="muted">No celular: WhatsApp → Configurações → Dispositivos conectados → Conectar aparelho → Conectar com número de telefone.</p>}{qr.error && !qrExpired && <small className="qr-error">O QR está aguardando atualização do gateway.</small>}<button className="btn-primary" onClick={() => setWizardOpen(false)}>{connected ? "Concluir" : "Fechar e acompanhar status"}</button></div>}
-        </div>
-      </div>}
-    </section>
-  );
-}
 function StatCard({
   label,
   value,
@@ -2307,136 +2205,6 @@ export function BillingPage() {
           </section>
         )}
       </div>
-    </PanelLayout>
-  );
-}
-
-export function WhatsappConnectionPage() {
-  const channelsQuery = trpc.workspace.channels.useQuery();
-  const usageQuery = trpc.workspace.usage.useQuery(undefined, {
-    refetchInterval: 30_000,
-  });
-  const channels = channelsQuery.data ?? [];
-  const usage = usageQuery.data;
-  const baileys = channels.find(channel => channel.provider === "baileys");
-  const usageMetrics = usage
-    ? (
-        [
-          ["apiRequests", "API"],
-          ["aiRequests", "Execuções de IA"],
-          ["outboundMessages", "Mensagens outbound"],
-        ] as const
-      ).map(([key, label]) => ({ key, label, ...usage.workspace[key] }))
-    : [];
-  const usagePercent = (used: number, limit: number) =>
-    limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  return (
-    <PanelLayout
-      eyebrow="Primeiro passo do workspace"
-      title="Conecte seu WhatsApp"
-      description="Identifique a instância, leia o QR Code e confirme a sessão antes de testar mensagens, agente ou agenda."
-    >
-      <DemoBanner />
-      <BaileysConnectionCard />
-      <section className="surface" style={{ marginTop: 20, padding: 20 }}>
-        <SectionTitle
-          eyebrow="Consumo do workspace"
-          title={usage ? `Plano ${usage.plan}` : "Cotas e consumo"}
-          action={
-            <StatusBadge tone={usageQuery.isError ? "red" : "green"}>
-              {usageQuery.isFetching ? "Atualizando" : "Ao vivo"}
-            </StatusBadge>
-          }
-        />
-        {usageQuery.isLoading ? (
-          <div className="muted">Carregando consumo atual...</div>
-        ) : usageQuery.error ? (
-          <div className="form-error">{usageQuery.error.message}</div>
-        ) : usage ? (
-          <>
-            <p className="muted">
-              Janela atual até{" "}
-              {new Date(usage.resetsAt).toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
-              .
-            </p>
-            <div className="stat-grid" style={{ marginTop: 16 }}>
-              {usageMetrics.map(metric => {
-                const percent = usagePercent(metric.used, metric.limit);
-                return (
-                  <div
-                    className="surface surface-hover stat-card"
-                    key={metric.key}
-                  >
-                    <div className="stat-top">
-                      <span className="stat-label">{metric.label}</span>
-                      <Gauge
-                        size={16}
-                        className={percent >= 80 ? "amber" : "green"}
-                      />
-                    </div>
-                    <strong className="stat-value">
-                      {metric.used}{" "}
-                      <small style={{ fontSize: 12, fontWeight: 500 }}>
-                        / {metric.limit}
-                      </small>
-                    </strong>
-                    <span className="stat-foot">
-                      {Math.max(0, metric.limit - metric.used)} restantes ·{" "}
-                      {percent}% usado
-                    </span>
-                    <div
-                      style={{
-                        height: 5,
-                        background: "rgba(0,0,0,.08)",
-                        borderRadius: 99,
-                        marginTop: 10,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${percent}%`,
-                          height: "100%",
-                          background: percent >= 80 ? "#d28a24" : "#2d8a61",
-                          borderRadius: 99,
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        ) : null}
-      </section>
-      <section className="surface" style={{ marginTop: 20, padding: 20 }}>
-        <SectionTitle eyebrow="Proteções ativas" title="Canais protegidos" />
-        <div className="profile-field">
-          <span>
-            <ShieldCheck
-              size={14}
-              style={{ verticalAlign: "middle", marginRight: 8 }}
-            />
-            Baileys nativo
-          </span>
-          <strong className={baileys?.configured ? "green" : "amber"}>
-            {baileys?.configured ? "Protegido" : "Pendente"}
-          </strong>
-        </div>
-        <div className="profile-field">
-          <span>
-            <ShieldCheck
-              size={14}
-              style={{ verticalAlign: "middle", marginRight: 8 }}
-            />
-            Agente nativo
-          </span>
-          <strong className="green">Protegido</strong>
-        </div>
-      </section>
     </PanelLayout>
   );
 }

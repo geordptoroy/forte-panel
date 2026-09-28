@@ -2,17 +2,19 @@
 
 ## Objetivo
 
-A API versionada permite que sites e integrações autorizadas operem o CRM sem acessar o banco. O Forte Panel continua sendo a fonte de verdade para contatos, agenda, funil e auditoria.
+A API versionada é um contrato opcional para sites e integrações autorizadas operarem o CRM sem acessar o banco. **Ela fica desativada por padrão** (`FORTE_PUBLIC_API_ENABLED=false`) e não há fluxo n8n ativo ou consumidor no frontend do Forte Panel. Para o produto atual, a interface usa tRPC autenticado; os endpoints REST permanecem apenas para compatibilidade, E2E e eventual integração futura explicitamente autorizada.
+
+Com a API de integração fechada, permanecem disponíveis somente `GET /api/v1/health`, `GET /api/v1/ready` (probes operacionais) e `POST /api/v1/webhooks/providers/baileys` (callback interno do gateway, autenticado por segredo/assinatura). O callback Baileys não é a API pública do CRM.
 
 ## Canais WhatsApp
 
-O domínio usa um contrato único `WhatsappAdapter`. O canal local oficial do Forte Panel é o **Baileys nativo**, executado pelo gateway `forte-whatsapp`; a Meta Cloud API permanece como alternativa oficial. PAPI aparece somente em código/documentação histórica de compatibilidade e não deve ser configurada no Compose oficial.
+O domínio usa um contrato único `WhatsappAdapter`. O canal operacional do core é o **Baileys nativo**, executado pelo gateway `forte-whatsapp`. O adapter Meta Cloud API permanece opcional no código, mas não está configurado nem habilitado no ambiente local do core; PAPI aparece somente em código/documentação histórica e não deve ser configurada no Compose oficial.
 
 Cada mensagem enfileirada registra o canal escolhido; o worker seleciona o adapter sem alterar Inbox, contatos ou agenda. O adapter Baileys usa `BAILEYS_BASE_URL`, `BAILEYS_API_KEY`, `BAILEYS_WEBHOOK_SECRET` e `BAILEYS_INSTANCE_ID`. O adapter Meta usa `META_GRAPH_API_VERSION`, `META_WHATSAPP_ACCESS_TOKEN` e `META_WHATSAPP_PHONE_NUMBER_ID`, sempre no servidor.
 
 ## Autenticação
 
-As requisições privadas usam `Authorization: Bearer <FORTE_API_KEY>`. A chave fica somente em sistemas de servidor autorizados e nunca no bundle do navegador. Em produção, a chave deverá ser criada por workspace e armazenada com hash; o primeiro adaptador usa uma chave de ambiente para preparar o contrato sem expor credenciais.
+Para abrir os endpoints de integração, um deployment precisa optar explicitamente por `FORTE_PUBLIC_API_ENABLED=true` e configurar `Authorization: Bearer <FORTE_API_KEY>` no servidor consumidor. A chave fica somente em sistemas de servidor autorizados e nunca no bundle do navegador. O Compose não exige nem gera essa chave no fluxo local padrão. Não habilitar a REST API em produção até existir consumidor, tenancy por credencial e política de publicação/revogação por workspace.
 
 **Limite de tenancy atual:** os endpoints REST de agenda (`availability`, criar/cancelar/reagendar agendamento) exigem também `FORTE_API_WORKSPACE_ID`, configurado somente no servidor e validado como ID positivo de um workspace existente e ativo. Sem isso respondem `503 api_workspace_not_configured`; não tentam descobrir o tenant por slug, payload ou workspace demo. A combinação atual é uma chave única presa a um workspace por deployment, não a autenticação multiempresa pronta para uso público. Os demais endpoints da API ainda dependem de migração de tenancy e não devem ser expostos a clientes de empresas diferentes nesta fase.
 
@@ -26,7 +28,9 @@ O onboarding de negócio é protegido por membership/capability e não aceita UR
 
 `voice.transcribe` recebe somente `assetId`, verifica ownership pelo `workspaceId`, exige consentimento novamente, obtém uma URL assinada internamente e chama o adaptador de transcrição. O resultado é persistido em `onboardingTranscriptions` com status, idioma, segmentos, provider/modelo e código de erro; o claim condicional impede processamento concorrente e falhas podem ser tentadas novamente. Sem consentimento, o backend não busca o áudio nem chama o provedor. O formulário textual continua sendo o fallback quando o serviço de voz falhar.
 
-## Endpoints da primeira versão
+## Endpoints do contrato opcional (desativado por padrão)
+
+Quando `FORTE_PUBLIC_API_ENABLED` não for exatamente `true` no **servidor**, as rotas empresariais abaixo retornam `404`. O ambiente de staging precisa ser habilitado explicitamente antes da execução do workflow manual E2E; o runner E2E é cliente e não altera a configuração do servidor. Health/readiness e o callback assinado do Baileys não dependem dessa flag.
 
 | Método  | Endpoint                              | Uso                                                                          |
 | ------- | ------------------------------------- | ---------------------------------------------------------------------------- |
@@ -44,6 +48,7 @@ O onboarding de negócio é protegido por membership/capability e não aceita UR
 | `POST`  | `/api/v1/appointments/:id/cancel`     | Cancelar reserva                                                             |
 | `POST`  | `/api/v1/appointments/:id/reschedule` | Reagendar reserva com checagem de conflito                                   |
 | `POST`  | `/api/v1/webhooks/inbound/whatsapp`   | Receber evento normalizado do provider WhatsApp                              |
+| `POST`  | `/api/v1/webhooks/providers/baileys`   | Callback interno autenticado do gateway Baileys (continua ativo)              |
 
 ## Agenda, serviços e profissionais
 

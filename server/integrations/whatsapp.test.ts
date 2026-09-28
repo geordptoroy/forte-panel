@@ -138,13 +138,28 @@ describe("Baileys adapter JID routing", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(createBaileysAdapter().sendMessage({
       idempotencyKey: "forte-message-baileys-1",
+      instanceId: "workspace-session-1",
       phone: "1234567890",
       content: "Resposta",
       messageType: "text",
       metadata: { jid: "1234567890@lid" },
     })).resolves.toMatchObject({ externalId: "baileys-msg-1", status: "sent" });
-    expect(fetchMock).toHaveBeenCalledWith("http://baileys.test/api/instances/default/send", expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith("http://baileys.test/api/instances/workspace-session-1/send", expect.objectContaining({
       body: JSON.stringify({ phone: "1234567890@lid", messageType: "text", content: "Resposta", metadata: { jid: "1234567890@lid" } }),
     }));
+  });
+
+  it("fails closed instead of using a global default when instanceId is missing", async () => {
+    process.env.BAILEYS_BASE_URL = "http://baileys.test";
+    process.env.BAILEYS_API_KEY = "secret";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createBaileysAdapter().sendMessage({
+      idempotencyKey: "forte-message-baileys-no-instance",
+      phone: "5511999999999",
+      content: "Não enviar por fallback",
+      messageType: "text",
+    })).rejects.toThrow("instanceId não informado para envio Baileys");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

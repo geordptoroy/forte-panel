@@ -48,6 +48,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Baileys gateway dependencies
+        run: npm ci --prefix forte-whatsapp --no-audit --no-fund
+
+      - name: Typecheck Baileys gateway
+        run: npm run check --prefix forte-whatsapp
+
       - name: Apply versioned migrations
         run: pnpm exec drizzle-kit migrate
 

@@ -2,7 +2,7 @@
 
 > Documento operacional e de contrato da integração entre o **Forte Panel**, o gateway **forte-whatsapp** e o WhatsApp Web através da biblioteca Baileys.
 
-**Status:** MVP operacional  
+**Status:** CRUD multi-instância implementado em revisão; conexão E2E com número real ainda não validada
 **Última revisão:** 2026-09-27  
 **Escopo:** conexão de sessão, QR Code, código de pareamento por telefone, status, envio, recebimento, webhook, persistência, segurança e troubleshooting.
 
@@ -65,41 +65,40 @@ Forte Panel :3000
 | Adapter Panel | `server/integrations/whatsapp.ts` | Health check, envio e normalização de eventos |
 | Gateway facade | `server/baileys-gateway.ts` | Traduz tRPC do Panel para HTTP do gateway |
 | Rotas tRPC | `server/routers.ts` | Contrato usado pela UI |
-| Canal workspace | `whatsappChannels` | Associação lógica do Baileys ao workspace |
-| UI | `client/src/pages/PanelPages.tsx` | Wizard, QR, pairing e ações de sessão |
+| Registro de instância | `whatsappInstances` | Associação Baileys ao workspace, ID global, nome e arquivamento |
+| Registry | `forte-whatsapp/src/instance-registry.ts` | Lista, inicia, renomeia e remove sessões independentes por ID |
+| UI | `client/src/pages/PanelPages.tsx` | CRUD de instâncias, QR, pairing e ações de sessão |
 
 ---
 
-## 3. Modelo multi-tenant
+## 3. Modelo multi-tenant e registry
 
-O gateway atual é uma instância operacional por processo, identificada por `WHATSAPP_INSTANCE_ID`. O Panel associa essa instância ao workspace através de um registro em `whatsappChannels`:
+O gateway é um processo interno que hospeda um registry de várias sessões. O Panel vincula cada ID físico ao workspace autenticado através de `whatsappInstances`:
 
 ```text
-whatsappChannels
+whatsappInstances
 ├── workspaceId
+├── channelId
 ├── provider = baileys
+├── instanceId (globalmente único para Baileys)
 ├── name
-├── phoneNumber
-├── credentialsRef = BAILEYS_API_KEY
-└── active
+├── active / isDefault
+└── status e timestamps operacionais
 ```
 
-### Regra atual do MVP
+Cada `instanceId` tem um `InstanceManager` próprio e uma pasta de sessão independente em `WHATSAPP_SESSION_DIR/{instanceId}`. O metadata `.instance.json` persiste nome e autostart. A tabela de negócio é multi-tenant; o registry do gateway **não escolhe o workspace**.
 
-- Todo workspace novo recebe automaticamente um canal `baileys` com o nome inicial `WhatsApp Comercial`.
-- Workspaces antigos sem canal recebem o canal de forma idempotente na primeira consulta/edição da conexão.
-- A associação lógica do canal é separada da sessão física do gateway.
-- O `instanceId` físico vem de `BAILEYS_INSTANCE_ID`/`WHATSAPP_INSTANCE_ID`.
+### Criação, compatibilidade e ciclo de vida
 
-### Limitação importante do MVP
+- O Panel gera ID estável no servidor, cria o registro workspace-scoped e provisiona o gateway através da API interna Bearer.
+- Novas instâncias não conectam até que o gestor pressione **Conectar e gerar QR**.
+- Rename preserva ID e sessão. Desconexão temporária preserva a autenticação; logout exige novo pareamento; exclusão remove a sessão física e arquiva o registro de negócio, sem apagar histórico de mensagens.
+- Ao iniciar, o registry carrega somente diretórios de sessão presentes; um ID `default` apagado não é recriado.
+- Sessões antigas com diretório, mas sem metadata, são importadas como legacy. Se `FORTE_API_WORKSPACE_ID` e `BAILEYS_INSTANCE_ID` identificarem o vínculo antigo, a primeira listagem pode registrá-lo idempotentemente.
+- Callbacks identificam o tenant através do `instanceId` ativo. IDs arquivados/inativos e workspaces inativos são rejeitados; o fallback legado só vale para o ID configurado e ainda não registrado.
+- Outbound Baileys exige `instanceId` explícito; não cai numa sessão default global.
 
-O gateway atual é singleton por serviço. Para produção multi-tenant com várias sessões simultâneas, será necessário evoluir para uma das opções:
-
-1. um processo/gateway por instância;
-2. um `InstanceManager` com mapa de instâncias e diretórios de sessão separados;
-3. um serviço externo de gerenciamento de sessões.
-
-Não se deve fingir que `workspaceId` é enviado pelo gateway atual: o webhook utiliza o workspace configurado no Panel (`FORTE_API_WORKSPACE_ID`) e o `instanceId` é usado para roteamento/origem.
+As migrations `0038_baileys_global_instance_ids` e `0039_baileys_workspace_default_unique` protegem respectivamente a unicidade global dos IDs Baileys e o único default ativo por workspace. Aplicá-las primeiro no PostgreSQL local; ainda não foram aplicadas pelo sandbox desta revisão.
 
 ---
 
@@ -111,6 +110,7 @@ Não se deve fingir que `workspaceId` é enviado pelo gateway atual: o webhook u
 BAILEYS_BASE_URL=http://forte-whatsapp:3010
 BAILEYS_API_KEY=chave-interna-do-gateway
 BAILEYS_WEBHOOK_SECRET=segredo-do-webhook
+# Opcional: ID da sessão singleton antiga para importação compatível
 BAILEYS_INSTANCE_ID=default
 BAILEYS_REQUEST_TIMEOUT_MS=8000
 ```
@@ -121,10 +121,12 @@ BAILEYS_REQUEST_TIMEOUT_MS=8000
 WHATSAPP_API_KEY=chave-interna-do-gateway
 WHATSAPP_SESSION_DIR=/app/sessions
 WHATSAPP_SESSION_ENCRYPTION_KEY=32-bytes-em-hex-opcional
+# Opcional: ID e nome de uma sessão antiga; o registry não cria esse ID sozinho
 WHATSAPP_INSTANCE_ID=default
 WHATSAPP_WEBHOOK_URL=http://forte-panel:3000/api/v1/webhooks/providers/baileys
 WHATSAPP_WEBHOOK_SECRET=segredo-do-webhook
 WHATSAPP_WEBHOOK_OUTBOX_DIR=/app/sessions/outbox
+WHATSAPP_MAX_INSTANCES=10
 WHATSAPP_WEBHOOK_MAX_ATTEMPTS=8
 WHATSAPP_WEBHOOK_INITIAL_BACKOFF_MS=1000
 WHATSAPP_WEBHOOK_MAX_BACKOFF_MS=60000
@@ -258,7 +260,38 @@ Resposta:
 ]
 ```
 
-O gateway atual retorna uma instância por processo.
+O gateway retorna todas as sessões ativas carregadas pelo registry; uma lista vazia é válida e não recria uma sessão `default`.
+
+---
+
+### 6.3.1 Criar, renomear e excluir
+
+```http
+POST /api/instances
+Authorization: Bearer <API_KEY>
+Content-Type: application/json
+
+{"instanceId":"ws123-uuid","name":"WhatsApp comercial"}
+```
+
+Retorna `201` com o snapshot. A criação grava metadados, mas não conecta automaticamente.
+
+```http
+PATCH /api/instances/{instanceId}
+Authorization: Bearer <API_KEY>
+Content-Type: application/json
+
+{"name":"Atendimento"}
+```
+
+O rename preserva ID e sessão.
+
+```http
+DELETE /api/instances/{instanceId}
+Authorization: Bearer <API_KEY>
+```
+
+O gateway encerra o vínculo WhatsApp e remove os arquivos da sessão. O Panel arquiva o registro de negócio e mantém as mensagens históricas.
 
 ---
 
@@ -587,79 +620,24 @@ connecting/qr/pairing → error
 
 ## 8. Endpoints tRPC do Panel
 
-A UI não chama o gateway diretamente. Ela usa os procedimentos abaixo em `workspace`.
+A UI não chama o gateway diretamente. Cada procedure aplica autenticação, workspace ativo e RBAC; o gateway só recebe chamadas server-to-server.
 
-### `workspace.channels`
+### Consultas
 
-```text
-GET/query
-```
+- `workspace.baileysInstances` — lista as instâncias ativas do workspace e faz import legacy idempotente somente se o ID/sessão antigos existirem.
+- `workspace.baileysStatus({ instanceId })` — status físico de uma instância pertencente ao workspace.
+- `workspace.baileysQr({ instanceId })` — Data URL do QR atual ou `null`; nunca listar QR de outro tenant.
 
-Retorna canais do workspace. A consulta garante a existência do canal Baileys em workspaces antigos.
+### Mutações gerenciais
 
-Retorno relevante:
+- `workspace.createBaileysInstance({ name })` — cria ID no backend, registro e instância do gateway.
+- `workspace.renameBaileysInstance({ instanceId, name })` — renomeia sem trocar a sessão.
+- `workspace.connectBaileys({ instanceId })` — começa/reinicia a conexão e solicita QR.
+- `workspace.requestBaileysPairingCode({ instanceId, phone })` — obtém código temporário para número de 8–15 dígitos.
+- `workspace.disconnectBaileys({ instanceId, logout })` — desconecta temporariamente (`false`) ou encerra a sessão no WhatsApp (`true`).
+- `workspace.deleteBaileysInstance({ instanceId, confirmDeletion: true })` — exige confirmação; remove sessão física e arquiva vínculo, preservando mensagens históricas.
 
-```json
-[
-  {
-    "id": 10,
-    "provider": "baileys",
-    "name": "WhatsApp Comercial",
-    "phoneNumber": null,
-    "configured": true,
-    "active": true
-  }
-]
-```
-
-### `workspace.baileysStatus`
-
-Consulta o status físico do gateway e retorna configuração operacional mascarada.
-
-### `workspace.baileysQr`
-
-Retorna o Data URL do QR atual ou `null`.
-
-### `workspace.connectBaileys`
-
-Sem input. Exige permissão de manager/owner/admin.
-
-### `workspace.requestBaileysPairingCode`
-
-Input:
-
-```json
-{
-  "phone": "5511999999999"
-}
-```
-
-Exige permissão de manager/owner/admin.
-
-### `workspace.updateBaileysChannelName`
-
-Input:
-
-```json
-{
-  "name": "WhatsApp Comercial"
-}
-```
-
-O procedimento cria o canal automaticamente caso o workspace antigo ainda não possua um canal Baileys.
-
-### `workspace.disconnectBaileys`
-
-Input opcional:
-
-```json
-{
-  "logout": false
-}
-```
-
-- `false`: desconexão temporária;
-- `true`: logout/remover sessão.
+IDs devem ser fornecidos em cada operação. A UI exige perfil de gerente/owner/admin para alterações. Nenhuma procedure retorna `BAILEYS_API_KEY`, `WHATSAPP_API_KEY` ou `BAILEYS_WEBHOOK_SECRET`.
 
 ---
 
@@ -945,17 +923,9 @@ docker compose --env-file .env -f docker-compose.local.yml ps
 docker network inspect forte_panel_whatsapp-network
 ```
 
-### Erro `Canal Baileys não encontrado neste workspace`
+### Instância não encontrada neste workspace
 
-Causa antiga: workspaces reais eram criados sem linha em `whatsappChannels`; apenas o workspace demo criava canais.
-
-Correção atual:
-
-- novos signups inserem o canal na mesma transação;
-- a listagem de canais garante o canal para workspaces antigos;
-- a edição do nome também é resiliente e cria o canal caso necessário.
-
-Se o erro persistir após atualizar as imagens, confirme que o Panel está usando o commit correto e que as migrations/serviço do banco terminaram.
+O endpoint de UI valida a associação `(workspaceId, instanceId)` antes de consultar o gateway. Confira se o registro Baileys está ativo no workspace atual, se as migrations 0038/0039 foram aplicadas, se o gateway foi atualizado e se a instância não foi excluída. Não use o ID de outro workspace nem um fallback `default` global.
 
 ### Botão desconectar não muda o status
 
@@ -971,7 +941,7 @@ O gateway agora força `disconnected` também quando o socket já não existe em
 
 ### QR não aparece
 
-- confirmar `status=qr` no `/api/instances/default`;
+- confirmar `status=qr` no `/api/instances/{instanceId}`;
 - confirmar que `/qr` não responde `404`;
 - gerar um novo QR com `/connect`;
 - conferir relógio do host e expiração da UI;
@@ -1006,18 +976,18 @@ Verificar:
 
 ### Workspace
 
-- [ ] criar conta nova;
+- [ ] criar/selecionar workspace;
 - [ ] abrir `/whatsapp-connection`;
-- [ ] confirmar que `workspace.channels` retorna provider `baileys`;
-- [ ] editar nome;
-- [ ] recarregar e confirmar persistência;
-- [ ] usar workspace antigo sem canal e confirmar autocorreção.
+- [ ] criar duas instâncias e confirmar IDs diferentes;
+- [ ] renomear cada uma e recarregar para confirmar persistência;
+- [ ] confirmar que status/QR de um ID não aparecem no outro workspace;
+- [ ] excluir com confirmação e verificar que somente a sessão alvo desaparece, não o histórico;
+- [ ] validar import idempotente apenas para sessão física legacy vinculada por env.
 
 ### QR
 
-- [ ] clicar configurar;
-- [ ] escolher QR;
-- [ ] gerar QR;
+- [ ] criar a instância;
+- [ ] clicar **Conectar e gerar QR**;
 - [ ] escanear;
 - [ ] confirmar `connected`;
 - [ ] recarregar página;
@@ -1050,18 +1020,14 @@ Verificar:
 
 ---
 
-## 15. Próximos passos de produção
+## 15. Próximas etapas aprovadas para revisão
 
-1. Persistir `instanceId` por workspace em vez de apenas em env global;
-2. suportar vários gateways/sessões simultâneos;
-3. atualizar `whatsappChannels.phoneNumber` automaticamente ao conectar;
-4. associar webhook a workspace por `instanceId` assinado, não apenas por `FORTE_API_WORKSPACE_ID`;
-5. adicionar rotação de API key e webhook secret;
-6. adicionar endpoint administrativo de métricas da outbox;
-7. adicionar rate limit específico para pairing code;
-8. adicionar testes end-to-end com gateway real em ambiente controlado;
-9. tratar reconexão com backoff configurável e circuit breaker;
-10. criar página de auditoria de eventos de conexão, logout e pairing.
+1. Aplicar migrations e validar CRUD/QR/consumo no Docker local WSL com número de teste.
+2. Depois da revisão do usuário, preparar o Console Admin de URLs, keys e modelos/capacidades (separado por papel, segredo criptografado e mascarado).
+3. Validar envio/recebimento por modalidade com roteamento por `instanceId`.
+4. Só depois conectar o agente de resposta, começando por prompt fictício e modo simulado; envio automático exige validação própria.
+
+Não iniciar os passos 2–4 antes de aprovação da etapa atual.
 
 ---
 
@@ -1081,4 +1047,4 @@ Verificar:
 | Enviar genérico | `POST /api/instances/{id}/send` |
 | Receber evento | `POST /api/v1/webhooks/providers/baileys` |
 
-Este documento é a referência do MVP até que o contrato seja substituído por uma API versionada com gerenciamento de múltiplas instâncias.
+Este documento registra o contrato técnico ativo do gateway. A sequência de produto e os gates de revisão ficam em `WHATSAPP-CONNECTION-FLOW-2026-09-27.md`; a API empresarial REST continua fechada por padrão conforme `API_CONTRACT.md`.

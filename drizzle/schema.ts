@@ -848,6 +848,16 @@ export const whatsappInstances = pgTable(
       table.workspaceId,
       table.instanceId
     ),
+    uniqueIndex("whatsapp_instances_baileys_instance_global_unique_idx")
+      .on(table.instanceId)
+      // The only other enum values are legacy providers; avoid referencing a
+      // newly-added enum value inside the migration transaction.
+      .where(sql`${table.provider} NOT IN ('papi', 'meta_cloud_api')`),
+    uniqueIndex("whatsapp_instances_baileys_workspace_default_unique_idx")
+      .on(table.workspaceId)
+      .where(
+        sql`${table.provider} NOT IN ('papi', 'meta_cloud_api') AND ${table.active} = 1 AND ${table.isDefault} = 1`
+      ),
     index("whatsapp_instances_workspace_idx").on(
       table.workspaceId,
       table.active,

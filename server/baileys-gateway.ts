@@ -1,11 +1,15 @@
 const gatewayBaseUrl = () => (process.env.BAILEYS_BASE_URL ?? "").replace(/\/$/, "");
-const instanceId = () => process.env.BAILEYS_INSTANCE_ID ?? "default";
-const instanceName = () =>
-  process.env.BAILEYS_INSTANCE_NAME?.trim() || `WhatsApp · ${instanceId()}`;
+const defaultInstanceId = () => process.env.BAILEYS_INSTANCE_ID ?? "default";
+const defaultInstanceName = () =>
+  process.env.BAILEYS_INSTANCE_NAME?.trim() || `WhatsApp · ${defaultInstanceId()}`;
 const maskSecret = (value: string | undefined) =>
   value ? `${value.slice(0, 3)}••••${value.slice(-3)}` : null;
 
-async function gatewayRequest(path: string, init?: RequestInit) {
+async function gatewayRequest(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = 8_000
+) {
   const baseUrl = gatewayBaseUrl();
   const apiKey = process.env.BAILEYS_API_KEY;
   if (!baseUrl || !apiKey) return null;
@@ -15,7 +19,7 @@ async function gatewayRequest(path: string, init?: RequestInit) {
       Authorization: `Bearer ${apiKey}`,
       ...(init?.headers ?? {}),
     },
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
@@ -26,14 +30,56 @@ async function gatewayRequest(path: string, init?: RequestInit) {
   return response;
 }
 
-export async function getBaileysStatus() {
-  const id = encodeURIComponent(instanceId());
+function jsonHeaders() {
+  return { "content-type": "application/json" };
+}
+
+export function isGatewayNotFound(error: unknown) {
+  return error instanceof Error && /HTTP 404\b/.test(error.message);
+}
+
+export async function createBaileysInstance(instanceId: string, name: string) {
+  const response = await gatewayRequest("/api/instances", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ instanceId, name }),
+  });
+  if (!response) throw new Error("Gateway WhatsApp não está configurado");
+  return response.json();
+}
+
+export async function updateBaileysInstanceName(
+  instanceId: string,
+  name: string
+) {
+  const id = encodeURIComponent(instanceId);
+  const response = await gatewayRequest(`/api/instances/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ name }),
+  });
+  if (!response) throw new Error("Gateway WhatsApp não está configurado");
+  return response.json();
+}
+
+export async function deleteBaileysInstance(instanceId: string) {
+  const id = encodeURIComponent(instanceId);
+  const response = await gatewayRequest(`/api/instances/${id}`, {
+    method: "DELETE",
+  });
+  if (!response) throw new Error("Gateway WhatsApp não está configurado");
+  return response.json();
+}
+
+export async function getBaileysStatus(instanceId = defaultInstanceId()) {
+  const id = encodeURIComponent(instanceId);
   const response = await gatewayRequest(`/api/instances/${id}`);
   if (!response)
     return {
       configured: false,
-      instanceId: instanceId(),
-      instanceName: instanceName(),
+      instanceId,
+      instanceName:
+        instanceId === defaultInstanceId() ? defaultInstanceName() : `WhatsApp · ${instanceId}`,
       status: "unconfigured" as const,
       qrAvailable: false,
       lastError: null,
@@ -47,6 +93,8 @@ export async function getBaileysStatus() {
       },
     };
   const body = (await response.json()) as {
+    instanceId?: string;
+    instanceName?: string;
     status?: string;
     phoneNumber?: string;
     phone?: string;
@@ -55,8 +103,12 @@ export async function getBaileysStatus() {
   };
   return {
     configured: true,
-    instanceId: instanceId(),
-    instanceName: instanceName(),
+    instanceId: body.instanceId ?? instanceId,
+    instanceName:
+      body.instanceName ??
+      (instanceId === defaultInstanceId()
+        ? defaultInstanceName()
+        : `WhatsApp · ${instanceId}`),
     status: body.status ?? "unknown",
     phoneNumber: body.phoneNumber ?? body.phone ?? null,
     qrAvailable: body.status === "qr",
@@ -73,13 +125,13 @@ export async function getBaileysStatus() {
   };
 }
 
-export async function getBaileysQr() {
-  const id = encodeURIComponent(instanceId());
+export async function getBaileysQr(instanceId = defaultInstanceId()) {
+  const id = encodeURIComponent(instanceId);
   let response: Response | null;
   try {
     response = await gatewayRequest(`/api/instances/${id}/qr`);
   } catch (error) {
-    if (error instanceof Error && /\b404\b/.test(error.message)) return null;
+    if (isGatewayNotFound(error)) return null;
     throw error;
   }
   if (!response) return null;
@@ -87,34 +139,40 @@ export async function getBaileysQr() {
   return body.imageDataUrl ?? null;
 }
 
-export async function connectBaileys() {
-  const id = encodeURIComponent(instanceId());
+export async function connectBaileys(instanceId = defaultInstanceId()) {
+  const id = encodeURIComponent(instanceId);
   const response = await gatewayRequest(`/api/instances/${id}/connect`, {
     method: "POST",
   });
   if (!response) throw new Error("Gateway WhatsApp não está configurado");
-  return getBaileysStatus();
+  return getBaileysStatus(instanceId);
 }
 
-export async function requestBaileysPairingCode(phone: string) {
-  const id = encodeURIComponent(instanceId());
+export async function requestBaileysPairingCode(
+  instanceId: string,
+  phone: string
+) {
+  const id = encodeURIComponent(instanceId);
   const response = await gatewayRequest(`/api/instances/${id}/pairing-code`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: jsonHeaders(),
     body: JSON.stringify({ phone }),
-  });
+  }, 55_000);
   if (!response) throw new Error("Gateway WhatsApp não está configurado");
   const body = (await response.json()) as { code?: string };
   if (!body.code) throw new Error("Gateway não retornou o código de pareamento");
   return { code: body.code };
 }
 
-export async function disconnectBaileys(logout = false) {
-  const id = encodeURIComponent(instanceId());
+export async function disconnectBaileys(
+  instanceId: string,
+  logout = false
+) {
+  const id = encodeURIComponent(instanceId);
   const response = await gatewayRequest(
     `/api/instances/${id}/${logout ? "logout" : "disconnect"}`,
     { method: "POST" }
   );
   if (!response) throw new Error("Gateway WhatsApp não está configurado");
-  return getBaileysStatus();
+  return getBaileysStatus(instanceId);
 }

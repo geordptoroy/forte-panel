@@ -28,6 +28,13 @@ export const config = {
     Number(process.env.WHATSAPP_WEBHOOK_MAX_BACKOFF_MS ?? "60000")
   ),
   instanceId: process.env.WHATSAPP_INSTANCE_ID?.trim() || "default",
+  instanceName:
+    process.env.WHATSAPP_INSTANCE_NAME?.trim() ||
+    `WhatsApp · ${process.env.WHATSAPP_INSTANCE_ID?.trim() || "default"}`,
+  maxInstances: Math.max(
+    1,
+    Math.min(25, Number(process.env.WHATSAPP_MAX_INSTANCES ?? "10") || 10)
+  ),
 };
 
 if (config.webhookUrl && !config.webhookSecret)
