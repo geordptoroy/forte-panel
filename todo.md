@@ -456,7 +456,7 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Exigir instância Baileys ativa e do workspace antes de persistir mídia ou mensagem.
 - [x] Adicionar regressões unitárias/adaptador e testes PostgreSQL para append, placeholder e instância de outro workspace.
 - [x] Passar localmente `pnpm check`, `pnpm test` (197 aprovados/46 ignorados), `pnpm build`, typecheck do gateway e `git diff --check`.
-- [ ] Aguardar workflow PostgreSQL com as novas regressões; localmente esses testes foram ignorados por ausência de `DATABASE_URL` e Docker.
+- [x] Workflow `PostgreSQL integration` executou migrations, typecheck e suíte completa contra PostgreSQL com sucesso; os testes locais foram ignorados por ausência de `DATABASE_URL` e Docker.
 - [ ] Fazer pairing autorizado em gateway isolado sem IA, sem envio/outbound e com webhook que retenha apenas metadados mínimos; sandbox atual ainda não tem Docker nem banco.
 - [ ] Diagnosticar read-only a conversa específica no banco Windows do usuário; o sandbox não tem acesso a esse banco.
 - [ ] Implementar importação histórica automática idempotente; `messaging-history.set` atual é observado, não persistido.

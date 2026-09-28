@@ -1983,14 +1983,14 @@ O gateway passou a encaminhar ao Inbox somente `messages.upsert` de tipo `notify
 
 ### Testes e acesso ao ambiente
 
-O sandbox verificou `pnpm check`, `pnpm test` (**197 aprovados, 46 ignorados**), `pnpm build`, typecheck separado do gateway e `git diff --check`. A suíte de PostgreSQL não executou localmente: `DATABASE_URL` não está configurada e `docker` não está disponível. Os testes de integração novos estão escritos e devem ser confirmados pelo workflow PostgreSQL depois do push. Não houve acesso ao PostgreSQL Windows, pareamento, QR/código ou envio de mensagem.
+O sandbox verificou `pnpm check`, `pnpm test` (**197 aprovados, 46 ignorados**), `pnpm build`, typecheck separado do gateway e `git diff --check`. A suíte local PostgreSQL foi ignorada por ausência de `DATABASE_URL` e Docker, mas o workflow `PostgreSQL integration` **36491464735** executou migrations, typecheck do gateway e a suíte completa contra PostgreSQL com sucesso. O workflow de publicação **36491464730** também publicou `forte-panel` e `forte-whatsapp` em `:dev`. Não houve acesso ao PostgreSQL Windows, pareamento, QR/código ou envio de mensagem.
 
 O usuário autorizou parear seu número dedicado para testar. **Antes de gerar uma credencial temporária de pareamento**, preparar gateway isolado e observador/mock webhook; manter IA e envio/outbound desativados e não persistir corpos, além do mínimo que o usuário pedir para verificar. A conta teste só deve ser pareada no runtime com esses controles. Para o primeiro teste, observar tipo/progresso de sync e uma mensagem live; não afirmar que o histórico está importado. O sandbox atual não oferece banco nem Docker, então avaliar dependências/runtime temporário antes de enviar QR/código.
 
 ### Próxima ordem
 
-1. Confirmar CI PostgreSQL.
-2. Se aprovado, subir serviço de teste isolado; o usuário já autorizou o pareamento, mas não foi pedido nem compartilhado número telefônico.
+1. CI PostgreSQL e publicação passaram; o código está no HEAD atual.
+2. Se for fazer o teste autorizado, subir serviço de gateway isolado e sem webhook/IA/outbound; não foi gerado QR nem pedido número. Preferir QR para evitar pedir telefone.
 3. Correlacionar o chat real no PostgreSQL Windows do usuário somente por consulta read-only, caso se torne acessível.
 4. Implementar `messaging-history.set` idempotente e busca incremental sem acionar IA, unread, notificações ou takeover.
 5. Não fazer limpeza global Docker nem alteração de dados no banco persistente como parte deste bloco.
