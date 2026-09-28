@@ -556,6 +556,17 @@ function BaileysInstanceCard({
     detail: "O gateway está consultando o estado desta sessão.",
   };
   const connected = current?.status === "connected";
+  const profile = trpc.workspace.baileysProfile.useQuery(
+    { instanceId },
+    {
+      enabled: connected,
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: "always",
+      retry: false,
+    }
+  );
+  const profilePhone = profile.data?.phoneNumber ?? current?.phoneNumber;
   const waitingQr = current?.status === "qr";
   const localPhoneDigits = phone.replace(/\D/g, "");
   const fullPhone = `+${getCountryCallingCode(countryCode)}${localPhoneDigits}`;
@@ -627,7 +638,14 @@ function BaileysInstanceCard({
         <div
           className={`whatsapp-instance-mark ${connected ? "is-online" : ""}`}
         >
-          <WhatsappMark size={23} />
+          {profile.data?.profilePictureUrl ? (
+            <img
+              src={profile.data.profilePictureUrl}
+              alt={`Foto de ${profile.data.pushName ?? name}`}
+            />
+          ) : (
+            <WhatsappMark size={23} />
+          )}
         </div>
         <div className="whatsapp-instance-identity">
           <div className="whatsapp-instance-overline">
@@ -635,8 +653,9 @@ function BaileysInstanceCard({
           </div>
           <h3>{name}</h3>
           <p>
-            {current?.phoneNumber
-              ? `Número conectado: ${current.phoneNumber}`
+            {profile.data?.pushName ? `${profile.data.pushName} · ` : ""}
+            {profilePhone
+              ? `Número conectado: ${profilePhone}`
               : stateDetails.detail}
           </p>
         </div>

@@ -773,3 +773,14 @@ a { color: inherit; text-decoration: none; }
 .whatsapp-method-card > .btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 38px; margin-top: 13px; }
 @media (max-width: 760px) { .whatsapp-instance-toolbar { padding-left: 15px; padding-right: 15px; }.whatsapp-create-strip { align-items: flex-start; flex-direction: column; }.whatsapp-create-strip .btn-primary { width: 100%; } }
 @media (max-width: 520px) { .whatsapp-summary-grid { grid-template-columns: 1fr; }.whatsapp-method-grid { grid-template-columns: 1fr; padding-left: 15px; padding-right: 15px; }.whatsapp-instance-header { align-items: flex-start; flex-wrap: wrap; padding: 15px; }.whatsapp-instance-status { margin-left: 55px; justify-items: start; }.whatsapp-connected-panel { align-items: flex-start; flex-direction: column; margin-left: 15px; margin-right: 15px; }.whatsapp-session-actions { width: 100%; }.whatsapp-session-actions button { flex: 1; } }
+
+
+/* Connected WhatsApp identity card: compact, floating and monochrome. */
+.whatsapp-instance-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 460px)); justify-content: start; }
+.whatsapp-instance-card { width: 100%; max-width: 460px; border-radius: 16px; box-shadow: 0 18px 45px rgba(0,0,0,.2); }
+.whatsapp-instance-card.is-connected { box-shadow: 0 18px 50px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.025); }
+.whatsapp-instance-mark { display: grid; place-items: center; overflow: hidden; border-radius: 13px; }
+.whatsapp-instance-mark img { width: 100%; height: 100%; object-fit: cover; }
+.whatsapp-instance-mark .whatsapp-mark { color: #f2f2f2; }
+.whatsapp-instance-identity p { max-width: 245px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) { .whatsapp-instance-list { grid-template-columns: 1fr; }.whatsapp-instance-card { max-width: none; } }

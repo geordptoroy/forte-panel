@@ -62,6 +62,8 @@ export function createServer(registry: InstanceRegistry) {
           imageDataUrl: await QRCode.toDataURL(qr, { width: 420, margin: 2 }),
         });
       }
+      if (action === "profile" && req.method === "GET")
+        return json(res, 200, await registry.profile(instanceId));
       if (!action && req.method === "PATCH") {
         const body = await readJson(req);
         if (typeof body.name !== "string")

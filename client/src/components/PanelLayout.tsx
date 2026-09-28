@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import {
@@ -32,13 +32,46 @@ import {
 import { useAuth } from "@/_core/hooks/useAuth";
 import { CORE_ONLY_MODE, CORE_USAGE_ROUTE } from "@/core-mode";
 
+type NavIcon = ComponentType<{
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+}>;
 type NavItem = {
   href: string;
   label: string;
   description: string;
-  icon: typeof BarChart3;
+  icon: NavIcon;
 };
 type NavGroup = { label: string; items: NavItem[] };
+
+function WhatsappNavIcon({
+  size = 18,
+  strokeWidth = 1.9,
+  className,
+}: {
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4A8 8 0 1 1 20 11.5Z" />
+      <path d="M8.7 8.2c.2-.4.4-.4.7-.4h.4c.2 0 .3.1.4.4l.6 1.4c.1.2.1.4-.1.6l-.5.6c.6 1.1 1.4 1.8 2.5 2.3l.5-.6c.2-.2.4-.2.6-.1l1.4.7c.2.1.3.2.3.4v.4c-.1.4-.4.7-.8.8-2.8.1-5.8-2.7-6.2-5.3 0-.4.1-.8.2-1.2Z" />
+    </svg>
+  );
+}
 
 const managementNav: NavGroup[] = [
   {
@@ -46,9 +79,9 @@ const managementNav: NavGroup[] = [
     items: [
       {
         href: "/whatsapp-connection",
-        label: "Conectar WhatsApp",
-        description: "Primeiro passo com QR Code",
-        icon: PlugZap,
+        label: "Whats Conector",
+        description: "Instâncias e sessões WhatsApp",
+        icon: WhatsappNavIcon,
       },
       {
         href: "/dashboard",

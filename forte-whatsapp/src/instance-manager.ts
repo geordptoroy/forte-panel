@@ -44,6 +44,12 @@ export type InstanceSnapshot = {
   updatedAt: string;
 };
 
+export type InstanceProfile = {
+  phoneNumber: string | null;
+  pushName: string | null;
+  profilePictureUrl: string | null;
+};
+
 export class InstanceManager {
   private socket?: WASocket;
   private snapshot: InstanceSnapshot;
@@ -90,6 +96,30 @@ export class InstanceManager {
       ...this.snapshot,
       webhookOutboxPending: outbox.pending,
       webhookLastError: outbox.lastError,
+    };
+  }
+
+  async getProfile(): Promise<InstanceProfile> {
+    const user = this.socket?.user;
+    const phoneNumber = user?.id?.split(":")[0] ?? this.snapshot.phone ?? null;
+    if (!user?.id || !this.socket || this.snapshot.status !== "connected")
+      return {
+        phoneNumber,
+        pushName: user?.name ?? null,
+        profilePictureUrl: null,
+      };
+
+    let profilePictureUrl: string | null = null;
+    try {
+      profilePictureUrl =
+        (await this.socket.profilePictureUrl(user.id, "image")) ?? null;
+    } catch {
+      profilePictureUrl = null;
+    }
+    return {
+      phoneNumber,
+      pushName: user.name ?? null,
+      profilePictureUrl,
     };
   }
 

@@ -125,6 +125,17 @@ export async function getBaileysStatus(instanceId = defaultInstanceId()) {
   };
 }
 
+export async function getBaileysProfile(instanceId: string) {
+  const id = encodeURIComponent(instanceId);
+  const response = await gatewayRequest(`/api/instances/${id}/profile`);
+  if (!response) throw new Error("Gateway WhatsApp não está configurado");
+  return response.json() as Promise<{
+    phoneNumber: string | null;
+    pushName: string | null;
+    profilePictureUrl: string | null;
+  }>;
+}
+
 export async function getBaileysQr(instanceId = defaultInstanceId()) {
   const id = encodeURIComponent(instanceId);
   let response: Response | null;

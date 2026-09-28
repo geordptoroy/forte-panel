@@ -173,6 +173,10 @@ export class InstanceRegistry {
     return this.requireEntry(instanceId).manager.getStatus().qr ?? null;
   }
 
+  async profile(instanceId: string) {
+    return this.requireEntry(instanceId).manager.getProfile();
+  }
+
   async sendMessage(
     instanceId: string,
     phone: string,

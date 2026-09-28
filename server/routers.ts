@@ -155,6 +155,7 @@ import {
   deleteBaileysInstance,
   isGatewayNotFound,
   connectBaileys,
+  getBaileysProfile,
   requestBaileysPairingCode,
   disconnectBaileys,
   getBaileysQr,
@@ -1291,6 +1292,20 @@ export const appRouter = router({
             message: "Instância WhatsApp não encontrada neste workspace",
           });
         return getBaileysStatus(instance.instanceId);
+      }),
+    baileysProfile: protectedProcedure
+      .input(z.object({ instanceId: z.string().min(1).max(160) }))
+      .query(async ({ input, ctx }) => {
+        const instance = await getBaileysInstance(
+          ctx.workspace.workspaceId,
+          input.instanceId
+        );
+        if (!instance)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        return getBaileysProfile(instance.instanceId);
       }),
     baileysQr: protectedProcedure
       .input(z.object({ instanceId: z.string().min(1).max(160) }))
