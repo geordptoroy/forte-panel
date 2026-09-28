@@ -4,6 +4,7 @@ import "react-international-phone/style.css";
 import {
   CheckCircle2,
   Gauge,
+  MessageCircle,
   Pencil,
   Plus,
   QrCode,
@@ -14,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { getCountries, isPossiblePhoneNumber } from "libphonenumber-js";
-import PanelLayout, { EmptyState, StatusBadge } from "@/components/PanelLayout";
+import PanelLayout, { EmptyState, PageLink, StatusBadge } from "@/components/PanelLayout";
 import { baileysStatusPollingInterval } from "@/lib/baileys-status";
 import { trpc } from "@/lib/trpc";
 
@@ -960,6 +961,12 @@ function BaileysInstanceCard({
       )}
       <footer className="whatsapp-instance-footer">
         <span>Atualizado automaticamente</span>
+        <PageLink
+          href={`/inbox?instanceId=${encodeURIComponent(instanceId)}`}
+          className="btn-secondary"
+        >
+          <MessageCircle size={14} /> Abrir Inbox
+        </PageLink>
         <button
           type="button"
           className="btn-ghost whatsapp-delete-button"

@@ -2,7 +2,7 @@
 
 > Documento operacional e de contrato da integração entre o **Forte Panel**, o gateway **forte-whatsapp** e o WhatsApp Web através da biblioteca Baileys.
 
-**Status:** CRUD multi-instância e Inbox tenant-scoped implementados; conexão E2E com número real ainda não validada
+**Status:** CRUD multi-instância, Inbox tenant-scoped e conexão E2E com número real validados; integração de IA e smoke test no Docker do usuário seguem como próximas validações
 **Última revisão:** 2026-09-28
 **Escopo:** conexão de sessão, QR Code, código de pareamento por telefone, status, envio, recebimento, webhook, persistência, segurança e troubleshooting.
 
@@ -67,7 +67,7 @@ Forte Panel :3000
 | Rotas tRPC | `server/routers.ts` | Contrato usado pela UI |
 | Registro de instância | `whatsappInstances` | Associação Baileys ao workspace, ID global, nome e arquivamento |
 | Registry | `forte-whatsapp/src/instance-registry.ts` | Lista, inicia, renomeia e remove sessões independentes por ID |
-| UI | `client/src/pages/PanelPages.tsx` | CRUD de instâncias, QR, pairing e ações de sessão |
+| UI | `client/src/pages/WhatsappConnectionPage.tsx` | CRUD de instâncias, QR, pairing, ações de sessão e link para Inbox por instância |
 
 ---
 
@@ -1084,7 +1084,9 @@ A interface manteve o desenho existente da Inbox; o cabeçalho redundante foi oc
 
 ## 14. Histórico inicial após conexão
 
-O evento `messaging-history.set` é encaminhado pelo gateway para a outbox assinada com `metadata.historySync=true`. Cada mensagem recebe um `eventId` determinístico derivado do `instanceId` e da chave Baileys, e o Panel valida novamente a ownership da instância antes de persistir.
+O evento `messaging-history.set` é encaminhado pelo gateway para a outbox assinada com `historySync=true` no nível superior do envelope. O normalizador do Panel promove essa marca para `metadata.historySync=true` antes do ingest. Cada mensagem recebe um `eventId` determinístico derivado do `instanceId` e da chave Baileys, e o Panel valida novamente a ownership da instância antes de persistir.
+
+A aba **Conexões WhatsApp** expõe o link **Abrir Inbox** em cada instância. O link usa `/inbox?instanceId=<id>`; a Inbox valida o ID contra `inbox.instances` e encaminha o filtro para `inbox.contacts`, `inbox.thread` e `inbox.sendMessage`, mantendo o isolamento por workspace no backend.
 
 O histórico inicial é deliberadamente separado do fluxo live:
 

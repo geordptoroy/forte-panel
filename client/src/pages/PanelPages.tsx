@@ -933,6 +933,21 @@ export function InboxPage() {
   );
 
   useEffect(() => {
+    const requestedId = new URLSearchParams(location.split("?")[1] ?? "").get(
+      "instanceId"
+    );
+    if (
+      requestedId &&
+      instancesQuery.data?.some(instance => instance.instanceId === requestedId)
+    ) {
+      setSelectedInstanceIds(current =>
+        current?.length === 1 && current[0] === requestedId
+          ? current
+          : [requestedId]
+      );
+    }
+  }, [instancesQuery.data, location]);
+  useEffect(() => {
     if (!instancesQuery.data || selectedInstanceIds === null) return;
     const available = new Set(instancesQuery.data.map(instance => instance.instanceId));
     const remaining = selectedInstanceIds.filter(id => available.has(id));
