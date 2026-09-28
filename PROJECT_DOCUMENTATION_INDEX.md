@@ -2,6 +2,16 @@
 
 Este arquivo organiza a documentação do projeto e aponta qual documento consultar em cada decisão.
 
+> **Core ativo (2026-09-27):** consulte [`WHATSAPP-CONNECTION-FLOW-2026-09-27.md`](./WHATSAPP-CONNECTION-FLOW-2026-09-27.md) para a fase 1: CRUD de instâncias Baileys, consumo, decisões de escopo e sequência solicitada das próximas etapas. Não iniciar o console de modelos nem respostas automáticas antes da revisão do usuário.
+>
+> **Limpeza total de providers (apenas plano):** [`MIGRACAO-PAPI-BAILEYS.md`](./MIGRACAO-PAPI-BAILEYS.md) propõe a remoção integral dos adapters/configurações legadas, migração segura dos dados e comandos para testar a branch atual. Nenhuma remoção de código, migration ou volume ocorreu; revisar e aprovar o plano antes de implementar.
+>
+> **Auditoria de IA/Admin:** [`AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`](./AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md) registra capacidades, agentes, credenciais e redesign futuro; é referência da etapa 2, não do código ativo agora.
+>
+> **Ambiente e integrações:** [`DEVELOPMENT-CONTEXT-AND-INTEGRATION-POLICY.md`](./DEVELOPMENT-CONTEXT-AND-INTEGRATION-POLICY.md) registra Docker/WSL/PowerShell, OCI como destino futuro, ausência de n8n, API REST empresarial fechada por padrão e preferência de commits/push por fatia.
+>
+> **Publicação/teste local:** [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) documenta o comando PowerShell de reset do projeto, pull de imagens `dev` publicadas e inicialização sem build local.
+
 ## Começar pela continuidade
 
 1. [`HANDOFF-CONTINUIDADE-FORTE-PANEL.md`](./HANDOFF-CONTINUIDADE-FORTE-PANEL.md) — histórico de execução, decisões e próximo passo.
@@ -31,6 +41,8 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 ## API, agente e integrações
 
 - [`API_CONTRACT.md`](./API_CONTRACT.md) — endpoints REST, payloads, idempotência, webhooks, quotas e erros.
+- [`docs/BAILEYS-INTEGRATION.md`](./docs/BAILEYS-INTEGRATION.md) — contrato técnico ativo gateway ↔ Panel e ciclo tenant-scoped de instâncias.
+- [`forte-whatsapp/README.md`](./forte-whatsapp/README.md) — operação e validação do gateway Baileys.
 - [`CONFIGURACAO-MULTIMODEL-AGENTE.md`](./CONFIGURACAO-MULTIMODEL-AGENTE.md) — configuração multi-modelo do agente.
 - [`AI_AGENT_PROMPT_FORTE_PANEL.md`](./AI_AGENT_PROMPT_FORTE_PANEL.md) — prompt operacional do agente.
 - [`AI_AGENT_PROMPT_GABRIEL_FORTE_PANEL_COMPLETO.md`](./AI_AGENT_PROMPT_GABRIEL_FORTE_PANEL_COMPLETO.md) — prompt completo de referência.

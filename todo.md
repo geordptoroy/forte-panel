@@ -1,16 +1,37 @@
 # Forte Panel — acompanhamento do produto público
 
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
-**Fase de código atual:** consolidar Baileys nativo, multimídia, interface operacional e validação em staging. A migração inicial do canal já foi executada; o foco agora é hardening, E2E e produto.
+**Fase de código atual:** etapa 1 do core — CRUD de instâncias Baileys e consumo na única página ativa. Implementação pronta para revisão; migração e QR real ainda aguardam o Docker local do usuário.
+**Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
+
+## Direção registrada — 2026-09-27: core antes do restante
+
+- [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
+- [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.
+- [x] Criar lifecycle Baileys multi-instância por ID estável, persistência por sessão, gateway Bearer e procedimentos tRPC tenant-scoped; rejeitar envio sem `instanceId`.
+- [x] Desativar visualmente as rotas não-core por flag central sem apagar páginas/dados/backend; preservar login, recuperação e convites.
+- [x] Tornar `DEMO_MODE` explicitamente opt-in e fixar `false` no Compose local; manter apenas o admin-bootstrap derivado do `.env` para não bloquear login.
+- [x] Configurar publicação automática de imagens `dev` em push validado à branch de trabalho e criar um script PowerShell que zera apenas volumes do projeto, dá pull e sobe sem build local.
+- [x] Workflow de publicação concluído; as imagens `forte-panel:dev` e `forte-whatsapp:dev` foram confirmadas acessíveis anonimamente no GHCR em 2026-09-27.
+- [ ] Executar `scripts/dev-reinstall.ps1 -ResetData` no Docker Desktop do usuário. O sandbox atual não possui daemon Docker nem PowerShell.
+- [ ] Validar migrations 0038/0039 e conexão QR com linha de teste e consumo no Docker local WSL do usuário.
+- [ ] Depois da revisão do usuário, configurar no Console Admin providers/modelos, URLs, credenciais e rotas/capacidades; chaves no backend, criptografadas e mascaradas.
+- [ ] Depois, validar transporte de entrada/saída dos tipos de mensagem necessários com roteamento por instância e modalidade.
+- [ ] Só depois, conectar o agente de resposta WhatsApp e começar com prompt fictício, teste simulado e aprovação antes de qualquer envio automático.
+- [ ] Manter separadas Ajuda da Plataforma, configurador de onboarding e copiloto do Console Admin; não tratá-los como o mesmo agente.
+- [ ] Redesenhar o Console Administrativo com o sistema visual responsivo do workspace: sidebar móvel, header e páginas para providers/modelos, capacidades/rotas, agentes, suporte e auditoria.
+- [ ] Corrigir antes de uso amplo do admin: precedência/herança global-local, contrato/normalização de endpoint, testes reais por modalidade, proveniência de configuração e rotação da chave de criptografia.
+- [ ] Separar métricas de rate-limit (janela por minuto) de tokens, custo de provider e eventual faturamento comercial.
+- [x] Desativar por padrão os endpoints REST empresariais (`FORTE_PUBLIC_API_ENABLED=false`), sem rota n8n ativa nem consumidor no frontend; manter somente health/readiness e callback interno autenticado do Baileys. O E2E manual exige opt-in explícito no servidor de staging.
 
 ## Concluído até aqui no MVP
 
 - Shell responsivo e páginas base de Dashboard, Inbox, Kanban, Agenda, Contatos, ficha do cliente, Faturamento, Integrações e Configurações.
-- Schema para contatos, conversas, mensagens e auditoria, seed demo idempotente e Inbox/Kanban/Contatos persistentes.
+- Schema para contatos, conversas, mensagens e auditoria, seed demo idempotente apenas quando opt-in e Inbox/Kanban/Contatos persistentes.
 - Pausar/reativar IA, enviar mensagem humana e takeover com auditoria.
 - Agenda nativa com serviços, profissionais, jornada semanal por fuso, conflitos, locks para reservas concorrentes e portal do profissional.
-- API v1 inicial para contatos, memória, disponibilidade, agendamentos, mensagens e webhooks; autenticação, idempotência e outbox de eventos.
-- Gateway Baileys nativo com QR, webhook assinado, mídia multimodal, envio genérico e worker separado; Meta Cloud API permanece como alternativa oficial.
+- Contrato REST v1 opcional para contatos, memória, disponibilidade, agenda e mensagens; agora fechado por padrão, com opt-in de staging para E2E. O callback interno assinado do Baileys continua ativo.
+- Gateway Baileys nativo com QR, webhook assinado, mídia multimodal, envio genérico e worker separado. O adapter Meta ainda existe como código opcional, mas não é configurado/ativado no fluxo local nem deve entrar no core atual.
 - Multiusuário interno com hash de senha, memberships e papéis base; telas iniciais de Equipe/Configurações e notificações internas.
 - Ledger idempotente das tools de agente e melhorias de leases do worker.
 - Compose, migrations, documentação local e infraestrutura registrados nos docs existentes.
@@ -20,9 +41,9 @@
 
 - Cada conta **master** cria e administra uma empresa/workspace.
 - Cada empresa terá logins individuais de funcionários, com nome, identificador e senha inicial segura, e papéis/permissões.
-- A conexão/número WhatsApp é uma entidade separada do login e do workspace; primeira versão pública: alvo de uma conexão por workspace.
+- Instâncias/números WhatsApp são entidades independentes dentro do workspace, cada uma com ID e sessão Baileys próprios; não usar ID default global para envio.
 - O usuário final não deverá configurar secrets nem editar Compose.
-- Baileys nativo é o caminho operacional local atual no serviço `forte-whatsapp`; Meta Cloud API permanece alternativa oficial. Rotas e tipos PAPI legados continuam apenas para compatibilidade de dados antigos e não devem ser tratados como dependência do Compose oficial.
+- Baileys nativo é o único caminho ativo no core atual. O adapter Meta e os tipos PAPI legados continuam apenas como código/compatibilidade e não são configurados pelo Compose oficial nem exibidos nesta primeira etapa.
 
 ## Próximos passos — ordem recomendada
 
@@ -206,14 +227,31 @@ Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
 ## Execução P1.1 — 2026-09-27
 
 - [x] Aba comum reorganizada para Conexão WhatsApp, sem seleção de múltiplos provedores na experiência do usuário.
-- [x] Regra de uma instância por workspace explicitada na interface.
+- [x] Regra antiga de uma instância por workspace explicitada na interface — **superada em 2026-09-27** pelo CRUD multi-instância solicitado; não reintroduzir singleton.
 - [x] QR com timestamp, expiração em 60 segundos, estado stale, retry e foco/rolagem mobile.
 - [x] Gateway com `reconnect()` para renovar QR sem ignorar o clique quando já há uma sessão.
 - [x] Desconexão manual não dispara reconexão automática indevida.
 - [x] Proxy repassa `updatedAt`, aceita `phone`/`phoneNumber` e trata 404 transitório do QR.
-- [x] TypeScript do painel e gateway aprovados; build do painel aprovado; 15 testes do gateway aprovados.
+- [x] TypeScript do painel e gateway aprovados; builds do painel/gateway aprovados; 147 testes do monorepo aprovados e 32 do gateway (41 testes dependentes de banco skipped localmente).
+- [x] Pareamento por número revisado: código nativo Baileys, readiness antes do pedido, limpeza de sessão incompleta e seletor país/bandeira/DDI com validação internacional.
 - [ ] Validar com Docker e número real: conectar, ler QR, atualizar QR expirado, reiniciar serviço, desconectar e logout.
+- [x] Confirmar no issue Baileys #2560 que um `companion_platform_display` customizado pode produzir código rejeitado pelo WhatsApp sem erro visível no fluxo rc14.
+- [x] Preservar credenciais emitidas por `pair-success` mesmo antes de `registered=true`; serializar `creds.update` antes do restart e não enviar `logout()` remoto para tentativa ainda não aceita.
+- [x] Aumentar a janela de readiness e mascarar material criptográfico de handshake nos logs do gateway.
+- [x] Corrigir a identidade para `Chrome (Ubuntu)` e backportar a confirmação IQ ao `baileys@7.0.0-rc14` com patch npm versionado; `npm ci` aplicou o patch e o teste de regressão confirma que o código não retorna antes do IQ.
+- [ ] Validar o seletor de país/bandeira/DDI e o código de 8 caracteres (incluindo letras, se presentes) em número real; repetir geração após tentativa não aceita e confirmar que não volta `Connection Closed`.
 - [ ] Validar webhook inbound e status no Inbox depois da conexão real.
+
+## Pós-pareamento: atualização de status e refatoração da tela — 2026-09-28
+
+- [x] Ler o log fornecido: o WhatsApp aceitou o pareamento, pediu o restart `515` esperado e o gateway registrou `opened connection to WA` / `Baileys session is open`.
+- [x] Representar esse restart como `connecting` no snapshot Baileys; teste cobre o estado após o close e o caso real de logout.
+- [x] Corrigir polling React Query: 2 s para connecting/pairing/QR, ativo em segundo plano, além de revalidar ao foco e à reconexão de rede.
+- [x] Extrair a tela WhatsApp para `client/src/pages/WhatsappConnectionPage.tsx`, mantendo CRUD e métodos de conexão, sem o cartão de consumo; adicionar status por instância, resumo, atualização manual e layout responsivo.
+- [x] Mover plano/cotas/janela para a rota **Planos e consumo** (`/plans-usage`) e disponibilizá-la como a única outra rota do Core congelado.
+- [x] Suíte local: 158 testes aprovados, 41 dependentes de banco skipped; typecheck, build frontend e build backend passaram.
+- [x] CI `verify`, `postgres-integration` e `publish` aprovados; pull anônimo confirmado para as tags `:dev` do painel e do gateway.
+- [ ] Atualizar localmente com `pull`/`up` sem reset para preservar o número já conectado; verificar Conectado no painel, inclusive após deixar a aba em segundo plano, e confirmar a página Planos e consumo.
 
 
 ## Auditoria de melhoria contínua — 2026-09-27
@@ -236,7 +274,8 @@ Varredura nova do repositório encontrou 26 pontos além do que já estava no pl
 - [ ] Paginar `listInboxContacts` e as listas do console/funil.
 - [ ] Validar estágios do funil no backend com lista canônica única.
 - [ ] Distinguir workspace suspenso de membership ausente na mensagem de erro.
-- [ ] Remover fallback de workspace demo em `resetWorkspaceDevelopmentData` e aposentar o módulo legado `whatsappChannels`.
+- [ ] Remover fallback de workspace demo em `resetWorkspaceDevelopmentData`.
+- [x] Não aposentar `whatsappChannels` nesta etapa: o registro Baileys usa a linha como vínculo/canal; reavaliar somente quando todos os consumers tiverem migração comprovada.
 - [ ] Inverter `DEMO_MODE` para fail-closed.
 - [ ] Remover branding fixo de cliente único (título, Dashboard, sidebar e seeds).
 - [ ] Alinhar o rótulo da sidebar "Canais conectados" com a tela "Conexão WhatsApp".

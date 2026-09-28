@@ -1,130 +1,84 @@
-# Teste local do Forte Panel com Docker
+# Instalação e teste local do Forte Panel
 
-Este fluxo usa `docker-compose.yml` como Compose local principal, com PostgreSQL 16, Redis 7, painel, worker e gateway WhatsApp. `docker-compose.local.yml` permanece compatível para quem preferir selecionar o nome explícito. O banco e os volumes ficam isolados na rede Docker; as migrations são executadas pelo container do painel com `RUN_MIGRATIONS=true`.
+O ambiente de desenvolvimento de referência é Windows 64-bit com Docker Desktop/WSL e PowerShell. A stack local baixa as imagens publicadas no GitHub Container Registry (GHCR); **não é necessário compilar imagens neste computador**.
 
-## Pré-requisitos
+## Instalar/reinstalar do zero — um comando
 
-- Docker Engine em execução.
-- Docker Compose v2 (`docker compose version`).
-- Acesso ao GitHub Container Registry para baixar as imagens `ghcr.io/geordptoroy/*`.
-
-## Fluxo recomendado — sem apagar dados
-
-Na raiz do repositório:
-
-```bash
-./scripts/docker-up-local.sh
-```
-
-Na primeira execução o script cria `.env` a partir de `.env.docker.example`, gera segredos locais aleatórios e preserva o arquivo com permissão `600`. Não faça commit de `.env`.
-
-Acesse:
-
-```text
-http://localhost:3002
-```
-
-O e-mail do administrador local é `admin@fortepanel.local`. A senha aleatória é exibida somente no primeiro comando e permanece em `.env`.
-
-Comandos úteis:
-
-```bash
-# acompanhar painel e worker
-docker compose --env-file .env -f docker-compose.yml logs -f forte-panel forte-panel-worker
-
-# status
-docker compose --env-file .env -f docker-compose.yml ps
-
-# parar sem apagar banco, Redis ou sessões WhatsApp
-docker compose --env-file .env -f docker-compose.yml stop
-
-# iniciar novamente sem baixar imagens
-FORTE_PULL=0 ./scripts/docker-up-local.sh
-
-# remover containers, mas preservar volumes
-docker compose --env-file .env -f docker-compose.yml down
-```
-
-> O painel aplica migrations automaticamente na inicialização. Não use `db:push` para substituir migrations versionadas.
-
-## Rate limit do login local
-
-O login usa bloqueio progressivo por IP e e-mail, dentro de uma janela padrão de 15 minutos:
-
-| Falhas acumuladas | Bloqueio padrão |
-|---:|---:|
-| 5 | 1 minuto |
-| 10 | 3 minutos |
-| 15 | 15 minutos |
-
-Os valores são configuráveis no `.env` em milissegundos (`FORTE_LOGIN_RATE_LIMIT_*`). Depois de editar o `.env`, recrie o painel para carregar a configuração:
+Abra PowerShell na raiz do repositório e execute:
 
 ```powershell
-docker compose --env-file .env -f docker-compose.yml up -d --force-recreate forte-panel
+.\scripts\dev-reinstall.ps1 -ResetData
 ```
 
-## Testar a publicação versionada
+O script:
 
-Depois de entrar no painel e completar/confirmar os quatro blocos obrigatórios:
+1. Confirma explicitamente a intenção pelo parâmetro `-ResetData`.
+2. Inicializa `.env` com segredos locais aleatórios via WSL somente se o arquivo ainda não existir; nunca sobrescreve o `.env` existente.
+3. Apaga containers, redes e volumes do projeto Docker `forte-local`, incluindo PostgreSQL, Redis e sessões Baileys.
+4. Baixa as imagens `:dev` do GHCR e as imagens de dependências, como PostgreSQL e Redis.
+5. Sobe a aplicação publicada e mostra o estado dos serviços.
 
-1. Confirmar `identity`, `offering`, `operations` e `guardrails`.
-2. Publicar o onboarding.
-3. Verificar a versão publicada no histórico.
-4. Alterar o draft.
-5. Publicar novamente e confirmar a versão incremental.
-6. Usar rollback em uma versão anterior e confirmar que o rollback cria uma nova versão.
+Acesse <http://localhost:3002>. E-mail e senha do administrador local ficam em `.env` (`LOCAL_ADMIN_EMAIL` e `LOCAL_ADMIN_PASSWORD`). Não compartilhe nem versione esse arquivo.
 
-Para executar os testes PostgreSQL diretamente contra o banco do Compose:
+**O reset remove os dados apenas do projeto `forte-local`.** Não apaga outras aplicações Docker, imagens locais, cache global ou arquivos fora do Docker. Não execute uma segunda stack com os mesmos `container_name` simultaneamente.
 
-```bash
-set -a; source .env; set +a
-export DATABASE_URL="postgresql://${PANEL_POSTGRES_USER}:${PANEL_POSTGRES_PASSWORD}@localhost:${PANEL_POSTGRES_PORT:-5432}/${PANEL_POSTGRES_DB}"
-DEMO_MODE=false pnpm test -- server/onboarding-publish.test.ts
-DEMO_MODE=false pnpm test
+## O que é a conta que reaparece
+
+Há duas coisas diferentes:
+
+- O antigo workspace/dados fictícios são sementes de demonstração. Agora o modo demo é **opt-in** (`DEMO_MODE=true`) e o Compose local fixa `DEMO_MODE=false`, então um banco limpo não recria contatos, agenda ou canais de demonstração.
+- `LOCAL_ADMIN_EMAIL` é o **administrador-bootstrap local**, necessário para conseguir entrar. Depois que você autentica com as credenciais do `.env`, o login cria/atualiza a linha `local_admin` no banco. Ela não é uma conta demo; após apagar o volume ela só volta quando você faz login de novo. Não a removi para não bloquear o acesso.
+
+## Atualização sem apagar os dados
+
+Se quiser baixar a publicação mais recente e atualizar sem resetar o banco/sessões:
+
+```powershell
+$env:DEMO_MODE = "false"
+docker compose --project-name forte-local --env-file .env --file docker-compose.local.yml pull
+docker compose --project-name forte-local --env-file .env --file docker-compose.local.yml up -d --remove-orphans
 ```
 
-O Compose local publica PostgreSQL somente em `127.0.0.1` e permite trocar a porta com `PANEL_POSTGRES_PORT`. Não exponha PostgreSQL publicamente.
+**Para uma atualização somente de interface, use os comandos acima sem `down --volumes` nem `-ResetData`: isso preserva o banco e a sessão WhatsApp já conectada.** Use `-ResetData` apenas quando quiser intencionalmente apagar PostgreSQL, Redis e sessões Baileys do projeto `forte-local`.
 
-## Reset total e destrutivo do Docker
+## Reteste do pareamento por número
 
-O reset abaixo remove dados Docker globais não utilizados na máquina, incluindo volumes do Compose local, imagens, redes e cache de build. Isso apaga o PostgreSQL, Redis e sessões WhatsApp locais. Pode afetar outros projetos Docker parados/não utilizados.
+Depois que a nova imagem `:dev` for publicada, atualize com o bloco **Atualização sem apagar os dados** acima para preservar a conexão existente, entre no painel e:
 
-```bash
-FORTE_DOCKER_RESET_CONFIRM=APAGAR-TUDO ./scripts/docker-reset-all-local.sh
+1. Em **Instâncias WhatsApp**, crie uma instância de teste.
+2. No seletor, escolha país/bandeira/DDI; digite o número nacional com DDD/código de área, sem repetir o DDI.
+3. Clique em **Gerar código**. O painel agora só exibe o código se o servidor do WhatsApp confirmar o pedido IQ; códigos têm 8 caracteres e podem incluir letras.
+4. No aplicativo WhatsApp do aparelho, abra **Configurações → Aparelhos conectados → Conectar aparelho → Conectar com número de telefone** e informe exatamente o código exibido.
+5. Deixe a aba do painel em segundo plano enquanto confirma no celular. O status deve mudar automaticamente de pareamento/conexão para **Conectado** após o gateway abrir a sessão; ao voltar para a aba, o estado também é revalidado imediatamente.
+6. Abra **Planos e consumo** na barra lateral e confirme que plano, cotas e janela de renovação estão nessa página, não na página das instâncias.
+7. Se o IQ retornar erro/timeout, o painel deve mostrar o erro em vez de entregar um código que o servidor não aceitou.
+
+O código exibido significa que o pedido foi aceito pelo servidor; ainda é necessário digitá-lo no telefone para concluir o vínculo. O QR continua disponível como alternativa.
+
+## Diagnóstico rápido
+
+```powershell
+docker compose --project-name forte-local --env-file .env --file docker-compose.local.yml ps -a
+docker compose --project-name forte-local --env-file .env --file docker-compose.local.yml logs --tail 100 forte-panel-migrations forte-panel forte-panel-worker forte-whatsapp
 ```
 
-O script exige o token de confirmação e não deve ser executado automaticamente. Ele não desinstala o Docker e não apaga arquivos fora do armazenamento Docker.
+O erro anterior `No such image: redis:7-alpine` ocorreu porque `up --pull never` impediu baixar a imagem Redis que ainda não existia no Docker Desktop. O script novo executa `docker compose pull` antes de `up`.
 
-Depois do reset, baixar e reinstalar a stack:
+## Publicação das imagens de desenvolvimento
 
-```bash
-./scripts/docker-up-local.sh
+Cada push validado à branch de trabalho publica `ghcr.io/geordptoroy/forte-panel:dev` e `ghcr.io/geordptoroy/forte-whatsapp:dev`, além da tag imutável `sha-*`. A tag `latest` permanece reservada para `main`. A publicação só ocorre se typecheck, testes e builds passarem.
+
+Para puxar manualmente, sem subir a stack:
+
+```powershell
+docker pull ghcr.io/geordptoroy/forte-panel:dev
+docker pull ghcr.io/geordptoroy/forte-whatsapp:dev
 ```
 
-Para forçar a reconstrução/atualização das imagens publicadas:
+Em 2026-09-27, o manifest `:dev` das duas imagens respondeu HTTP 200 pelo token anônimo do GHCR; o pull não exige login no registry.
 
-```bash
-FORTE_PULL=1 ./scripts/docker-up-local.sh
-```
+## Segredos e migrations
 
-## Diagnóstico de espaço
-
-```bash
-docker system df
-docker system df -v
-```
-
-Para liberar apenas itens não utilizados, sem remover explicitamente os volumes do Compose:
-
-```bash
-docker system prune
-```
-
-Não use `--volumes` nessa limpeza moderada se quiser preservar dados locais.
-
-## Limpeza documental
-
-- `.env.docker.example`: variáveis esperadas sem segredos reais.
-- `scripts/docker-init-local.sh`: cria `.env` local sem sobrescrever existente.
-- `scripts/docker-up-local.sh`: baixa imagens, sobe a stack e deixa migrations automáticas rodarem.
-- `scripts/docker-reset-all-local.sh`: reset global destrutivo com confirmação explícita.
+- `.env.docker.example` contém somente valores de exemplo; `scripts/docker-init-local.sh` gera `.env` com segredos aleatórios quando ele não existe.
+- As migrations versionadas são executadas pelo serviço `forte-panel-migrations` antes do painel/worker. Não use `db:push` para substituir esse histórico.
+- O Compose local publica o PostgreSQL apenas em `127.0.0.1`; não exponha essa porta à internet.

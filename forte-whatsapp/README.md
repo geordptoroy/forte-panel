@@ -1,36 +1,46 @@
 # forte-whatsapp
 
-Gateway WhatsApp próprio do Forte Panel, implementado sobre Baileys. O serviço é original e não copia nem modifica a imagem proprietária da PAPI.
+Gateway interno WhatsApp do Forte Panel, implementado sobre Baileys. O serviço não é uma API pública nem integração n8n: o Panel e o worker se comunicam com ele na rede Docker usando Bearer key; eventos inbound retornam ao Panel pelo webhook assinado.
 
-## Estado atual
+## Estado deste core
 
-O gateway possui uma instância por processo, sessão persistente em `WHATSAPP_SESSION_DIR`, QR/status, conexão/reconexão, webhook assinado, recebimento de texto e mídia, download multimídia, envio de texto e envio genérico compatível com `AnyMessageContent`. Eventos de chamadas recebidas são encaminhados ao Panel como eventos inbound.
+O gateway mantém várias sessões em um `InstanceRegistry`, com um `InstanceManager` por `instanceId`. O Panel provisiona e vincula cada ID a um workspace. Cada sessão tem diretório próprio dentro de `WHATSAPP_SESSION_DIR`, lock de processo, autenticação persistente, status/QR, outbox de eventos e ações independentes.
 
-A API é interna e exige `Authorization: Bearer <WHATSAPP_API_KEY>`.
+Novas instâncias não conectam ao serem criadas. O usuário deve escolher **Conectar e gerar QR** ou solicitar o código de pareamento. IDs `default` e `WHATSAPP_INSTANCE_ID` são compatibilidade para sessões antigas existentes; o gateway não cria a sessão default se ela não estiver no diretório de sessões.
 
 ## Variáveis
 
-Copie `.env.example` para um ambiente local e preencha somente localmente. Nunca versione credenciais ou a pasta `sessions`. Defina `WHATSAPP_SESSION_ENCRYPTION_KEY` com 32 bytes em hex/base64 para usar AES-256-GCM; se já houver uma sessão JSON legada, o primeiro acesso com a chave a migra para o formato cifrado sob o lock da instância.
+Copie `.env.example` somente para ambiente local. Nunca versione chaves ou a pasta de sessões. `WHATSAPP_API_KEY` protege as chamadas internas. `WHATSAPP_WEBHOOK_URL` e `WHATSAPP_WEBHOOK_SECRET` ativam o callback assinado. `WHATSAPP_SESSION_ENCRYPTION_KEY` ativa AES-256-GCM para o auth state; preserve essa chave para manter as sessões. `WHATSAPP_MAX_INSTANCES` limita novas sessões (padrão: 10; máximo: 25).
 
-## Endpoints principais
+## Endpoints
 
-- `GET /health`
-- `GET /ready`
-- `GET /api/instances`
-- `POST /api/instances/default/connect`
-- `GET /api/instances/default`
-- `GET /api/instances/default/qr`
-- `POST /api/instances/default/send-text`
-- `POST /api/instances/default/send` com `messageType` ou payload genérico Baileys
+Probes internas:
 
-O payload genérico permite texto, imagem, áudio, vídeo, documento, sticker, localização, contato, reação, enquete e outros tipos suportados pela versão instalada do Baileys. A disponibilidade de cada tipo precisa ser confirmada no canal e ainda não implica que o composer do Inbox ofereça todos eles.
+- `GET /health` — processo vivo, sem afirmar conexão WhatsApp.
+- `GET /ready` — estado do processo/sessões; não publicar fora da rede interna.
 
-## Pendências de produção
+Todas as operações abaixo exigem `Authorization: Bearer <WHATSAPP_API_KEY>`:
 
-- o auth state criptografado com AES-256-GCM está disponível por `WHATSAPP_SESSION_ENCRYPTION_KEY`, incluindo restore e migração legada; ainda falta mover o store para backend durável/externo;
-- o gateway já usa lock atômico por diretório de instância e aplica permissões `0700` ao diretório e `0600` aos arquivos; ainda falta lifecycle de múltiplas instâncias por workspace;
-- mover mídia de data URL para storage privado com URL assinada;
-- executar E2E em Docker/staging com número de teste;
-- adicionar métricas de conexão, download, envio, retry e desconexão.
+- `GET /api/instances` e `POST /api/instances` — listar/criar;
+- `GET /api/instances/{instanceId}` e `PATCH /api/instances/{instanceId}` — status/rename;
+- `DELETE /api/instances/{instanceId}` — logout e remoção dos arquivos da sessão;
+- `GET /api/instances/{instanceId}/qr`;
+- `POST /api/instances/{instanceId}/connect`, `/pairing-code`, `/disconnect` e `/logout`;
+- `POST /api/instances/{instanceId}/send` — transporte Baileys genérico existente; não significa que o composer do Panel já suporte cada modalidade.
 
-Baileys não é afiliado ao WhatsApp. O uso deve respeitar os termos aplicáveis e não pode ser usado para spam.
+O envio precisa informar `instanceId`. Não há fallback para um ID global default.
+
+## Pareamento por código
+
+O projeto fixa `baileys@7.0.0-rc14`. Nessa versão, `requestPairingCode()` enviava `companion_hello` com `sendNode()` e podia devolver um código antes de receber a resposta IQ do WhatsApp. A imagem agora aplica `patches/baileys+7.0.0-rc14.patch` pelo hook npm `postinstall`: aguarda `query()` por até 20 segundos (que rejeita respostas IQ de erro), limpa o código transitório se houver falha e só persiste `creds.me` após aceite. A identidade do browser deve ser canônica (`Chrome (Ubuntu)`), nunca o nome da aplicação.
+
+O patch local é um backport pequeno do comportamento de confirmação proposto no PR upstream [#2559](https://github.com/WhiskeySockets/Baileys/pull/2559), que ainda estava aberto e fora do pacote npm quando auditado em 28/09/2026. Ao atualizar Baileys para uma release que contenha o fix, verificar e remover o patch deliberadamente. O código retornado tem 8 caracteres e pode conter letras; a UI o exibe sem transformar. Um código aceito ainda precisa ser inserido no telefone antes de a sessão chegar a `open`.
+
+## Operação e validação
+
+- Testes do gateway fazem parte da suíte raiz: `pnpm test`.
+- Checagem separada de tipos: `pnpm exec tsc --noEmit -p forte-whatsapp/tsconfig.json`.
+- Testes reais de número/QR devem ser feitos no Docker local do usuário com linha de teste; não usar conta real sem autorização.
+- A sessão é persistente e importante. Não limpar o volume `forte_whatsapp_sessions` como forma de reiniciar o serviço.
+
+Baileys não é afiliado ao WhatsApp. Use em conformidade com os termos aplicáveis e não para spam.

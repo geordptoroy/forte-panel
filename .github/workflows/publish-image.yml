@@ -2,7 +2,7 @@ name: Publish Forte Panel image
 
 on:
   push:
-    branches: [main]
+    branches: [main, docs/ai-admin-core-plan-2026-09-27]
   workflow_dispatch:
 
 permissions:
@@ -28,6 +28,9 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Install WhatsApp gateway dependencies
+        working-directory: forte-whatsapp
+        run: npm ci
       - name: Typecheck
         run: pnpm check
       - name: Tests
@@ -37,7 +40,6 @@ jobs:
       - name: WhatsApp gateway tests and build
         working-directory: forte-whatsapp
         run: |
-          npm ci
           npm test
           npm run check
           npm run build
@@ -69,6 +71,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=dev
             type=sha,prefix=sha-
 
       - name: Build and push
@@ -87,6 +90,7 @@ jobs:
           images: ${{ env.WHATSAPP_IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=dev
             type=sha,prefix=sha-
 
       - name: Build and push WhatsApp gateway

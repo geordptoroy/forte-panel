@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { COOKIE_NAME, SESSION_TTL_MS } from "@shared/const";
@@ -39,9 +40,14 @@ import {
   setLocalPassword,
   touchLastSignedIn,
   getDefaultWhatsappProvider,
+  ensureBaileysChannel,
+  listBaileysInstances,
+  getBaileysInstance,
+  createBaileysInstance as createBaileysInstanceRecord,
+  updateBaileysInstanceName as updateBaileysInstanceRecordName,
+  archiveBaileysInstance,
   consumeWorkspaceUserUsage,
   listWhatsappChannels,
-  updateBaileysChannelName,
   setDefaultWhatsappProvider,
   getAuditLogForContact,
   getDashboardSnapshot,
@@ -145,11 +151,15 @@ import { listLLMModels } from "./_core/llm";
 import { platformRouter } from "./platform-router";
 import { getPlatformAdminAccess } from "./platform-admin";
 import {
+  createBaileysInstance,
+  deleteBaileysInstance,
+  isGatewayNotFound,
   connectBaileys,
   requestBaileysPairingCode,
   disconnectBaileys,
   getBaileysQr,
   getBaileysStatus,
+  updateBaileysInstanceName,
 } from "./baileys-gateway";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
@@ -239,6 +249,29 @@ const requireManager = withAccess(
   access => access.canManageCatalog,
   "Somente proprietário, administrador ou gerente podem executar esta ação"
 );
+
+async function ensureLegacyBaileysInstance(workspaceId: number) {
+  if (process.env.FORTE_API_WORKSPACE_ID?.trim() !== String(workspaceId)) return;
+  if (!process.env.BAILEYS_BASE_URL || !process.env.BAILEYS_API_KEY) return;
+  const instanceId = process.env.BAILEYS_INSTANCE_ID?.trim() || "default";
+  if (await getBaileysInstance(workspaceId, instanceId)) return;
+  let gatewayStatus: Awaited<ReturnType<typeof getBaileysStatus>>;
+  try {
+    gatewayStatus = await getBaileysStatus(instanceId);
+  } catch (error) {
+    if (isGatewayNotFound(error)) return;
+    throw error;
+  }
+  if (!gatewayStatus.configured) return;
+  const channel = await ensureBaileysChannel(workspaceId);
+  await createBaileysInstanceRecord(
+    workspaceId,
+    channel.id,
+    instanceId,
+    gatewayStatus.instanceName
+  );
+}
+
 const requireAdministrator = withAccess(
   access => access.canManageTeam,
   "Somente proprietário ou administrador podem executar esta ação"
@@ -1154,21 +1187,177 @@ export const appRouter = router({
         active: channel.active === 1,
       }));
     }),
-    baileysStatus: protectedProcedure.query(() => getBaileysStatus()),
-    baileysQr: protectedProcedure.query(() => getBaileysQr()),
-    connectBaileys: requireManager.mutation(() => connectBaileys()),
-    requestBaileysPairingCode: requireManager
-      .input(z.object({ phone: z.string().min(8).max(24) }))
-      .mutation(({ input }) => requestBaileysPairingCode(input.phone)),
-    updateBaileysChannelName: requireManager
+    baileysInstances: protectedProcedure.query(async ({ ctx }) => {
+      await ensureLegacyBaileysInstance(ctx.workspace.workspaceId);
+      return listBaileysInstances(ctx.workspace.workspaceId);
+    }),
+    createBaileysInstance: requireManager
       .input(z.object({ name: z.string().trim().min(2).max(120) }))
       .mutation(async ({ input, ctx }) => {
-        const channel = await updateBaileysChannelName(ctx.workspace.workspaceId, input.name);
-        return { id: channel.id, name: channel.name };
+        const workspaceId = ctx.workspace.workspaceId;
+        const channel = await ensureBaileysChannel(workspaceId);
+        const instanceId = `ws${workspaceId}-${crypto.randomUUID()}`;
+        await createBaileysInstance(instanceId, input.name);
+        try {
+          return await createBaileysInstanceRecord(
+            workspaceId,
+            channel.id,
+            instanceId,
+            input.name
+          );
+        } catch (error) {
+          await deleteBaileysInstance(instanceId).catch(() => undefined);
+          throw error;
+        }
+      }),
+    renameBaileysInstance: requireManager
+      .input(
+        z.object({
+          instanceId: z.string().min(1).max(160),
+          name: z.string().trim().min(2).max(120),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const current = await getBaileysInstance(
+          ctx.workspace.workspaceId,
+          input.instanceId
+        );
+        if (!current)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        await updateBaileysInstanceName(input.instanceId, input.name);
+        try {
+          const updated = await updateBaileysInstanceRecordName(
+            ctx.workspace.workspaceId,
+            input.instanceId,
+            input.name
+          );
+          if (!updated)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Instância WhatsApp não encontrada neste workspace",
+            });
+          return updated;
+        } catch (error) {
+          await updateBaileysInstanceName(input.instanceId, current.name).catch(
+            () => undefined
+          );
+          throw error;
+        }
+      }),
+    deleteBaileysInstance: requireManager
+      .input(
+        z.object({
+          instanceId: z.string().min(1).max(160),
+          confirmDeletion: z.literal(true),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const workspaceId = ctx.workspace.workspaceId;
+        const current = await getBaileysInstance(workspaceId, input.instanceId);
+        if (!current)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        try {
+          await deleteBaileysInstance(input.instanceId);
+        } catch (error) {
+          if (!isGatewayNotFound(error)) throw error;
+        }
+        const archived = await archiveBaileysInstance(
+          workspaceId,
+          input.instanceId
+        );
+        if (!archived)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância já foi removida",
+          });
+        return { success: true, instanceId: input.instanceId } as const;
+      }),
+    baileysStatus: protectedProcedure
+      .input(z.object({ instanceId: z.string().min(1).max(160) }))
+      .query(async ({ input, ctx }) => {
+        const instance = await getBaileysInstance(
+          ctx.workspace.workspaceId,
+          input.instanceId
+        );
+        if (!instance)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        return getBaileysStatus(instance.instanceId);
+      }),
+    baileysQr: protectedProcedure
+      .input(z.object({ instanceId: z.string().min(1).max(160) }))
+      .query(async ({ input, ctx }) => {
+        const instance = await getBaileysInstance(
+          ctx.workspace.workspaceId,
+          input.instanceId
+        );
+        if (!instance)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        return getBaileysQr(instance.instanceId);
+      }),
+    connectBaileys: requireManager
+      .input(z.object({ instanceId: z.string().min(1).max(160) }))
+      .mutation(async ({ input, ctx }) => {
+        const instance = await getBaileysInstance(
+          ctx.workspace.workspaceId,
+          input.instanceId
+        );
+        if (!instance)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        return connectBaileys(instance.instanceId);
+      }),
+    requestBaileysPairingCode: requireManager
+      .input(
+        z.object({
+          instanceId: z.string().min(1).max(160),
+          phone: z.string().min(8).max(24),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const instance = await getBaileysInstance(
+          ctx.workspace.workspaceId,
+          input.instanceId
+        );
+        if (!instance)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        return requestBaileysPairingCode(instance.instanceId, input.phone);
       }),
     disconnectBaileys: requireManager
-      .input(z.object({ logout: z.boolean().default(false) }).optional())
-      .mutation(({ input }) => disconnectBaileys(input?.logout ?? false)),
+      .input(
+        z.object({
+          instanceId: z.string().min(1).max(160),
+          logout: z.boolean().default(false),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const instance = await getBaileysInstance(
+          ctx.workspace.workspaceId,
+          input.instanceId
+        );
+        if (!instance)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        return disconnectBaileys(instance.instanceId, input.logout);
+      }),
     defaultChannel: protectedProcedure.query(({ ctx }) =>
       getDefaultWhatsappProvider(ctx.workspace.workspaceId)
     ),

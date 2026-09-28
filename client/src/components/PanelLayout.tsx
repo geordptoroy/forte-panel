@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { CORE_ONLY_MODE, CORE_USAGE_ROUTE } from "@/core-mode";
 
 type NavItem = {
   href: string;
@@ -259,6 +260,35 @@ const financialNav: NavGroup[] = [
   },
 ];
 
+const workspaceUsageNav: NavGroup[] = [
+  {
+    label: "Workspace",
+    items: [
+      {
+        href: CORE_USAGE_ROUTE,
+        label: "Planos e consumo",
+        description: "Plano atual e cotas do workspace",
+        icon: BarChart3,
+      },
+    ],
+  },
+];
+
+const coreOnlyNav: NavGroup[] = [
+  {
+    label: "Etapa 1 · WhatsApp",
+    items: [
+      managementNav[0].items[0],
+      {
+        href: CORE_USAGE_ROUTE,
+        label: "Planos e consumo",
+        description: "Plano atual e cotas do workspace",
+        icon: BarChart3,
+      },
+    ],
+  },
+];
+
 type PanelLayoutProps = {
   children: ReactNode;
   eyebrow?: string;
@@ -301,9 +331,12 @@ type AccessProfile =
   | undefined;
 
 function navForAccess(access: AccessProfile): NavGroup[] {
+  if (CORE_ONLY_MODE) return coreOnlyNav;
   if (!access) return managementNav;
   if (access.canSeeFullAgenda)
-    return access.canManageTeam ? [...managementNav, ...onboardingNav] : managementNav;
+    return access.canManageTeam
+      ? [...managementNav, ...workspaceUsageNav, ...onboardingNav]
+      : managementNav;
   if (access.operationalRole === "professional")
     return access.canRegisterPayments ? [...professionalNav, ...financialNav] : professionalNav;
   return attendantNav;
@@ -446,7 +479,7 @@ export default function PanelLayout({
   const { data: workspace } = trpc.workspace.current.useQuery();
   const { data: access } = trpc.auth.access.useQuery();
   const { data: inboxContacts } = trpc.inbox.contacts.useQuery(undefined, {
-    enabled: access?.canUseInbox === true,
+    enabled: !CORE_ONLY_MODE && access?.canUseInbox === true,
   });
   const notificationsQuery = trpc.workspace.inAppNotifications.useQuery(
     undefined,

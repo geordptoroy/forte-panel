@@ -267,6 +267,20 @@
       "when": 1790464000000,
       "tag": "0037_mvp_team_capabilities",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790551984723,
+      "tag": "0038_baileys_global_instance_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790552065604,
+      "tag": "0039_baileys_workspace_default_unique",
+      "breakpoints": true
     }
   ]
 }

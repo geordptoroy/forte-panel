@@ -5,8 +5,10 @@ import type { Server } from "node:http";
 
 let server: Server;
 let baseUrl = "";
+const previousPublicApiEnabled = process.env.FORTE_PUBLIC_API_ENABLED;
 
 beforeAll(async () => {
+  process.env.FORTE_PUBLIC_API_ENABLED = "true";
   const app = express();
   app.use(express.json());
   registerApiRoutes(app);
@@ -24,9 +26,43 @@ afterAll(async () => {
   await new Promise<void>((resolve, reject) =>
     server.close(error => (error ? reject(error) : resolve()))
   );
+  if (previousPublicApiEnabled === undefined)
+    delete process.env.FORTE_PUBLIC_API_ENABLED;
+  else process.env.FORTE_PUBLIC_API_ENABLED = previousPublicApiEnabled;
 });
 
 describe("versioned API", () => {
+  it("keeps integration routes closed by default while preserving health and Baileys ingress", async () => {
+    const previousWorkspaceId = process.env.FORTE_API_WORKSPACE_ID;
+    process.env.FORTE_PUBLIC_API_ENABLED = "false";
+    delete process.env.FORTE_API_WORKSPACE_ID;
+    try {
+      const disabled = await fetch(`${baseUrl}/api/v1/channels`);
+      expect(disabled.status).toBe(404);
+      await expect(disabled.json()).resolves.toMatchObject({
+        error: "not_found",
+      });
+
+      const health = await fetch(`${baseUrl}/api/v1/health`);
+      expect(health.status).toBe(200);
+
+      const baileys = await fetch(
+        `${baseUrl}/api/v1/webhooks/providers/baileys`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }
+      );
+      expect(baileys.status).toBe(503);
+    } finally {
+      process.env.FORTE_PUBLIC_API_ENABLED = "true";
+      if (previousWorkspaceId === undefined)
+        delete process.env.FORTE_API_WORKSPACE_ID;
+      else process.env.FORTE_API_WORKSPACE_ID = previousWorkspaceId;
+    }
+  });
+
   it("exposes an unauthenticated healthcheck", async () => {
     const response = await fetch(`${baseUrl}/api/v1/health`);
     expect(response.status).toBe(200);

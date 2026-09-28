@@ -380,8 +380,6 @@ export function createMetaCloudApiAdapter(): MetaCloudApiAdapter {
 export function createBaileysAdapter(): BaileysAdapter {
   const baseUrl = process.env.BAILEYS_BASE_URL?.trim();
   const apiKey = process.env.BAILEYS_API_KEY?.trim();
-  const defaultInstanceId =
-    process.env.BAILEYS_INSTANCE_ID?.trim() ?? "default";
   return {
     provider: "baileys",
     async health() {
@@ -425,7 +423,9 @@ export function createBaileysAdapter(): BaileysAdapter {
     async sendMessage(command: OutboundMessageCommand) {
       if (!baseUrl || !apiKey)
         throw new Error("Gateway Baileys não configurado");
-      const instanceId = command.instanceId ?? defaultInstanceId;
+      const instanceId = command.instanceId?.trim();
+      if (!instanceId)
+        throw new Error("instanceId não informado para envio Baileys");
       const response = await fetch(
         `${baseUrl.replace(/\/$/, "")}/api/instances/${encodeURIComponent(instanceId)}/send`,
         {

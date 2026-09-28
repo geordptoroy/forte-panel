@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "check": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "baileys": "7.0.0-rc14",
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@types/node": "^24.7.0",
     "@types/qrcode": "^1.5.6",
+    "patch-package": "^8.0.1",
     "tsx": "^4.19.1",
     "typescript": "^5.9.3",
     "vitest": "^2.1.4"
