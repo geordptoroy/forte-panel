@@ -157,7 +157,7 @@ export async function requestBaileysPairingCode(
     method: "POST",
     headers: jsonHeaders(),
     body: JSON.stringify({ phone }),
-  }, 20_000);
+  }, 55_000);
   if (!response) throw new Error("Gateway WhatsApp não está configurado");
   const body = (await response.json()) as { code?: string };
   if (!body.code) throw new Error("Gateway não retornou o código de pareamento");

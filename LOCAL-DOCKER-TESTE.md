@@ -41,6 +41,18 @@ docker compose --project-name forte-local --env-file .env --file docker-compose.
 
 O comando de reinstalação acima é o recomendado nesta fase de desenvolvimento, pois você pediu para zerar os volumes em cada teste.
 
+## Reteste do pareamento por número
+
+Depois que a nova imagem `:dev` for publicada, execute o reset/reinstall acima, entre com as credenciais do `.env` e:
+
+1. Em **Instâncias WhatsApp**, crie uma instância de teste.
+2. No seletor, escolha país/bandeira/DDI; digite o número nacional com DDD/código de área, sem repetir o DDI.
+3. Clique em **Gerar código**. O painel agora só exibe o código se o servidor do WhatsApp confirmar o pedido IQ; códigos têm 8 caracteres e podem incluir letras.
+4. No aplicativo WhatsApp do aparelho, abra **Configurações → Aparelhos conectados → Conectar aparelho → Conectar com número de telefone** e informe exatamente o código exibido.
+5. Aguarde o status da instância mudar de pareamento pendente para conectada. Se o IQ retornar erro/timeout, o painel deve mostrar o erro em vez de entregar um código que o servidor não aceitou.
+
+O código exibido significa que o pedido foi aceito pelo servidor; ainda é necessário digitá-lo no telefone para concluir o vínculo. O QR continua disponível como alternativa.
+
 ## Diagnóstico rápido
 
 ```powershell

@@ -1,7 +1,7 @@
 # Core do Forte Panel — instâncias Baileys
 
 **Documento canônico desta etapa · 27/09/2026**
-**Estado:** CRUD implementado; CI de integração PostgreSQL 16 aprovada no commit `b09fe05`; correção do pareamento numérico e seletor de país/DDI validados no sandbox; aguarda novo teste no Docker local do usuário.
+**Estado:** CRUD implementado; CI de integração PostgreSQL 16 aprovada no commit `b09fe05`; causa provável do código de pareamento inválido corrigida (identidade `Chrome (Ubuntu)` canônica, confirmação IQ, persistência de credenciais e tratamento seguro de retry); 147 testes do monorepo e 32 do gateway passam no sandbox. A nova revisão ainda aguarda CI e teste real no Docker/WhatsApp do usuário.
 **Fonte de verdade para esta fatia:** este documento, `todo.md` e `PROJECT_DOCUMENTATION_INDEX.md`.
 
 ---
@@ -94,9 +94,12 @@ As procedures tRPC usam o workspace autenticado e permissão de gerente/owner/ad
 ### Pareamento por número
 
 - A alternativa ao QR usa um seletor de países/regiões com bandeira, nome em português e DDI; o número digitado inclui DDD/código de área, sem repetir o DDI selecionado. A UI valida possibilidade de comprimento e envia o destino em formato internacional.
-- O código é solicitado diretamente ao `socket.requestPairingCode()` do Baileys; não é inventado pelo painel. O gateway aguarda o evento de prontidão do fluxo inicial antes de enviar o pedido, em vez de depender apenas da abertura do WebSocket.
-- Uma nova tentativa limpa apenas a sessão de pareamento ainda não aceita. Se a conexão cair antes da conclusão, o gateway remove as credenciais incompletas e não reconecta automaticamente com esse estado; o sucesso de pareamento mantém o reinício de socket esperado pelo Baileys.
-- O log de encerramento registra status/motivo do erro sem incluir telefone ou credenciais. A UI só deve considerar a sessão conectada após os eventos de login/abertura do Baileys.
+- Fluxo interno exato: UI chama `workspace.requestBaileysPairingCode` → backend chama `POST /api/instances/{instanceId}/pairing-code` com `phone` em formato internacional → `InstanceRegistry.requestPairingCode` → `InstanceManager.requestPairingCode` aguarda o primeiro evento `qr` (o gateway Baileys emite após `pair-device`) → chama `socket.requestPairingCode(dígitos E.164)`. O método do socket fala com o protocolo WhatsApp; o Panel não deve reproduzir nem chamar endpoints privados do WhatsApp diretamente.
+- A identidade do socket para esta operação deve ser canônica: `Browsers.ubuntu("Chrome")`, que produz o display `Chrome (Ubuntu)`. **Não** usar a marca do produto como browser. A configuração antiga `Browsers.ubuntu("Forte Panel")` produzia `Forte Panel (Ubuntu)`, compatível com o caso de códigos mortos descrito pelo issue Baileys [#2560](https://github.com/WhiskeySockets/Baileys/issues/2560): o WhatsApp pode rejeitar `companion_hello` com `400 bad-request` embora o rc14 já tenha retornado um código.
+- Limite importante: `baileys@7.0.0-rc14` por padrão envia esse IQ com `sendNode()` e retorna sem aguardar a resposta. O gateway mantém a versão publicada e aplica um backport versionado de `query()` por `patch-package` em `forte-whatsapp/patches/baileys+7.0.0-rc14.patch`; o erro IQ/timeout agora impede a UI de receber um código morto e credenciais transitórias só são persistidas após resposta positiva. O PR upstream [#2559](https://github.com/WhiskeySockets/Baileys/pull/2559) propõe o mesmo endurecimento e outras mudanças, mas a API do GitHub consultada em 28/09/2026 ainda indicava o PR aberto e o npm latest permanecia rc14. Não trocar por branch não lançada; remover o backport só quando uma release oficial contiver o fix e os testes forem atualizados.
+- O código nativo é uma string de 8 caracteres e pode conter letras e números; a UI deve exibi-lo sem alterar, truncar ou converter. No aparelho, abrir **Configurações → Aparelhos conectados → Conectar aparelho → Conectar com número de telefone** e digitar exatamente os caracteres exibidos.
+- Nova tentativa deve fechar localmente a sessão de pairing ainda não aceita, limpar apenas credenciais transitórias e **não** chamar `socket.logout()` remoto. Após `isNewLogin`/`pair-success`, preservar `account`/`signalIdentities` mesmo que `registered` ainda não esteja true, serializar `creds.update` e só então executar o restart 515 esperado.
+- A janela para o evento de prontidão é 30 s, o IQ de confirmação tem limite de 20 s e o proxy dispõe de 55 s no total. Logs incluem eventos de pedido/aceite/open, mas mascaram material de pairing, ephemeral keys, telefone e XML cru. O retorno do código confirma que o servidor aceitou o pedido `companion_hello`, mas o estado permanece “aguardando pareamento”; só `isNewLogin` seguido de `connection: open` confirma sessão estabelecida.
 
 ### Procedures tRPC principais
 

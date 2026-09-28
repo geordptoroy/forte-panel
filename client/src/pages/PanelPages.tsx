@@ -254,7 +254,10 @@ function BaileysInstanceCard({
   });
   const disconnect = trpc.workspace.disconnectBaileys.useMutation({ onSuccess: refresh });
   const pairing = trpc.workspace.requestBaileysPairingCode.useMutation({
-    onSuccess: result => setPairingCode(result.code),
+    onSuccess: async result => {
+      setPairingCode(result.code);
+      await refresh();
+    },
   });
   const remove = trpc.workspace.deleteBaileysInstance.useMutation({
     onSuccess: async () => {
@@ -274,6 +277,11 @@ function BaileysInstanceCard({
     error: "Erro na conexão",
   };
   const statusTone = connected ? "green" : waitingQr || current?.status === "connecting" ? "amber" : current?.status === "error" ? "red" : "neutral";
+
+  useEffect(() => {
+    if (["connected", "disconnected", "logged_out", "error"].includes(current?.status ?? ""))
+      setPairingCode(null);
+  }, [current?.status]);
 
   return (
     <article className="surface surface-hover" style={{ padding: 18 }} aria-label={`Instância ${name}`}>
@@ -309,8 +317,8 @@ function BaileysInstanceCard({
 
       <div className="qr-actions" style={{ marginTop: 16, flexWrap: "wrap" }}>
         {!connected ? (
-          <button className="btn-primary" disabled={connect.isPending || !current?.configured} onClick={() => connect.mutate({ instanceId })}>
-            <QrCode size={14} /> {connect.isPending ? "Gerando QR..." : waitingQr ? "Atualizar conexão" : "Conectar e gerar QR"}
+          <button className="btn-primary" disabled={connect.isPending || !current?.configured || current?.status === "pairing"} onClick={() => connect.mutate({ instanceId })}>
+            <QrCode size={14} /> {connect.isPending ? "Gerando QR..." : current?.status === "pairing" ? "Pareamento por código em andamento" : waitingQr ? "Atualizar conexão" : "Conectar e gerar QR"}
           </button>
         ) : (
           <>
@@ -330,7 +338,7 @@ function BaileysInstanceCard({
       {qr.error && <small className="qr-error">QR temporariamente indisponível; atualize a conexão para tentar novamente.</small>}
 
       <details style={{ marginTop: 14 }}>
-        <summary className="muted" style={{ cursor: "pointer" }}>Conectar com código numérico</summary>
+        <summary className="muted" style={{ cursor: "pointer" }}>Conectar com código de pareamento</summary>
         <div className="core-instance-form" style={{ marginTop: 12 }}>
           <div className="phone-entry-group">
             <label className="form-field">
@@ -371,7 +379,14 @@ function BaileysInstanceCard({
           </button>
         </div>
         <small className="muted phone-number-hint">Inclua o DDD/código de área e digite o número sem o DDI. O país selecionado acrescenta o DDI automaticamente.</small>
-        {pairingCode && <div className="pairing-code" style={{ marginTop: 12 }} aria-live="polite">{pairingCode}</div>}
+        {pairingCode && (
+          <>
+            <div className="pairing-code" style={{ marginTop: 12 }} aria-live="polite">{pairingCode}</div>
+            <small className="muted phone-number-hint" style={{ display: "block", marginTop: 8 }}>
+              No WhatsApp, abra Configurações → Aparelhos conectados → Conectar aparelho → Conectar com número de telefone. Digite exatamente os 8 caracteres exibidos; o código pode conter letras e números.
+            </small>
+          </>
+        )}
         {pairing.error && <div className="form-error" role="alert" style={{ marginTop: 10 }}>{pairing.error.message}</div>}
       </details>
 

@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import makeWASocket, {
-  Browsers,
   DisconnectReason,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
@@ -11,13 +10,15 @@ import makeWASocket, {
   type WAMessage,
   type WASocket,
 } from "baileys";
-import pino from "pino";
 import { config } from "./config.js";
 import { useEncryptedAuthState } from "./encrypted-auth-state.js";
+import { logger } from "./logger.js";
 import { acquireSessionLock, type SessionLock } from "./session-lock.js";
 import {
   clearUnregisteredPairingCredentials,
+  getBaileysBrowser,
   requestPairingCodeWhenReady,
+  shouldUseRemoteLogout,
 } from "./pairing-code.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
 
@@ -42,8 +43,6 @@ export type InstanceSnapshot = {
   updatedAt: string;
 };
 
-const logger = pino({ level: process.env.LOG_LEVEL ?? "info" });
-
 export class InstanceManager {
   private socket?: WASocket;
   private snapshot: InstanceSnapshot;
@@ -54,6 +53,7 @@ export class InstanceManager {
   private pairingAcceptedRestartPending = false;
   private pairingRequestInProgress = false;
   private pairingCleanup?: Promise<void>;
+  private credsSaveQueue: Promise<void> = Promise.resolve();
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private readonly webhookOutbox: WebhookOutbox;
 
@@ -109,6 +109,7 @@ export class InstanceManager {
     this.starting = true;
     this.set({ status: "connecting", qr: undefined, lastError: undefined });
     try {
+      await this.credsSaveQueue;
       await this.webhookOutbox.start();
       const sessionPath = path.join(config.sessionDir, this.instanceId);
       await fs.mkdir(sessionPath, { recursive: true });
@@ -127,13 +128,23 @@ export class InstanceManager {
       const socket = makeWASocket({
         version,
         auth: state,
-        browser: Browsers.ubuntu("Forte Panel"),
+        browser: getBaileysBrowser(),
         logger: logger.child({ instanceId: this.instanceId }),
         printQRInTerminal: false,
         markOnlineOnConnect: false,
       });
       this.socket = socket;
-      socket.ev.on("creds.update", saveCreds);
+      socket.ev.on("creds.update", () => {
+        this.credsSaveQueue = this.credsSaveQueue.then(saveCreds).catch(error => {
+          logger.error(
+            {
+              instanceId: this.instanceId,
+              message: error instanceof Error ? error.message : String(error),
+            },
+            "failed to persist Baileys credentials"
+          );
+        });
+      });
       socket.ev.on("connection.update", update =>
         this.handleConnection(update, socket)
       );
@@ -156,38 +167,48 @@ export class InstanceManager {
   async stop(logout = false): Promise<void> {
     this.suppressReconnectUntil = Date.now() + 5_000;
     this.clearReconnectTimer();
+    const pairingWasPending = this.pairingAwaitingAcceptance;
     this.pairingAwaitingAcceptance = false;
     this.pairingAcceptedRestartPending = false;
     if (!this.socket) {
       this.set({ status: logout ? "logged_out" : "disconnected", qr: undefined });
       await this.webhookOutbox.stop();
+      await this.credsSaveQueue;
       await this.releaseSessionLock();
       return;
     }
-    if (logout) await this.socket.logout();
+    if (shouldUseRemoteLogout(logout, pairingWasPending))
+      await this.socket.logout();
     else this.socket.end(undefined);
     this.socket = undefined;
     this.set({ status: logout ? "logged_out" : "disconnected", qr: undefined });
     await this.webhookOutbox.stop();
+    await this.credsSaveQueue;
     await this.releaseSessionLock();
   }
 
   async deleteSession(): Promise<void> {
     this.suppressReconnectUntil = Date.now() + 5_000;
     this.clearReconnectTimer();
+    const pairingWasPending = this.pairingAwaitingAcceptance;
     this.pairingAwaitingAcceptance = false;
     this.pairingAcceptedRestartPending = false;
     const socket = this.socket;
     this.socket = undefined;
     if (socket) {
-      try {
-        await socket.logout();
-      } catch {
+      if (shouldUseRemoteLogout(true, pairingWasPending)) {
+        try {
+          await socket.logout();
+        } catch {
+          socket.end(undefined);
+        }
+      } else {
         socket.end(undefined);
       }
     }
     this.set({ status: "logged_out", qr: undefined });
     await this.webhookOutbox.stop();
+    await this.credsSaveQueue;
     await this.releaseSessionLock();
     await fs.rm(path.join(config.sessionDir, this.instanceId), {
       recursive: true,
@@ -217,6 +238,7 @@ export class InstanceManager {
     const socket = this.socket;
     this.pairingRequestInProgress = true;
     try {
+      logger.info({ instanceId: this.instanceId }, "requesting WhatsApp pairing code");
       const code = await requestPairingCodeWhenReady(
         () => this.waitForPairingReady(socket),
         () => {
@@ -236,6 +258,10 @@ export class InstanceManager {
             "O WhatsApp encerrou a conexão antes de confirmar o pedido. Gere um novo código."
         );
       }
+      logger.info(
+        { instanceId: this.instanceId },
+        "Baileys returned a pairing code; phone acceptance is still pending"
+      );
       return code;
     } catch (error) {
       if (this.socket === socket && this.getStatus().status !== "connected") {
@@ -304,7 +330,7 @@ export class InstanceManager {
               "Tempo esgotado aguardando o WhatsApp iniciar o pareamento. Tente novamente."
             )
           ),
-        15_000
+        30_000
       );
       if (this.socket !== socket)
         finish(new Error("A sessão WhatsApp foi encerrada; tente novamente"));
@@ -318,7 +344,8 @@ export class InstanceManager {
     this.pairingAwaitingAcceptance = false;
     if (this.pairingCleanup) return;
     const sessionPath = path.join(config.sessionDir, this.instanceId);
-    const cleanup = this.releaseSessionLock()
+    const cleanup = this.credsSaveQueue
+      .then(() => this.releaseSessionLock())
       .then(() => fs.rm(sessionPath, { recursive: true, force: true }))
       .catch(error => {
         logger.error(
@@ -438,6 +465,10 @@ export class InstanceManager {
     if (update.isNewLogin) {
       this.pairingAwaitingAcceptance = false;
       this.pairingAcceptedRestartPending = true;
+      logger.info(
+        { instanceId: this.instanceId },
+        "Baileys received pairing acceptance; restart is expected"
+      );
     }
     if (update.qr) this.set({ status: "qr", qr: update.qr });
     if (update.connection === "open") {
@@ -449,6 +480,7 @@ export class InstanceManager {
         phone: user?.split(":")[0]?.replace(/\D/g, ""),
         qr: undefined,
       });
+      logger.info({ instanceId: this.instanceId }, "Baileys session is open");
     }
     if (update.connection === "close") {
       const disconnectError = update.lastDisconnect?.error as

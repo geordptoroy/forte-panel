@@ -30,6 +30,12 @@ Todas as operações abaixo exigem `Authorization: Bearer <WHATSAPP_API_KEY>`:
 
 O envio precisa informar `instanceId`. Não há fallback para um ID global default.
 
+## Pareamento por código
+
+O projeto fixa `baileys@7.0.0-rc14`. Nessa versão, `requestPairingCode()` enviava `companion_hello` com `sendNode()` e podia devolver um código antes de receber a resposta IQ do WhatsApp. A imagem agora aplica `patches/baileys+7.0.0-rc14.patch` pelo hook npm `postinstall`: aguarda `query()` por até 20 segundos (que rejeita respostas IQ de erro), limpa o código transitório se houver falha e só persiste `creds.me` após aceite. A identidade do browser deve ser canônica (`Chrome (Ubuntu)`), nunca o nome da aplicação.
+
+O patch local é um backport pequeno do comportamento de confirmação proposto no PR upstream [#2559](https://github.com/WhiskeySockets/Baileys/pull/2559), que ainda estava aberto e fora do pacote npm quando auditado em 28/09/2026. Ao atualizar Baileys para uma release que contenha o fix, verificar e remover o patch deliberadamente. O código retornado tem 8 caracteres e pode conter letras; a UI o exibe sem transformar. Um código aceito ainda precisa ser inserido no telefone antes de a sessão chegar a `open`.
+
 ## Operação e validação
 
 - Testes do gateway fazem parte da suíte raiz: `pnpm test`.

@@ -232,10 +232,14 @@ Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
 - [x] Gateway com `reconnect()` para renovar QR sem ignorar o clique quando já há uma sessão.
 - [x] Desconexão manual não dispara reconexão automática indevida.
 - [x] Proxy repassa `updatedAt`, aceita `phone`/`phoneNumber` e trata 404 transitório do QR.
-- [x] TypeScript do painel e gateway aprovados; build do painel aprovado; 15 testes do gateway aprovados.
+- [x] TypeScript do painel e gateway aprovados; builds do painel/gateway aprovados; 147 testes do monorepo aprovados e 32 do gateway (41 testes dependentes de banco skipped localmente).
 - [x] Pareamento por número revisado: código nativo Baileys, readiness antes do pedido, limpeza de sessão incompleta e seletor país/bandeira/DDI com validação internacional.
 - [ ] Validar com Docker e número real: conectar, ler QR, atualizar QR expirado, reiniciar serviço, desconectar e logout.
-- [ ] Validar o seletor de país/bandeira/DDI e o código Baileys nativo; repetir geração após uma tentativa não aceita e confirmar que não volta `Connection Closed`.
+- [x] Confirmar no issue Baileys #2560 que um `companion_platform_display` customizado pode produzir código rejeitado pelo WhatsApp sem erro visível no fluxo rc14.
+- [x] Preservar credenciais emitidas por `pair-success` mesmo antes de `registered=true`; serializar `creds.update` antes do restart e não enviar `logout()` remoto para tentativa ainda não aceita.
+- [x] Aumentar a janela de readiness e mascarar material criptográfico de handshake nos logs do gateway.
+- [x] Corrigir a identidade para `Chrome (Ubuntu)` e backportar a confirmação IQ ao `baileys@7.0.0-rc14` com patch npm versionado; `npm ci` aplicou o patch e o teste de regressão confirma que o código não retorna antes do IQ.
+- [ ] Validar o seletor de país/bandeira/DDI e o código de 8 caracteres (incluindo letras, se presentes) em número real; repetir geração após tentativa não aceita e confirmar que não volta `Connection Closed`.
 - [ ] Validar webhook inbound e status no Inbox depois da conexão real.
 
 
