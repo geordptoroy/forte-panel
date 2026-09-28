@@ -128,3 +128,7 @@ Não use `--volumes` nessa limpeza moderada se quiser preservar dados locais.
 - `scripts/docker-init-local.sh`: cria `.env` local sem sobrescrever existente.
 - `scripts/docker-up-local.sh`: baixa imagens, sobe a stack e deixa migrations automáticas rodarem.
 - `scripts/docker-reset-all-local.sh`: reset global destrutivo com confirmação explícita.
+
+## Reteste da interface de conexão WhatsApp
+
+Após atualizar o painel, abra `/whatsapp-connection` sem usar `-ResetData`. O fluxo esperado é: **Criar instância** → nome no modal → escolha entre **QR Code** ou **número**. O seletor de país/bandeira/DDI aparece somente no caminho por número. Para preservar a sessão conectada, use apenas `docker compose up -d --build` ou o script de atualização normal; não remova volumes PostgreSQL, Redis ou a sessão Baileys.
