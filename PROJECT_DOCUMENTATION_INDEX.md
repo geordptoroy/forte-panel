@@ -9,6 +9,8 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 > **Auditoria de IA/Admin:** [`AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`](./AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md) registra capacidades, agentes, credenciais e redesign futuro; é referência da etapa 2, não do código ativo agora.
 >
 > **Ambiente e integrações:** [`DEVELOPMENT-CONTEXT-AND-INTEGRATION-POLICY.md`](./DEVELOPMENT-CONTEXT-AND-INTEGRATION-POLICY.md) registra Docker/WSL/PowerShell, OCI como destino futuro, ausência de n8n, API REST empresarial fechada por padrão e preferência de commits/push por fatia.
+>
+> **Publicação/teste local:** [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) documenta o comando PowerShell de reset do projeto, pull de imagens `dev` publicadas e inicialização sem build local.
 
 ## Começar pela continuidade
 

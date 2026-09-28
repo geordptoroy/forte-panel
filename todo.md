@@ -10,7 +10,10 @@
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.
 - [x] Criar lifecycle Baileys multi-instância por ID estável, persistência por sessão, gateway Bearer e procedimentos tRPC tenant-scoped; rejeitar envio sem `instanceId`.
 - [x] Desativar visualmente as rotas não-core por flag central sem apagar páginas/dados/backend; preservar login, recuperação e convites.
-- [ ] Validar migration 0038/0039, build Compose, conexão QR com linha de teste e consumo no Docker local WSL do usuário. O sandbox atual não tem Docker/PostgreSQL.
+- [x] Tornar `DEMO_MODE` explicitamente opt-in e fixar `false` no Compose local; manter apenas o admin-bootstrap derivado do `.env` para não bloquear login.
+- [x] Configurar publicação automática de imagens `dev` em push validado à branch de trabalho e criar um script PowerShell que zera apenas volumes do projeto, dá pull e sobe sem build local.
+- [ ] Verificar primeiro workflow de publicação, acesso público anônimo às duas imagens e execução de `scripts/dev-reinstall.ps1 -ResetData` no Docker Desktop do usuário. O sandbox atual não possui daemon Docker nem PowerShell.
+- [ ] Validar migrations 0038/0039 e conexão QR com linha de teste e consumo no Docker local WSL do usuário.
 - [ ] Depois da revisão do usuário, configurar no Console Admin providers/modelos, URLs, credenciais e rotas/capacidades; chaves no backend, criptografadas e mascaradas.
 - [ ] Depois, validar transporte de entrada/saída dos tipos de mensagem necessários com roteamento por instância e modalidade.
 - [ ] Só depois, conectar o agente de resposta WhatsApp e começar com prompt fictício, teste simulado e aprovação antes de qualquer envio automático.
@@ -23,7 +26,7 @@
 ## Concluído até aqui no MVP
 
 - Shell responsivo e páginas base de Dashboard, Inbox, Kanban, Agenda, Contatos, ficha do cliente, Faturamento, Integrações e Configurações.
-- Schema para contatos, conversas, mensagens e auditoria, seed demo idempotente e Inbox/Kanban/Contatos persistentes.
+- Schema para contatos, conversas, mensagens e auditoria, seed demo idempotente apenas quando opt-in e Inbox/Kanban/Contatos persistentes.
 - Pausar/reativar IA, enviar mensagem humana e takeover com auditoria.
 - Agenda nativa com serviços, profissionais, jornada semanal por fuso, conflitos, locks para reservas concorrentes e portal do profissional.
 - Contrato REST v1 opcional para contatos, memória, disponibilidade, agenda e mensagens; agora fechado por padrão, com opt-in de staging para E2E. O callback interno assinado do Baileys continua ativo.

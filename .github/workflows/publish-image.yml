@@ -2,7 +2,7 @@ name: Publish Forte Panel image
 
 on:
   push:
-    branches: [main]
+    branches: [main, docs/ai-admin-core-plan-2026-09-27]
   workflow_dispatch:
 
 permissions:
@@ -69,6 +69,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=dev
             type=sha,prefix=sha-
 
       - name: Build and push
@@ -87,6 +88,7 @@ jobs:
           images: ${{ env.WHATSAPP_IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=dev
             type=sha,prefix=sha-
 
       - name: Build and push WhatsApp gateway

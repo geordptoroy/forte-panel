@@ -24,7 +24,12 @@
 - `docker context show` retornou `desktop-linux`; `docker ps -a` e `docker volume ls` não listaram containers nem volumes. `docker inspect` não encontrou `forte_postgres_panel` nem `forte_panel_migrations`; o inventário de volumes também saiu vazio ao consultar os contextos tentados.
 - Antes disso, um log mostrou o PostgreSQL inicializando um cluster novo e, em seguida, o serviço de migrations falhando com `./docker-entrypoint.sh: not found`. O entrypoint de migrations não rodou, portanto esse log não comprova aplicação das migrations do app.
 - O histórico do PowerShell/PSReadLine indica uma tentativa de digitar `docker compose down -v`, mas o crash do terminal impede confirmar o resultado do comando. Como nenhum volume está visível no inventário observado, **não assumir que os dados/sessões anteriores continuam disponíveis nem que foram recuperados**.
-- Antes de iniciar outro `compose up`, verificar possíveis backups e mounts do host. Não executar `down -v`, remoção de volume ou reset como tentativa de recuperação; documentar qualquer novo resultado antes de prosseguir.
+- Naquele incidente, não usar `down -v` como tentativa de recuperar dados perdidos; registrar que o inventário Docker estava vazio. **Decisão posterior do responsável:** por estar em desenvolvimento descartável (pré-beta), resetar os dados locais do projeto em cada reinstalação é intencional e autorizado pelo script `scripts/dev-reinstall.ps1 -ResetData`; isso não autoriza limpar outros projetos ou executar `docker system prune` global.
+
+### Conta bootstrap e dados demo
+
+- `DEMO_MODE` passa a ser opt-in literal (`true`); o modo local força `false`, portanto o workspace/contatos/agenda de demonstração não são recriados no reset.
+- O administrador local configurado em `.env` (`LOCAL_ADMIN_EMAIL` / `LOCAL_ADMIN_PASSWORD`) é criado/atualizado quando a pessoa entra pelo login local. É um bootstrap de acesso, não uma conta demo; preservá-lo até existir outro método de autenticação aprovado.
 
 ## 2. Decisão sobre n8n e API REST de integração
 
@@ -75,3 +80,9 @@ Essa preferência não significa colocar secrets no Git nem declarar produção 
 5. Configurador do negócio, ajuda dentro do Forte Panel, copiloto/admin e reabertura gradual das demais áreas.
 
 A auditoria completa e os gates de cada fatia estão em [`AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`](./AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md).
+
+## 7. Publicação para testes locais
+
+- Push validado na branch de desenvolvimento publica imagens versionadas como `ghcr.io/geordptoroy/forte-panel:dev` e `ghcr.io/geordptoroy/forte-whatsapp:dev`, além de tags imutáveis `sha-*`; `latest` fica reservado para `main`.
+- `docker-compose.local.yml` consome `:dev`. O comando preferido no Windows/PowerShell para reset dos volumes locais, baixar as imagens publicadas e subir é `scripts/dev-reinstall.ps1 -ResetData`; a operação não compila imagens nem afeta outros projetos Docker.
+- Para pull sem autenticação, os dois pacotes GHCR precisam estar com visibilidade pública. Conferir isso após o primeiro push; se a credencial de automação não tiver permissão para mudar a visibilidade, pedir ao responsável que ajuste cada pacote nas configurações do GitHub Packages.

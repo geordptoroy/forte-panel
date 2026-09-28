@@ -33,7 +33,7 @@ services:
     networks: [panel-network]
 
   forte-panel-migrations:
-    image: ghcr.io/geordptoroy/forte-panel:latest
+    image: ghcr.io/geordptoroy/forte-panel:dev
     pull_policy: always
     container_name: forte_panel_migrations
     restart: "no"
@@ -47,14 +47,14 @@ services:
     networks: [panel-network]
 
   forte-panel:
-    image: ghcr.io/geordptoroy/forte-panel:latest
+    image: ghcr.io/geordptoroy/forte-panel:dev
     pull_policy: always
     container_name: forte_panel
     restart: unless-stopped
     environment:
       NODE_ENV: production
       PORT: 3000
-      DEMO_MODE: ${DEMO_MODE:-false}
+      DEMO_MODE: "false"
       LOCAL_AUTH_ENABLED: "true"
       LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:-admin@fortepanel.local}
       LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?LOCAL_ADMIN_PASSWORD is required}
@@ -95,14 +95,14 @@ services:
     networks: [panel-network, whatsapp-network]
 
   forte-panel-worker:
-    image: ghcr.io/geordptoroy/forte-panel:latest
+    image: ghcr.io/geordptoroy/forte-panel:dev
     pull_policy: always
     container_name: forte_panel_worker
     restart: unless-stopped
     command: ["./docker-entrypoint.sh", "worker"]
     environment:
       NODE_ENV: production
-      DEMO_MODE: ${DEMO_MODE:-false}
+      DEMO_MODE: "false"
       LOCAL_AUTH_ENABLED: "true"
       LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:-admin@fortepanel.local}
       LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?LOCAL_ADMIN_PASSWORD is required}
@@ -136,7 +136,7 @@ services:
     networks: [panel-network, whatsapp-network]
 
   forte-whatsapp:
-    image: ghcr.io/geordptoroy/forte-whatsapp:latest
+    image: ghcr.io/geordptoroy/forte-whatsapp:dev
     pull_policy: always
     container_name: forte_whatsapp
     restart: unless-stopped

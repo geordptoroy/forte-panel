@@ -1488,7 +1488,7 @@ export async function processWorkspaceQuotaAlertsOnce(
 export async function ensureDemoWorkspace() {
   const db = await getDb();
   if (!db) return undefined;
-  const demoMode = process.env.DEMO_MODE !== "false";
+  const demoMode = process.env.DEMO_MODE === "true";
   const slug = demoMode
     ? DEMO_WORKSPACE_SLUG
     : (process.env.WORKSPACE_SLUG ?? "forte-workspace");
@@ -1550,7 +1550,7 @@ export async function ensureWorkspaceMember(
 
 export async function ensureDemoWhatsappChannels() {
   const db = await getDb();
-  if (!db || process.env.DEMO_MODE === "false") return [];
+  if (!db || process.env.DEMO_MODE !== "true") return [];
   const workspace = await ensureDemoWorkspace();
   if (!workspace) return [];
   const existing = await db
@@ -4686,7 +4686,7 @@ const seedMessages = [
 
 export async function ensureDemoInbox() {
   const db = await getDb();
-  if (!db || process.env.DEMO_MODE === "false") return;
+  if (!db || process.env.DEMO_MODE !== "true") return;
   const workspace = await ensureDemoWorkspace();
   if (!workspace) return;
   await db
@@ -4769,7 +4769,7 @@ const seedServices = [
 
 export async function ensureDemoAgenda(workspaceId: number) {
   const db = await getDb();
-  if (!db || process.env.DEMO_MODE === "false") return;
+  if (!db || process.env.DEMO_MODE !== "true") return;
   const workspace = (
     await db
       .select()
