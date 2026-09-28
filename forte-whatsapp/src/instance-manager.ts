@@ -16,8 +16,8 @@ import { config } from "./config.js";
 import { useEncryptedAuthState } from "./encrypted-auth-state.js";
 import { acquireSessionLock, type SessionLock } from "./session-lock.js";
 import {
-  createPairingCode,
-  requestPairingCodeWithAcceptedRestart,
+  clearUnregisteredPairingCredentials,
+  requestPairingCodeWhenReady,
 } from "./pairing-code.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
 
@@ -50,8 +50,11 @@ export class InstanceManager {
   private starting = false;
   private sessionLock?: SessionLock;
   private suppressReconnectUntil = 0;
-  private pendingPairingCode?: string;
-  private acceptedPairingCode?: string;
+  private pairingAwaitingAcceptance = false;
+  private pairingAcceptedRestartPending = false;
+  private pairingRequestInProgress = false;
+  private pairingCleanup?: Promise<void>;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
   private readonly webhookOutbox: WebhookOutbox;
 
   constructor(
@@ -96,7 +99,13 @@ export class InstanceManager {
   }
 
   async start(): Promise<void> {
-    if (this.starting || this.snapshot.status === "connected") return;
+    if (this.snapshot.status === "connected") return;
+    if (this.starting) {
+      while (this.starting)
+        await new Promise<void>(resolve => setTimeout(resolve, 25));
+      if (this.socket) return;
+    }
+    if (this.socket) return;
     this.starting = true;
     this.set({ status: "connecting", qr: undefined, lastError: undefined });
     try {
@@ -107,8 +116,15 @@ export class InstanceManager {
       const { state, saveCreds } = config.sessionEncryptionKey
         ? await useEncryptedAuthState(sessionPath, config.sessionEncryptionKey)
         : await useMultiFileAuthState(sessionPath);
+      if (clearUnregisteredPairingCredentials(state.creds)) {
+        await saveCreds();
+        logger.info(
+          { instanceId: this.instanceId },
+          "cleared incomplete pairing credentials before reconnect"
+        );
+      }
       const { version } = await fetchLatestBaileysVersion();
-      this.socket = makeWASocket({
+      const socket = makeWASocket({
         version,
         auth: state,
         browser: Browsers.ubuntu("Forte Panel"),
@@ -116,14 +132,15 @@ export class InstanceManager {
         printQRInTerminal: false,
         markOnlineOnConnect: false,
       });
-      this.socket.ev.on("creds.update", saveCreds);
-      this.socket.ev.on("connection.update", update =>
-        this.handleConnection(update)
+      this.socket = socket;
+      socket.ev.on("creds.update", saveCreds);
+      socket.ev.on("connection.update", update =>
+        this.handleConnection(update, socket)
       );
-      this.socket.ev.on("messages.upsert", ({ messages }) =>
+      socket.ev.on("messages.upsert", ({ messages }) =>
         this.handleMessages(messages)
       );
-      this.socket.ev.on("call", calls => this.handleCalls(calls));
+      socket.ev.on("call", calls => this.handleCalls(calls));
     } catch (error) {
       this.set({
         status: "error",
@@ -138,6 +155,9 @@ export class InstanceManager {
 
   async stop(logout = false): Promise<void> {
     this.suppressReconnectUntil = Date.now() + 5_000;
+    this.clearReconnectTimer();
+    this.pairingAwaitingAcceptance = false;
+    this.pairingAcceptedRestartPending = false;
     if (!this.socket) {
       this.set({ status: logout ? "logged_out" : "disconnected", qr: undefined });
       await this.webhookOutbox.stop();
@@ -154,6 +174,9 @@ export class InstanceManager {
 
   async deleteSession(): Promise<void> {
     this.suppressReconnectUntil = Date.now() + 5_000;
+    this.clearReconnectTimer();
+    this.pairingAwaitingAcceptance = false;
+    this.pairingAcceptedRestartPending = false;
     const socket = this.socket;
     this.socket = undefined;
     if (socket) {
@@ -173,7 +196,8 @@ export class InstanceManager {
   }
 
   async reconnect(): Promise<void> {
-    await this.stop(false);
+    if (this.pairingAwaitingAcceptance) await this.deleteSession();
+    else await this.stop(false);
     this.suppressReconnectUntil = 0;
     await this.start();
   }
@@ -184,22 +208,46 @@ export class InstanceManager {
       throw new Error("Informe um número completo com DDI, somente números");
     if (this.snapshot.status === "connected")
       throw new Error("Esta instância já está conectada");
+    if (this.pairingRequestInProgress)
+      throw new Error("Aguarde a solicitação atual de código terminar");
+    if (this.pairingCleanup) await this.pairingCleanup;
+    if (this.pairingAwaitingAcceptance) await this.deleteSession();
     if (!this.socket) await this.start();
     if (!this.socket) throw new Error("Não foi possível iniciar a sessão WhatsApp");
-    this.set({ status: "pairing", qr: undefined, lastError: undefined });
     const socket = this.socket;
-    const code = createPairingCode();
-    this.pendingPairingCode = code;
-    this.acceptedPairingCode = undefined;
+    this.pairingRequestInProgress = true;
     try {
-      return await requestPairingCodeWithAcceptedRestart(
-        code,
-        () => socket.waitForSocketOpen(),
-        requestedCode => socket.requestPairingCode(digits, requestedCode),
-        () => this.acceptedPairingCode === code
+      const code = await requestPairingCodeWhenReady(
+        () => this.waitForPairingReady(socket),
+        () => {
+          if (this.snapshot.status === "connected")
+            throw new Error("Esta instância já está conectada");
+          this.set({ status: "pairing", qr: undefined, lastError: undefined });
+          this.pairingAwaitingAcceptance = true;
+          return socket.requestPairingCode(digits);
+        }
       );
+      if (
+        this.socket !== socket ||
+        ["disconnected", "logged_out", "error"].includes(this.snapshot.status)
+      ) {
+        throw new Error(
+          this.snapshot.lastError ??
+            "O WhatsApp encerrou a conexão antes de confirmar o pedido. Gere um novo código."
+        );
+      }
+      return code;
+    } catch (error) {
+      if (this.socket === socket && this.getStatus().status !== "connected") {
+        this.set({
+          status: "error",
+          lastError:
+            error instanceof Error ? error.message : "Falha ao pedir código WhatsApp",
+        });
+      }
+      throw error;
     } finally {
-      this.pendingPairingCode = undefined;
+      this.pairingRequestInProgress = false;
     }
   }
 
@@ -207,6 +255,88 @@ export class InstanceManager {
     const lock = this.sessionLock;
     this.sessionLock = undefined;
     if (lock) await lock.release();
+  }
+
+  private clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+  }
+
+  private waitForPairingReady(socket: WASocket): Promise<void> {
+    if (this.socket !== socket)
+      return Promise.reject(
+        new Error("A sessão WhatsApp foi encerrada; tente novamente")
+      );
+    if (this.snapshot.status === "connected")
+      return Promise.reject(new Error("Esta instância já está conectada"));
+    if (this.snapshot.status === "qr") return Promise.resolve();
+
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        socket.ev.off("connection.update", onUpdate);
+        if (error) reject(error);
+        else resolve();
+      };
+      const onUpdate = (update: { qr?: string; connection?: string }) => {
+        if (update.qr) finish();
+        else if (update.connection === "open")
+          finish(new Error("Esta instância já está conectada"));
+        else if (update.connection === "close")
+          finish(
+            new Error(
+              "O WhatsApp encerrou a conexão antes de iniciar o pareamento. Tente novamente."
+            )
+          );
+      };
+
+      socket.ev.on("connection.update", onUpdate);
+      timeout = setTimeout(
+        () =>
+          finish(
+            new Error(
+              "Tempo esgotado aguardando o WhatsApp iniciar o pareamento. Tente novamente."
+            )
+          ),
+        15_000
+      );
+      if (this.socket !== socket)
+        finish(new Error("A sessão WhatsApp foi encerrada; tente novamente"));
+      else if (this.snapshot.status === "qr") finish();
+      else if (this.snapshot.status === "connected")
+        finish(new Error("Esta instância já está conectada"));
+    });
+  }
+
+  private clearIncompletePairingSession() {
+    this.pairingAwaitingAcceptance = false;
+    if (this.pairingCleanup) return;
+    const sessionPath = path.join(config.sessionDir, this.instanceId);
+    const cleanup = this.releaseSessionLock()
+      .then(() => fs.rm(sessionPath, { recursive: true, force: true }))
+      .catch(error => {
+        logger.error(
+          {
+            instanceId: this.instanceId,
+            message: error instanceof Error ? error.message : String(error),
+          },
+          "failed to clear incomplete pairing session"
+        );
+        this.set({
+          status: "error",
+          lastError: "Não foi possível limpar a tentativa de pareamento incompleta.",
+        });
+      });
+    this.pairingCleanup = cleanup;
+    void cleanup.then(() => {
+      if (this.pairingCleanup === cleanup) this.pairingCleanup = undefined;
+    });
   }
 
   async sendMessage(
@@ -303,12 +433,17 @@ export class InstanceManager {
     lastDisconnect?: { error?: unknown };
     qr?: string;
     isNewLogin?: boolean;
-  }) {
-    if (update.isNewLogin && this.pendingPairingCode)
-      this.acceptedPairingCode = this.pendingPairingCode;
+  }, socket: WASocket) {
+    if (this.socket !== socket) return;
+    if (update.isNewLogin) {
+      this.pairingAwaitingAcceptance = false;
+      this.pairingAcceptedRestartPending = true;
+    }
     if (update.qr) this.set({ status: "qr", qr: update.qr });
     if (update.connection === "open") {
-      const user = this.socket?.user?.id;
+      this.pairingAwaitingAcceptance = false;
+      this.pairingAcceptedRestartPending = false;
+      const user = socket.user?.id;
       this.set({
         status: "connected",
         phone: user?.split(":")[0]?.replace(/\D/g, ""),
@@ -316,16 +451,49 @@ export class InstanceManager {
       });
     }
     if (update.connection === "close") {
-      const code = (
-        update.lastDisconnect?.error as { output?: { statusCode?: number } }
-      )?.output?.statusCode;
-      const loggedOut = code === DisconnectReason.loggedOut;
+      const disconnectError = update.lastDisconnect?.error as
+        | {
+            message?: string;
+            output?: { statusCode?: number };
+            data?: { reason?: string | number };
+          }
+        | undefined;
+      const statusCode = disconnectError?.output?.statusCode;
+      const reason =
+        disconnectError?.data?.reason == null
+          ? undefined
+          : String(disconnectError.data.reason);
+      const message = disconnectError?.message ?? "Conexão encerrada pelo WhatsApp";
+      const detail = reason ? `${message} (motivo ${reason})` : message;
+      const loggedOut = statusCode === DisconnectReason.loggedOut;
+      const pairingWasPending = this.pairingAwaitingAcceptance;
+      const acceptedRestart = this.pairingAcceptedRestartPending;
+      logger.warn(
+        { instanceId: this.instanceId, statusCode, reason, message },
+        "Baileys connection closed"
+      );
       this.set({
         status: loggedOut ? "logged_out" : "disconnected",
         qr: undefined,
+        lastError: acceptedRestart
+          ? undefined
+          : pairingWasPending
+            ? `Pareamento interrompido pelo WhatsApp (${detail}). Gere um novo código.`
+            : detail,
       });
-      if (!loggedOut && Date.now() >= this.suppressReconnectUntil)
-        setTimeout(() => void this.start(), 3000);
+      this.socket = undefined;
+      this.pairingAcceptedRestartPending = false;
+      if (pairingWasPending) {
+        this.clearIncompletePairingSession();
+        return;
+      }
+      if (!loggedOut && Date.now() >= this.suppressReconnectUntil) {
+        this.clearReconnectTimer();
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = undefined;
+          void this.start();
+        }, 3_000);
+      }
     }
   }
 

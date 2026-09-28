@@ -5,7 +5,11 @@ const defaultInstanceName = () =>
 const maskSecret = (value: string | undefined) =>
   value ? `${value.slice(0, 3)}••••${value.slice(-3)}` : null;
 
-async function gatewayRequest(path: string, init?: RequestInit) {
+async function gatewayRequest(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = 8_000
+) {
   const baseUrl = gatewayBaseUrl();
   const apiKey = process.env.BAILEYS_API_KEY;
   if (!baseUrl || !apiKey) return null;
@@ -15,7 +19,7 @@ async function gatewayRequest(path: string, init?: RequestInit) {
       Authorization: `Bearer ${apiKey}`,
       ...(init?.headers ?? {}),
     },
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
@@ -153,7 +157,7 @@ export async function requestBaileysPairingCode(
     method: "POST",
     headers: jsonHeaders(),
     body: JSON.stringify({ phone }),
-  });
+  }, 20_000);
   if (!response) throw new Error("Gateway WhatsApp não está configurado");
   const body = (await response.json()) as { code?: string };
   if (!body.code) throw new Error("Gateway não retornou o código de pareamento");

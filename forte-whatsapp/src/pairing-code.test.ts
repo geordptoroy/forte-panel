@@ -1,79 +1,64 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
-  createPairingCode,
-  requestPairingCodeWithAcceptedRestart,
+  clearUnregisteredPairingCredentials,
+  requestPairingCodeWhenReady,
 } from "./pairing-code.js";
 
 describe("Baileys pairing code", () => {
-  it("generates an eight-character code from Baileys' Crockford alphabet", () => {
-    const code = createPairingCode();
-    expect(code).toHaveLength(8);
-    expect(
-      [...code].every(character =>
-        "123456789ABCDEFGHJKLMNPQRSTVWXYZ".includes(character)
-      )
-    ).toBe(true);
-  });
-
-  it("waits for the WebSocket to open before requesting the code", async () => {
+  it("waits until the WhatsApp pairing flow is ready before requesting Baileys' native code", async () => {
     const calls: string[] = [];
-    const code = "AB12CD34";
     await expect(
-      requestPairingCodeWithAcceptedRestart(
-        code,
+      requestPairingCodeWhenReady(
         async () => {
-          calls.push("socket-open");
+          calls.push("ready");
         },
-        async requestedCode => {
-          calls.push("request-code");
-          return requestedCode;
-        },
-        () => false
+        async () => {
+          calls.push("request");
+          return "AB12CD34";
+        }
       )
-    ).resolves.toBe(code);
-    expect(calls).toEqual(["socket-open", "request-code"]);
+    ).resolves.toBe("AB12CD34");
+    expect(calls).toEqual(["ready", "request"]);
   });
 
-  it("returns the requested code when WhatsApp accepted pairing before closing the stream", async () => {
-    const code = "AB12CD34";
-    let accepted = false;
+  it("does not request a code when the socket never becomes ready", async () => {
+    const request = vi.fn(async () => "AB12CD34");
     await expect(
-      requestPairingCodeWithAcceptedRestart(
-        code,
-        async () => {},
-        async requestedCode => {
-          expect(requestedCode).toBe(code);
-          accepted = true;
-          throw new Error("Connection Closed");
-        },
-        () => accepted
-      )
-    ).resolves.toBe(code);
+      requestPairingCodeWhenReady(async () => {
+        throw new Error("WhatsApp connection closed");
+      }, request)
+    ).rejects.toThrow("WhatsApp connection closed");
+    expect(request).not.toHaveBeenCalled();
   });
 
-  it("does not hide a close that happened before pairing was accepted", async () => {
-    await expect(
-      requestPairingCodeWithAcceptedRestart(
-        "AB12CD34",
-        async () => {},
-        async () => {
-          throw new Error("Connection Closed");
-        },
-        () => false
-      )
-    ).rejects.toThrow("Connection Closed");
+  it("clears stale pairing credentials only for unregistered sessions", () => {
+    const creds: { registered?: boolean; me?: unknown; pairingCode?: string } =
+      {
+        registered: false,
+        me: { id: "pending" },
+        pairingCode: "AB12CD34",
+      };
+    expect(clearUnregisteredPairingCredentials(creds)).toBe(true);
+    expect(creds).toEqual({ registered: false });
   });
 
-  it("does not hide unrelated failures after pairing acceptance", async () => {
-    await expect(
-      requestPairingCodeWithAcceptedRestart(
-        "AB12CD34",
-        async () => {},
-        async () => {
-          throw new Error("Pairing request timed out");
-        },
-        () => true
-      )
-    ).rejects.toThrow("Pairing request timed out");
+  it("preserves credentials of a registered account", () => {
+    const creds = {
+      registered: true,
+      me: { id: "registered" },
+      pairingCode: "AB12CD34",
+    };
+    expect(clearUnregisteredPairingCredentials(creds)).toBe(false);
+    expect(creds.me).toEqual({ id: "registered" });
+    expect(creds.pairingCode).toBe("AB12CD34");
+  });
+
+  it("leaves fresh unregistered credentials unchanged", () => {
+    const creds: { registered?: boolean; me?: unknown; pairingCode?: string } =
+      {
+        registered: false,
+      };
+    expect(clearUnregisteredPairingCredentials(creds)).toBe(false);
+    expect(creds).toEqual({ registered: false });
   });
 });

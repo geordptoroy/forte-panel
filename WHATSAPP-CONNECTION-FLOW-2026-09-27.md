@@ -1,7 +1,7 @@
 # Core do Forte Panel — instâncias Baileys
 
 **Documento canônico desta etapa · 27/09/2026**
-**Estado:** CRUD implementado; CI de integração PostgreSQL 16 aprovada no commit `b09fe05`; aguarda revisão do usuário e validação no Docker local do usuário.
+**Estado:** CRUD implementado; CI de integração PostgreSQL 16 aprovada no commit `b09fe05`; correção do pareamento numérico e seletor de país/DDI validados no sandbox; aguarda novo teste no Docker local do usuário.
 **Fonte de verdade para esta fatia:** este documento, `todo.md` e `PROJECT_DOCUMENTATION_INDEX.md`.
 
 ---
@@ -91,6 +91,13 @@ As procedures tRPC usam o workspace autenticado e permissão de gerente/owner/ad
 - O card **Consumo do workspace** permanece abaixo das instâncias, consultando a cota atual e a janela de renovação.
 - Demais páginas e módulos não foram deletados: permanecem no código e backend para que possam ser reabertos em uma etapa revisada. A flag não é barreira de segurança.
 
+### Pareamento por número
+
+- A alternativa ao QR usa um seletor de países/regiões com bandeira, nome em português e DDI; o número digitado inclui DDD/código de área, sem repetir o DDI selecionado. A UI valida possibilidade de comprimento e envia o destino em formato internacional.
+- O código é solicitado diretamente ao `socket.requestPairingCode()` do Baileys; não é inventado pelo painel. O gateway aguarda o evento de prontidão do fluxo inicial antes de enviar o pedido, em vez de depender apenas da abertura do WebSocket.
+- Uma nova tentativa limpa apenas a sessão de pareamento ainda não aceita. Se a conexão cair antes da conclusão, o gateway remove as credenciais incompletas e não reconecta automaticamente com esse estado; o sucesso de pareamento mantém o reinício de socket esperado pelo Baileys.
+- O log de encerramento registra status/motivo do erro sem incluir telefone ou credenciais. A UI só deve considerar a sessão conectada após os eventos de login/abertura do Baileys.
+
 ### Procedures tRPC principais
 
 - consultas: `workspace.baileysInstances`, `workspace.baileysStatus`, `workspace.baileysQr`;
@@ -166,6 +173,8 @@ Executar antes de integrar o próximo core:
 As migrations 0038/0039 foram aplicadas com sucesso no PostgreSQL 16 pelo workflow de integração do GitHub e a suíte completa passou sem testes ignorados nesse ambiente. **O sandbox não possui o Docker/PostgreSQL local do usuário:** nenhuma migration foi aplicada a um banco/volume do usuário nesta tarefa. A execução real no Compose, QR com número de teste e validação visual no WSL Docker permanecem como gate explícito da etapa 1.
 
 Última validação local: `pnpm test` — 137 passaram, 41 ficaram skipped por dependências de ambiente/DB; `pnpm check`, TypeScript do gateway, `pnpm build`, `drizzle-kit check` e `git diff --check` passaram. Os 22 testes isolados do gateway passaram com `npm ci`, `npm run check` e `npm test`. A CI `PostgreSQL integration` também passou no commit `b09fe05`. O build mantém um aviso preexistente de bundle JS > 500 KB. As migrations foram revisadas manualmente para conter **somente** os dois índices Baileys novos — sem tipos, tabelas ou indexes históricos duplicados.
+
+Validação sandbox desta correção de pareamento/DDI: 142 testes passaram e 41 ficaram skipped na suíte do monorepo; 27 testes do gateway passaram; TypeScript do painel/gateway e builds de produção do painel, servidor e gateway passaram. O teste de número real e a conferência visual continuam pendentes no Docker local do usuário.
 
 ---
 

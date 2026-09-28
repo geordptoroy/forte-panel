@@ -233,7 +233,9 @@ Plano detalhado: `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`.
 - [x] Desconexão manual não dispara reconexão automática indevida.
 - [x] Proxy repassa `updatedAt`, aceita `phone`/`phoneNumber` e trata 404 transitório do QR.
 - [x] TypeScript do painel e gateway aprovados; build do painel aprovado; 15 testes do gateway aprovados.
+- [x] Pareamento por número revisado: código nativo Baileys, readiness antes do pedido, limpeza de sessão incompleta e seletor país/bandeira/DDI com validação internacional.
 - [ ] Validar com Docker e número real: conectar, ler QR, atualizar QR expirado, reiniciar serviço, desconectar e logout.
+- [ ] Validar o seletor de país/bandeira/DDI e o código Baileys nativo; repetir geração após uma tentativa não aceita e confirmar que não volta `Connection Closed`.
 - [ ] Validar webhook inbound e status no Inbox depois da conexão real.
 
 

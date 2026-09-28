@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import {
+  getCountries,
+  getCountryCallingCode,
+  isPossiblePhoneNumber,
+  type CountryCode,
+} from "libphonenumber-js";
+import {
   ArrowDownRight,
   ArrowUpRight,
   Bell,
@@ -63,6 +69,22 @@ import {
   type Message,
   type Stage,
 } from "@/lib/demoData";
+
+const countryDisplayNames = new Intl.DisplayNames(["pt-BR"], { type: "region" });
+const countryFlag = (country: string) =>
+  /^[A-Z]{2}$/.test(country)
+    ? String.fromCodePoint(
+        ...country.split("").map(character => 127397 + character.charCodeAt(0))
+      )
+    : "🌐";
+const phoneCountryOptions = getCountries()
+  .map(country => ({
+    country,
+    name: countryDisplayNames.of(country) ?? country,
+    callingCode: getCountryCallingCode(country),
+    flag: countryFlag(country),
+  }))
+  .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
 
 function DemoBanner() {
   return (
@@ -199,6 +221,7 @@ function BaileysInstanceCard({
   const utils = trpc.useUtils();
   const [nameDraft, setNameDraft] = useState(name);
   const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState<CountryCode>("BR");
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const status = trpc.workspace.baileysStatus.useQuery({ instanceId }, {
@@ -206,6 +229,9 @@ function BaileysInstanceCard({
     retry: false,
   });
   const current = status.data;
+  const localPhoneDigits = phone.replace(/\D/g, "");
+  const fullPhone = `+${getCountryCallingCode(countryCode)}${localPhoneDigits}`;
+  const phoneIsPossible = isPossiblePhoneNumber(fullPhone);
   const connected = current?.status === "connected";
   const waitingQr = current?.status === "qr";
   const qr = trpc.workspace.baileysQr.useQuery({ instanceId }, {
@@ -306,14 +332,45 @@ function BaileysInstanceCard({
       <details style={{ marginTop: 14 }}>
         <summary className="muted" style={{ cursor: "pointer" }}>Conectar com código numérico</summary>
         <div className="core-instance-form" style={{ marginTop: 12 }}>
-          <label className="form-field">
-            <span>Número com DDI</span>
-            <input className="input-control" inputMode="numeric" value={phone} onChange={event => setPhone(event.target.value)} placeholder="5511999999999" />
-          </label>
-          <button className="btn-secondary" disabled={pairing.isPending || phone.replace(/\D/g, "").length < 8} onClick={() => pairing.mutate({ instanceId, phone })}>
+          <div className="phone-entry-group">
+            <label className="form-field">
+              <span>País e DDI</span>
+              <select
+                className="input-control"
+                value={countryCode}
+                aria-label="País e código DDI"
+                onChange={event => setCountryCode(event.target.value as CountryCode)}
+              >
+                {phoneCountryOptions.map(option => (
+                  <option key={option.country} value={option.country}>
+                    {option.flag} {option.name} (+{option.callingCode})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-field">
+              <span>Número nacional</span>
+              <input
+                className="input-control"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel-national"
+                value={phone}
+                onChange={event => setPhone(event.target.value)}
+                placeholder="DDD e telefone"
+                aria-label="Número nacional incluindo DDD ou código de área"
+              />
+            </label>
+          </div>
+          <button className="btn-secondary" disabled={pairing.isPending || !phoneIsPossible} onClick={() => {
+            setPairingCode(null);
+            pairing.reset();
+            pairing.mutate({ instanceId, phone: fullPhone });
+          }}>
             {pairing.isPending ? "Gerando..." : "Gerar código"}
           </button>
         </div>
+        <small className="muted phone-number-hint">Inclua o DDD/código de área e digite o número sem o DDI. O país selecionado acrescenta o DDI automaticamente.</small>
         {pairingCode && <div className="pairing-code" style={{ marginTop: 12 }} aria-live="polite">{pairingCode}</div>}
         {pairing.error && <div className="form-error" role="alert" style={{ marginTop: 10 }}>{pairing.error.message}</div>}
       </details>
