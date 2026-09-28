@@ -165,7 +165,9 @@ export function DashboardPage() {
   const dashboardQuery = trpc.dashboard.snapshot.useQuery();
   const accessQuery = trpc.auth.access.useQuery();
   const onboardingSessionQuery = trpc.onboarding.session.useQuery(undefined, {
-    enabled: Boolean(accessQuery.data?.canManageTeam || accessQuery.data?.platform),
+    enabled: Boolean(
+      accessQuery.data?.canManageTeam || accessQuery.data?.platform
+    ),
     retry: false,
   });
   const snapshot = dashboardQuery.data;
@@ -261,14 +263,36 @@ export function DashboardPage() {
         </PageLink>
       </div>
       {onboardingSession && onboardingSession.status !== "completed" && (
-        <section className="surface" style={{ padding: 20, marginTop: 20, borderColor: "rgba(86,214,138,.22)", background: "linear-gradient(135deg, rgba(86,214,138,.055), rgba(255,255,255,.014))" }}>
+        <section
+          className="surface"
+          style={{
+            padding: 20,
+            marginTop: 20,
+            borderColor: "rgba(86,214,138,.22)",
+            background:
+              "linear-gradient(135deg, rgba(86,214,138,.055), rgba(255,255,255,.014))",
+          }}
+        >
           <SectionTitle
             eyebrow="Configuração da empresa"
             title="Retome de onde parou"
-            action={<StatusBadge tone={onboardingSession.status === "paused" ? "amber" : "green"}>{onboardingSession.status === "paused" ? "Pausado" : "Em andamento"}</StatusBadge>}
+            action={
+              <StatusBadge
+                tone={onboardingSession.status === "paused" ? "amber" : "green"}
+              >
+                {onboardingSession.status === "paused"
+                  ? "Pausado"
+                  : "Em andamento"}
+              </StatusBadge>
+            }
           />
           <p className="muted" style={{ margin: "-4px 0 15px", fontSize: 11 }}>
-            Próximo passo: <strong style={{ color: "#b9e4c7" }}>{onboardingStepLabels[onboardingSession.currentStep] ?? onboardingSession.currentStep}</strong>. O rascunho salvo será carregado automaticamente.
+            Próximo passo:{" "}
+            <strong style={{ color: "#b9e4c7" }}>
+              {onboardingStepLabels[onboardingSession.currentStep] ??
+                onboardingSession.currentStep}
+            </strong>
+            . O rascunho salvo será carregado automaticamente.
           </p>
           <PageLink href="/onboarding" className="btn-primary">
             Retomar configuração <ArrowUpRight size={13} />
@@ -699,12 +723,18 @@ export function InboxPage() {
     enabled: selectedNumericId > 0,
   });
   const latestMessageId =
-    threadQuery.data?.messages?.[threadQuery.data.messages.length - 1]?.id ?? "";
+    threadQuery.data?.messages?.[threadQuery.data.messages.length - 1]?.id ??
+    "";
   const markReadMutation = trpc.inbox.markRead.useMutation({
     onSuccess: () => contactsQuery.refetch(),
   });
   useEffect(() => {
-    if (selectedNumericId <= 0 || !selected || selected.unread <= 0 || !latestMessageId)
+    if (
+      selectedNumericId <= 0 ||
+      !selected ||
+      selected.unread <= 0 ||
+      !latestMessageId
+    )
       return;
     const key = `${selectedNumericId}:${latestMessageId}`;
     if (markedReadRef.current.has(key)) return;
@@ -816,6 +846,7 @@ export function InboxPage() {
       eyebrow="Operação / Atendimento"
       title="Atendimento"
       description="Converse com seus clientes sem sair do painel."
+      showHeading={false}
       actions={
         <PageLink href="/contacts" className="btn-primary">
           <Plus size={13} /> Nova conversa

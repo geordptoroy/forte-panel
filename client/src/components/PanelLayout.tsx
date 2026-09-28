@@ -309,8 +309,8 @@ const workspaceUsageNav: NavGroup[] = [
 
 const coreOnlyNav: NavGroup[] = [
   {
-    label: "Etapa 1 · WhatsApp",
-    items: [managementNav[0].items[0]],
+    label: "Operação",
+    items: [managementNav[0].items[0], managementNav[0].items[2]],
   },
 ];
 

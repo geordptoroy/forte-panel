@@ -82,10 +82,22 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
               ? "document"
               : "text")
   );
+  const supportedTypes = [
+    "text",
+    "image",
+    "audio",
+    "video",
+    "document",
+    "sticker",
+    "location",
+    "contact",
+    "poll",
+    "list",
+    "button",
+    "react",
+  ];
   const messageType = (
-    ["text", "image", "audio", "video", "document"].includes(rawType)
-      ? rawType
-      : "text"
+    supportedTypes.includes(rawType) ? rawType : "text"
   ) as InboundMessageEvent["messageType"];
   const content =
     message?.content ??
@@ -394,7 +406,10 @@ export function createBaileysAdapter(): BaileysAdapter {
         const response = await fetch(`${baseUrl.replace(/\/$/, "")}/ready`, {
           headers: { Authorization: `Bearer ${apiKey}` },
           signal: AbortSignal.timeout(
-            Math.max(1_000, Number(process.env.BAILEYS_REQUEST_TIMEOUT_MS ?? 8_000))
+            Math.max(
+              1_000,
+              Number(process.env.BAILEYS_REQUEST_TIMEOUT_MS ?? 8_000)
+            )
           ),
         });
         const payload = (await (typeof response.json === "function"
@@ -436,7 +451,10 @@ export function createBaileysAdapter(): BaileysAdapter {
             "Idempotency-Key": command.idempotencyKey,
           },
           signal: AbortSignal.timeout(
-            Math.max(1_000, Number(process.env.BAILEYS_REQUEST_TIMEOUT_MS ?? 8_000))
+            Math.max(
+              1_000,
+              Number(process.env.BAILEYS_REQUEST_TIMEOUT_MS ?? 8_000)
+            )
           ),
           body: JSON.stringify({
             phone:

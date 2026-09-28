@@ -70,7 +70,20 @@ const webhookSchema = z.object({
   name: z.string().max(160).optional(),
   content: z.string().min(1).max(10000),
   messageType: z
-    .enum(["text", "image", "audio", "video", "document"])
+    .enum([
+      "text",
+      "image",
+      "audio",
+      "video",
+      "document",
+      "sticker",
+      "location",
+      "contact",
+      "poll",
+      "list",
+      "button",
+      "react",
+    ])
     .optional(),
   metadata: z
     .object({
@@ -84,6 +97,7 @@ const webhookSchema = z.object({
       buttonText: z.string().max(500).optional(),
       isGroup: z.boolean().optional(),
     })
+    .passthrough()
     .optional(),
   receivedAt: z.coerce.date().optional(),
 });
@@ -386,10 +400,13 @@ api.get("/ready", async (_req, res) => {
 api.get("/core/diagnostics", async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const workspaceId = Number(process.env.FORTE_API_WORKSPACE_ID);
-  const configuredWorkspace = Number.isSafeInteger(workspaceId) && workspaceId > 0;
+  const configuredWorkspace =
+    Number.isSafeInteger(workspaceId) && workspaceId > 0;
   const config = {
     workspaceConfigured: configuredWorkspace,
-    baileysWebhookSecretConfigured: Boolean(process.env.BAILEYS_WEBHOOK_SECRET?.trim()),
+    baileysWebhookSecretConfigured: Boolean(
+      process.env.BAILEYS_WEBHOOK_SECRET?.trim()
+    ),
     forteApiKeyConfigured: Boolean(process.env.FORTE_API_KEY?.trim()),
   };
   if (!configuredWorkspace)
@@ -1202,7 +1219,11 @@ async function handleBaileysWebhook(req: Request, res: Response) {
         Buffer.from(providedSecret)
       )
   );
-  if (!secretAccepted && !hasValidWebhookSignature(req) && !requireApiKey(req, res))
+  if (
+    !secretAccepted &&
+    !hasValidWebhookSignature(req) &&
+    !requireApiKey(req, res)
+  )
     return;
   let eventId = "baileys-unknown-event";
   let workspaceId: number | undefined;
@@ -1226,7 +1247,8 @@ async function handleBaileysWebhook(req: Request, res: Response) {
         "inactive_baileys_instance"
       );
     if (instanceOwner?.active) workspaceId = instanceOwner.workspaceId;
-    const legacyInstanceId = process.env.BAILEYS_INSTANCE_ID?.trim() || "default";
+    const legacyInstanceId =
+      process.env.BAILEYS_INSTANCE_ID?.trim() || "default";
     if (
       !instanceOwner &&
       !workspaceId &&

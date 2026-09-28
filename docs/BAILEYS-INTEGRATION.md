@@ -1048,3 +1048,12 @@ Não iniciar os passos 2–4 antes de aprovação da etapa atual.
 | Receber evento | `POST /api/v1/webhooks/providers/baileys` |
 
 Este documento registra o contrato técnico ativo do gateway. A sequência de produto e os gates de revisão ficam em `WHATSAPP-CONNECTION-FLOW-2026-09-27.md`; a API empresarial REST continua fechada por padrão conforme `API_CONTRACT.md`.
+
+
+## Inbox operacional — 28/09/2026
+
+A Inbox foi liberada como a segunda área operacional do modo Core, sem reativar as demais páginas congeladas. A rota é `/inbox` e permanece protegida pela autenticação/RBAC existente.
+
+O fluxo contempla recebimento e persistência de texto, imagem, áudio, vídeo, documento e sticker; preservação de payload para localização, contato, enquete, lista, botão e reação; identificação por telefone/JID, `pushName`, `instanceId` e `messageId`; download de mídia recebida pelo gateway; e envio por texto e anexos roteado pelo `instanceId` da origem.
+
+A interface manteve o desenho existente da Inbox; o cabeçalho redundante foi ocultado nessa rota porque a identificação já é feita pela sidebar. O smoke test visual e o teste com mensagens reais no Docker do usuário continuam sendo a validação final do ambiente local.

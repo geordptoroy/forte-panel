@@ -410,3 +410,13 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Reorganizar criação de instância em modal: nome, escolha QR/número e DDI com bandeira.
 - [x] Manter renomeação, exclusão confirmada, QR e pareamento por número sem alterar o backend.
 - [ ] Fazer smoke test visual no Docker do usuário.
+
+
+### Inbox operacional — 28/09/2026
+
+- [x] Liberar Inbox na sidebar e no modo Core, mantendo demais rotas congeladas.
+- [x] Remover o cabeçalho redundante da página sem alterar o desenho principal.
+- [x] Validar texto, mídia, contato, JID, instanceId e roteamento de envio.
+- [x] Ampliar recebimento Baileys para sticker, localização, contato, enquete, lista, botão e reação.
+- [x] Typecheck, build e 23 testes específicos aprovados.
+- [ ] Fazer smoke test visual e teste com mensagens reais no Docker do usuário.

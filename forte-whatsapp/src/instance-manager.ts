@@ -589,6 +589,13 @@ export class InstanceManager {
       const audio = body?.audioMessage;
       const video = body?.videoMessage;
       const document = body?.documentMessage;
+      const sticker = body?.stickerMessage;
+      const location = body?.locationMessage;
+      const contact = body?.contactMessage ?? body?.contactsArrayMessage;
+      const poll = body?.pollCreationMessage ?? body?.pollUpdateMessage;
+      const list = body?.listMessage;
+      const button = body?.buttonsMessage ?? body?.templateButtonReplyMessage;
+      const reaction = body?.reactionMessage;
       const messageType = image
         ? "image"
         : audio
@@ -597,19 +604,45 @@ export class InstanceManager {
             ? "video"
             : document
               ? "document"
-              : "text";
+              : sticker
+                ? "sticker"
+                : location
+                  ? "location"
+                  : contact
+                    ? "contact"
+                    : poll
+                      ? "poll"
+                      : list
+                        ? "list"
+                        : button
+                          ? "button"
+                          : reaction
+                            ? "react"
+                            : "text";
       const content =
         body?.conversation ??
         body?.extendedTextMessage?.text ??
         image?.caption ??
         video?.caption ??
         document?.caption ??
+        location?.name ??
+        location?.address ??
+        contact?.displayName ??
+        (contact as { contacts?: Array<{ displayName?: string }> })
+          ?.contacts?.[0]?.displayName ??
+        (poll as { name?: string })?.name ??
+        list?.description ??
+        (button as { contentText?: string })?.contentText ??
+        reaction?.text ??
         (audio ? "[áudio recebido]" : "[mídia recebida]");
-      const media = image || audio || video || document;
+      const media = image || audio || video || document || sticker;
       const metadata: Record<string, unknown> = {
         provider: "baileys",
         messageId: message.key.id,
         jid: message.key.remoteJid,
+        ...([location, contact, poll, list, button, reaction].some(Boolean)
+          ? { payload: { location, contact, poll, list, button, reaction } }
+          : {}),
       };
       if (media) {
         try {

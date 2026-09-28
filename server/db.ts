@@ -6336,7 +6336,19 @@ export async function ingestInboundWhatsApp(
     phone: string;
     name?: string;
     content: string;
-    messageType?: "text" | "image" | "audio" | "video" | "document";
+    messageType?:
+      | "text"
+      | "image"
+      | "audio"
+      | "video"
+      | "document"
+      | "sticker"
+      | "location"
+      | "contact"
+      | "poll"
+      | "list"
+      | "button"
+      | "react";
     metadata?: Record<string, unknown>;
     fromMe?: boolean;
     receivedAt?: Date;
