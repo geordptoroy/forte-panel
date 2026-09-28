@@ -1927,3 +1927,10 @@ docker compose -f .\docker-compose.local.yml logs --tail 100 forte-panel-migrati
 ```
 
 **Não executar `docker compose down -v`**: isso pode apagar volumes persistentes de PostgreSQL, Redis e sessões WhatsApp. Após o usuário rodar o procedimento, confirmar que os containers do painel e gateway foram recriados com as imagens `:dev` atuais e validar pareamento/mensagens reais; ainda não há confirmação de que esse update local tenha sido executado.
+
+
+## 15. Rótulo de mensagens humanas e dados de demonstração — 2026-09-28 17:29 BRT
+
+- Causa confirmada do rótulo **Gabriel** nas mensagens enviadas: `client/src/pages/PanelPages.tsx` (`MessageBubble`) tinha o fallback de `sender === "human"` fixado literalmente como `"Gabriel"`. Isso não vinha do nome do usuário nem do banco. A correção local substitui o fallback por **Atendente**, neutro para workspaces com vários operadores.
+- Há também conteúdo demo com nomes como “Gabriel” e “Gabriel Barbosa” em `server/db.ts`, dentro das funções de seed. `ensureDemoInbox` só popula a demonstração quando `DEMO_MODE === "true"`; `docker-compose.local.yml` atualmente define `DEMO_MODE: "false"`. Desligar a flag não apaga dados de demonstração que já tenham sido inseridos anteriormente.
+- O usuário pediu teste com o banco limpo. **Ainda não foi executado nenhum reset nem remoção de volumes.** Antes de dar o comando destrutivo, confirmar se deve apagar só o volume PostgreSQL (remove usuários/workspaces/conversas/mensagens/configurações persistidas, preservando a sessão pareada), ou todos os volumes da stack Forte (incluindo Redis e sessão/pareamento WhatsApp). O script existente `scripts/docker-reset-all-local.sh` é mais amplo: além dos recursos da stack, executa `docker system prune --all --volumes` e pode remover recursos não usados de outros projetos Docker; não recomendá-lo sem consentimento explícito para essa limpeza global.

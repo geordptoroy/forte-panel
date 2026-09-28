@@ -485,12 +485,12 @@ function MessageBubble({ message }: { message: Message }) {
     : "";
   const author =
     groupAuthor || groupAuthorId || (message.sender === "lead"
-      ? "Lead"
+        ? "Lead"
       : message.sender === "ai"
         ? "IA automática"
         : message.sender === "human"
-          ? "Gabriel"
-          : "Sistema");
+          ? "Atendente"
+        : "Sistema");
   const time = message.time.includes("T")
     ? new Date(message.time).toLocaleTimeString("pt-BR", {
         hour: "2-digit",
