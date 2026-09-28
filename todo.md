@@ -420,3 +420,16 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Ampliar recebimento Baileys para sticker, localização, contato, enquete, lista, botão e reação.
 - [x] Typecheck, build e 23 testes específicos aprovados.
 - [ ] Fazer smoke test visual e teste com mensagens reais no Docker do usuário.
+
+
+## Inbox/Baileys — atualização 2026-09-28
+
+- [x] Rastrear e corrigir a normalização de texto Baileys dentro do gateway; wrappers não podem transformar `oi` em fallback genérico de mídia.
+- [x] Encaminhar `fromMe`, distinguir takeover manual de eco iniciado no Panel, pausar IA/assumir conversa e impedir emissão de evento recebido para o agente.
+- [x] Implementar filtro explícito Todas/uma/várias na Inbox, com validação de IDs e escopo de workspace no backend/SQL; preservar linha legada sem origem somente em Todas e excluir origem Baileys conhecida de outro tenant.
+- [x] Adicionar upload de áudio `audio/*` separado (até 8 MB); decisão desta fatia: upload, sem gravação pelo microfone.
+- [x] Adicionar fixtures de normalização, `fromMe`, filtro de instâncias e isolamento; validar contra PostgreSQL local temporário com migrations aplicadas ao sandbox descartável.
+- [x] Executar `pnpm check`, `pnpm exec tsc --noEmit -p forte-whatsapp/tsconfig.json`, `pnpm test` (59 arquivos / 231 aprovados / zero ignorados), `npm test --prefix forte-whatsapp` (9 arquivos / 55 aprovados) e `pnpm build`.
+- [x] Repetir `git diff --check` após a revisão final.
+- [ ] Publicar a fatia validada em `main` e acompanhar a execução de publicação `dev` no GitHub Actions.
+- [ ] Validar rendering responsivo e envio/recebimento real de texto, imagem e áudio com número WhatsApp dedicado; confirmar o PostgreSQL persistente de staging. O banco efêmero usado acima pertence somente ao sandbox.

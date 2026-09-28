@@ -436,6 +436,13 @@ function ConversationList({
           </div>
         </button>
       ))}
+      {items.length === 0 && (
+        <EmptyState
+          icon={MessageCircle}
+          title="Nenhuma conversa neste filtro"
+          description="Tente outra busca, etapa ou seleção de instâncias."
+        />
+      )}
     </div>
   );
 }
@@ -686,6 +693,7 @@ export function InboxPage() {
   const [location] = useLocation();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("Todos");
+  const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[] | null>(null);
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<{
     name: string;
@@ -694,11 +702,23 @@ export function InboxPage() {
     dataUrl: string;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioFileInputRef = useRef<HTMLInputElement>(null);
   const markedReadRef = useRef(new Set<string>());
-  const contactsQuery = trpc.inbox.contacts.useQuery();
+  const instancesQuery = trpc.inbox.instances.useQuery();
+  const contactsQuery = trpc.inbox.contacts.useQuery({
+    instanceIds: selectedInstanceIds,
+  });
   const channelsQuery = trpc.workspace.channels.useQuery();
   const remoteContacts = contactsQuery.data ?? [];
   const items = remoteContacts;
+
+  useEffect(() => {
+    if (!instancesQuery.data || selectedInstanceIds === null) return;
+    const available = new Set(instancesQuery.data.map(instance => instance.instanceId));
+    const remaining = selectedInstanceIds.filter(id => available.has(id));
+    if (remaining.length !== selectedInstanceIds.length)
+      setSelectedInstanceIds(remaining.length > 0 ? remaining : null);
+  }, [instancesQuery.data, selectedInstanceIds]);
 
   useEffect(() => {
     const requestedId = new URLSearchParams(location.split("?")[1] ?? "").get(
@@ -716,8 +736,8 @@ export function InboxPage() {
   const selected = items.find(contact => contact.id === selectedId) ?? items[0];
   const selectedNumericId = Number(selected?.id ?? 0);
   const threadInput = useMemo(
-    () => ({ contactId: selectedNumericId }),
-    [selectedNumericId]
+    () => ({ contactId: selectedNumericId, instanceIds: selectedInstanceIds }),
+    [selectedNumericId, selectedInstanceIds]
   );
   const threadQuery = trpc.inbox.thread.useQuery(threadInput, {
     enabled: selectedNumericId > 0,
@@ -731,6 +751,7 @@ export function InboxPage() {
   useEffect(() => {
     if (
       selectedNumericId <= 0 ||
+      selectedInstanceIds !== null ||
       !selected ||
       selected.unread <= 0 ||
       !latestMessageId
@@ -745,7 +766,7 @@ export function InboxPage() {
         onError: () => markedReadRef.current.delete(key),
       }
     );
-  }, [latestMessageId, selected, selectedNumericId]);
+  }, [latestMessageId, selected, selectedNumericId, selectedInstanceIds]);
   const refresh = async () => {
     await Promise.all([contactsQuery.refetch(), threadQuery.refetch()]);
   };
@@ -774,17 +795,31 @@ export function InboxPage() {
         title="Atendimento"
         description="Converse com seus clientes sem sair do painel."
       >
-        {contactsQuery.isLoading ? (
+        {contactsQuery.isLoading || instancesQuery.isLoading ? (
           <EmptyState
             icon={MessageCircle}
             title="Carregando conversas"
             description="Buscando os contatos persistidos deste workspace."
           />
+        ) : contactsQuery.isError || instancesQuery.isError ? (
+          <div className="inbox-query-error">
+            <EmptyState
+              icon={WifiOff}
+              title="Não foi possível carregar a Inbox"
+              description="Verifique a conexão e tente novamente."
+            />
+            <button
+              className="btn-secondary"
+              onClick={() => void Promise.all([contactsQuery.refetch(), instancesQuery.refetch()])}
+            >
+              <RefreshCw size={13} /> Tentar novamente
+            </button>
+          </div>
         ) : (
           <EmptyState
             icon={MessageCircle}
-            title="Nenhuma conversa encontrada"
-            description="Quando o primeiro WhatsApp chegar, a conversa aparecerá aqui."
+            title={selectedInstanceIds ? "Nenhuma conversa nestas instâncias" : "Nenhuma conversa encontrada"}
+            description={selectedInstanceIds ? "Escolha outras instâncias ou selecione Todas." : "Quando o primeiro WhatsApp chegar, a conversa aparecerá aqui."}
           />
         )}
       </PanelLayout>
@@ -812,6 +847,7 @@ export function InboxPage() {
             ...(draft.trim() ? { caption: draft.trim() } : {}),
           }
         : undefined,
+      instanceIds: selectedInstanceIds,
     });
     setDraft("");
     setAttachment(null);
@@ -881,9 +917,52 @@ export function InboxPage() {
             <option key={stage}>{stage}</option>
           ))}
         </select>
-        <button className="btn-secondary">
-          <Filter size={13} /> Filtros
-        </button>
+        <details className="inbox-instance-filter">
+          <summary className="btn-secondary">
+            <Filter size={13} /> Instâncias: {selectedInstanceIds === null ? "Todas" : `${selectedInstanceIds.length} selecionada(s)`}
+          </summary>
+          <div className="inbox-instance-options">
+            <label>
+              <input
+                type="checkbox"
+                checked={selectedInstanceIds === null}
+                onChange={() => setSelectedInstanceIds(null)}
+              />
+              Todas as instâncias
+            </label>
+            {instancesQuery.isLoading ? (
+              <small>Carregando instâncias...</small>
+            ) : instancesQuery.isError ? (
+              <button className="btn-ghost" onClick={() => void instancesQuery.refetch()}>
+                Falha ao carregar. Tentar novamente
+              </button>
+            ) : instancesQuery.data?.length ? (
+              instancesQuery.data.map(instance => (
+                <label key={instance.instanceId}>
+                  <input
+                    type="checkbox"
+                    checked={selectedInstanceIds?.includes(instance.instanceId) ?? false}
+                    onChange={event => {
+                      const checked = event.currentTarget.checked;
+                      setSelectedInstanceIds(current => {
+                        if (checked)
+                          return current === null
+                            ? [instance.instanceId]
+                            : Array.from(new Set([...current, instance.instanceId]));
+                        if (current === null) return null;
+                        const remaining = current.filter(id => id !== instance.instanceId);
+                        return remaining.length ? remaining : null;
+                      });
+                    }}
+                  />
+                  {instance.name}
+                </label>
+              ))
+            ) : (
+              <small>Nenhuma instância ativa neste workspace.</small>
+            )}
+          </div>
+        </details>
       </div>
       <div className="inbox-layout">
         <ConversationList
@@ -912,9 +991,24 @@ export function InboxPage() {
             </div>
           </div>
           <div className="chat-body">
-            {messages.map(message => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
+            {threadQuery.isLoading ? (
+              <EmptyState icon={MessageCircle} title="Carregando mensagens" description="Buscando o histórico desta conversa." />
+            ) : threadQuery.isError ? (
+              <div className="inbox-query-error">
+                <EmptyState
+                  icon={WifiOff}
+                  title="Não foi possível carregar as mensagens"
+                  description="O histórico não foi alterado. Tente novamente."
+                />
+                <button className="btn-secondary" onClick={() => void threadQuery.refetch()}>
+                  <RefreshCw size={13} /> Tentar novamente
+                </button>
+              </div>
+            ) : messages.length ? (
+              messages.map(message => <MessageBubble key={message.id} message={message} />)
+            ) : (
+              <EmptyState icon={MessageCircle} title="Nenhuma mensagem nesta instância" description="Selecione outra instância ou escolha Todas para ver o histórico completo." />
+            )}
           </div>
           {attachment && (
             <div className="chat-attachment-preview">
@@ -943,6 +1037,16 @@ export function InboxPage() {
                 event.currentTarget.value = "";
               }}
             />
+            <input
+              ref={audioFileInputRef}
+              type="file"
+              hidden
+              accept="audio/*"
+              onChange={event => {
+                selectAttachment(event.target.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
             <button
               className="icon-button"
               type="button"
@@ -950,6 +1054,15 @@ export function InboxPage() {
               onClick={() => fileInputRef.current?.click()}
             >
               <Paperclip size={16} />
+            </button>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="Anexar áudio"
+              title="Enviar arquivo de áudio"
+              onClick={() => audioFileInputRef.current?.click()}
+            >
+              <Headphones size={16} />
             </button>
             <input
               className="input-control"

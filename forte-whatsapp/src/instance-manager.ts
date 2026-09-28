@@ -22,6 +22,11 @@ import {
   shouldUseRemoteLogout,
 } from "./pairing-code.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
+import {
+  normalizeBaileysMessage,
+  normalizeBaileysOutgoingMessage,
+  PanelMessageEchoTracker,
+} from "./message-normalization.js";
 
 export type InstanceStatus =
   | "idle"
@@ -63,6 +68,7 @@ export class InstanceManager {
   private credsSaveQueue: Promise<void> = Promise.resolve();
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private readonly webhookOutbox: WebhookOutbox;
+  private readonly panelMessageEchoes = new PanelMessageEchoTracker();
 
   constructor(
     private readonly instanceId = config.instanceId,
@@ -472,8 +478,30 @@ export class InstanceManager {
     } else {
       throw new Error(`Tipo de mensagem não suportado: ${messageType}`);
     }
-    const result = await this.socket.sendMessage(jid, message);
-    return result?.key?.id ?? crypto.randomUUID();
+    const echo = normalizeBaileysOutgoingMessage(message);
+    this.panelMessageEchoes.rememberPending(
+      jid,
+      echo.messageType,
+      echo.echoContent
+    );
+    try {
+      const result = await this.socket.sendMessage(jid, message);
+      const externalId = result?.key?.id ?? crypto.randomUUID();
+      this.panelMessageEchoes.rememberSentMessage(
+        externalId,
+        jid,
+        echo.messageType,
+        echo.echoContent
+      );
+      return externalId;
+    } catch (error) {
+      this.panelMessageEchoes.forgetPending(
+        jid,
+        echo.messageType,
+        echo.echoContent
+      );
+      throw error;
+    }
   }
 
   async sendPayload(
@@ -485,8 +513,30 @@ export class InstanceManager {
     const jid = phone.includes("@")
       ? phone
       : phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
-    const result = await this.socket.sendMessage(jid, payload);
-    return result?.key?.id ?? crypto.randomUUID();
+    const echo = normalizeBaileysOutgoingMessage(payload);
+    this.panelMessageEchoes.rememberPending(
+      jid,
+      echo.messageType,
+      echo.echoContent
+    );
+    try {
+      const result = await this.socket.sendMessage(jid, payload);
+      const externalId = result?.key?.id ?? crypto.randomUUID();
+      this.panelMessageEchoes.rememberSentMessage(
+        externalId,
+        jid,
+        echo.messageType,
+        echo.echoContent
+      );
+      return externalId;
+    } catch (error) {
+      this.panelMessageEchoes.forgetPending(
+        jid,
+        echo.messageType,
+        echo.echoContent
+      );
+      throw error;
+    }
   }
 
   private set(next: Partial<InstanceSnapshot>) {
@@ -579,12 +629,23 @@ export class InstanceManager {
     if (!config.webhookUrl) return;
     for (const message of messages) {
       if (
-        message.key?.fromMe ||
         !message.key?.remoteJid ||
         message.key.remoteJid.endsWith("@g.us")
       )
         continue;
-      const body = message.message;
+      const normalized = normalizeBaileysMessage(message.message);
+      const body = normalized.body;
+      const fromMe = message.key.fromMe === true;
+      if (
+        fromMe &&
+        this.panelMessageEchoes.isPanelEcho(
+          message.key.id,
+          message.key.remoteJid,
+          normalized.messageType,
+          normalized.echoContent
+        )
+      )
+        continue;
       const image = body?.imageMessage;
       const audio = body?.audioMessage;
       const video = body?.videoMessage;
@@ -596,45 +657,7 @@ export class InstanceManager {
       const list = body?.listMessage;
       const button = body?.buttonsMessage ?? body?.templateButtonReplyMessage;
       const reaction = body?.reactionMessage;
-      const messageType = image
-        ? "image"
-        : audio
-          ? "audio"
-          : video
-            ? "video"
-            : document
-              ? "document"
-              : sticker
-                ? "sticker"
-                : location
-                  ? "location"
-                  : contact
-                    ? "contact"
-                    : poll
-                      ? "poll"
-                      : list
-                        ? "list"
-                        : button
-                          ? "button"
-                          : reaction
-                            ? "react"
-                            : "text";
-      const content =
-        body?.conversation ??
-        body?.extendedTextMessage?.text ??
-        image?.caption ??
-        video?.caption ??
-        document?.caption ??
-        location?.name ??
-        location?.address ??
-        contact?.displayName ??
-        (contact as { contacts?: Array<{ displayName?: string }> })
-          ?.contacts?.[0]?.displayName ??
-        (poll as { name?: string })?.name ??
-        list?.description ??
-        (button as { contentText?: string })?.contentText ??
-        reaction?.text ??
-        (audio ? "[áudio recebido]" : "[mídia recebida]");
+      const { messageType, content } = normalized;
       const media = image || audio || video || document || sticker;
       const metadata: Record<string, unknown> = {
         provider: "baileys",
@@ -680,6 +703,7 @@ export class InstanceManager {
         messageType,
         receivedAt: new Date(timestamp * 1000).toISOString(),
         jid: message.key.remoteJid,
+        fromMe,
         metadata,
       });
     }

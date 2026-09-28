@@ -428,3 +428,14 @@ A Inbox deve consultar apenas instâncias ativas pertencentes ao workspace auten
 ### Critério de aceite da IA
 
 Definir explicitamente a semântica de mensagem manual: mensagem enviada pelo operador deve pausar/assumir a conversa; mensagem `fromMe` originada pelo próprio número conectado não deve gerar loop; mensagem inbound de outro contato deve seguir a regra normal da IA. Cada transição deve ser persistida e auditável.
+
+
+## Implementação técnica Inbox/Baileys — 2026-09-28
+
+A investigação e a fixture do `oi` apontaram a falha no desempacotamento do payload dentro do gateway: a Inbox normalizava apenas o conteúdo externo, então wrappers Baileys podiam ser reduzidos ao fallback de mídia. O gateway agora desempacota os wrappers suportados e mantém `conversation`/`extendedTextMessage.text` e legendas. Eventos `fromMe` de mensagens manuais viram registros outbound humanos, assumem a conversa e pausam a IA sem emitir evento inbound para o agente; ecos dos envios originados no Panel são suprimidos por ID/fingerprint limitado.
+
+A Inbox passou a selecionar **Todas**, uma ou várias instâncias. O backend valida os IDs contra o workspace autenticado e filtra threads/previews no SQL; em **Todas**, uma origem Baileys conhecida precisa pertencer ao workspace. Histórico sem `instanceId` permanece visível somente em **Todas**, e registro conhecido de outro workspace é excluído. Respostas manuais roteiam pela atividade mais recente entre as instâncias escolhidas. O composer oferece upload separado de áudio `audio/*` (máximo 8 MB), sem gravação pelo microfone nesta fatia.
+
+**Evidência local em sandbox, 2026-09-28:** `pnpm check`, typecheck do gateway, suíte principal com PostgreSQL temporário (59 arquivos / 231 testes, zero ignorados), testes standalone do gateway (9 arquivos / 55 testes), `pnpm build` e `git diff --check` passaram. A suíte PostgreSQL incluiu filtros um/vários/todas, contato e instância de outro workspace, linha histórica sem origem e takeover `fromMe` em contato novo/existente. O build conserva o aviso de bundle JS de 941,14 kB. As migrations foram aplicadas apenas ao banco descartável do sandbox; não equivalem a validação no WSL/staging.
+
+**Gates ainda abertos:** teste visual no navegador, envio/recebimento real com número WhatsApp dedicado, validação no PostgreSQL persistente de staging e acompanhamento da publicação `dev` após push. As fixtures comprovam a regressão de código, mas não substituem o E2E real. Não houve mudança em PAPI/Meta, Console Admin ou páginas congeladas.

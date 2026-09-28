@@ -2,8 +2,8 @@
 
 > Documento operacional e de contrato da integração entre o **Forte Panel**, o gateway **forte-whatsapp** e o WhatsApp Web através da biblioteca Baileys.
 
-**Status:** CRUD multi-instância implementado em revisão; conexão E2E com número real ainda não validada
-**Última revisão:** 2026-09-27  
+**Status:** CRUD multi-instância e Inbox tenant-scoped implementados; conexão E2E com número real ainda não validada
+**Última revisão:** 2026-09-28
 **Escopo:** conexão de sessão, QR Code, código de pareamento por telefone, status, envio, recebimento, webhook, persistência, segurança e troubleshooting.
 
 ---
@@ -627,6 +627,8 @@ A UI não chama o gateway diretamente. Cada procedure aplica autenticação, wor
 - `workspace.baileysInstances` — lista as instâncias ativas do workspace e faz import legacy idempotente somente se o ID/sessão antigos existirem.
 - `workspace.baileysStatus({ instanceId })` — status físico de uma instância pertencente ao workspace.
 - `workspace.baileysQr({ instanceId })` — Data URL do QR atual ou `null`; nunca listar QR de outro tenant.
+- `inbox.instances` — lista as instâncias Baileys ativas do workspace autenticado, após garantir o vínculo legacy compatível.
+- `inbox.contacts({ instanceIds: null | string[] })` e `inbox.thread({ contactId, instanceIds })` — filtram a prévia e o histórico no backend; não dependem de filtragem apenas visual.
 
 ### Mutações gerenciais
 
@@ -638,6 +640,15 @@ A UI não chama o gateway diretamente. Cada procedure aplica autenticação, wor
 - `workspace.deleteBaileysInstance({ instanceId, confirmDeletion: true })` — exige confirmação; remove sessão física e arquiva vínculo, preservando mensagens históricas.
 
 IDs devem ser fornecidos em cada operação. A UI exige perfil de gerente/owner/admin para alterações. Nenhuma procedure retorna `BAILEYS_API_KEY`, `WHATSAPP_API_KEY` ou `BAILEYS_WEBHOOK_SECRET`.
+
+### Filtro de instâncias da Inbox
+
+- `instanceIds: null` (ou omitido) significa **Todas**; um array com um ID ou vários IDs aplica o filtro explicitamente.
+- O servidor valida cada ID contra as instâncias Baileys ativas do workspace autenticado. Array vazio, ID inexistente ou ID de outro workspace falham fechados; o cliente não amplia silenciosamente a consulta.
+- A consulta de mensagens também valida no banco que qualquer `instanceId` Baileys conhecido pertence ao workspace do contato autenticado. Registros históricos sem `instanceId` continuam visíveis apenas em **Todas**; um filtro específico não os atribui artificialmente a uma instância. Um `instanceId` conhecido de outro workspace nunca aparece, nem mesmo em **Todas**.
+- Instâncias arquivadas deixam de ser selecionáveis, mas seu histórico do próprio workspace permanece em **Todas**.
+- As respostas manuais seguem a instância selecionada com atividade mais recente. O cursor de leitura continua sendo por conversa compartilhada: abrir um filtro específico não avança o cursor global; marcar como lida acontece ao voltar para **Todas**.
+- O botão de áudio no composer envia **upload de arquivo de áudio** (até 8 MB, MIME `audio/*`). Gravação pelo microfone não faz parte desta fatia; os controles existentes para imagem, vídeo e documento permanecem.
 
 ---
 
@@ -686,6 +697,7 @@ O payload assinado é o JSON enviado no corpo. O receptor deve validar a assinat
   "name": "Cliente",
   "content": "Olá, gostaria de um orçamento",
   "messageType": "text",
+  "fromMe": false,
   "receivedAt": "2026-09-27T22:00:00.000Z",
   "metadata": {
     "provider": "baileys",
@@ -768,6 +780,13 @@ Falha interna:
 ```
 
 ---
+
+### 9.1 Normalização de texto, takeover manual e prevenção de loop
+
+- Baileys pode envolver mensagens em `ephemeralMessage`, wrappers view-once, documentos com legenda ou wrappers de edição. O gateway remove esses wrappers antes de classificar o tipo, dando prioridade a `conversation` e `extendedTextMessage.text`; o texto simples `oi` continua `messageType: "text"` e `content: "oi"`, não `[mídia recebida]`.
+- Placeholders de imagem/áudio/vídeo/documento só substituem conteúdo quando a mensagem não contém texto nem legenda. A mídia e seu MIME/nome/tamanho seguem em metadata quando disponíveis.
+- Eventos Baileys incluem `fromMe`. Uma mensagem manual enviada pelo próprio número é persistida como `direction: "outbound"` / `senderType: "human"`, desativa `aiEnabled`, marca `humanControlled` e limpa unread; ela não emite `message.received` para o agente.
+- Mensagens originadas no Panel são reconhecidas pelo ID Baileys ou por uma assinatura pendente e limitada de destino/tipo/conteúdo normalizado, inclusive para mídia e mensagens interativas; falha de envio cancela a assinatura pendente. Assim, ecos não reingressam como takeover manual, enquanto mensagens `fromMe` sem correspondência seguem o fluxo de takeover.
 
 ## 10. Outbox, retry e durabilidade
 

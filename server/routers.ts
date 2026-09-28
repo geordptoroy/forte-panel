@@ -18,6 +18,10 @@ import {
 } from "./_core/request-security";
 import { ScheduleError } from "./schedule";
 import {
+  InboxInstanceFilterError,
+  normalizeInboxInstanceSelection,
+} from "./inbox-instance-filter";
+import {
   ensureDemoInbox,
   acceptWorkspaceInvite,
   assertOnboardingSourceConsent,
@@ -164,6 +168,30 @@ import {
 } from "./baileys-gateway";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
+const inboxInstanceFilterSchema = z.object({
+  instanceIds: z
+    .array(z.string().trim().min(1).max(160))
+    .max(50)
+    .nullable()
+    .optional(),
+});
+
+async function resolveInboxInstanceSelection(
+  workspaceId: number,
+  requested: readonly string[] | null | undefined
+) {
+  await ensureLegacyBaileysInstance(workspaceId);
+  const available = await listBaileysInstances(workspaceId);
+  try {
+    return normalizeInboxInstanceSelection(requested, available);
+  } catch (error) {
+    if (!(error instanceof InboxInstanceFilterError)) throw error;
+    throw new TRPCError({
+      code: error.reason === "empty" ? "BAD_REQUEST" : "FORBIDDEN",
+      message: error.message,
+    });
+  }
+}
 
 type ContactRow = Awaited<ReturnType<typeof listInboxContacts>>[number];
 type MappableContact = Omit<
@@ -2648,13 +2676,24 @@ export const appRouter = router({
   }),
 
   inbox: router({
-    contacts: requireInbox.query(async ({ ctx }) => {
-      const items = await listInboxContacts(
-        ctx.workspace.workspaceId,
-        ctx.user.id
-      );
-      return items.map(mapContact);
+    instances: requireInbox.query(async ({ ctx }) => {
+      await ensureLegacyBaileysInstance(ctx.workspace.workspaceId);
+      return listBaileysInstances(ctx.workspace.workspaceId);
     }),
+    contacts: requireInbox
+      .input(inboxInstanceFilterSchema.optional())
+      .query(async ({ ctx, input }) => {
+        const instanceIds = await resolveInboxInstanceSelection(
+          ctx.workspace.workspaceId,
+          input?.instanceIds
+        );
+        const items = await listInboxContacts(
+          ctx.workspace.workspaceId,
+          ctx.user.id,
+          instanceIds
+        );
+        return items.map(mapContact);
+      }),
     createContact: requireInbox
       .input(
         z.object({
@@ -2673,8 +2712,12 @@ export const appRouter = router({
         return contact ? mapContact(contact) : null;
       }),
     thread: requireInbox
-      .input(contactIdInput)
+      .input(contactIdInput.extend(inboxInstanceFilterSchema.shape))
       .query(async ({ input, ctx }) => {
+        const instanceIds = await resolveInboxInstanceSelection(
+          ctx.workspace.workspaceId,
+          input.instanceIds
+        );
         const contact = await getContactById(
           ctx.workspace.workspaceId,
           input.contactId
@@ -2682,9 +2725,12 @@ export const appRouter = router({
         if (!contact) return null;
         const [conversation, items, audit] = await Promise.all([
           getConversationByContact(ctx.workspace.workspaceId, input.contactId),
-          listMessagesForContact(ctx.workspace.workspaceId, input.contactId),
+          listMessagesForContact(ctx.workspace.workspaceId, input.contactId, {
+            instanceIds,
+          }),
           getAuditLogForContact(ctx.workspace.workspaceId, input.contactId),
         ]);
+        if (instanceIds && items.length === 0) return null;
         const notes = await listContactNotes(
           ctx.workspace.workspaceId,
           input.contactId
@@ -2750,6 +2796,7 @@ export const appRouter = router({
             .enum(["text", "image", "audio", "video", "document"])
             .default("text"),
           metadata: z.record(z.string(), z.unknown()).optional(),
+          instanceIds: inboxInstanceFilterSchema.shape.instanceIds,
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -2769,7 +2816,11 @@ export const appRouter = router({
           input.content,
           ctx.user.id,
           input.messageType,
-          input.metadata
+          input.metadata,
+          await resolveInboxInstanceSelection(
+            ctx.workspace.workspaceId,
+            input.instanceIds
+          )
         );
         return message
           ? {

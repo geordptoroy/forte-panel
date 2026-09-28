@@ -5281,7 +5281,34 @@ export async function createAgendaAppointment(
   return createdAppointment;
 }
 
-export async function listInboxContacts(workspaceId: number, viewerUserId?: number) {
+function inboxMessageInstanceFilter(instanceIds?: readonly string[] | null) {
+  if (!instanceIds?.length) return undefined;
+  return or(
+    ...instanceIds.map(
+      instanceId => sql`${messages.metadata}->>'instanceId' = ${instanceId}`
+    )
+  );
+}
+
+function inboxMessageWorkspaceOwnershipFilter(workspaceId: number) {
+  return sql`(
+    ${messages.provider}::text <> 'baileys'
+    OR ${messages.metadata}->>'instanceId' IS NULL
+    OR EXISTS (
+      SELECT 1
+      FROM "whatsappInstances" AS inbox_instance
+      WHERE inbox_instance."workspaceId" = ${workspaceId}
+        AND inbox_instance."provider"::text = 'baileys'
+        AND inbox_instance."instanceId" = ${messages.metadata}->>'instanceId'
+    )
+  )`;
+}
+
+export async function listInboxContacts(
+  workspaceId: number,
+  viewerUserId?: number,
+  instanceIds?: readonly string[] | null
+) {
   const db = await getDb();
   if (!db) return [];
   const readRows = viewerUserId === undefined
@@ -5313,19 +5340,51 @@ export async function listInboxContacts(workspaceId: number, viewerUserId?: numb
       id: messages.id,
       direction: messages.direction,
       status: messages.status,
+      content: messages.content,
       createdAt: messages.createdAt,
     })
     .from(messages)
     .innerJoin(conversations, eq(messages.conversationId, conversations.id))
     .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-    .where(eq(contacts.workspaceId, workspaceId))
+    .where(
+      and(
+        eq(contacts.workspaceId, workspaceId),
+        inboxMessageWorkspaceOwnershipFilter(workspaceId),
+        ...(inboxMessageInstanceFilter(instanceIds)
+          ? [inboxMessageInstanceFilter(instanceIds)!]
+          : [])
+      )
+    )
     .orderBy(asc(messages.createdAt), asc(messages.id));
   const activitiesByContact = new Map<number, ConversationActivity[]>();
+  const lastMessageByContact = new Map<number, (typeof messageRows)[number]>();
   const unreadByContact = new Map<number, number>();
   for (const row of messageRows) {
     const activities = activitiesByContact.get(row.contactId) ?? [];
     activities.push(row);
     activitiesByContact.set(row.contactId, activities);
+    lastMessageByContact.set(row.contactId, row);
+  }
+  const unreadRows =
+    viewerUserId === undefined || !instanceIds?.length
+      ? messageRows
+      : await db
+          .select({
+            contactId: conversations.contactId,
+            conversationId: conversations.id,
+            id: messages.id,
+            direction: messages.direction,
+          })
+          .from(messages)
+          .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+          .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+          .where(
+            and(
+              eq(contacts.workspaceId, workspaceId),
+              inboxMessageWorkspaceOwnershipFilter(workspaceId)
+            )
+          );
+  for (const row of unreadRows) {
     if (
       viewerUserId !== undefined &&
       row.direction === "inbound" &&
@@ -5337,14 +5396,30 @@ export async function listInboxContacts(workspaceId: number, viewerUserId?: numb
       );
     }
   }
-  return contactRows.map(contact => ({
-    ...contact,
-    unreadCount:
-      viewerUserId === undefined
-        ? contact.unreadCount
-        : (unreadByContact.get(contact.id) ?? 0),
-    ...deriveConversationState(activitiesByContact.get(contact.id) ?? []),
-  }));
+  return contactRows
+    .filter(
+      contact => !instanceIds?.length || activitiesByContact.has(contact.id)
+    )
+    .map(contact => {
+      const activities = activitiesByContact.get(contact.id) ?? [];
+      const filteredLastMessage = instanceIds?.length
+        ? lastMessageByContact.get(contact.id)
+        : undefined;
+      return {
+        ...contact,
+        ...(filteredLastMessage
+          ? {
+              lastMessagePreview: filteredLastMessage.content,
+              lastMessageAt: filteredLastMessage.createdAt,
+            }
+          : {}),
+        unreadCount:
+          viewerUserId === undefined
+            ? contact.unreadCount
+            : (unreadByContact.get(contact.id) ?? 0),
+        ...deriveConversationState(activities),
+      };
+    });
 }
 
 export async function markConversationRead(
@@ -5429,7 +5504,11 @@ export async function getConversationByContact(
 export async function listMessagesForContact(
   workspaceId: number,
   contactId: number,
-  options?: { limit?: number; since?: Date }
+  options?: {
+    limit?: number;
+    since?: Date;
+    instanceIds?: readonly string[] | null;
+  }
 ) {
   const db = await getDb();
   if (!db) return [];
@@ -5442,6 +5521,10 @@ export async function listMessagesForContact(
     .where(
       and(
         eq(messages.conversationId, conversation.id),
+        inboxMessageWorkspaceOwnershipFilter(workspaceId),
+        ...(inboxMessageInstanceFilter(options?.instanceIds)
+          ? [inboxMessageInstanceFilter(options?.instanceIds)!]
+          : []),
         ...(options?.since ? [gte(messages.createdAt, options.since)] : [])
       )
     )
@@ -5490,7 +5573,8 @@ export async function sendManualMessage(
   content: string,
   actorUserId?: number,
   messageType: "text" | "image" | "audio" | "video" | "document" = "text",
-  messageMetadata?: Record<string, unknown>
+  messageMetadata?: Record<string, unknown>,
+  instanceIds?: readonly string[] | null
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -5498,17 +5582,33 @@ export async function sendManualMessage(
   if (!contact) throw new Error("Contact not found");
   const conversation = await getConversationByContact(workspaceId, contactId);
   if (!conversation) throw new Error("Conversation not found");
-  const latestInbound = await db
+  const routeFilter = inboxMessageInstanceFilter(instanceIds);
+  let latestInbound = await db
     .select({ metadata: messages.metadata, provider: messages.provider })
     .from(messages)
     .where(
       and(
         eq(messages.conversationId, conversation.id),
-        eq(messages.direction, "inbound")
+        eq(messages.direction, "inbound"),
+        inboxMessageWorkspaceOwnershipFilter(workspaceId),
+        ...(routeFilter ? [routeFilter] : [])
       )
     )
     .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(1);
+  if (!latestInbound[0])
+    latestInbound = await db
+      .select({ metadata: messages.metadata, provider: messages.provider })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.conversationId, conversation.id),
+          inboxMessageWorkspaceOwnershipFilter(workspaceId),
+          ...(routeFilter ? [routeFilter] : [])
+        )
+      )
+      .orderBy(desc(messages.createdAt), desc(messages.id))
+      .limit(1);
   const defaultProvider = await getDefaultWhatsappProvider(workspaceId);
   const defaultPapiWebhook =
     defaultProvider === "papi" ? await getDefaultPapiWebhook(workspaceId) : undefined;
@@ -5517,6 +5617,12 @@ export async function sendManualMessage(
     defaultProvider,
     defaultInstanceId: defaultPapiWebhook?.instanceId,
   });
+  if (
+    !route.instanceId &&
+    route.provider === "baileys" &&
+    instanceIds?.length === 1
+  )
+    route.instanceId = instanceIds[0];
   if (route.provider === "papi" && !route.instanceId)
     throw new Error(
       "Associe uma instância PAPI à origem da conversa ou configure uma instância padrão para mensagens legadas"
@@ -6413,7 +6519,7 @@ export async function ingestInboundWhatsApp(
         name: input.name?.trim() || phone,
         urgency: "Média",
         stage: "Novo contato",
-        aiEnabled: 1,
+        aiEnabled: fromMe ? 0 : 1,
         quoteCents: 0,
         unreadCount: fromMe ? 0 : 1,
         lastMessagePreview: input.content.slice(0, 500),
@@ -6473,7 +6579,8 @@ export async function ingestInboundWhatsApp(
       .insert(conversations)
       .values({
         contactId: contact.id,
-        unreadCount: 1,
+        humanControlled: fromMe ? 1 : 0,
+        unreadCount: fromMe ? 0 : 1,
         lastMessageAt: receivedAt,
       })
       .onConflictDoNothing({ target: conversations.contactId });

@@ -108,6 +108,90 @@ describe("PAPI outbound adapter", () => {
 });
 
 describe("Baileys adapter JID routing", () => {
+  it("preserves the exact plain-text `oi` from the gateway outbox envelope", () => {
+    const normalized = createBaileysAdapter().normalizeInbound({
+      eventId: "fixture-oi-1",
+      instanceId: "workspace-a-instance-1",
+      phone: "5511999999999",
+      jid: "5511999999999@s.whatsapp.net",
+      content: "oi",
+      messageType: "text",
+      fromMe: false,
+      metadata: {
+        provider: "baileys",
+        messageId: "fixture-oi-1",
+        jid: "5511999999999@s.whatsapp.net",
+      },
+    });
+
+    expect(normalized).toMatchObject({
+      eventId: "fixture-oi-1",
+      content: "oi",
+      messageType: "text",
+      fromMe: false,
+      metadata: {
+        provider: "baileys",
+        instanceId: "workspace-a-instance-1",
+      },
+    });
+  });
+
+  it.each([
+    {
+      eventId: "fixture-image-1",
+      messageType: "image",
+      content: "[imagem recebida]",
+      mediaData: "data:image/jpeg;base64,AQ==",
+      mediaMimeType: "image/jpeg",
+    },
+    {
+      eventId: "fixture-audio-1",
+      messageType: "audio",
+      content: "[áudio recebido]",
+      mediaData: "data:audio/ogg;base64,AQ==",
+      mediaMimeType: "audio/ogg",
+    },
+  ])("preserves $messageType content and media metadata", fixture => {
+    const normalized = createBaileysAdapter().normalizeInbound({
+      ...fixture,
+      instanceId: "workspace-a-instance-1",
+      phone: "5511999999999",
+      metadata: {
+        provider: "baileys",
+        mediaData: fixture.mediaData,
+        mediaMimeType: fixture.mediaMimeType,
+      },
+    });
+    expect(normalized).toMatchObject({
+      content: fixture.content,
+      messageType: fixture.messageType,
+      metadata: {
+        provider: "baileys",
+        instanceId: "workspace-a-instance-1",
+        mediaData: fixture.mediaData,
+        mediaMimeType: fixture.mediaMimeType,
+      },
+    });
+  });
+
+  it("preserves manual fromMe in the gateway webhook envelope", () => {
+    const normalized = createBaileysAdapter().normalizeInbound({
+      eventId: "fixture-manual-fromme",
+      instanceId: "workspace-a-instance-1",
+      phone: "5511999999999",
+      content: "oi",
+      messageType: "text",
+      fromMe: true,
+      metadata: { provider: "baileys", jid: "5511999999999@s.whatsapp.net" },
+    });
+    expect(normalized.fromMe).toBe(true);
+    expect(normalized.metadata).toMatchObject({
+      provider: "baileys",
+      instanceId: "workspace-a-instance-1",
+      fromMe: true,
+    });
+  });
+
   it("preserves the inbound JID for replies to LID contacts", () => {
     const normalized = createBaileysAdapter().normalizeInbound({
       eventId: "baileys-inbound-1",

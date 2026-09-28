@@ -1865,3 +1865,31 @@ O painel aplica as migrations versionadas automaticamente no primeiro start (`RU
 - Trabalhar somente na Inbox, contratos Baileys relacionados, testes e documentação necessária.
 - Antes de publicar, executar `pnpm check`, typecheck do gateway, testes direcionados, `pnpm build` e `git diff --check`.
 - Não afirmar que o filtro por instância está seguro apenas porque o frontend filtra: a query e o backend precisam aplicar o escopo do workspace.
+
+
+## 13. Implementação Inbox/Baileys pós-validação — 2026-09-28 13:48 BRT
+
+### Alterações concluídas nesta fatia
+
+- A causa da divergência de `oi` estava no gateway: a leitura anterior classificava apenas campos no nível externo e substituía wrappers Baileys por fallback de mídia. `normalizeBaileysMessage` agora desempacota wrappers temporários/view-once/edição e preserva `conversation`/`extendedTextMessage.text`; texto simples continua texto. Legendas e tipo de mídia são preservados; placeholders permanecem apenas para mídia sem texto/legenda.
+- O InstanceManager agora envia eventos `fromMe`. Mensagem manual do número conectado é persistida como outbound humano, pausa `aiEnabled`, marca `humanControlled`, zera unread e não cria `message.received` para o agente. Envios já originados no Panel são reconhecidos por ID/fingerprint limitado para impedir loop; eventos próprios sem correspondência seguem como takeover manual.
+- A Inbox recebe filtros explícitos **Todas**, uma instância ou várias. O backend valida IDs no workspace ativo e limita também a query de contatos/previews, thread, histórico e roteamento do envio. Em **Todas**, IDs Baileys conhecidos precisam constar no registry do mesmo workspace; IDs de outro tenant são excluídos. Mensagens legadas sem `instanceId` permanecem apenas em **Todas**; instâncias arquivadas são consultáveis pelo histórico em **Todas**.
+- O cursor de leitura permanece compartilhado por conversa; abrir uma seleção filtrada não avança esse cursor global. O filtro possui estados loading/empty/error e retry. O composer ganhou upload separado para áudio `audio/*`, limite de 8 MB; gravação por microfone ficou fora desta fatia, preservando os controles existentes de imagem/vídeo/documento.
+- Contrato documentado em `docs/BAILEYS-INTEGRATION.md`. Nenhuma alteração foi feita em Console Admin, PAPI/Meta ou páginas congeladas.
+
+### Evidência e validação
+
+- Fixtures unitárias cobrem `oi` em wrappers Baileys, legenda de imagem, áudio sem legenda, assinatura de eco para todos os tipos de mensagem suportados, botão interativo, ID correlacionado, cancelamento de envio falho e distinção entre eco Panel e mensagem manual; o adapter preserva o envelope Gateway → Panel.
+- Fixtures de integração executadas em PostgreSQL local efêmero confirmam uma instância, múltiplas instâncias e **Todas**; incluem contato concorrente de workspace B, mensagem cujo `instanceId` aponta para B dentro de A (não aparece nem em **Todas**), fallback de mensagem legada e takeover `fromMe` para contato novo e existente.
+- `pnpm check`: aprovado.
+- `pnpm exec tsc --noEmit -p forte-whatsapp/tsconfig.json`: aprovado.
+- `pnpm test` com PostgreSQL local e migrations do repositório aplicadas ao banco descartável do sandbox: **59 arquivos / 231 testes aprovados, zero ignorados**.
+- `npm test --prefix forte-whatsapp`: **9 arquivos / 55 testes aprovados**.
+- `pnpm build`: aprovado. Permanece o aviso existente de chunk frontend acima de 500 kB (bundle JS de 941,14 kB).
+- `git diff --check`: aprovado após a revisão e as atualizações documentais finais.
+
+### Limites ainda pendentes
+
+- O PostgreSQL usado foi criado somente no sandbox descartável; isso não valida o PostgreSQL do WSL do usuário nem staging/produção.
+- Não foi pareado número WhatsApp real nesta etapa. Envio/recebimento E2E manual real de texto/imagem/áudio, comportamento visual no navegador e publicação `dev` após push ainda precisam de confirmação operacional.
+- Não declarar a integração real pronta até concluir esses gates; as fixtures reproduzíveis cobrem a regressão de código, não substituem E2E com número dedicado.
