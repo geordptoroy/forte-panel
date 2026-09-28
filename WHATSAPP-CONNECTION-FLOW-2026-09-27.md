@@ -1,7 +1,7 @@
 # Core do Forte Panel — instâncias Baileys
 
 **Documento canônico desta etapa · 27/09/2026**
-**Estado:** CRUD implementado; CI de integração PostgreSQL 16 aprovada no commit `b09fe05`; causa provável do código de pareamento inválido corrigida (identidade `Chrome (Ubuntu)` canônica, confirmação IQ, persistência de credenciais e tratamento seguro de retry); 147 testes do monorepo e 32 do gateway passam no sandbox. A nova revisão ainda aguarda CI e teste real no Docker/WhatsApp do usuário.
+**Estado:** CRUD implementado; CI de integração PostgreSQL 16, verificação e publicação aprovadas para a revisão atual. As imagens públicas `ghcr.io/geordptoroy/forte-panel:dev` e `ghcr.io/geordptoroy/forte-whatsapp:dev` foram verificadas por pull anônimo. Causa provável do código de pareamento inválido corrigida (identidade `Chrome (Ubuntu)` canônica, confirmação IQ, persistência de credenciais e retry seguro); 147 testes do monorepo e 32 do gateway passam no sandbox. Falta validar no Docker/WhatsApp real do usuário.
 **Fonte de verdade para esta fatia:** este documento, `todo.md` e `PROJECT_DOCUMENTATION_INDEX.md`.
 
 ---
