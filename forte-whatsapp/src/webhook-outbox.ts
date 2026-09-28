@@ -200,6 +200,13 @@ export class WebhookOutbox {
         }
       }
     } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT"
+      )
+        return;
       this.lastError = error instanceof Error ? error.message : "outbox_read_failed";
       this.logger.error({ file, error }, "inbound webhook outbox item could not be processed");
     } finally {

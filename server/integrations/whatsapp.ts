@@ -140,6 +140,10 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
     message?.fromMe ?? key?.fromMe ?? data?.fromMe ?? event?.fromMe
   );
   const sourceMetadata = message?.metadata ?? data?.metadata ?? {};
+  const historySync =
+    message?.historySync === true ||
+    data?.historySync === true ||
+    event?.historySync === true;
   const isGroup =
     sourceMetadata.isGroup === true ||
     jid.endsWith("@g.us") ||
@@ -193,7 +197,7 @@ function normalizePapiInbound(event: any): InboundMessageEvent {
         ? { upsertType: sourceMetadata.upsertType }
         : {}),
       ...(sourceMetadata.isPlaceholder === true ? { isPlaceholder: true } : {}),
-      ...(sourceMetadata.historySync === true ? { historySync: true } : {}),
+      ...(historySync ? { historySync: true } : {}),
       ...(typeof sourceMetadata.requestId === "string"
         ? { requestId: sourceMetadata.requestId }
         : {}),

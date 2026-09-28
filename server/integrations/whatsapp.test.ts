@@ -194,6 +194,23 @@ describe("Baileys adapter JID routing", () => {
       requestId: "offline-backfill-1",
     });
   });
+  it("preserves top-level historySync from the Baileys webhook envelope", () => {
+    const normalized = createBaileysAdapter().normalizeInbound({
+      eventId: "fixture-history-envelope",
+      instanceId: "workspace-a-instance-1",
+      phone: "5511999999999",
+      content: "mensagem antiga",
+      messageType: "text",
+      historySync: true,
+      metadata: { provider: "baileys", upsertType: "append" },
+    });
+    expect(normalized.metadata).toMatchObject({
+      provider: "baileys",
+      instanceId: "workspace-a-instance-1",
+      historySync: true,
+      upsertType: "append",
+    });
+  });
 
   it.each([
     {
