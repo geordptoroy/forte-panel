@@ -1891,5 +1891,6 @@ O painel aplica as migrations versionadas automaticamente no primeiro start (`RU
 ### Limites ainda pendentes
 
 - O PostgreSQL usado foi criado somente no sandbox descartável; isso não valida o PostgreSQL do WSL do usuário nem staging/produção.
-- Não foi pareado número WhatsApp real nesta etapa. Envio/recebimento E2E manual real de texto/imagem/áudio, comportamento visual no navegador e publicação `dev` após push ainda precisam de confirmação operacional.
+- O commit de implementação `e9d800d` foi enviado a `main`. A [publicação de imagens `dev` (workflow 36454030781)](https://github.com/geordptoroy/forte-panel/actions/runs/36454030781) concluiu `verify` e publicou as imagens Forte Panel e forte-whatsapp; o [PostgreSQL integration (workflow 36454030684)](https://github.com/geordptoroy/forte-panel/actions/runs/36454030684) também passou.
+- Não foi pareado número WhatsApp real nesta etapa. Envio/recebimento E2E manual real de texto/imagem/áudio, comportamento visual no navegador e validação no PostgreSQL persistente de staging permanecem pendentes.
 - Não declarar a integração real pronta até concluir esses gates; as fixtures reproduzíveis cobrem a regressão de código, não substituem E2E com número dedicado.

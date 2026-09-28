@@ -431,5 +431,5 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Adicionar fixtures de normalização, `fromMe`, filtro de instâncias e isolamento; validar contra PostgreSQL local temporário com migrations aplicadas ao sandbox descartável.
 - [x] Executar `pnpm check`, `pnpm exec tsc --noEmit -p forte-whatsapp/tsconfig.json`, `pnpm test` (59 arquivos / 231 aprovados / zero ignorados), `npm test --prefix forte-whatsapp` (9 arquivos / 55 aprovados) e `pnpm build`.
 - [x] Repetir `git diff --check` após a revisão final.
-- [ ] Publicar a fatia validada em `main` e acompanhar a execução de publicação `dev` no GitHub Actions.
+- [x] Publicar a fatia validada em `main` (`e9d800d`) e acompanhar [Publish Forte Panel image](https://github.com/geordptoroy/forte-panel/actions/runs/36454030781) e [PostgreSQL integration](https://github.com/geordptoroy/forte-panel/actions/runs/36454030684): ambos passaram.
 - [ ] Validar rendering responsivo e envio/recebimento real de texto, imagem e áudio com número WhatsApp dedicado; confirmar o PostgreSQL persistente de staging. O banco efêmero usado acima pertence somente ao sandbox.
