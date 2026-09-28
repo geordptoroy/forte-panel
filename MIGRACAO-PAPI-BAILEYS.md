@@ -139,26 +139,36 @@ A solicitação de zero referências no estado atual do repositório conflita co
 
 O Compose padrão puxa `latest` do GHCR; se apenas executar o script, isso pode testar uma imagem publicada antiga, não o código desta branch. Para testar o código atual, construir as duas imagens locais com as tags que o Compose espera antes de subir.
 
-**Executar em Bash dentro da distro WSL** (abra a pasta local do repositório; adapte o caminho se necessário). Se estiver no PowerShell, entre no WSL pelo comando `wsl` primeiro. Isso não apaga volumes e não muda o `.env` existente.
+**Como você está no Windows Terminal/PowerShell**, execute o bloco abaixo no PowerShell, na raiz do clone (o caminho da pasta pode ter qualquer nome). Cada `docker build` fica em uma linha completa: `\` não é continuação de linha no PowerShell.
 
-```bash
-cd /caminho/no/wsl/forte-panel
-
+```powershell
+# Confirme que o prompt está na raiz do repositório e na branch do PR.
+git status --short --branch
 git fetch origin
 git switch docs/ai-admin-core-plan-2026-09-27
 git pull --ff-only
 
-# Build local da branch atual com as tags esperadas pelo Compose
+# Converte a pasta atual em caminho WSL e cria .env apenas se ainda não existir.
+$RepoInWsl = (wsl.exe wslpath -u "$PWD").Trim()
+wsl.exe -e bash -lc "cd '$RepoInWsl' && ./scripts/docker-init-local.sh"
+
+# Baixa somente as dependências de infraestrutura. As imagens do app serão locais.
+docker pull postgres:16-alpine
+docker pull redis:7-alpine
+
+# Builds da branch, com o contexto restrito à pasta do repositório.
 docker build -f infra/Dockerfile -t ghcr.io/geordptoroy/forte-panel:latest .
 docker build -f forte-whatsapp/Dockerfile -t ghcr.io/geordptoroy/forte-whatsapp:latest ./forte-whatsapp
 
-# Inicializa .env somente se ausente e usa as imagens locais, sem pull
-FORTE_PULL=0 ./scripts/docker-up-local.sh
+# Sobe usando as imagens locais, mesmo que o Compose declare pull_policy: always.
+docker compose --env-file .env -f docker-compose.yml up -d --pull never --remove-orphans
 
 # Estado e logs
 docker compose --env-file .env -f docker-compose.yml ps
 docker compose --env-file .env -f docker-compose.yml logs -f forte-panel forte-panel-worker forte-whatsapp
 ```
+
+Se preferir abrir uma sessão Bash no WSL e executar dali, use `docker build` em uma linha por comando e `docker compose ... up -d --pull never`; não cole atribuições Bash (`FORTE_PULL=0`) diretamente no prompt PowerShell. `--pull never` é importante porque o Compose deste repositório declara `pull_policy: always` para as imagens do app.
 
 Depois do startup, abrir `http://localhost:3002` e usar o login local indicado pelo `.env`. Na tela **Instâncias WhatsApp**, criar uma instância de teste, editar o nome e excluir apenas essa instância para validar o CRUD. Para testar QR, conectar uma linha/número dedicado de teste e escanear o QR; **criar** não inicia a sessão automaticamente.
 
