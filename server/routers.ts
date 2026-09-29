@@ -466,20 +466,20 @@ export const appRouter = router({
         const email = input.email.trim().toLowerCase();
         assertLoginAllowed(ctx.req, email);
         let account = await getUserByEmail(email);
-        const isEnvAdmin =
-          Boolean(ENV.localAdminPassword) &&
-          email === ENV.localAdminEmail.trim().toLowerCase() &&
-          input.password === ENV.localAdminPassword;
-        if (isEnvAdmin) {
+        const configuredPlatformAccount = ENV.localPlatformAdminAccounts.find(
+          candidate =>
+            candidate.email === email && candidate.password === input.password
+        );
+        if (configuredPlatformAccount) {
           await upsertUser({
-            openId: "local_admin",
-            name: "Administrador",
-            email: ENV.localAdminEmail,
+            openId: configuredPlatformAccount.openId,
+            name: configuredPlatformAccount.name,
+            email: configuredPlatformAccount.email,
             loginMethod: "local",
             role: "admin",
             lastSignedIn: new Date(),
           });
-          account = await getUserByOpenId("local_admin");
+          account = await getUserByOpenId(configuredPlatformAccount.openId);
         } else if (
           !account ||
           !verifyLocalPassword(input.password, account.passwordHash)

@@ -32,6 +32,7 @@ import {
   savePlatformGlobalNativeAgentConfig,
 } from "./db";
 import type { NativeAgentConfig } from "./db";
+import { ENV } from "./_core/env";
 import {
   encryptProviderSecret,
   invokeConfiguredLLM,
@@ -73,12 +74,14 @@ export function canPlatformAdminMutate(
 }
 
 export function configuredPlatformAdminOpenIds() {
-  return new Set(
+  const configured = new Set(
     (process.env.PLATFORM_ADMIN_OPEN_IDS ?? "")
       .split(",")
       .map(value => value.trim())
       .filter(Boolean)
   );
+  for (const account of ENV.localPlatformAdminAccounts) configured.add(account.openId);
+  return configured;
 }
 
 export async function getPlatformAdminAccess(
