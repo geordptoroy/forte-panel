@@ -771,6 +771,8 @@ function PlatformWorkspaceDetail({ workspaceId }: { workspaceId: number }) {
         <>
           <SummaryTab
             item={item}
+            sessionId={sessionId}
+            canMutate={Boolean(access.data?.canMutate) && item.session.mode === "operator"}
             onAgent={() => setTab("agent")}
             onSupport={() => setTab("support")}
           />
@@ -876,13 +878,26 @@ function ResetWorkspaceCard({
 
 function SummaryTab({
   item,
+  sessionId,
+  canMutate,
   onAgent,
   onSupport,
 }: {
   item: any;
+  sessionId: number;
+  canMutate: boolean;
   onAgent: () => void;
   onSupport: () => void;
 }) {
+  const [phone, setPhone] = useState("");
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const pair = trpc.platform.requestBaileysPairingCode.useMutation({
+    onSuccess: result => {
+      setPairingCode(result.code);
+      toast.success("Código de pareamento gerado");
+    },
+    onError: error => toast.error(error.message),
+  });
   return (
     <>
       <div className="platform-metric-grid">
@@ -1007,6 +1022,34 @@ function SummaryTab({
                   <WorkspaceStatus value={instance.status} />
                 </div>
               ))}
+            </div>
+          )}
+          {item.instances.length > 0 && (
+            <div className="platform-support-actions" style={{ marginTop: 14 }}>
+              <input
+                className="input-control"
+                value={phone}
+                onChange={event => setPhone(event.target.value)}
+                placeholder="Telefone com DDI e DDD"
+                disabled={!canMutate || pair.isPending}
+                aria-label="Telefone para pareamento Baileys"
+              />
+              <button
+                className="btn-secondary"
+                disabled={!canMutate || pair.isPending || phone.trim().length < 8}
+                onClick={() =>
+                  pair.mutate({
+                    workspaceId: item.workspace.id,
+                    sessionId,
+                    instanceId: item.instances[0].instanceId,
+                    phone: phone.trim(),
+                    reason: "Smoke test Baileys iniciado pelo Console Admin",
+                  })
+                }
+              >
+                {pair.isPending ? "Gerando…" : "Gerar código"}
+              </button>
+              {pairingCode && <code className="platform-pairing-code">{pairingCode}</code>}
             </div>
           )}
           <div className="platform-safe-note">

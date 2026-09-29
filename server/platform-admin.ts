@@ -449,7 +449,7 @@ function parseSafeAgentConfig(
   }
 }
 
-async function recordPlatformAudit(input: {
+export async function recordPlatformAudit(input: {
   platformAdminId: number;
   workspaceId?: number | null;
   supportSessionId?: number | null;

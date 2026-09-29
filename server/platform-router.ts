@@ -10,6 +10,7 @@ import {
   getPlatformAdminAccess,
   getPlatformAgentSnapshot,
   getPlatformWorkspaceDetail,
+  recordPlatformAudit,
   isExternalProviderCallAllowedForSimulation,
   listPlatformAuditLogs,
   listPlatformAiConnections,
@@ -32,6 +33,8 @@ import {
   type SupportSessionMode,
 } from "./platform-admin";
 import { authenticatedProcedure, router } from "./_core/trpc";
+import { getBaileysInstance } from "./db";
+import { requestBaileysPairingCode } from "./baileys-gateway";
 
 const requirePlatform = authenticatedProcedure.use(async ({ ctx, next }) => {
   const platformAdmin = await getPlatformAdminAccess(ctx.user.id);
@@ -241,6 +244,43 @@ export const platformRouter = router({
     .mutation(({ input, ctx }) =>
       revokeSupportSession({ ...input, platformAdminId: ctx.platformAdmin.id })
     ),
+
+  requestBaileysPairingCode: requirePlatformOperator
+    .input(
+      supportSessionInput.extend({
+        instanceId: z.string().trim().min(1).max(160),
+        phone: z.string().trim().min(8).max(24),
+        reason: reasonInput,
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const session = await requireSession(input, ctx.platformAdmin.id, true);
+      const instance = await getBaileysInstance(
+        input.workspaceId,
+        input.instanceId
+      );
+      if (!instance) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Instância Baileys não encontrada neste workspace",
+        });
+      }
+      const result = await requestBaileysPairingCode(
+        instance.instanceId,
+        input.phone
+      );
+      await recordPlatformAudit({
+        platformAdminId: ctx.platformAdmin.id,
+        workspaceId: input.workspaceId,
+        supportSessionId: session.id,
+        action: "baileys_pairing_code_requested",
+        reason: input.reason,
+        summary: `Código de pareamento solicitado para ${instance.name}`,
+        before: { instanceId: instance.instanceId, status: instance.status },
+        after: { instanceId: instance.instanceId, phone: input.phone.slice(-4) },
+      });
+      return result;
+    }),
 
   notes: requirePlatform
     .input(supportSessionInput)
