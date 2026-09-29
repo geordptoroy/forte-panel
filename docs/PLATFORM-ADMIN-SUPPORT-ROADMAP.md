@@ -1,7 +1,9 @@
 # Roadmap do Console Admin de suporte
 
 **Atualizado em:** 29/09/2026  
-**Status:** arquitetura de produto e sequência de implementação; não representa funcionalidades já liberadas.
+**Status:** direção confirmada; as áreas de suporte ainda devem ser implementadas com escopo administrativo próprio.
+
+> **Decisão confirmada:** o Console Admin terá páginas acessíveis pela própria sidebar para **Instâncias, Inbox, Agenda e Funil**. Elas são ferramentas de suporte que operam sobre o workspace selecionado, não atalhos para o workspace público do cliente.
 
 ## Decisões incorporadas
 
@@ -42,6 +44,7 @@ Não tratar essas ideias como funcionalidades disponíveis nem como critério do
 - exibir status, telefone, `instanceId`, última atualização e erros resumidos;
 - iniciar conexão/pareamento e desconexão somente em modo `operator`;
 - impedir qualquer consulta por `instanceId` sem validação do `workspaceId` selecionado.
+- criar instância Baileys dentro de sessão `operator`, com auditoria, para que o smoke test não dependa do terminal.
 
 ### Fase B — Inbox de suporte
 
@@ -51,6 +54,8 @@ Não tratar essas ideias como funcionalidades disponíveis nem como critério do
 - permitir envio apenas em sessão `operator` ativa;
 - exibir claramente workspace, modo da sessão e expiração;
 - registrar envio, leitura e ações de suporte na auditoria.
+
+As páginas administrativas não devem montar o contexto a partir da membership do usuário. Devem receber o workspace e a sessão explicitamente e exibir ambos no cabeçalho.
 
 ### Fase C — Operação de negócio
 
