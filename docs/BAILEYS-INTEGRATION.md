@@ -590,6 +590,8 @@ Resposta:
 }
 ```
 
+O gateway não considera `status: "sent"` uma confirmação de entrega: ele indica que o socket Baileys aceitou o envio. Para destinos brasileiros, o gateway preserva o número informado e consulta o diretório do WhatsApp antes de enviar. Quando necessário, testa de forma ordenada variações seguras de DDD com zero à esquerda e do nono dígito, escolhendo somente um JID que o WhatsApp confirme como existente. Isso cobre entradas como `038 9903-4689` e `55 38 99903-4689` sem reescrever silenciosamente um número não confirmado.
+
 ---
 
 ## 7. Estados da instância

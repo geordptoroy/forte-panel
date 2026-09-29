@@ -36,6 +36,7 @@ import {
   PanelMessageEchoTracker,
   shouldForwardLiveUpsert,
 } from "./message-normalization.js";
+import { resolveRecipientJid } from "./phone-resolution.js";
 
 function instanceScopedEventId(instanceId: string, sourceId: string) {
   return `baileys-${crypto
@@ -479,9 +480,9 @@ export class InstanceManager {
   ): Promise<string> {
     if (!this.socket || this.snapshot.status !== "connected")
       throw new Error("WhatsApp instance is not connected");
-    const jid = phone.includes("@")
-      ? phone
-      : phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
+    const jid = await resolveRecipientJid(phone, (...numbers) =>
+      this.socket!.onWhatsApp(...numbers)
+    );
     let message: AnyMessageContent;
     if (messageType === "text") {
       message = { text: content };
@@ -567,9 +568,9 @@ export class InstanceManager {
   ): Promise<string> {
     if (!this.socket || this.snapshot.status !== "connected")
       throw new Error("WhatsApp instance is not connected");
-    const jid = phone.includes("@")
-      ? phone
-      : phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
+    const jid = await resolveRecipientJid(phone, (...numbers) =>
+      this.socket!.onWhatsApp(...numbers)
+    );
     const echo = normalizeBaileysOutgoingMessage(payload);
     this.panelMessageEchoes.rememberPending(
       jid,
