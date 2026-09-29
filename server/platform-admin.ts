@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import {
   agentPromptDrafts,
@@ -32,6 +32,14 @@ import {
   resetWorkspaceDevelopmentData,
   getWorkspaceUsageSnapshot,
   listBaileysInstances,
+  listInboxContacts,
+  getContactById,
+  getConversationByContact,
+  listMessagesForContact,
+  getAuditLogForContact,
+  listContactNotes,
+  sendManualMessage,
+  markConversationRead,
   saveNativeAgentConfig,
   savePlatformGlobalNativeAgentConfig,
 } from "./db";
@@ -71,6 +79,39 @@ export type SafeAgentConfig = {
   apiSource: "environment";
   llm: AgentProviderSettings;
 };
+export const PLATFORM_SUPPORT_WORKSPACE_SLUG = "forte-platform-support";
+export const PLATFORM_SUPPORT_WORKSPACE_NAME = "Suporte Forte Platform";
+
+export async function ensurePlatformSupportWorkspace() {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const existing = (
+    await db
+      .select()
+      .from(workspaces)
+      .where(eq(workspaces.slug, PLATFORM_SUPPORT_WORKSPACE_SLUG))
+      .limit(1)
+  )[0];
+  if (existing) {
+    await ensureBaileysChannel(existing.id);
+    return existing;
+  }
+  const created = (
+    await db
+      .insert(workspaces)
+      .values({
+        name: PLATFORM_SUPPORT_WORKSPACE_NAME,
+        slug: PLATFORM_SUPPORT_WORKSPACE_SLUG,
+        segment: "platform_support",
+        plan: "business",
+        status: "active",
+      })
+      .returning()
+  )[0];
+  if (!created) throw new Error("Não foi possível criar o workspace de suporte");
+  await ensureBaileysChannel(created.id);
+  return created;
+}
 
 const permissionCanMutate = (permission: PlatformPermission) =>
   permission === "platform_admin" || permission === "platform_support_operator";
@@ -515,7 +556,7 @@ export async function resetPlatformWorkspace(input: {
 export async function createPlatformBaileysInstance(input: {
   platformAdminId: number;
   workspaceId: number;
-  supportSessionId: number;
+  supportSessionId: number | null;
   name: string;
   reason: string;
 }) {
@@ -550,7 +591,7 @@ export async function createPlatformBaileysInstance(input: {
 export async function disconnectPlatformBaileysInstance(input: {
   platformAdminId: number;
   workspaceId: number;
-  supportSessionId: number;
+  supportSessionId: number | null;
   instanceId: string;
   logout: boolean;
   reason: string;
@@ -879,11 +920,14 @@ export async function listPlatformWorkspaces(search = "") {
     .from(workspaces)
     .where(
       term
-        ? or(
-            ilike(workspaces.name, `%${term}%`),
-            ilike(workspaces.slug, `%${term}%`)
+        ? and(
+            ne(workspaces.slug, PLATFORM_SUPPORT_WORKSPACE_SLUG),
+            or(
+              ilike(workspaces.name, `%${term}%`),
+              ilike(workspaces.slug, `%${term}%`)
+            )
           )
-        : undefined
+        : ne(workspaces.slug, PLATFORM_SUPPORT_WORKSPACE_SLUG)
     )
     .orderBy(desc(workspaces.updatedAt), desc(workspaces.id))
     .limit(200);
@@ -908,6 +952,106 @@ export async function listPlatformWorkspaces(search = "") {
       ).length,
     },
   };
+}
+
+function mapPlatformSupportContact(contact: any) {
+  return {
+    id: String(contact.id),
+    name: contact.name,
+    phone: contact.groupId ? "" : contact.externalPhone,
+    isGroup: contact.groupId !== null,
+    groupJid: contact.groupJid ?? null,
+    groupSubject: contact.groupSubject ?? null,
+    groupInstanceId: contact.groupInstanceId ?? null,
+    pushName: contact.pushName,
+    aiEnabled: contact.aiEnabled === 1,
+    unread: contact.unreadCount,
+    lastMessage: contact.lastMessagePreview ?? "Sem mensagens",
+    lastMessageAt:
+      contact.lastMessageAt?.toISOString() ?? contact.updatedAt.toISOString(),
+  };
+}
+
+export async function getPlatformSupportSnapshot() {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const [instances, agent] = await Promise.all([
+    listBaileysInstances(workspace.id),
+    getPlatformAgentSnapshot(workspace.id),
+  ]);
+  return {
+    workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug },
+    instances,
+    agent,
+  };
+}
+
+export async function listPlatformSupportContacts() {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const contacts = await listInboxContacts(workspace.id, 0, null, true);
+  return contacts.map(mapPlatformSupportContact);
+}
+
+export async function getPlatformSupportThread(contactId: number) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const contact = await getContactById(workspace.id, contactId);
+  if (!contact) return null;
+  const [conversation, items, audit, notes] = await Promise.all([
+    getConversationByContact(workspace.id, contactId),
+    listMessagesForContact(workspace.id, contactId, { instanceIds: null }),
+    getAuditLogForContact(workspace.id, contactId),
+    listContactNotes(workspace.id, contactId),
+  ]);
+  return {
+    contact: mapPlatformSupportContact(contact),
+    conversation,
+    messages: items.map(message => ({
+      id: String(message.id),
+      sender: message.senderType,
+      text: message.content,
+      messageType: message.messageType,
+      metadata: message.metadata,
+      time: message.createdAt.toISOString(),
+      status: message.status,
+    })),
+    audit,
+    notes,
+  };
+}
+
+export async function sendPlatformSupportMessage(input: {
+  platformAdminId: number;
+  actorUserId: number;
+  contactId: number;
+  content: string;
+  instanceId?: string;
+}) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const contact = await getContactById(workspace.id, input.contactId);
+  if (!contact) throw new Error("Contato não encontrado no Inbox de suporte");
+  const message = await sendManualMessage(
+    workspace.id,
+    input.contactId,
+    input.content,
+    input.actorUserId,
+    "text",
+    undefined,
+    input.instanceId ? [input.instanceId] : null
+  );
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    workspaceId: workspace.id,
+    action: "platform_support_message_sent",
+    reason: "Atendimento pelo Inbox do Console Admin",
+    summary: `Mensagem enviada para ${contact.name}`,
+    after: { contactId: input.contactId, instanceId: input.instanceId ?? null },
+  });
+  return message
+    ? {
+        id: String(message.id),
+        content: message.content,
+        createdAt: message.createdAt.toISOString(),
+      }
+    : null;
 }
 
 async function getWorkspaceMembersForPlatform(workspaceId: number) {

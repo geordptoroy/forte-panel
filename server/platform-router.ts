@@ -10,6 +10,11 @@ import {
   getActiveSupportSession,
   getPlatformGlobalAgentSnapshot,
   getPlatformAdminAccess,
+  getPlatformSupportSnapshot,
+  listPlatformSupportContacts,
+  getPlatformSupportThread,
+  sendPlatformSupportMessage,
+  ensurePlatformSupportWorkspace,
   getPlatformAgentSnapshot,
   getPlatformWorkspaceDetail,
   recordPlatformAudit,
@@ -301,6 +306,119 @@ export const platformRouter = router({
         reason: input.reason,
       });
     }),
+
+  supportWorkspace: requirePlatform.query(() => getPlatformSupportSnapshot()),
+
+  supportAgent: requirePlatform.query(async () => {
+    const workspace = await ensurePlatformSupportWorkspace();
+    return getPlatformAgentSnapshot(workspace.id);
+  }),
+
+  saveSupportPrompt: requirePlatformOperator
+    .input(
+      z.object({
+        enabled: z.boolean(),
+        model: z.string().trim().min(1).max(200),
+        systemPrompt: z.string().max(30_000),
+        maxSteps: z.number().int().min(1).max(8),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      return savePlatformAgentDraft({
+        platformAdminId: ctx.platformAdmin.id,
+        workspaceId: workspace.id,
+        reason: "Atualização do prompt próprio do suporte da plataforma",
+        draft: input,
+      });
+    }),
+
+  publishSupportPrompt: requirePlatformOperator.mutation(async ({ ctx }) => {
+    const workspace = await ensurePlatformSupportWorkspace();
+    return publishPlatformAgentDraft({
+      platformAdminId: ctx.platformAdmin.id,
+      workspaceId: workspace.id,
+      reason: "Publicação do prompt próprio do suporte da plataforma",
+    });
+  }),
+
+  supportContacts: requirePlatform.query(() => listPlatformSupportContacts()),
+
+  supportThread: requirePlatform
+    .input(z.object({ contactId: z.number().int().positive() }))
+    .query(({ input }) => getPlatformSupportThread(input.contactId)),
+
+  createSupportInstance: requirePlatformOperator
+    .input(z.object({ name: z.string().trim().min(2).max(120) }))
+    .mutation(async ({ input, ctx }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      return createPlatformBaileysInstance({
+        platformAdminId: ctx.platformAdmin.id,
+        workspaceId: workspace.id,
+        supportSessionId: null,
+        name: input.name,
+        reason: "Criação de instância própria do suporte da plataforma",
+      });
+    }),
+
+  requestSupportPairingCode: requirePlatformOperator
+    .input(
+      z.object({
+        instanceId: z.string().trim().min(1).max(160),
+        phone: z.string().trim().min(8).max(24),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Instância de suporte não encontrada",
+        });
+      return requestBaileysPairingCode(instance.instanceId, input.phone);
+    }),
+
+  disconnectSupportInstance: requirePlatformOperator
+    .input(
+      z.object({
+        instanceId: z.string().trim().min(1).max(160),
+        logout: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Instância de suporte não encontrada",
+        });
+      return disconnectPlatformBaileysInstance({
+        platformAdminId: ctx.platformAdmin.id,
+        workspaceId: workspace.id,
+        supportSessionId: null,
+        instanceId: instance.instanceId,
+        logout: input.logout,
+        reason: "Desconexão de instância própria do suporte da plataforma",
+      });
+    }),
+
+  sendSupportMessage: requirePlatformOperator
+    .input(
+      z.object({
+        contactId: z.number().int().positive(),
+        content: z.string().trim().min(1).max(12_000_000),
+        instanceId: z.string().trim().min(1).max(160).optional(),
+      })
+    )
+    .mutation(({ input, ctx }) =>
+      sendPlatformSupportMessage({
+        ...input,
+        platformAdminId: ctx.platformAdmin.id,
+        actorUserId: ctx.platformAdmin.userId,
+      })
+    ),
 
   disconnectBaileysInstance: requirePlatformOperator
     .input(

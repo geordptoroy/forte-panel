@@ -119,6 +119,18 @@ function PlatformShell({
             <LifeBuoy size={15} /> Suporte
           </button>
           <button
+            className={active === "support-instances" ? "is-active" : ""}
+            onClick={() => navigate("/platform-admin/support-instances")}
+          >
+            <PlugZap size={15} /> Instâncias de suporte
+          </button>
+          <button
+            className={active === "support-inbox" ? "is-active" : ""}
+            onClick={() => navigate("/platform-admin/support-inbox")}
+          >
+            <MessageSquareText size={15} /> Inbox de suporte
+          </button>
+          <button
             className={active === "audit" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/audit")}
           >
@@ -152,8 +164,12 @@ function PlatformShell({
                 ? "Operação"
                 : active === "ai"
                   ? "IA global"
-                  : active === "support"
+                : active === "support"
                     ? "Suporte"
+                    : active === "support-instances"
+                      ? "Instâncias de suporte"
+                      : active === "support-inbox"
+                        ? "Inbox de suporte"
                     : active === "audit"
                       ? "Auditoria"
                       : "Workspace"}
@@ -1666,6 +1682,52 @@ export function PlatformSupportPage() {
             <div className="platform-table-wrap"><table className="platform-table"><thead><tr><th>Workspace</th><th>Status</th><th>Canal</th><th>Worker</th><th /></tr></thead><tbody>{(workspaces.data?.items ?? []).map(item => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.slug}</small></td><td><WorkspaceStatus value={item.status} /></td><td><WorkspaceStatus value={item.health.channel} /></td><td><WorkspaceStatus value={item.health.worker} /></td><td><button className="btn-secondary" disabled={start.isPending} onClick={() => start.mutate({ workspaceId: item.id, mode: "read_only", reason: "Triagem operacional pelo console da plataforma", expiresInMinutes: 30 })}><LifeBuoy size={13} /> Abrir read-only</button></td></tr>)}</tbody></table></div>
           )}
         </section>
+      </PlatformShell>
+    </PlatformAccessGate>
+  );
+}
+
+export function PlatformSupportInstancesPage() {
+  const [name, setName] = useState("WhatsApp Suporte");
+  const [phone, setPhone] = useState("");
+  const snapshot = trpc.platform.supportWorkspace.useQuery(undefined, { refetchInterval: 5_000 });
+  const create = trpc.platform.createSupportInstance.useMutation({ onSuccess: () => snapshot.refetch(), onError: error => toast.error(error.message) });
+  const pair = trpc.platform.requestSupportPairingCode.useMutation({ onError: error => toast.error(error.message) });
+  const disconnect = trpc.platform.disconnectSupportInstance.useMutation({ onSuccess: () => snapshot.refetch(), onError: error => toast.error(error.message) });
+  const canMutate = Boolean(trpc.platform.access.useQuery().data?.canMutate);
+  return (
+    <PlatformAccessGate>
+      <PlatformShell title="Instâncias de suporte" description="Conexões Baileys próprias da operação da plataforma, fora dos Workspaces beta." active="support-instances">
+        <div className="platform-banner"><ShieldCheck size={17} /><div><strong>Tenant interno: {snapshot.data?.workspace.name ?? "Suporte Forte Platform"}</strong><span>Estas instâncias pertencem ao Console Admin e não a uma conta de cliente.</span></div></div>
+        <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Nova conexão</span><h2>Adicionar instância de suporte</h2></div><PlugZap size={18} /></div><div className="platform-form-grid"><label className="platform-field"><span>Nome</span><input className="input-control" value={name} onChange={event => setName(event.target.value)} /></label><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || create.isPending || name.trim().length < 2} onClick={() => create.mutate({ name })}><PlugZap size={13} /> {create.isPending ? "Criando…" : "Criar instância"}</button></div></div></section>
+        <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Conexões do console</span><h2>WhatsApp de suporte</h2></div><Activity size={18} /></div>{snapshot.isLoading ? <PlatformState icon={RefreshCw} title="Carregando instâncias" description="Consultando o tenant interno do suporte." loading /> : (snapshot.data?.instances ?? []).length === 0 ? <PlatformState icon={PlugZap} title="Nenhuma instância criada" description="Crie a primeira conexão própria do Console Admin." /> : <div className="platform-table-wrap"><table className="platform-table"><thead><tr><th>Instância</th><th>Status</th><th>Pairing</th><th /></tr></thead><tbody>{(snapshot.data?.instances ?? []).map(instance => <tr key={instance.instanceId}><td><strong>{instance.name}</strong><small>{instance.instanceId}</small></td><td><WorkspaceStatus value={instance.status} /></td><td><div className="platform-form-actions"><input className="input-control" placeholder="DDD + número" value={phone} onChange={event => setPhone(event.target.value)} /><button className="btn-secondary" disabled={!canMutate || pair.isPending || phone.length < 8} onClick={() => pair.mutate({ instanceId: instance.instanceId, phone })}><KeyRound size={13} /> Código</button></div></td><td><button className="btn-ghost" disabled={!canMutate || disconnect.isPending} onClick={() => disconnect.mutate({ instanceId: instance.instanceId, logout: false })}>Desconectar</button></td></tr>)}</tbody></table></div>}</section>
+      </PlatformShell>
+    </PlatformAccessGate>
+  );
+}
+
+export function PlatformSupportInboxPage() {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+  const contacts = trpc.platform.supportContacts.useQuery(undefined, { refetchInterval: 5_000 });
+  const thread = trpc.platform.supportThread.useQuery({ contactId: selectedId ?? 0 }, { enabled: selectedId !== null, refetchInterval: 5_000 });
+  const agent = trpc.platform.supportAgent.useQuery();
+  const savePrompt = trpc.platform.saveSupportPrompt.useMutation({ onSuccess: () => agent.refetch(), onError: error => toast.error(error.message) });
+  const publishPrompt = trpc.platform.publishSupportPrompt.useMutation({ onSuccess: () => agent.refetch(), onError: error => toast.error(error.message) });
+  const send = trpc.platform.sendSupportMessage.useMutation({ onSuccess: () => { setDraft(""); thread.refetch(); contacts.refetch(); }, onError: error => toast.error(error.message) });
+  const canMutate = Boolean(trpc.platform.access.useQuery().data?.canMutate);
+  const selected = contacts.data?.find(contact => Number(contact.id) === selectedId);
+  const prompt = agent.data?.draft?.config ?? agent.data?.current;
+  const [promptText, setPromptText] = useState("");
+  useEffect(() => {
+    if (prompt?.systemPrompt !== undefined) setPromptText(prompt.systemPrompt);
+  }, [prompt?.systemPrompt]);
+  return (
+    <PlatformAccessGate>
+      <PlatformShell title="Inbox de suporte" description="Mensagens recebidas nas instâncias próprias do Console Admin, com agente e prompt separados." active="support-inbox">
+        <div className="platform-banner"><MessageSquareText size={17} /><div><strong>Atendimento do Console Admin</strong><span>Esta Inbox usa somente o tenant interno de suporte; Workspaces beta não aparecem aqui.</span></div></div>
+        <div className="platform-two-columns"><section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Conversas</span><h2>WhatsApp de suporte</h2></div></div>{(contacts.data ?? []).map(contact => <button key={contact.id} className={`platform-member ${selectedId === Number(contact.id) ? "is-active" : ""}`} onClick={() => setSelectedId(Number(contact.id))}><div className="platform-channel-icon"><MessageSquareText size={14} /></div><div><strong>{contact.name}</strong><small>{contact.phone || "Grupo"} · {contact.lastMessage}</small></div></button>)}</section><section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Conversa</span><h2>{selected?.name ?? "Selecione uma conversa"}</h2></div></div>{selectedId === null ? <PlatformState icon={MessageSquareText} title="Inbox pronta" description="Quando o WhatsApp de suporte receber uma mensagem, ela aparecerá aqui." /> : <><div className="platform-note-list">{(thread.data?.messages ?? []).map(message => <div key={message.id}><strong>{message.sender}</strong><small>{fmtDate(message.time)}</small><p>{message.text}</p></div>)}</div><div className="platform-form-actions"><input className="input-control" value={draft} onChange={event => setDraft(event.target.value)} placeholder="Responder pelo WhatsApp de suporte" /><button className="btn-primary" disabled={!canMutate || send.isPending || !draft.trim()} onClick={() => send.mutate({ contactId: selectedId, content: draft })}>Enviar</button></div></>}</section></div>
+        <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Agente próprio</span><h2>Prompt do suporte da plataforma</h2></div><Bot size={18} /></div>{prompt && <><textarea className="input-control agent-prompt-editor" value={promptText} onChange={event => setPromptText(event.target.value)} /><div className="platform-form-actions"><button className="btn-secondary" disabled={!canMutate || savePrompt.isPending} onClick={() => savePrompt.mutate({ enabled: prompt.enabled, model: prompt.model, systemPrompt: promptText, maxSteps: prompt.maxSteps })}>Salvar rascunho</button><button className="btn-primary" disabled={!canMutate || publishPrompt.isPending} onClick={() => publishPrompt.mutate()}>Publicar prompt</button></div></>}</section>
       </PlatformShell>
     </PlatformAccessGate>
   );

@@ -542,3 +542,14 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Documentar reset destrutivo completo via `scripts/dev-reinstall.ps1 -ResetData`.
 - [ ] Executar o reset no Docker/Desktop local do usuário.
 - [ ] Retomar smoke test começando pelo Console Admin: sessão, workspace, instância, operator, pareamento, inbound/outbound, desconexão e auditoria.
+
+
+## Console Admin — operação WhatsApp própria — 2026-09-29
+
+- [x] Criar tenant técnico `forte-platform-support`, fora da lista de Workspaces beta.
+- [x] Adicionar aba Sidebar `Instâncias de suporte`.
+- [x] Adicionar aba Sidebar `Inbox de suporte`.
+- [x] Adicionar criação, pareamento por código e desconexão de instâncias próprias.
+- [x] Adicionar Inbox própria com leitura, resposta e auditoria.
+- [x] Adicionar prompt próprio do agente de suporte com salvar/publicar.
+- [ ] Executar smoke test real no Docker: parear número do suporte, inbound, resposta outbound e agente.

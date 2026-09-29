@@ -121,3 +121,13 @@ Para apagar PostgreSQL, Redis e sessões Baileys e reinstalar a publicação lim
 Esse reset remove apenas volumes, containers e redes do projeto `forte-local`, baixa novamente as imagens `:dev` e sobe migrations, painel, worker e gateway. Não remove imagens/cache globais nem outros projetos Docker. Depois do reset, o primeiro login recria somente o usuário `local_admin`; o workspace padrão não é recriado porque `DEMO_MODE=false` e `WORKSPACE_BOOTSTRAP_ENABLED=false`.
 
 Smoke test prioritário após a reinstalação, começando pelo Console Admin: login de `local_admin`; abrir Workspaces; selecionar workspace; iniciar sessão `read_only`; conferir cabeçalho e expiração; listar instâncias; criar uma instância somente em `operator`; gerar QR/código; parear no aparelho de teste; confirmar status conectado; testar recebimento e envio; desconectar a instância; conferir auditoria e isolamento do workspace. Só depois repetir o fluxo mínimo no Workspace público.
+
+
+## Console Admin: instâncias e Inbox próprias — 2026-09-29
+
+O Console Admin deixou de depender exclusivamente de `supportSession` para testar seu próprio atendimento. O tenant técnico `forte-platform-support` é criado sob demanda, não aparece em `Workspaces beta` e concentra as conexões do número de suporte da plataforma. A sidebar possui:
+
+- **Instâncias de suporte:** criar a instância Baileys, solicitar código de pareamento e desconectar.
+- **Inbox de suporte:** visualizar conversas recebidas no tenant interno, responder pelo WhatsApp e editar/publicar o prompt próprio do agente de suporte.
+
+Após a reinstalação limpa, o smoke test correto é abrir `http://localhost:3002/platform-admin`, entrar em **Instâncias de suporte**, criar `WhatsApp Suporte`, solicitar o código para o número de suporte e concluir o pareamento no aparelho. Depois, abrir **Inbox de suporte**, enviar uma mensagem de teste a partir de um segundo número, responder pela tela e confirmar a mensagem no WhatsApp. O prompt do suporte é separado do prompt de cada Workspace beta.

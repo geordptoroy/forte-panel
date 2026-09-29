@@ -40,3 +40,14 @@ A solicitação atual é apagar o ambiente Docker local e recomeçar com operaç
 Foi aplicado um cadeado visual nos dois lados: `PanelLayout` mostra `Fluxo validado` no Workspace público quando `CORE_ONLY_MODE` está ativo, e `PlatformShell` mostra `Validado` no Console Admin. Isso é uma marca de escopo congelado para o smoke test, não uma barreira de autorização. O backend continua sendo a fonte de autorização, ownership, sessão e auditoria.
 
 Após reset completo, o contrato esperado é: `DEMO_MODE=false`, `WORKSPACE_BOOTSTRAP_ENABLED=false`, login recria apenas `local_admin`, nenhum workspace padrão é criado por login, e o smoke test começa pelo Console Admin. Ordem recomendada: sessão `read_only`, seleção explícita de workspace, listagem de instância, mudança para `operator`, criação/pareamento, inbound/outbound, desconexão, auditoria e isolamento; depois repetir o mínimo no Workspace público.
+
+
+## 24. Console Admin com WhatsApp próprio — 2026-09-29
+
+A direção foi corrigida: o Console Admin agora possui uma operação própria, sem depender de sessão real de takeover em Workspaces beta. Foi criado o tenant técnico `forte-platform-support` / `Suporte Forte Platform`, oculto da listagem `Workspaces beta`, com canal Baileys próprio, instâncias próprias, Inbox própria e agente/prompt próprio.
+
+A sidebar do Console Admin agora expõe `Instâncias de suporte` e `Inbox de suporte`. As instâncias permitem criar, solicitar código de pareamento e desconectar. A Inbox lista contatos recebidos nesse tenant, abre mensagens, envia respostas pelo Baileys selecionado e edita/publica o prompt próprio do suporte. As mutações exigem `platform_support_operator`; o backend mantém o isolamento por `workspaceId` interno e registra auditoria sem inventar `supportSessionId`.
+
+Rotas: `/platform-admin/support-instances` e `/platform-admin/support-inbox`. A próxima validação deve começar por essas abas, criar a instância interna, parear o número de suporte, receber uma mensagem real, responder pelo Inbox e confirmar o prompt do agente. O fluxo de sessões para Workspaces beta continua separado e não é usado por essas abas.
+
+Validação desta fatia: `pnpm check`, build, 7 testes focados e `git diff --check` passaram. O smoke test real Baileys ainda depende do Docker/PostgreSQL local e de um número de suporte.
