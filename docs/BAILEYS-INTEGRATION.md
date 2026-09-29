@@ -108,8 +108,8 @@ As migrations `0038_baileys_global_instance_ids` e `0039_baileys_workspace_defau
 
 ```env
 BAILEYS_BASE_URL=http://forte-whatsapp:3010
-BAILEYS_API_KEY=chave-interna-do-gateway
-BAILEYS_WEBHOOK_SECRET=segredo-do-webhook
+BAILEYS_API_KEY=<chave-interna-do-gateway>
+BAILEYS_WEBHOOK_SECRET=<segredo-do-webhook>
 # Opcional: ID da sessão singleton antiga para importação compatível
 BAILEYS_INSTANCE_ID=default
 BAILEYS_REQUEST_TIMEOUT_MS=8000
@@ -118,13 +118,13 @@ BAILEYS_REQUEST_TIMEOUT_MS=8000
 ### 4.2 Gateway
 
 ```env
-WHATSAPP_API_KEY=chave-interna-do-gateway
+WHATSAPP_API_KEY=<chave-interna-do-gateway>
 WHATSAPP_SESSION_DIR=/app/sessions
 WHATSAPP_SESSION_ENCRYPTION_KEY=32-bytes-em-hex-opcional
 # Opcional: ID e nome de uma sessão antiga; o registry não cria esse ID sozinho
 WHATSAPP_INSTANCE_ID=default
 WHATSAPP_WEBHOOK_URL=http://forte-panel:3000/api/v1/webhooks/providers/baileys
-WHATSAPP_WEBHOOK_SECRET=segredo-do-webhook
+WHATSAPP_WEBHOOK_SECRET=<segredo-do-webhook>
 WHATSAPP_WEBHOOK_OUTBOX_DIR=/app/sessions/outbox
 WHATSAPP_MAX_INSTANCES=10
 WHATSAPP_WEBHOOK_MAX_ATTEMPTS=8
