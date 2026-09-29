@@ -182,3 +182,16 @@ Depois do startup, abrir `http://localhost:3002` e usar o login local indicado p
 - [`docs/BAILEYS-INTEGRATION.md`](./docs/BAILEYS-INTEGRATION.md) e [`forte-whatsapp/README.md`](./forte-whatsapp/README.md) — contrato do gateway e rotas internas atuais.
 - [`todo.md`](./todo.md) — próxima sequência: modelos/admin → mensagens multimodais → agente com prompt fictício; avançar somente após revisão de cada documento/fatia.
 - [`DEVELOPMENT-CONTEXT-AND-INTEGRATION-POLICY.md`](./DEVELOPMENT-CONTEXT-AND-INTEGRATION-POLICY.md) — Docker/WSL/PowerShell, API externa fechada e fluxo de Git informado pelo usuário.
+
+
+## Atualização de execução — 2026-09-29 — Fase 2, fatia 1
+
+A primeira fatia de limpeza foi executada e validada no commit `8d94521` (Baileys-only operacional). A segunda fatia foi executada no working tree atual.
+
+`server/integrations/whatsapp.ts` agora contém somente normalização, healthcheck e envio pelo gateway Baileys. `server/integrations/papi-cloud.ts` foi removido por não possuir consumidores ativos. `server/integrations/whatsapp.test.ts` foi reduzido à cobertura do Baileys. O canal Meta foi removido dos dados demo do workspace e a recuperação de segredo PAPI foi retirada do worker outbound.
+
+O contrato de tipos e os campos de compatibilidade do data layer permanecem temporariamente preservados para os valores históricos do banco. Os helpers CRUD/webhook PAPI de `server/db.ts` ainda precisam ser removidos numa fatia própria, porque dependem do schema histórico e exigem validação completa de imports e migrations. As variáveis PAPI Cloud permanecem somente como compatibilidade temporária desse data layer; não são usadas pelo Compose oficial nem por nenhum adapter.
+
+**Validação desta fatia:** `pnpm check` passou; 199 testes passaram e 47 foram pulados por dependerem de banco externo. Nenhuma migration de limpeza de dados foi executada e nenhum volume foi alterado.
+
+**Próxima fatia:** remover os helpers CRUD/webhook PAPI de `server/db.ts`, retirar referências de compatibilidade do contrato/configuração, revisar o workflow de detecção de segredos e atualizar os documentos operacionais que ainda descrevem PAPI/Meta como caminho ativo. Só depois disso será criada a migration de schema ativo Baileys-only; migrations históricas não serão editadas.

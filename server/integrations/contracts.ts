@@ -81,16 +81,8 @@ export interface WhatsappAdapter {
   normalizeInbound(event: unknown): InboundMessageEvent;
 }
 
-export interface PapiAdapter extends WhatsappAdapter {
-  provider: "papi";
-}
-
 export interface BaileysAdapter extends WhatsappAdapter {
   provider: "baileys";
-}
-
-export interface MetaCloudApiAdapter extends WhatsappAdapter {
-  provider: "meta_cloud_api";
 }
 
 export interface VectorMemoryAdapter {

@@ -1574,13 +1574,6 @@ export async function ensureDemoWhatsappChannels() {
         credentialsRef: "BAILEYS_API_KEY",
         active: 1,
       },
-      {
-        workspaceId: workspace.id,
-        provider: "meta_cloud_api",
-        name: "WhatsApp Cloud API oficial",
-        credentialsRef: "META_WHATSAPP_ACCESS_TOKEN",
-        active: 1,
-      },
     ]);
   }
   return db
@@ -7224,11 +7217,6 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
         messageType: item.message.messageType,
         metadata: item.message.metadata ?? undefined,
         instanceId,
-        apiKey:
-          item.message.provider === "papi" && instanceId && item.workspaceId
-            ? (await getPapiInstanceSecret(item.workspaceId, instanceId)) ||
-              undefined
-            : undefined,
         provider: item.message.provider,
       });
       await db

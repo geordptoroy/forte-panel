@@ -19,6 +19,7 @@ export const ENV = {
   smtpPort: Number(process.env.SMTP_PORT ?? 587),
   smtpUser: process.env.SMTP_USER ?? "",
   smtpPassword: process.env.SMTP_PASSWORD ?? "",
+  /** Deprecated data-layer compatibility; no adapter or Compose service uses these. */
   papiDeployment: process.env.PAPI_DEPLOYMENT === "cloud" ? "cloud" : "self_hosted",
   papiCloudApiUrl: process.env.PAPI_CLOUD_API_URL ?? "https://api.papi.api.br",
   papiCloudManagementUrl: process.env.PAPI_CLOUD_MANAGEMENT_URL ?? "https://papi.api.br",
