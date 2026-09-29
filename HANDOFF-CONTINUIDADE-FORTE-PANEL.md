@@ -20,3 +20,14 @@ A alteração está nos endpoints `platform.createBaileysInstance` e `platform.d
 Validação no sandbox: `pnpm check`, `pnpm build`, `pnpm test` com 204 aprovados e 47 ignorados por dependência de banco, `npm test --prefix forte-whatsapp` com 62 aprovados e `git diff --check`. Os testes PostgreSQL do suporte continuam condicionados a `DATABASE_URL` e não foram declarados executados.
 
 Próximo bloco: implementar a fachada de Inbox de suporte, sempre recebendo `workspaceId` + `supportSessionId`, com leitura em `read_only`, envio somente em `operator`, filtro de instâncias, cabeçalho explícito de workspace/sessão e auditoria das ações. Depois publicar a imagem `:dev` e executar o smoke test no Docker/staging do usuário; não usar a conta “Minha empresa” nem criar a instância pelo terminal como fluxo principal.
+
+
+## 22. Workspace padrão corrigido — 2026-09-29
+
+`upsertUser()` não chama mais `ensureDemoWorkspace()` durante login normal. O workspace padrão só é provisionado quando `DEMO_MODE=true` ou `WORKSPACE_BOOTSTRAP_ENABLED=true`; signup público continua criando seu workspace próprio de forma transacional. Foram adicionados testes unitários para a política e as flags foram documentadas nos exemplos de ambiente.
+
+Foi criado `scripts/delete-local-workspace.sql`. O script exige a confirmação literal `APAGAR WORKSPACE FORTE 1`, trava e valida exatamente o workspace ativo `id=1`, `slug=forte-workspace`, `name=Minha empresa`, remove dados com `workspaceId` e o registro do workspace dentro de uma transação, e preserva `users`, `platformAdmins` e o acesso do Console Admin. O comando PowerShell com backup e substituição da confirmação está em `LOCAL-DOCKER-TESTE.md`.
+
+Validação no sandbox: `pnpm check`, 6 testes de `server/db.auth-bootstrap.test.ts` e `git diff --check` passaram. A execução SQL real continua pendente porque o sandbox não tem `psql`, Docker ou acesso ao PostgreSQL local do usuário. Não declarar o workspace removido até o usuário executar o backup e o script no ambiente local.
+
+Depois da execução local e confirmação do resultado, a próxima fatia volta a ser a fachada de Inbox de suporte com `workspaceId` + `supportSessionId`.

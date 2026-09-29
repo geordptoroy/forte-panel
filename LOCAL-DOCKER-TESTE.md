@@ -87,3 +87,22 @@ Em 2026-09-27, o manifest `:dev` das duas imagens respondeu HTTP 200 pelo token 
 ## Interface WhatsApp — 28/09/2026
 
 A conexão Baileys/Forte Panel está funcional; esta revisão não altera gateway, sessão, banco ou contratos tRPC. O smoke test pendente é visual: criar instância pelo modal, avançar para QR ou número, conferir bandeira/DDI, responsividade, renomeação e exclusão. **Planos e consumo não aparece na sidebar nesta etapa**, pois a rota está temporariamente congelada junto das demais páginas não-core.
+
+
+## Correção do workspace padrão — 2026-09-29
+
+O login normal não cria mais `WORKSPACE_SLUG`/`WORKSPACE_NAME` implicitamente. O provisionamento padrão só ocorre quando `DEMO_MODE=true` ou quando `WORKSPACE_BOOTSTRAP_ENABLED=true` foi configurado de forma explícita. O signup público continua criando seu próprio workspace e membership transacionalmente.
+
+Para remover o workspace local antigo **“Minha empresa”**, não use `down --volumes` e não apague o usuário do Console Admin. Faça backup antes e execute o script dentro do container PostgreSQL, depois de revisar as três identidades protegidas (`id=1`, `slug=forte-workspace`, `name=Minha empresa`):
+
+```powershell
+# Backup obrigatório antes da exclusão
+$env:PGPASSWORD = (docker compose --project-name forte-local --env-file .env --file docker-compose.local.yml exec -T postgres printenv POSTGRES_PASSWORD)
+docker compose --project-name forte-local --env-file .env --file docker-compose.local.yml exec -T postgres pg_dump -U forte_panel -d forte_panel -Fc > forte-panel-before-workspace-delete.dump
+
+# Injeta a confirmação exata no stream, sem alterar o arquivo versionado.
+$sql = (Get-Content .\scripts\delete-local-workspace.sql -Raw).Replace('REPLACE_WITH_EXACT_CONFIRMATION', 'APAGAR WORKSPACE FORTE 1')
+$sql | docker compose --project-name forte-local --env-file .env --file docker-compose.local.yml exec -T postgres psql -U forte_panel -d forte_panel -v ON_ERROR_STOP=1
+```
+
+O script aborta se a confirmação não for exata, se não encontrar exatamente um workspace ativo com os três identificadores, ou se o registro ainda existir após a operação. Ele apaga linhas tenant-scoped que possuem `workspaceId`, além do workspace e membership, mas preserva `users`, `platformAdmins` e o acesso do Console Admin. A execução é transacional: qualquer erro gera rollback. Após a execução, faça login novamente e confirme que o workspace não reaparece; não habilite `WORKSPACE_BOOTSTRAP_ENABLED` no `.env` de produção/local normal.

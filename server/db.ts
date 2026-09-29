@@ -180,6 +180,13 @@ export function shouldAssignBootstrapOwnerMembership(input: {
   );
 }
 
+export function shouldProvisionDefaultWorkspace(input: {
+  demoMode: boolean;
+  bootstrapEnabled: boolean;
+}) {
+  return input.demoMode || input.bootstrapEnabled;
+}
+
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
@@ -242,7 +249,12 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     .from(users)
     .where(eq(users.openId, user.openId))
     .limit(1);
-  const workspace = await ensureDemoWorkspace();
+  const workspace = shouldProvisionDefaultWorkspace({
+    demoMode: process.env.DEMO_MODE === "true",
+    bootstrapEnabled: process.env.WORKSPACE_BOOTSTRAP_ENABLED === "true",
+  })
+    ? await ensureDemoWorkspace()
+    : undefined;
   if (persisted[0] && workspace && shouldAssignBootstrapOwner) {
     await ensureWorkspaceMember(workspace.id, persisted[0].id, "owner");
   }

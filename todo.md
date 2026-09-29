@@ -521,3 +521,14 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Validar `pnpm check`, `pnpm build`, `pnpm test`, `npm test --prefix forte-whatsapp` e `git diff --check`.
 - [ ] Executar no Docker/staging do usuário: criar instância, parear por código, desconectar, validar inbound/outbound e confirmar PostgreSQL persistente.
 - [ ] Próxima fatia: fachada de Inbox de suporte com `workspaceId` + `supportSessionId`; não reutilizar diretamente o contexto do painel público.
+
+
+## Correção do workspace padrão — 2026-09-29
+
+- [x] Corrigir `upsertUser()` para não chamar `ensureDemoWorkspace()` durante login normal quando `DEMO_MODE=false`.
+- [x] Tornar `WORKSPACE_BOOTSTRAP_ENABLED=true` a única forma explícita, além de `DEMO_MODE=true`, de provisionar o workspace padrão.
+- [x] Preservar signup público, memberships transacionais e bootstrap do Console Admin sem criar membership de cliente implicitamente.
+- [x] Criar `scripts/delete-local-workspace.sql` com confirmação exata, validação de id/slug/nome, transação e preservação de `users`/`platformAdmins`.
+- [x] Documentar backup e execução no Docker/PowerShell em `LOCAL-DOCKER-TESTE.md`.
+- [x] Validar `pnpm check`, testes de bootstrap e `git diff --check`.
+- [ ] Executar o backup e o script no PostgreSQL local do usuário; o sandbox não possui esse banco.

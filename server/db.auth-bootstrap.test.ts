@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { shouldAssignBootstrapOwnerMembership } from "./db";
+import {
+  shouldAssignBootstrapOwnerMembership,
+  shouldProvisionDefaultWorkspace,
+} from "./db";
 
 describe("workspace owner bootstrap policy", () => {
   it("allows the configured owner to claim an empty installation", () => {
@@ -39,5 +42,25 @@ describe("workspace owner bootstrap policy", () => {
       ownerOpenId: "",
       canBootstrapAdmin: false,
     })).toBe(true);
+  });
+});
+
+describe("default workspace provisioning policy", () => {
+  it("does not create a default workspace during normal login", () => {
+    expect(
+      shouldProvisionDefaultWorkspace({
+        demoMode: false,
+        bootstrapEnabled: false,
+      })
+    ).toBe(false);
+  });
+
+  it("allows explicit demo mode or deployment bootstrap", () => {
+    expect(
+      shouldProvisionDefaultWorkspace({ demoMode: true, bootstrapEnabled: false })
+    ).toBe(true);
+    expect(
+      shouldProvisionDefaultWorkspace({ demoMode: false, bootstrapEnabled: true })
+    ).toBe(true);
   });
 });
