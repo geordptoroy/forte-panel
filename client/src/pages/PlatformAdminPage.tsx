@@ -39,6 +39,11 @@ const statusLabel: Record<string, string> = {
   active: "Ativo",
   onboarding: "Onboarding",
   suspended: "Suspenso",
+  connected: "Conectado",
+  ready: "Pronto",
+  online: "Online",
+  idle: "Aguardando pareamento",
+  disconnected: "Desconectado",
   healthy: "Saudável",
   stale: "Sem heartbeat",
   degraded: "Degradado",
@@ -49,9 +54,9 @@ const statusLabel: Record<string, string> = {
   paused: "Pausada",
 };
 const statusTone = (value: string) =>
-  ["active", "healthy", "enabled"].includes(value)
+  ["active", "healthy", "enabled", "connected", "ready", "online"].includes(value)
     ? "green"
-    : ["suspended", "degraded", "stale", "paused"].includes(value)
+    : ["suspended", "degraded", "stale", "paused", "disconnected"].includes(value)
       ? "red"
       : "amber";
 
@@ -970,6 +975,42 @@ function SummaryTab({
           <div className="platform-safe-note">
             <ShieldCheck size={13} /> Credenciais operacionais não fazem parte
             deste payload.
+          </div>
+        </section>
+        <section className="platform-card">
+          <div className="platform-card-title">
+            <div>
+              <span className="eyebrow">Baileys / operação</span>
+              <h2>Instâncias WhatsApp</h2>
+            </div>
+            <PlugZap size={17} />
+          </div>
+          {item.instances.length === 0 ? (
+            <PlatformState
+              icon={PlugZap}
+              title="Nenhuma instância ativa"
+              description="Este workspace ainda não possui uma instância Baileys persistida."
+            />
+          ) : (
+            <div className="platform-member-list">
+              {item.instances.map((instance: any) => (
+                <div className="platform-member" key={instance.id}>
+                  <div className="platform-channel-icon">
+                    <PlugZap size={15} />
+                  </div>
+                  <div>
+                    <strong>{instance.name}</strong>
+                    <small>
+                      {instance.instanceId} · atualizado {fmtDate(instance.updatedAt)}
+                    </small>
+                  </div>
+                  <WorkspaceStatus value={instance.status} />
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="platform-safe-note">
+            <ShieldCheck size={13} /> Somente status e identificadores operacionais; sessão e credenciais ficam no gateway.
           </div>
         </section>
       </div>
