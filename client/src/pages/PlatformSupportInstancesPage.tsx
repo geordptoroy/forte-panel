@@ -15,9 +15,10 @@ import {
   X,
 } from "lucide-react";
 import { getCountries, isPossiblePhoneNumber } from "libphonenumber-js";
-import PanelLayout, { EmptyState, PageLink, StatusBadge } from "@/components/PanelLayout";
+import { EmptyState, PageLink, StatusBadge } from "@/components/PanelLayout";
 import { baileysStatusPollingInterval } from "@/lib/baileys-status";
 import { trpc } from "@/lib/trpc";
+import { PlatformAccessGate, PlatformShell } from "./PlatformAdminPage";
 
 function WhatsappMark({ size = 22 }: { size?: number }) {
   return (
@@ -91,13 +92,15 @@ const connectionStatusDetails: Record<
 
 export function PlatformSupportInstancesPage() {
   return (
-    <PanelLayout
-      eyebrow="WhatsApp · Conexões"
-      title="Conexões e configurações WhatsApp"
-      showHeading={false}
-    >
-      <BaileysConnectionManager />
-    </PanelLayout>
+    <PlatformAccessGate>
+      <PlatformShell
+        title="Instâncias de suporte"
+        description="Conexões Baileys próprias da operação da plataforma."
+        active="support-instances"
+      >
+        <BaileysConnectionManager />
+      </PlatformShell>
+    </PlatformAccessGate>
   );
 }
 
@@ -127,13 +130,13 @@ function BaileysConnectionManager() {
     onSuccess: async result => {
       setCreatedInstanceId(result.instanceId);
       setCreatedInstanceName(result.name);
-      await utils.workspace.baileysInstances.invalidate();
+      await utils.platform.supportBaileysInstances.invalidate();
     },
   });
   const connect = trpc.platform.supportConnectBaileys.useMutation({
     onSuccess: async () => {
-      await utils.workspace.baileysInstances.invalidate();
-      await utils.workspace.baileysStatus.invalidate({
+      await utils.platform.supportBaileysInstances.invalidate();
+      await utils.platform.supportBaileysStatus.invalidate({
         instanceId: createdInstanceId ?? "",
       });
     },
@@ -141,7 +144,7 @@ function BaileysConnectionManager() {
   const pairing = trpc.platform.supportRequestBaileysPairingCode.useMutation({
     onSuccess: async result => {
       setPairingCode(result.code);
-      await utils.workspace.baileysInstances.invalidate();
+      await utils.platform.supportBaileysInstances.invalidate();
     },
   });
   const modalStatus = trpc.platform.supportBaileysStatus.useQuery(
@@ -237,7 +240,7 @@ function BaileysConnectionManager() {
     const result = await create.mutateAsync({ name: nameDraft.trim() });
     setCreatedInstanceId(result.instanceId);
     setCreatedInstanceName(result.name);
-    await utils.workspace.baileysInstances.invalidate();
+    await utils.platform.supportBaileysInstances.invalidate();
     return result.instanceId;
   };
   const startQrConnection = async () => {
@@ -611,8 +614,8 @@ function BaileysInstanceCard({
   const refresh = async () => {
     await Promise.all([
       status.refetch(),
-      utils.workspace.baileysQr.invalidate({ instanceId }),
-      utils.workspace.baileysInstances.invalidate(),
+      utils.platform.supportBaileysQr.invalidate({ instanceId }),
+      utils.platform.supportBaileysInstances.invalidate(),
     ]);
   };
   const connect = trpc.platform.supportConnectBaileys.useMutation({
@@ -621,7 +624,7 @@ function BaileysInstanceCard({
   const rename = trpc.platform.supportRenameBaileysInstance.useMutation({
     onSuccess: async () => {
       setRenameOpen(false);
-      await utils.workspace.baileysInstances.invalidate();
+      await utils.platform.supportBaileysInstances.invalidate();
     },
   });
   const disconnect = trpc.platform.supportDisconnectBaileys.useMutation({
@@ -636,7 +639,7 @@ function BaileysInstanceCard({
   const remove = trpc.platform.supportDeleteBaileysInstance.useMutation({
     onSuccess: async () => {
       setConfirmDelete(false);
-      await utils.workspace.baileysInstances.invalidate();
+      await utils.platform.supportBaileysInstances.invalidate();
     },
   });
   const updateSettings = trpc.platform.supportUpdateBaileysInstanceSettings.useMutation({
@@ -1077,134 +1080,5 @@ function BaileysInstanceCard({
         </div>
       )}
     </article>
-  );
-}
-
-export function WorkspaceUsagePage() {
-  const usageQuery = trpc.workspace.usage.useQuery(undefined, {
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: true,
-    refetchOnWindowFocus: "always",
-  });
-  const usage = usageQuery.data;
-  const usageMetrics = usage
-    ? (
-        [
-          ["apiRequests", "API"],
-          ["aiRequests", "Execuções de IA"],
-          ["outboundMessages", "Mensagens outbound"],
-        ] as const
-      ).map(([key, label]) => ({ key, label, ...usage.workspace[key] }))
-    : [];
-  const usagePercent = (used: number, limit: number) =>
-    limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const resetTime = usage
-    ? new Date(usage.resetsAt).toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-    : null;
-  return (
-    <PanelLayout
-      eyebrow="Workspace · Plano"
-      title="Planos e consumo"
-      description="Acompanhe o plano atual, os limites do workspace e a janela de renovação."
-      actions={
-        <button
-          type="button"
-          className="btn-secondary"
-          disabled={usageQuery.isFetching}
-          onClick={() => void usageQuery.refetch()}
-        >
-          <RefreshCw
-            size={14}
-            className={usageQuery.isFetching ? "spin" : undefined}
-          />{" "}
-          Atualizar consumo
-        </button>
-      }
-    >
-      <div className="workspace-usage-page">
-        <section className="surface workspace-plan-hero">
-          <div>
-            <span className="eyebrow">PLANO ATUAL</span>
-            <h2>{usage ? `Plano ${usage.plan}` : "Plano do workspace"}</h2>
-            <p>
-              {resetTime
-                ? `Janela atual até ${resetTime}.`
-                : "A cota e o período serão exibidos quando os dados carregarem."}
-            </p>
-          </div>
-          <StatusBadge tone={usageQuery.error ? "red" : "green"}>
-            {usageQuery.isFetching
-              ? "Atualizando"
-              : usageQuery.error
-                ? "Indisponível"
-                : "Ao vivo"}
-          </StatusBadge>
-        </section>
-        {usageQuery.isLoading ? (
-          <div className="surface workspace-usage-message" role="status">
-            Carregando cotas e consumo...
-          </div>
-        ) : usageQuery.error ? (
-          <div className="form-error" role="alert">
-            {usageQuery.error.message}
-          </div>
-        ) : usage ? (
-          <div className="workspace-usage-grid">
-            {usageMetrics.map(metric => {
-              const percent = usagePercent(metric.used, metric.limit);
-              return (
-                <article
-                  className="surface workspace-usage-metric"
-                  key={metric.key}
-                >
-                  <div className="workspace-usage-metric-heading">
-                    <span>{metric.label}</span>
-                    <Gauge
-                      size={16}
-                      className={percent >= 80 ? "amber" : "green"}
-                    />
-                  </div>
-                  <strong>
-                    {metric.used.toLocaleString("pt-BR")}{" "}
-                    <small>/ {metric.limit.toLocaleString("pt-BR")}</small>
-                  </strong>
-                  <p>
-                    {Math.max(0, metric.limit - metric.used).toLocaleString(
-                      "pt-BR"
-                    )}{" "}
-                    restantes · {percent}% usado
-                  </p>
-                  <div
-                    className="workspace-usage-progress"
-                    role="progressbar"
-                    aria-label={`${metric.label}: ${percent}% usado`}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={percent}
-                  >
-                    <span
-                      className={percent >= 80 ? "is-high" : ""}
-                      style={{ width: `${percent}%` }}
-                    />
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="surface workspace-usage-message">
-            Não há dados de consumo para exibir neste momento.
-          </div>
-        )}
-        <p className="workspace-usage-note">
-          Os limites apresentados são do workspace. Esta página é apenas
-          informativa.
-        </p>
-      </div>
-    </PanelLayout>
   );
 }
