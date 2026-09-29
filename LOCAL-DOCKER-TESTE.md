@@ -131,3 +131,10 @@ O Console Admin deixou de depender exclusivamente de `supportSession` para testa
 - **Inbox de suporte:** visualizar conversas recebidas no tenant interno, responder pelo WhatsApp e editar/publicar o prompt próprio do agente de suporte.
 
 Após a reinstalação limpa, o smoke test correto é abrir `http://localhost:3002/platform-admin`, entrar em **Instâncias de suporte**, criar `WhatsApp Suporte`, solicitar o código para o número de suporte e concluir o pareamento no aparelho. Depois, abrir **Inbox de suporte**, enviar uma mensagem de teste a partir de um segundo número, responder pela tela e confirmar a mensagem no WhatsApp. O prompt do suporte é separado do prompt de cada Workspace beta.
+
+
+## Correção da tela de conexão do Console Admin — 2026-09-29
+
+A tela de **Instâncias de suporte** foi alinhada à interface funcional de Conexões WhatsApp do Workspace público. O fluxo correto agora é: criar a instância, clicar em **Mostrar QR Code** ou usar **Por número**, aguardar o polling de status e observar o retorno visual do gateway. O botão de código usa telefone em formato internacional com DDI; o QR é atualizado enquanto o status estiver `qr`.
+
+Se um clique não produzir conexão, conferir a mensagem de erro exibida na própria instância, atualizar o status e verificar o serviço Baileys antes de repetir. A tela não usa mais apenas uma chamada isolada de pairing: ela possui os endpoints administrativos próprios de `connect`, `status`, `qr`, pairing e disconnect.

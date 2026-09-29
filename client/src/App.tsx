@@ -43,10 +43,10 @@ import {
   PlatformAuditPage,
   PlatformGlobalAiPage,
   PlatformSupportPage,
-  PlatformSupportInstancesPage,
   PlatformSupportInboxPage,
   PlatformWorkspacePage,
 } from "./pages/PlatformAdminPage";
+import PlatformSupportInstancesPage from "./pages/PlatformSupportInstancesPage";
 
 function Router() {
   const [location] = useLocation();

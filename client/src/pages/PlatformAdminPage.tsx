@@ -60,7 +60,7 @@ const statusTone = (value: string) =>
       ? "red"
       : "amber";
 
-function PlatformShell({
+export function PlatformShell({
   children,
   title,
   description,
@@ -187,7 +187,7 @@ function PlatformShell({
   );
 }
 
-function PlatformAccessGate({ children }: { children: React.ReactNode }) {
+export function PlatformAccessGate({ children }: { children: React.ReactNode }) {
   const access = trpc.platform.access.useQuery(undefined, { retry: false });
   if (access.isLoading)
     return (
@@ -602,7 +602,7 @@ function PlatformAdminOverview() {
   );
 }
 
-function PlatformState({
+export function PlatformState({
   icon: Icon,
   title,
   description,

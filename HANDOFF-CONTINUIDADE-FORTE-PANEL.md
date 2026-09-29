@@ -51,3 +51,12 @@ A sidebar do Console Admin agora expõe `Instâncias de suporte` e `Inbox de sup
 Rotas: `/platform-admin/support-instances` e `/platform-admin/support-inbox`. A próxima validação deve começar por essas abas, criar a instância interna, parear o número de suporte, receber uma mensagem real, responder pelo Inbox e confirmar o prompt do agente. O fluxo de sessões para Workspaces beta continua separado e não é usado por essas abas.
 
 Validação desta fatia: `pnpm check`, build, 7 testes focados e `git diff --check` passaram. O smoke test real Baileys ainda depende do Docker/PostgreSQL local e de um número de suporte.
+
+
+## 25. Correção da conexão Baileys no Console Admin — 2026-09-29
+
+A primeira tela de `Instâncias de suporte` era simplificada demais: tinha criação e uma tentativa de código, mas não copiava os contratos públicos de `connect`, `status` e `baileysQr`. Por isso o clique em gerar código não oferecia feedback adequado e não havia QR Code.
+
+A rota foi corrigida com uma cópia funcional da interface pública de conexão, adaptada para `trpc.platform` e para o tenant interno `forte-platform-support`. A tela agora usa polling de status, `connectSupportInstance`, `supportStatus`, `supportQr` e `requestSupportPairingCode`, com QR Code renderizado, código por telefone, mensagens de erro, estado de gateway, desconexão e atualização de status.
+
+Validação: `pnpm check`, `pnpm build`, 7 testes focados e `git diff --check` passaram. O smoke test real deve repetir criação, botão `Mostrar QR Code`, leitura no WhatsApp, geração de código com telefone em formato internacional e confirmação do status conectado.

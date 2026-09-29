@@ -41,7 +41,12 @@ import {
 } from "./platform-admin";
 import { authenticatedProcedure, router } from "./_core/trpc";
 import { getBaileysInstance } from "./db";
-import { requestBaileysPairingCode } from "./baileys-gateway";
+import {
+  connectBaileys,
+  getBaileysQr,
+  getBaileysStatus,
+  requestBaileysPairingCode,
+} from "./baileys-gateway";
 
 const requirePlatform = authenticatedProcedure.use(async ({ ctx, next }) => {
   const platformAdmin = await getPlatformAdminAccess(ctx.user.id);
@@ -377,6 +382,33 @@ export const platformRouter = router({
           message: "Instância de suporte não encontrada",
         });
       return requestBaileysPairingCode(instance.instanceId, input.phone);
+    }),
+  supportStatus: requirePlatform
+    .input(z.object({ instanceId: z.string().trim().min(1).max(160) }))
+    .query(async ({ input }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance)
+        throw new TRPCError({ code: "NOT_FOUND", message: "Instância de suporte não encontrada" });
+      return getBaileysStatus(instance.instanceId);
+    }),
+  supportQr: requirePlatform
+    .input(z.object({ instanceId: z.string().trim().min(1).max(160) }))
+    .query(async ({ input }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance)
+        throw new TRPCError({ code: "NOT_FOUND", message: "Instância de suporte não encontrada" });
+      return getBaileysQr(instance.instanceId);
+    }),
+  connectSupportInstance: requirePlatformOperator
+    .input(z.object({ instanceId: z.string().trim().min(1).max(160) }))
+    .mutation(async ({ input }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance)
+        throw new TRPCError({ code: "NOT_FOUND", message: "Instância de suporte não encontrada" });
+      return connectBaileys(instance.instanceId);
     }),
 
   disconnectSupportInstance: requirePlatformOperator
