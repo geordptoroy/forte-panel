@@ -8,7 +8,13 @@
 export const CORE_ONLY_MODE = true;
 export const CORE_ROUTE = "/whatsapp-connection";
 export const CORE_USAGE_ROUTE = "/plans-usage";
+export const PLATFORM_ADMIN_ROUTE = "/platform-admin";
 
 export function isCoreAllowedRoute(pathname: string) {
-  return pathname === CORE_ROUTE || pathname === "/inbox";
+  return (
+    pathname === CORE_ROUTE ||
+    pathname === "/inbox" ||
+    pathname === PLATFORM_ADMIN_ROUTE ||
+    pathname.startsWith(`${PLATFORM_ADMIN_ROUTE}/`)
+  );
 }
