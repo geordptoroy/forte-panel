@@ -963,12 +963,31 @@ function mapPlatformSupportContact(contact: any) {
     groupJid: contact.groupJid ?? null,
     groupSubject: contact.groupSubject ?? null,
     groupInstanceId: contact.groupInstanceId ?? null,
+    groupParticipantCount: contact.groupParticipantCount ?? 0,
+    groupParticipants: contact.groupParticipants ?? [],
     pushName: contact.pushName,
+    nameSource: contact.nameSource,
+    city: contact.city ?? "",
+    neighborhood: contact.neighborhood ?? "",
+    service: contact.serviceRequested ?? "Não informado",
+    urgency: contact.urgency,
+    stage: contact.stage,
     aiEnabled: contact.aiEnabled === 1,
     unread: contact.unreadCount,
+    awaitingResponse: contact.awaitingResponse ?? false,
+    needsOperatorResponse: contact.needsOperatorResponse ?? false,
     lastMessage: contact.lastMessagePreview ?? "Sem mensagens",
     lastMessageAt:
       contact.lastMessageAt?.toISOString() ?? contact.updatedAt.toISOString(),
+    quote: contact.quoteCents / 100,
+    pending: contact.quoteCents / 100,
+    daysNoReply: 0,
+    initials: contact.name
+      .split(" ")
+      .map((part: string) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase(),
   };
 }
 
@@ -991,18 +1010,23 @@ export async function listPlatformSupportContacts() {
   return contacts.map(mapPlatformSupportContact);
 }
 
-export async function getPlatformSupportThread(contactId: number) {
+export async function getPlatformSupportThread(
+  contactId: number,
+  instanceIds: readonly string[] | null = null
+) {
   const workspace = await ensurePlatformSupportWorkspace();
   const contact = await getContactById(workspace.id, contactId);
   if (!contact) return null;
-  const [conversation, items, audit, notes] = await Promise.all([
+  const [conversation, items, audit, notes, contacts] = await Promise.all([
     getConversationByContact(workspace.id, contactId),
-    listMessagesForContact(workspace.id, contactId, { instanceIds: null }),
+    listMessagesForContact(workspace.id, contactId, { instanceIds }),
     getAuditLogForContact(workspace.id, contactId),
     listContactNotes(workspace.id, contactId),
+    listInboxContacts(workspace.id, 0, null, true),
   ]);
+  const contactView = contacts.find(item => item.id === contactId) ?? contact;
   return {
-    contact: mapPlatformSupportContact(contact),
+    contact: mapPlatformSupportContact(contactView),
     conversation,
     messages: items.map(message => ({
       id: String(message.id),
@@ -1023,7 +1047,9 @@ export async function sendPlatformSupportMessage(input: {
   actorUserId: number;
   contactId: number;
   content: string;
-  instanceId?: string;
+  messageType?: "text" | "image" | "audio" | "video" | "document";
+  metadata?: Record<string, unknown>;
+  instanceIds?: readonly string[] | null;
 }) {
   const workspace = await ensurePlatformSupportWorkspace();
   const contact = await getContactById(workspace.id, input.contactId);
@@ -1033,9 +1059,9 @@ export async function sendPlatformSupportMessage(input: {
     input.contactId,
     input.content,
     input.actorUserId,
-    "text",
-    undefined,
-    input.instanceId ? [input.instanceId] : null
+    input.messageType ?? "text",
+    input.metadata,
+    input.instanceIds ?? null
   );
   await recordPlatformAudit({
     platformAdminId: input.platformAdminId,
@@ -1043,7 +1069,7 @@ export async function sendPlatformSupportMessage(input: {
     action: "platform_support_message_sent",
     reason: "Atendimento pelo Inbox do Console Admin",
     summary: `Mensagem enviada para ${contact.name}`,
-    after: { contactId: input.contactId, instanceId: input.instanceId ?? null },
+    after: { contactId: input.contactId, instanceIds: input.instanceIds ?? null },
   });
   return message
     ? {

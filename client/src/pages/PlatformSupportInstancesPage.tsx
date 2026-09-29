@@ -1,37 +1,1210 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
-import { CheckCircle2, Plus, QrCode, RefreshCw, Wifi, WifiOff, X } from "lucide-react";
-import { isPossiblePhoneNumber } from "libphonenumber-js";
-import { trpc } from "@/lib/trpc";
+import {
+  CheckCircle2,
+  Gauge,
+  MessageCircle,
+  Pencil,
+  Plus,
+  QrCode,
+  RefreshCw,
+  Trash2,
+  Wifi,
+  WifiOff,
+  X,
+} from "lucide-react";
+import { getCountries, isPossiblePhoneNumber } from "libphonenumber-js";
+import PanelLayout, { EmptyState, PageLink, StatusBadge } from "@/components/PanelLayout";
 import { baileysStatusPollingInterval } from "@/lib/baileys-status";
-import { StatusBadge } from "@/components/PanelLayout";
-import { PlatformAccessGate, PlatformShell, PlatformState } from "./PlatformAdminPage";
+import { trpc } from "@/lib/trpc";
 
-const details: Record<string, { label: string; tone: "green" | "amber" | "red" | "neutral" }> = {
-  idle: { label: "Aguardando conexão", tone: "neutral" }, connecting: { label: "Conectando", tone: "amber" }, pairing: { label: "Aguardando pareamento", tone: "amber" }, qr: { label: "QR disponível", tone: "amber" }, connected: { label: "Conectado", tone: "green" }, disconnected: { label: "Desconectado", tone: "neutral" }, logged_out: { label: "Sessão encerrada", tone: "amber" }, error: { label: "Erro na conexão", tone: "red" }, unconfigured: { label: "Gateway não configurado", tone: "red" },
-};
-
-function SupportInstanceCard({ instanceId, name }: { instanceId: string; name: string }) {
-  const utils = trpc.useUtils();
-  const [phone, setPhone] = useState("");
-  const [code, setCode] = useState<string | null>(null);
-  const status = trpc.platform.supportStatus.useQuery({ instanceId }, { refetchInterval: query => baileysStatusPollingInterval(query.state.data?.status), retry: false });
-  const current = status.data;
-  const qr = trpc.platform.supportQr.useQuery({ instanceId }, { enabled: current?.status === "qr", refetchInterval: 3000, retry: false });
-  const connect = trpc.platform.connectSupportInstance.useMutation({ onSuccess: () => status.refetch(), onError: error => window.alert(error.message) });
-  const pair = trpc.platform.requestSupportPairingCode.useMutation({ onSuccess: result => { setCode(result.code); void status.refetch(); }, onError: error => window.alert(error.message) });
-  const disconnect = trpc.platform.disconnectSupportInstance.useMutation({ onSuccess: () => { setCode(null); void status.refetch(); }, onError: error => window.alert(error.message) });
-  const state = details[current?.status ?? "idle"] ?? details.idle;
-  const possible = isPossiblePhoneNumber(phone);
-  useEffect(() => { if (["connected", "disconnected", "logged_out", "error"].includes(current?.status ?? "")) setCode(null); }, [current?.status]);
-  return <article className={`surface whatsapp-instance-card status-${current?.status ?? "idle"}`}><header className="whatsapp-instance-header"><div className={`whatsapp-instance-mark ${current?.status === "connected" ? "is-online" : ""}`}><Wifi size={23} /></div><div className="whatsapp-instance-identity"><div className="whatsapp-instance-overline">CONEXÃO DO CONSOLE ADMIN</div><h3>{name}</h3><p>{current?.phoneNumber ? `Número conectado: ${current.phoneNumber}` : "Instância interna do suporte da plataforma"}</p></div><div className="whatsapp-instance-status"><StatusBadge tone={status.error ? "red" : state.tone}>{status.error ? "Gateway indisponível" : state.label}</StatusBadge><button className="btn-ghost" disabled={status.isFetching} onClick={() => void status.refetch()}><RefreshCw size={13} /> Atualizar status</button></div></header>{current?.lastError && <div className="form-error whatsapp-instance-error">{current.lastError}</div>}<div className="whatsapp-instance-toolbar"><span>Escolha QR Code ou código por telefone</span><button className="btn-ghost" disabled={connect.isPending || current?.status === "connected"} onClick={() => connect.mutate({ instanceId })}><QrCode size={13} /> {current?.status === "qr" ? "Atualizar QR" : "Mostrar QR Code"}</button><button className="btn-ghost" disabled={disconnect.isPending || !current?.configured} onClick={() => disconnect.mutate({ instanceId, logout: false })}><WifiOff size={13} /> Desconectar</button></div><div className="whatsapp-modal-method-body"><div className="platform-form-actions"><PhoneInput defaultCountry="br" value={phone} onChange={value => setPhone(value)} placeholder="Número do telefone" className="forte-phone-input" inputClassName="forte-phone-input-control" /><button className="btn-primary" disabled={pair.isPending || !possible || current?.status === "connected"} onClick={() => pair.mutate({ instanceId, phone })}>{pair.isPending ? "Aguardando WhatsApp..." : "Gerar código"}</button></div>{code && <button className="whatsapp-modal-code" onClick={() => void navigator.clipboard?.writeText(code)}><span className="eyebrow">Código de pareamento · clique para copiar</span><strong>{code}</strong></button>}{current?.status === "qr" && <div className="whatsapp-modal-qr-panel">{qr.data ? <img src={qr.data} alt={`QR Code para ${name}`} /> : <span><QrCode size={28} /> Carregando QR Code...</span>}</div>}{current?.status === "connecting" && <div className="whatsapp-modal-loading">Preparando a sessão segura...</div>}</div></article>;
+function WhatsappMark({ size = 22 }: { size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="whatsapp-mark"
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      fill="none"
+    >
+      <circle cx="16" cy="16" r="15" fill="currentColor" />
+      <path
+        fill="#f5f5f5"
+        d="M22.3 9.7a8.8 8.8 0 0 0-13.8 10L7.4 24.8l5.2-1.1a8.8 8.8 0 0 0 9.7-14Zm-6.2 12.3a7.2 7.2 0 0 1-3.7-1l-.3-.2-2.3.5.5-2.2-.2-.3a7.2 7.2 0 1 1 6 3.2Zm3.9-5.4c-.2-.1-1.2-.6-1.4-.7-.2-.1-.3-.1-.5.1l-.6.8c-.2.2-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1 6.5 6.5 0 0 1-1.2-1.5c-.1-.2 0-.3.1-.4l.4-.5c.1-.1.1-.3.2-.4.1-.2 0-.3 0-.4l-.6-1.5c-.2-.4-.3-.4-.5-.4h-.4c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 2s.8 2.3.9 2.5c.1.2 1.6 2.5 3.9 3.4.5.2.9.3 1.2.4.5.1.9.1 1.2.1.4-.1 1.2-.5 1.3-1 .2-.5.2-.9.1-1-.1-.2-.3-.2-.5-.3Z"
+      />
+    </svg>
+  );
 }
 
-export default function PlatformSupportInstancesPage() {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const snapshot = trpc.platform.supportWorkspace.useQuery(undefined, { refetchInterval: 10000 });
-  const create = trpc.platform.createSupportInstance.useMutation({ onSuccess: () => { setOpen(false); setName(""); void snapshot.refetch(); }, onError: error => window.alert(error.message) });
-  return <PlatformAccessGate><PlatformShell title="Instâncias de suporte" description="Conexões Baileys próprias da operação da plataforma." active="support-instances"><div className="platform-banner"><CheckCircle2 size={17} /><div><strong>WhatsApp próprio do Console Admin</strong><span>Esta interface usa o mesmo fluxo funcional do Workspace público: QR Code, código por telefone e polling do gateway.</span></div></div><section className="whatsapp-create-strip surface"><div><span className="eyebrow">Conexão WhatsApp</span><h2>Conecte uma instância de suporte</h2><p>Crie a instância e escolha QR Code ou pareamento por número.</p></div><button className="btn-primary" onClick={() => setOpen(true)}><Plus size={15} /> Criar instância</button></section><section className="whatsapp-instances-section"><div className="whatsapp-list-heading"><div><span className="eyebrow">Tenant interno</span><h2>{snapshot.data?.workspace.name ?? "Suporte Forte Platform"}</h2></div><button className="btn-secondary" onClick={() => void snapshot.refetch()}><RefreshCw size={14} /> Atualizar</button></div>{snapshot.isLoading ? <PlatformState icon={RefreshCw} title="Carregando instâncias" description="Consultando o gateway do suporte." loading /> : snapshot.error ? <div className="form-error">{snapshot.error.message}</div> : snapshot.data?.instances.length ? <div className="whatsapp-instance-list">{snapshot.data.instances.map(instance => <SupportInstanceCard key={instance.instanceId} instanceId={instance.instanceId} name={instance.name} />)}</div> : <PlatformState icon={QrCode} title="Nenhuma instância criada" description="Clique em Criar instância para começar." />}</section>{open && <div className="connection-wizard-backdrop" role="dialog" aria-modal="true"><div className="connection-wizard connection-setup-dialog"><button className="connection-wizard-close" onClick={() => setOpen(false)}><X size={16} /></button><div className="setup-dialog-brand"><Wifi size={25} /><span>Nova instância de suporte</span><small>Console Admin</small></div><div className="whatsapp-modal-form"><label className="form-field"><span>Nome da instância</span><input className="input-control" autoFocus maxLength={120} value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: WhatsApp Suporte" /></label><button className="btn-primary" disabled={create.isPending || name.trim().length < 2} onClick={() => create.mutate({ name: name.trim() })}>{create.isPending ? "Criando..." : "Criar e abrir conexão"}</button><button className="btn-ghost whatsapp-modal-cancel" onClick={() => setOpen(false)}>Cancelar</button></div></div></div>}</PlatformShell></PlatformAccessGate>;
+const connectionStatusDetails: Record<
+  string,
+  { label: string; tone: "green" | "amber" | "red" | "neutral"; detail: string }
+> = {
+  unconfigured: {
+    label: "Gateway não configurado",
+    tone: "red",
+    detail: "O serviço Baileys ainda não está disponível para este ambiente.",
+  },
+  idle: {
+    label: "Aguardando conexão",
+    tone: "neutral",
+    detail: "Escolha QR Code ou código por telefone para começar.",
+  },
+  connecting: {
+    label: "Conectando",
+    tone: "amber",
+    detail: "O WhatsApp está finalizando o handshake da sessão.",
+  },
+  pairing: {
+    label: "Aguardando pareamento",
+    tone: "amber",
+    detail: "Conclua a confirmação no aplicativo WhatsApp.",
+  },
+  qr: {
+    label: "QR disponível",
+    tone: "amber",
+    detail: "Leia o QR Code em Aparelhos conectados.",
+  },
+  connected: {
+    label: "Conectado",
+    tone: "green",
+    detail: "Sessão ativa. O status acompanha a conexão automaticamente.",
+  },
+  disconnected: {
+    label: "Desconectado",
+    tone: "neutral",
+    detail: "A sessão não está ativa. Você pode conectar novamente.",
+  },
+  logged_out: {
+    label: "Sessão encerrada",
+    tone: "amber",
+    detail: "O WhatsApp encerrou a sessão; será necessário parear novamente.",
+  },
+  error: {
+    label: "Erro na conexão",
+    tone: "red",
+    detail: "Confira o erro informado pelo gateway e tente novamente.",
+  },
+};
+
+export function PlatformSupportInstancesPage() {
+  return (
+    <PanelLayout
+      eyebrow="WhatsApp · Conexões"
+      title="Conexões e configurações WhatsApp"
+      showHeading={false}
+    >
+      <BaileysConnectionManager />
+    </PanelLayout>
+  );
+}
+
+function BaileysConnectionManager() {
+  const utils = trpc.useUtils();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [createdInstanceId, setCreatedInstanceId] = useState<string | null>(
+    null
+  );
+  const [createdInstanceName, setCreatedInstanceName] = useState("");
+  const [connectionMode, setConnectionMode] = useState<"qr" | "phone">("qr");
+  const [phone, setPhone] = useState("");
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [instanceStatuses, setInstanceStatuses] = useState<
+    Record<string, string>
+  >({});
+
+  const instances = trpc.platform.supportBaileysInstances.useQuery(undefined, {
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+  });
+  const create = trpc.platform.supportCreateBaileysInstance.useMutation({
+    onSuccess: async result => {
+      setCreatedInstanceId(result.instanceId);
+      setCreatedInstanceName(result.name);
+      await utils.workspace.baileysInstances.invalidate();
+    },
+  });
+  const connect = trpc.platform.supportConnectBaileys.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.baileysInstances.invalidate();
+      await utils.workspace.baileysStatus.invalidate({
+        instanceId: createdInstanceId ?? "",
+      });
+    },
+  });
+  const pairing = trpc.platform.supportRequestBaileysPairingCode.useMutation({
+    onSuccess: async result => {
+      setPairingCode(result.code);
+      await utils.workspace.baileysInstances.invalidate();
+    },
+  });
+  const modalStatus = trpc.platform.supportBaileysStatus.useQuery(
+    { instanceId: createdInstanceId ?? "" },
+    {
+      enabled: Boolean(createdInstanceId),
+      refetchInterval: query =>
+        baileysStatusPollingInterval(query.state.data?.status),
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: "always",
+      retry: false,
+    }
+  );
+  const modalQr = trpc.platform.supportBaileysQr.useQuery(
+    { instanceId: createdInstanceId ?? "" },
+    {
+      enabled: modalStatus.data?.status === "qr",
+      refetchInterval: 3_000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: "always",
+      retry: false,
+    }
+  );
+
+  const instanceIds = (instances.data ?? [])
+    .map(instance => instance.instanceId)
+    .join("|");
+  useEffect(() => {
+    const validIds = new Set(instanceIds ? instanceIds.split("|") : []);
+    setInstanceStatuses(current => {
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([id]) => validIds.has(id))
+      );
+      return Object.keys(next).length === Object.keys(current).length
+        ? current
+        : next;
+    });
+  }, [instanceIds]);
+
+  const reportStatus = useCallback((instanceId: string, status?: string) => {
+    setInstanceStatuses(current => {
+      if (!status) {
+        if (!(instanceId in current)) return current;
+        const next = { ...current };
+        delete next[instanceId];
+        return next;
+      }
+      if (current[instanceId] === status) return current;
+      return { ...current, [instanceId]: status };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (
+      !createOpen ||
+      !createdInstanceId ||
+      modalStatus.data?.status !== "connected"
+    )
+      return;
+    setCreateOpen(false);
+    setPairingCode(null);
+  }, [createOpen, createdInstanceId, modalStatus.data?.status]);
+
+  const total = instances.data?.length;
+  const statusesReady =
+    total !== undefined && Object.keys(instanceStatuses).length >= total;
+  const connectedCount = Object.values(instanceStatuses).filter(
+    status => status === "connected"
+  ).length;
+  const pendingCount = Object.values(instanceStatuses).filter(status =>
+    ["connecting", "pairing", "qr"].includes(status)
+  ).length;
+  const fullPhone = phone;
+  const phoneIsPossible = isPossiblePhoneNumber(phone);
+
+  const openCreate = () => {
+    setNameDraft("");
+    setCreatedInstanceId(null);
+    setCreatedInstanceName("");
+    setConnectionMode("qr");
+    setPhone("");
+    setPairingCode(null);
+    create.reset();
+    pairing.reset();
+    setCreateOpen(true);
+  };
+  const closeCreate = () => {
+    if (create.isPending || connect.isPending || pairing.isPending) return;
+    setCreateOpen(false);
+  };
+  const ensureCreatedInstance = async () => {
+    if (createdInstanceId) return createdInstanceId;
+    const result = await create.mutateAsync({ name: nameDraft.trim() });
+    setCreatedInstanceId(result.instanceId);
+    setCreatedInstanceName(result.name);
+    await utils.workspace.baileysInstances.invalidate();
+    return result.instanceId;
+  };
+  const startQrConnection = async () => {
+    try {
+      const instanceId = await ensureCreatedInstance();
+      connect.mutate({ instanceId });
+    } catch {
+      // The mutation exposes the localized error inside the modal.
+    }
+  };
+  const startPhoneConnection = async () => {
+    try {
+      const instanceId = await ensureCreatedInstance();
+      setPairingCode(null);
+      setCopiedCode(false);
+      pairing.reset();
+      pairing.mutate({ instanceId, phone: fullPhone });
+    } catch {
+      // The mutation exposes the localized error inside the modal.
+    }
+  };
+
+  return (
+    <div className="whatsapp-page-stack">
+      <section
+        className="whatsapp-summary-grid"
+        aria-label="Resumo da conexão WhatsApp"
+      >
+        <article className="surface whatsapp-summary-card">
+          <span>Instâncias</span>
+          <strong>{total === undefined ? "—" : total}</strong>
+          <small>Vinculadas a este workspace</small>
+        </article>
+        <article className="surface whatsapp-summary-card is-connected">
+          <span>Conectadas</span>
+          <strong>{statusesReady ? connectedCount : "—"}</strong>
+          <small>Sessões ativas no WhatsApp</small>
+        </article>
+        <article className="surface whatsapp-summary-card is-pending">
+          <span>Em configuração</span>
+          <strong>{statusesReady ? pendingCount : "—"}</strong>
+          <small>QR, pareamento ou handshake</small>
+        </article>
+      </section>
+
+      <section
+        className="whatsapp-create-strip surface"
+        aria-labelledby="create-instance-strip-title"
+      >
+        <div>
+          <span className="eyebrow">Conexão WhatsApp</span>
+          <h2 id="create-instance-strip-title">
+            Conecte uma instância WhatsApp
+          </h2>
+          <p>Dê um nome à instância e escolha como conectar seu WhatsApp.</p>
+        </div>
+        <button type="button" className="btn-primary" onClick={openCreate}>
+          <Plus size={15} /> Criar instância
+        </button>
+      </section>
+
+      <section
+        className="whatsapp-instances-section"
+        aria-labelledby="instance-list-title"
+      >
+        <div className="whatsapp-list-heading">
+          <div>
+            <span className="eyebrow">Sessões do workspace</span>
+            <h2 id="instance-list-title">Suas instâncias</h2>
+            <p>Gerencie as sessões e preferências de cada conexão WhatsApp.</p>
+          </div>
+          <div className="whatsapp-list-tools">
+            {total !== undefined && (
+              <StatusBadge tone="neutral">
+                {total} {total === 1 ? "instância" : "instâncias"}
+              </StatusBadge>
+            )}
+            <button
+              type="button"
+              className="btn-secondary whatsapp-refresh-list"
+              disabled={instances.isFetching}
+              onClick={() => void instances.refetch()}
+              aria-label="Atualizar lista de instâncias"
+            >
+              <RefreshCw
+                size={14}
+                className={instances.isFetching ? "spin" : undefined}
+              />{" "}
+              Atualizar
+            </button>
+          </div>
+        </div>
+        {instances.isLoading ? (
+          <div className="surface whatsapp-empty-panel" role="status">
+            Carregando instâncias do workspace...
+          </div>
+        ) : instances.error ? (
+          <div className="form-error" role="alert">
+            {instances.error.message}
+          </div>
+        ) : instances.data?.length ? (
+          <div className="whatsapp-instance-list">
+            {instances.data.map(instance => (
+              <BaileysInstanceCard
+                key={instance.instanceId}
+                instanceId={instance.instanceId}
+                name={instance.name}
+                onStatusUpdate={reportStatus}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="surface whatsapp-empty-panel">
+            <EmptyState
+              icon={QrCode}
+              title="Nenhuma instância criada"
+              description="Clique em Criar instância para começar a conexão do seu WhatsApp."
+            />
+          </div>
+        )}
+      </section>
+
+      {createOpen && (
+        <div
+          className="connection-wizard-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-instance-title"
+        >
+          <div className="connection-wizard connection-setup-dialog">
+            <button
+              type="button"
+              className="connection-wizard-close"
+              onClick={closeCreate}
+              aria-label="Fechar criação de instância"
+            >
+              <X size={16} />
+            </button>
+            <div className="setup-dialog-brand">
+              <WhatsappMark size={26} />
+              <span>Nova instância</span>
+              <small>{createdInstanceId ? "Conexão" : "Nova instância"}</small>
+            </div>
+            <div className="whatsapp-modal-form">
+              <label className="form-field" htmlFor="new-instance-name">
+                <span>Nome da instância</span>
+                <input
+                  id="new-instance-name"
+                  className="input-control"
+                  autoFocus
+                  maxLength={120}
+                  value={createdInstanceId ? createdInstanceName : nameDraft}
+                  disabled={Boolean(createdInstanceId) || create.isPending}
+                  onChange={event => setNameDraft(event.target.value)}
+                  placeholder="Ex.: WhatsApp Comercial"
+                />
+              </label>
+              {nameDraft.trim().length < 2 ? (
+                <small className="whatsapp-modal-hint">
+                  Preencha o nome para escolher como conectar.
+                </small>
+              ) : (
+                <>
+                  <div className="whatsapp-modal-divider" />
+                  <div className="whatsapp-modal-section-label">
+                    Método de conexão
+                  </div>
+                  <div className="connection-mode-switch">
+                    <button
+                      type="button"
+                      className={connectionMode === "qr" ? "is-active" : ""}
+                      onClick={() => setConnectionMode("qr")}
+                    >
+                      <QrCode size={19} />
+                      <strong>QR Code</strong>
+                      <small>Leia com a câmera do celular</small>
+                    </button>
+                    <button
+                      type="button"
+                      className={connectionMode === "phone" ? "is-active" : ""}
+                      onClick={() => setConnectionMode("phone")}
+                    >
+                      <span className="mode-phone-icon">#</span>
+                      <strong>Por número</strong>
+                      <small>Receba um código no WhatsApp</small>
+                    </button>
+                  </div>
+                  {connectionMode === "qr" ? (
+                    <div className="whatsapp-modal-method-body">
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={
+                          create.isPending ||
+                          connect.isPending ||
+                          modalStatus.data?.status === "pairing"
+                        }
+                        onClick={() => void startQrConnection()}
+                      >
+                        <QrCode size={15} />
+                        {connect.isPending
+                          ? "Preparando QR Code..."
+                          : modalStatus.data?.status === "qr"
+                            ? "Atualizar QR Code"
+                            : "Mostrar QR Code"}
+                      </button>
+                      {modalStatus.data?.status === "qr" && (
+                        <div
+                          className="whatsapp-modal-qr-panel"
+                          aria-live="polite"
+                        >
+                          {modalQr.data ? (
+                            <img
+                              src={modalQr.data}
+                              alt={`QR Code para conectar ${createdInstanceName}`}
+                            />
+                          ) : (
+                            <span>
+                              <QrCode size={28} /> Carregando QR Code...
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {modalStatus.data?.status === "connecting" && (
+                        <div className="whatsapp-modal-loading">
+                          Preparando a sessão segura...
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="whatsapp-modal-method-body">
+                      <PhoneInput
+                        defaultCountry="br"
+                        value={phone}
+                        onChange={(value, data) => {
+                          setPhone(value);
+                        }}
+                        placeholder="Número do telefone"
+                        inputProps={{
+                          "aria-label": "Número do telefone com DDI",
+                        }}
+                        className="forte-phone-input"
+                        inputClassName="forte-phone-input-control"
+                      />
+                      <small className="muted phone-number-hint">
+                        Selecione a bandeira para trocar o DDI.
+                      </small>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={
+                          create.isPending ||
+                          pairing.isPending ||
+                          !phoneIsPossible
+                        }
+                        onClick={() => void startPhoneConnection()}
+                      >
+                        {pairing.isPending
+                          ? "Aguardando WhatsApp..."
+                          : "Gerar código"}
+                        <span aria-hidden="true">→</span>
+                      </button>
+                      {pairingCode && (
+                        <button
+                          type="button"
+                          className="whatsapp-modal-code"
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(pairingCode);
+                            setCopiedCode(true);
+                          }}
+                        >
+                          <span className="eyebrow">
+                            Código de pareamento ·{" "}
+                            {copiedCode ? "copiado" : "clique para copiar"}
+                          </span>
+                          <strong>{pairingCode}</strong>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {(connect.error || pairing.error || modalStatus.error) && (
+                    <div className="form-error" role="alert">
+                      {connect.error?.message ??
+                        pairing.error?.message ??
+                        modalStatus.error?.message}
+                    </div>
+                  )}
+                </>
+              )}
+              {create.error && (
+                <div className="form-error" role="alert">
+                  {create.error.message}
+                </div>
+              )}
+              <button
+                type="button"
+                className="btn-ghost whatsapp-modal-cancel"
+                onClick={closeCreate}
+                disabled={
+                  create.isPending || connect.isPending || pairing.isPending
+                }
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BaileysInstanceCard({
+  instanceId,
+  name,
+  onStatusUpdate,
+}: {
+  instanceId: string;
+  name: string;
+  onStatusUpdate: (instanceId: string, status?: string) => void;
+}) {
+  const utils = trpc.useUtils();
+  const [phone, setPhone] = useState("");
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const status = trpc.platform.supportBaileysStatus.useQuery(
+    { instanceId },
+    {
+      refetchInterval: query =>
+        baileysStatusPollingInterval(query.state.data?.status),
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: "always",
+      refetchOnReconnect: "always",
+      retry: false,
+    }
+  );
+  const current = status.data;
+  const stateKey = current?.status ?? "idle";
+  const stateDetails = connectionStatusDetails[stateKey] ?? {
+    label: stateKey,
+    tone: "neutral" as const,
+    detail: "O gateway está consultando o estado desta sessão.",
+  };
+  const connected = current?.status === "connected";
+  const profile = trpc.platform.supportBaileysProfile.useQuery(
+    { instanceId },
+    {
+      enabled: connected,
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: "always",
+      retry: false,
+    }
+  );
+  const profilePhone = profile.data?.phoneNumber ?? current?.phoneNumber;
+  const waitingQr = current?.status === "qr";
+  const fullPhone = phone;
+  const phoneIsPossible = isPossiblePhoneNumber(phone);
+  const qr = trpc.platform.supportBaileysQr.useQuery(
+    { instanceId },
+    {
+      enabled: waitingQr,
+      refetchInterval: 3_000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: "always",
+      retry: false,
+    }
+  );
+  const refresh = async () => {
+    await Promise.all([
+      status.refetch(),
+      utils.workspace.baileysQr.invalidate({ instanceId }),
+      utils.workspace.baileysInstances.invalidate(),
+    ]);
+  };
+  const connect = trpc.platform.supportConnectBaileys.useMutation({
+    onSuccess: refresh,
+  });
+  const rename = trpc.platform.supportRenameBaileysInstance.useMutation({
+    onSuccess: async () => {
+      setRenameOpen(false);
+      await utils.workspace.baileysInstances.invalidate();
+    },
+  });
+  const disconnect = trpc.platform.supportDisconnectBaileys.useMutation({
+    onSuccess: refresh,
+  });
+  const pairing = trpc.platform.supportRequestBaileysPairingCode.useMutation({
+    onSuccess: async result => {
+      setPairingCode(result.code);
+      await refresh();
+    },
+  });
+  const remove = trpc.platform.supportDeleteBaileysInstance.useMutation({
+    onSuccess: async () => {
+      setConfirmDelete(false);
+      await utils.workspace.baileysInstances.invalidate();
+    },
+  });
+  const updateSettings = trpc.platform.supportUpdateBaileysInstanceSettings.useMutation({
+    onSuccess: async () => {
+      await status.refetch();
+    },
+  });
+  useEffect(() => {
+    onStatusUpdate(instanceId, status.error ? undefined : current?.status);
+  }, [current?.status, instanceId, onStatusUpdate, status.error]);
+  useEffect(() => {
+    if (
+      ["connected", "disconnected", "logged_out", "error"].includes(
+        current?.status ?? ""
+      )
+    )
+      setPairingCode(null);
+  }, [current?.status]);
+  const badge = status.error
+    ? { label: "Gateway indisponível", tone: "red" as const }
+    : status.isLoading
+      ? { label: "Consultando gateway...", tone: "neutral" as const }
+      : { label: stateDetails.label, tone: stateDetails.tone };
+  const settings = current?.settings ?? {
+    rejectCalls: false,
+    rejectGroups: true,
+    logCalls: true,
+    ignoreStatusUpdates: true,
+  };
+  const updateSetting = (
+    key: keyof typeof settings,
+    value: boolean
+  ) => {
+    updateSettings.mutate({
+      instanceId,
+      settings: { ...settings, [key]: value },
+    });
+  };
+
+  return (
+    <article
+      className={`surface whatsapp-instance-card status-${stateKey}`}
+      aria-label={`Instância ${name}`}
+    >
+      <header className="whatsapp-instance-header">
+        <div
+          className={`whatsapp-instance-mark ${connected ? "is-online" : ""}`}
+        >
+          {profile.data?.profilePictureUrl ? (
+            <img
+              src={profile.data.profilePictureUrl}
+              alt={`Foto de ${profile.data.pushName ?? name}`}
+            />
+          ) : (
+            <WhatsappMark size={23} />
+          )}
+        </div>
+        <div className="whatsapp-instance-identity">
+          <div className="whatsapp-instance-overline">CONEXÃO WHATSAPP</div>
+          <h3>{name}</h3>
+          <p>
+            {profile.data?.pushName ? `${profile.data.pushName} · ` : ""}
+            {profilePhone
+              ? `Número conectado: ${profilePhone}`
+              : stateDetails.detail}
+          </p>
+        </div>
+        <div className="whatsapp-instance-status">
+          <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
+          <button
+            type="button"
+            className="btn-ghost whatsapp-refresh-status"
+            disabled={status.isFetching}
+            onClick={() => void refresh()}
+            title="Atualizar estado desta instância"
+          >
+            <RefreshCw
+              size={13}
+              className={status.isFetching ? "spin" : undefined}
+            />{" "}
+            Atualizar status
+          </button>
+        </div>
+      </header>
+      {status.error && (
+        <div className="form-error whatsapp-instance-error" role="alert">
+          {status.error.message}
+        </div>
+      )}
+      {current?.lastError && (
+        <div className="form-error whatsapp-instance-error" role="alert">
+          {current.lastError}
+        </div>
+      )}
+      <div className="whatsapp-instance-toolbar">
+        <span>Preferências da conexão</span>
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => {
+            setNameDraft(name);
+            setRenameOpen(true);
+          }}
+        >
+          <Pencil size={13} /> Alterar
+        </button>
+      </div>
+      <section
+        className="whatsapp-instance-settings"
+        aria-label={`Preferências da conexão ${name}`}
+      >
+        <div className="whatsapp-settings-heading">
+          <strong>Comportamento da instância</strong>
+          <small>Salvo nesta conexão</small>
+        </div>
+        <label className="whatsapp-setting-row">
+          <input
+            type="checkbox"
+            checked={settings.rejectCalls}
+            disabled={!current?.configured || status.isLoading || updateSettings.isPending}
+            onChange={event => updateSetting("rejectCalls", event.target.checked)}
+          />
+          <span className="whatsapp-setting-copy">
+            <strong>Rejeitar chamadas automaticamente</strong>
+            <small>Recusa tentativas recebidas enquanto esta opção estiver ativa.</small>
+          </span>
+        </label>
+        <label className="whatsapp-setting-row">
+          <input
+            type="checkbox"
+            checked={settings.rejectGroups}
+            disabled={!current?.configured || status.isLoading || updateSettings.isPending}
+            onChange={event => updateSetting("rejectGroups", event.target.checked)}
+          />
+          <span className="whatsapp-setting-copy">
+            <strong>Ignorar mensagens de grupos</strong>
+            <small>Não salva nem encaminha mensagens de grupo; não sai do grupo.</small>
+          </span>
+        </label>
+        <label className="whatsapp-setting-row">
+          <input
+            type="checkbox"
+            checked={settings.logCalls}
+            disabled={!current?.configured || status.isLoading || updateSettings.isPending}
+            onChange={event => updateSetting("logCalls", event.target.checked)}
+          />
+          <span className="whatsapp-setting-copy">
+            <strong>Registrar chamadas no histórico</strong>
+            <small>Exibe eventos de chamada na conversa correspondente.</small>
+          </span>
+        </label>
+        <label className="whatsapp-setting-row">
+          <input
+            type="checkbox"
+            checked={settings.ignoreStatusUpdates}
+            disabled={!current?.configured || status.isLoading || updateSettings.isPending}
+            onChange={event => updateSetting("ignoreStatusUpdates", event.target.checked)}
+          />
+          <span className="whatsapp-setting-copy">
+            <strong>Ignorar atualizações de Status</strong>
+            <small>Evita tratar Status do WhatsApp como conversa com cliente.</small>
+          </span>
+        </label>
+        {updateSettings.error && (
+          <div className="form-error" role="alert">
+            {updateSettings.error.message}
+          </div>
+        )}
+        {updateSettings.isSuccess && (
+          <small className="whatsapp-settings-saved" role="status">
+            Preferências salvas nesta instância.
+          </small>
+        )}
+      </section>
+      {connected ? (
+        <section
+          className="whatsapp-connected-panel"
+          aria-label="Controles da sessão conectada"
+        >
+          <div className="whatsapp-connected-copy">
+            <CheckCircle2 size={18} />
+            <div>
+              <strong>WhatsApp conectado</strong>
+              <span>Esta conexão está ativa e pronta para uso.</span>
+            </div>
+          </div>
+          <div className="whatsapp-session-actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={disconnect.isPending}
+              onClick={() => disconnect.mutate({ instanceId, logout: false })}
+            >
+              Desconectar temporariamente
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={disconnect.isPending}
+              onClick={() => disconnect.mutate({ instanceId, logout: true })}
+            >
+              Encerrar sessão
+            </button>
+          </div>
+        </section>
+      ) : (
+        <div className="whatsapp-method-grid">
+          <section
+            className="whatsapp-method-card"
+            aria-labelledby={`qr-method-${instanceId}`}
+          >
+            <div className="whatsapp-method-heading">
+              <span className="whatsapp-method-icon">
+                <QrCode size={17} />
+              </span>
+              <div>
+                <span className="eyebrow">Recomendado</span>
+                <h4 id={`qr-method-${instanceId}`}>Conectar com QR Code</h4>
+                <p>Leia o código em Aparelhos conectados.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={
+                connect.isPending ||
+                !current?.configured ||
+                current?.status === "pairing"
+              }
+              onClick={() => connect.mutate({ instanceId })}
+            >
+              <QrCode size={15} />
+              {connect.isPending
+                ? "Preparando..."
+                : waitingQr
+                  ? "Atualizar QR Code"
+                  : "Gerar QR Code"}
+            </button>
+            {waitingQr && (
+              <div
+                className="whatsapp-qr-panel"
+                aria-live="polite"
+                aria-label={`QR Code de ${name}`}
+              >
+                {qr.data ? (
+                  <img src={qr.data} alt={`QR Code para conectar ${name}`} />
+                ) : (
+                  <span>
+                    <QrCode size={28} /> Carregando QR Code...
+                  </span>
+                )}
+              </div>
+            )}
+            {qr.error && (
+              <small className="qr-error">
+                QR temporariamente indisponível. Atualize a conexão.
+              </small>
+            )}
+            {connect.error && (
+              <div className="form-error" role="alert">
+                {connect.error.message}
+              </div>
+            )}
+          </section>
+          <section
+            className="whatsapp-method-card whatsapp-phone-method"
+            aria-labelledby={`phone-method-${instanceId}`}
+          >
+            <div className="whatsapp-method-heading">
+              <span className="whatsapp-method-icon mode-phone-icon">#</span>
+              <div>
+                <span className="eyebrow">Alternativa</span>
+                <h4 id={`phone-method-${instanceId}`}>Conectar com número</h4>
+                <p>Use um código quando não puder ler o QR.</p>
+              </div>
+            </div>
+            <PhoneInput
+              defaultCountry="br"
+              value={phone}
+              onChange={(value, data) => {
+                setPhone(value);
+              }}
+              placeholder="Número do telefone"
+              inputProps={{ "aria-label": "Número do telefone com DDI" }}
+              className="forte-phone-input"
+              inputClassName="forte-phone-input-control"
+            />
+            <small className="muted phone-number-hint">
+              Selecione a bandeira para trocar o DDI.
+            </small>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={
+                pairing.isPending || !phoneIsPossible || !current?.configured
+              }
+              onClick={() => {
+                setPairingCode(null);
+                pairing.reset();
+                pairing.mutate({ instanceId, phone: fullPhone });
+              }}
+            >
+              {pairing.isPending ? "Aguardando WhatsApp..." : "Gerar código"}
+            </button>
+            {pairingCode && (
+              <div className="whatsapp-pairing-result" aria-live="polite">
+                <span className="eyebrow">Código aceito pelo WhatsApp</span>
+                <div className="pairing-code">{pairingCode}</div>
+                <small>
+                  No celular: Aparelhos conectados → Conectar aparelho →
+                  Conectar com número de telefone.
+                </small>
+              </div>
+            )}
+            {pairing.error && (
+              <div className="form-error" role="alert">
+                {pairing.error.message}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+      <footer className="whatsapp-instance-footer">
+        <span>Atualizado automaticamente</span>
+        <PageLink
+          href={`/inbox?instanceId=${encodeURIComponent(instanceId)}`}
+          className="btn-secondary"
+        >
+          <MessageCircle size={14} /> Abrir Inbox
+        </PageLink>
+        <button
+          type="button"
+          className="btn-ghost whatsapp-delete-button"
+          onClick={() => setConfirmDelete(true)}
+        >
+          <Trash2 size={14} /> Excluir instância
+        </button>
+      </footer>
+      {renameOpen && (
+        <div
+          className="connection-wizard-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`rename-${instanceId}`}
+        >
+          <div className="connection-wizard compact-dialog">
+            <button
+              type="button"
+              className="connection-wizard-close"
+              onClick={() => setRenameOpen(false)}
+              aria-label="Fechar renomeação"
+            >
+              <X size={16} />
+            </button>
+            <span className="eyebrow">Editar instância</span>
+            <h2 id={`rename-${instanceId}`}>Renomear conexão</h2>
+            <p className="muted">
+              O novo nome será exibido para toda a equipe.
+            </p>
+            <label className="form-field">
+              <span>Nome da instância</span>
+              <input
+                className="input-control"
+                autoFocus
+                value={nameDraft}
+                onChange={event => setNameDraft(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={
+                rename.isPending ||
+                nameDraft.trim().length < 2 ||
+                nameDraft.trim() === name
+              }
+              onClick={() =>
+                rename.mutate({ instanceId, name: nameDraft.trim() })
+              }
+            >
+              {rename.isPending ? "Salvando..." : "Salvar nome"}
+            </button>
+            {rename.error && (
+              <div className="form-error" role="alert">
+                {rename.error.message}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {confirmDelete && (
+        <div
+          className="connection-wizard-backdrop"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby={`delete-${instanceId}`}
+        >
+          <div className="connection-wizard compact-dialog">
+            <button
+              type="button"
+              className="connection-wizard-close"
+              onClick={() => setConfirmDelete(false)}
+              aria-label="Cancelar exclusão"
+            >
+              <X size={16} />
+            </button>
+            <span className="eyebrow">Ação permanente</span>
+            <h2 id={`delete-${instanceId}`}>Excluir “{name}”?</h2>
+            <p className="muted">
+              A sessão será encerrada e removida do gateway. Para usar este
+              número novamente, será necessário criar e parear outra instância.
+            </p>
+            <div className="qr-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setConfirmDelete(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={remove.isPending}
+                onClick={() =>
+                  remove.mutate({ instanceId, confirmDeletion: true })
+                }
+              >
+                {remove.isPending ? "Excluindo..." : "Confirmar exclusão"}
+              </button>
+            </div>
+            {remove.error && (
+              <div className="form-error" role="alert">
+                {remove.error.message}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </article>
+  );
+}
+
+export function WorkspaceUsagePage() {
+  const usageQuery = trpc.workspace.usage.useQuery(undefined, {
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: "always",
+  });
+  const usage = usageQuery.data;
+  const usageMetrics = usage
+    ? (
+        [
+          ["apiRequests", "API"],
+          ["aiRequests", "Execuções de IA"],
+          ["outboundMessages", "Mensagens outbound"],
+        ] as const
+      ).map(([key, label]) => ({ key, label, ...usage.workspace[key] }))
+    : [];
+  const usagePercent = (used: number, limit: number) =>
+    limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const resetTime = usage
+    ? new Date(usage.resetsAt).toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : null;
+  return (
+    <PanelLayout
+      eyebrow="Workspace · Plano"
+      title="Planos e consumo"
+      description="Acompanhe o plano atual, os limites do workspace e a janela de renovação."
+      actions={
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={usageQuery.isFetching}
+          onClick={() => void usageQuery.refetch()}
+        >
+          <RefreshCw
+            size={14}
+            className={usageQuery.isFetching ? "spin" : undefined}
+          />{" "}
+          Atualizar consumo
+        </button>
+      }
+    >
+      <div className="workspace-usage-page">
+        <section className="surface workspace-plan-hero">
+          <div>
+            <span className="eyebrow">PLANO ATUAL</span>
+            <h2>{usage ? `Plano ${usage.plan}` : "Plano do workspace"}</h2>
+            <p>
+              {resetTime
+                ? `Janela atual até ${resetTime}.`
+                : "A cota e o período serão exibidos quando os dados carregarem."}
+            </p>
+          </div>
+          <StatusBadge tone={usageQuery.error ? "red" : "green"}>
+            {usageQuery.isFetching
+              ? "Atualizando"
+              : usageQuery.error
+                ? "Indisponível"
+                : "Ao vivo"}
+          </StatusBadge>
+        </section>
+        {usageQuery.isLoading ? (
+          <div className="surface workspace-usage-message" role="status">
+            Carregando cotas e consumo...
+          </div>
+        ) : usageQuery.error ? (
+          <div className="form-error" role="alert">
+            {usageQuery.error.message}
+          </div>
+        ) : usage ? (
+          <div className="workspace-usage-grid">
+            {usageMetrics.map(metric => {
+              const percent = usagePercent(metric.used, metric.limit);
+              return (
+                <article
+                  className="surface workspace-usage-metric"
+                  key={metric.key}
+                >
+                  <div className="workspace-usage-metric-heading">
+                    <span>{metric.label}</span>
+                    <Gauge
+                      size={16}
+                      className={percent >= 80 ? "amber" : "green"}
+                    />
+                  </div>
+                  <strong>
+                    {metric.used.toLocaleString("pt-BR")}{" "}
+                    <small>/ {metric.limit.toLocaleString("pt-BR")}</small>
+                  </strong>
+                  <p>
+                    {Math.max(0, metric.limit - metric.used).toLocaleString(
+                      "pt-BR"
+                    )}{" "}
+                    restantes · {percent}% usado
+                  </p>
+                  <div
+                    className="workspace-usage-progress"
+                    role="progressbar"
+                    aria-label={`${metric.label}: ${percent}% usado`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={percent}
+                  >
+                    <span
+                      className={percent >= 80 ? "is-high" : ""}
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="surface workspace-usage-message">
+            Não há dados de consumo para exibir neste momento.
+          </div>
+        )}
+        <p className="workspace-usage-note">
+          Os limites apresentados são do workspace. Esta página é apenas
+          informativa.
+        </p>
+      </div>
+    </PanelLayout>
+  );
 }

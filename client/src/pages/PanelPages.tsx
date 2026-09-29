@@ -49,6 +49,7 @@ import PanelLayout, {
   StatusBadge,
   ViewToggle,
 } from "@/components/PanelLayout";
+import { PlatformShell } from "./PlatformAdminPage";
 import { trpc } from "@/lib/trpc";
 import {
   WhatsappConnectionPage,
@@ -646,15 +647,18 @@ function ConversationProfile({
   isOpen,
   onClose,
   onRenamed,
+  platformAdmin = false,
 }: {
   contact: ContactLike;
   isOpen: boolean;
   onClose: () => void;
   onRenamed: () => void;
+  platformAdmin?: boolean;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(contact.name);
-  const renameMutation = trpc.inbox.renameContact.useMutation({
+  const inbox = (platformAdmin ? trpc.platform.supportInbox : trpc.inbox) as typeof trpc.inbox;
+  const renameMutation = inbox.renameContact.useMutation({
     onSuccess: () => {
       setEditingName(false);
       onRenamed();
@@ -861,7 +865,34 @@ function ConversationProfile({
   );
 }
 
-export function InboxPage() {
+function InboxChrome({
+  platformAdmin,
+  children,
+}: {
+  platformAdmin: boolean;
+  children: React.ReactNode;
+}) {
+  return platformAdmin ? (
+    <PlatformShell
+      title="Inbox de suporte"
+      description="Conversas do WhatsApp próprio do Console Admin."
+      active="support-inbox"
+    >
+      {children}
+    </PlatformShell>
+  ) : (
+    <PanelLayout
+      eyebrow="WhatsApp / Conversas"
+      title="WhatsApp"
+      description="Conversas individuais e grupos conectados ao Forte Panel."
+      showHeading={false}
+    >
+      {children}
+    </PanelLayout>
+  );
+}
+
+export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean } = {}) {
   const [selectedId, setSelectedId] = useState("");
   const [location] = useLocation();
   const [search, setSearch] = useState("");
@@ -911,8 +942,9 @@ export function InboxPage() {
     },
     []
   );
-  const instancesQuery = trpc.inbox.instances.useQuery();
-  const contactsQuery = trpc.inbox.contacts.useQuery({
+  const inbox = (platformAdmin ? trpc.platform.supportInbox : trpc.inbox) as typeof trpc.inbox;
+  const instancesQuery = inbox.instances.useQuery();
+  const contactsQuery = inbox.contacts.useQuery({
     instanceIds: selectedInstanceIds,
     includeGroups: true,
   });
@@ -979,13 +1011,13 @@ export function InboxPage() {
     () => ({ contactId: selectedNumericId, instanceIds: selectedInstanceIds }),
     [selectedNumericId, selectedInstanceIds]
   );
-  const threadQuery = trpc.inbox.thread.useQuery(threadInput, {
+  const threadQuery = inbox.thread.useQuery(threadInput, {
     enabled: selectedNumericId > 0,
   });
   const latestMessageId =
     threadQuery.data?.messages?.[threadQuery.data.messages.length - 1]?.id ??
     "";
-  const markReadMutation = trpc.inbox.markRead.useMutation({
+  const markReadMutation = inbox.markRead.useMutation({
     onSuccess: () => contactsQuery.refetch(),
   });
   useEffect(() => {
@@ -1010,10 +1042,10 @@ export function InboxPage() {
   const refresh = async () => {
     await Promise.all([contactsQuery.refetch(), threadQuery.refetch()]);
   };
-  const toggleAiMutation = trpc.inbox.toggleAi.useMutation({
+  const toggleAiMutation = inbox.toggleAi.useMutation({
     onSuccess: refresh,
   });
-  const sendMutation = trpc.inbox.sendMessage.useMutation({
+  const sendMutation = inbox.sendMessage.useMutation({
     onSuccess: async () => {
       setDraft("");
       clearAttachment();
@@ -1022,11 +1054,7 @@ export function InboxPage() {
   });
   if (!selected)
     return (
-      <PanelLayout
-        eyebrow="WhatsApp / Conversas"
-        title="WhatsApp"
-        description="Conversas individuais e grupos conectados ao Forte Panel."
-      >
+      <InboxChrome platformAdmin={platformAdmin}>
         {contactsQuery.isLoading || instancesQuery.isLoading ? (
           <EmptyState
             icon={MessageCircle}
@@ -1054,7 +1082,7 @@ export function InboxPage() {
             description={selectedInstanceIds ? "Escolha outras instâncias ou selecione Todas." : kindFilter !== "Todas" ? "Altere o filtro de conversas para ver outros chats." : "Quando o primeiro WhatsApp chegar, a conversa aparecerá aqui."}
           />
         )}
-      </PanelLayout>
+      </InboxChrome>
     );
 
   const messages = threadQuery.data?.messages ?? [];
@@ -1195,12 +1223,7 @@ export function InboxPage() {
     }
   };
   return (
-    <PanelLayout
-      eyebrow="WhatsApp / Conversas"
-      title="WhatsApp"
-      description="Conversas individuais e grupos conectados ao Forte Panel."
-      showHeading={false}
-    >
+    <InboxChrome platformAdmin={platformAdmin}>
       <div className="filter-bar">
         <div className="search-field">
           <Search size={14} />
@@ -1444,9 +1467,10 @@ export function InboxPage() {
           isOpen={profileOpen}
           onClose={() => setProfileOpen(false)}
           onRenamed={refresh}
+          platformAdmin={platformAdmin}
         />
       </div>
-    </PanelLayout>
+    </InboxChrome>
   );
 }
 

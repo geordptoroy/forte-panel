@@ -60,3 +60,12 @@ A primeira tela de `Instâncias de suporte` era simplificada demais: tinha cria�
 A rota foi corrigida com uma cópia funcional da interface pública de conexão, adaptada para `trpc.platform` e para o tenant interno `forte-platform-support`. A tela agora usa polling de status, `connectSupportInstance`, `supportStatus`, `supportQr` e `requestSupportPairingCode`, com QR Code renderizado, código por telefone, mensagens de erro, estado de gateway, desconexão e atualização de status.
 
 Validação: `pnpm check`, `pnpm build`, 7 testes focados e `git diff --check` passaram. O smoke test real deve repetir criação, botão `Mostrar QR Code`, leitura no WhatsApp, geração de código com telefone em formato internacional e confirmação do status conectado.
+
+
+## 26. Frontend idêntico ao Workspace público — 2026-09-29
+
+A solicitação foi aplicada literalmente. A tela administrativa de conexão agora é uma cópia do `WhatsappConnectionPage.tsx`, com o mesmo wizard, QR Code, código por telefone, cards de status, preferências, renomeação e exclusão. Apenas os contratos tRPC foram trocados por aliases `supportBaileys*` que apontam para o tenant interno.
+
+A Inbox administrativa agora reutiliza o mesmo `InboxPage` público: filtros, lista de conversas, busca, grupos, seleção de instâncias, perfil, histórico ordenado, bolhas de mensagem, anexos, áudio, gravação, composer, envio e tratamento de erro. O modo administrativo troca apenas o chrome externo para `PlatformShell` e usa `trpc.platform.supportInbox`, mantendo o frontend da Inbox intacto.
+
+Validação: `pnpm check`, `pnpm build`, 7 testes focados e `git diff --check` passaram. O próximo smoke test deve confirmar especificamente a ordem visual das mensagens inbound/outbound, o estado de envio, o erro mantido no composer e a resposta recebida no número de suporte.

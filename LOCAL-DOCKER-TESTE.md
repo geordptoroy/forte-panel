@@ -138,3 +138,10 @@ Após a reinstalação limpa, o smoke test correto é abrir `http://localhost:30
 A tela de **Instâncias de suporte** foi alinhada à interface funcional de Conexões WhatsApp do Workspace público. O fluxo correto agora é: criar a instância, clicar em **Mostrar QR Code** ou usar **Por número**, aguardar o polling de status e observar o retorno visual do gateway. O botão de código usa telefone em formato internacional com DDI; o QR é atualizado enquanto o status estiver `qr`.
 
 Se um clique não produzir conexão, conferir a mensagem de erro exibida na própria instância, atualizar o status e verificar o serviço Baileys antes de repetir. A tela não usa mais apenas uma chamada isolada de pairing: ela possui os endpoints administrativos próprios de `connect`, `status`, `qr`, pairing e disconnect.
+
+
+## Interface administrativa alinhada ao Workspace público — 2026-09-29
+
+As telas de **Instâncias de suporte** e **Inbox de suporte** agora reutilizam o frontend funcional do Workspace público. A diferença é somente o chrome do Console Admin e os textos que identificam o tenant interno. O backend usa aliases administrativos isolados, sem apontar para o workspace da sessão do operador.
+
+Para validar o Inbox, confira a lista, filtro por instância, busca, grupos, abertura do thread, ordenação das bolhas, indicador de status, anexos, áudio, gravação, composer e mensagem de erro. Envie uma mensagem para o número de teste e confirme tanto o retorno visual na conversa quanto a entrega no WhatsApp.

@@ -40,12 +40,25 @@ import {
   type SupportSessionMode,
 } from "./platform-admin";
 import { authenticatedProcedure, router } from "./_core/trpc";
-import { getBaileysInstance } from "./db";
+import {
+  getBaileysInstance,
+  listBaileysInstances,
+  archiveBaileysInstance,
+  updateBaileysInstanceName as updateBaileysInstanceRecordName,
+  markConversationRead,
+  setContactAi,
+  renameContact as renameInboxContact,
+  getContactById,
+} from "./db";
 import {
   connectBaileys,
   getBaileysQr,
   getBaileysStatus,
   requestBaileysPairingCode,
+  deleteBaileysInstance as deleteBaileysGatewayInstance,
+  getBaileysProfile,
+  updateBaileysInstanceName,
+  updateBaileysInstanceSettings,
 } from "./baileys-gateway";
 
 const requirePlatform = authenticatedProcedure.use(async ({ ctx, next }) => {
@@ -135,6 +148,131 @@ const aiConnectionCapability = z.enum([
 ]);
 const aiProvider = z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]);
 export const platformRouter = router({
+  supportBaileysInstances: requirePlatform.query(async () => {
+    const workspace = await ensurePlatformSupportWorkspace();
+    return listBaileysInstances(workspace.id);
+  }),
+  supportCreateBaileysInstance: requirePlatformOperator
+    .input(z.object({ name: z.string().trim().min(2).max(120) }))
+    .mutation(async ({ input, ctx }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      return createPlatformBaileysInstance({ platformAdminId: ctx.platformAdmin.id, workspaceId: workspace.id, supportSessionId: null, name: input.name, reason: "Criação de instância própria do suporte" });
+    }),
+  supportBaileysStatus: requirePlatform
+    .input(z.object({ instanceId: z.string().min(1).max(160) }))
+    .query(async ({ input }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance) throw new TRPCError({ code: "NOT_FOUND", message: "Instância não encontrada" });
+      return getBaileysStatus(instance.instanceId);
+    }),
+  supportBaileysProfile: requirePlatform
+    .input(z.object({ instanceId: z.string().min(1).max(160) }))
+    .query(async ({ input }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance) throw new TRPCError({ code: "NOT_FOUND", message: "Instância não encontrada" });
+      return getBaileysProfile(instance.instanceId);
+    }),
+  supportBaileysQr: requirePlatform
+    .input(z.object({ instanceId: z.string().min(1).max(160) }))
+    .query(async ({ input }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance) throw new TRPCError({ code: "NOT_FOUND", message: "Instância não encontrada" });
+      return getBaileysQr(instance.instanceId);
+    }),
+  supportConnectBaileys: requirePlatformOperator
+    .input(z.object({ instanceId: z.string().min(1).max(160) }))
+    .mutation(async ({ input }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance) throw new TRPCError({ code: "NOT_FOUND", message: "Instância não encontrada" });
+      return connectBaileys(instance.instanceId);
+    }),
+  supportRequestBaileysPairingCode: requirePlatformOperator
+    .input(z.object({ instanceId: z.string().min(1).max(160), phone: z.string().min(8).max(24) }))
+    .mutation(async ({ input }) => { const workspace = await ensurePlatformSupportWorkspace(); const instance = await getBaileysInstance(workspace.id, input.instanceId); if (!instance) throw new TRPCError({ code: "NOT_FOUND", message: "Instância não encontrada" }); return requestBaileysPairingCode(instance.instanceId, input.phone); }),
+  supportDisconnectBaileys: requirePlatformOperator
+    .input(z.object({ instanceId: z.string().min(1).max(160), logout: z.boolean().default(false) }))
+    .mutation(async ({ input, ctx }) => { const workspace = await ensurePlatformSupportWorkspace(); return disconnectPlatformBaileysInstance({ platformAdminId: ctx.platformAdmin.id, workspaceId: workspace.id, supportSessionId: null, instanceId: input.instanceId, logout: input.logout, reason: "Desconexão de instância própria do suporte" }); }),
+  supportRenameBaileysInstance: requirePlatformOperator
+    .input(z.object({ instanceId: z.string().min(1).max(160), name: z.string().trim().min(2).max(120) }))
+    .mutation(async ({ input }) => { const workspace = await ensurePlatformSupportWorkspace(); const instance = await getBaileysInstance(workspace.id, input.instanceId); if (!instance) throw new TRPCError({ code: "NOT_FOUND", message: "Instância não encontrada" }); await updateBaileysInstanceName(instance.instanceId, input.name); const updated = await updateBaileysInstanceRecordName(workspace.id, input.instanceId, input.name); return updated ?? { instanceId: input.instanceId, name: input.name }; }),
+  supportUpdateBaileysInstanceSettings: requirePlatformOperator
+    .input(z.object({ instanceId: z.string().min(1).max(160), settings: z.object({ rejectCalls: z.boolean(), rejectGroups: z.boolean(), logCalls: z.boolean(), ignoreStatusUpdates: z.boolean() }).strict() }))
+    .mutation(async ({ input }) => { const workspace = await ensurePlatformSupportWorkspace(); const instance = await getBaileysInstance(workspace.id, input.instanceId); if (!instance) throw new TRPCError({ code: "NOT_FOUND", message: "Instância não encontrada" }); await updateBaileysInstanceSettings(instance.instanceId, input.settings); return getBaileysStatus(instance.instanceId); }),
+  supportDeleteBaileysInstance: requirePlatformOperator
+    .input(z.object({ instanceId: z.string().min(1).max(160), confirmDeletion: z.literal(true) }))
+    .mutation(async ({ input }) => { const workspace = await ensurePlatformSupportWorkspace(); await deleteBaileysGatewayInstance(input.instanceId).catch(() => undefined); await archiveBaileysInstance(workspace.id, input.instanceId); return { success: true, instanceId: input.instanceId } as const; }),
+  supportInbox: router({
+    instances: requirePlatform.query(async () => {
+      const snapshot = await getPlatformSupportSnapshot();
+      return snapshot.instances;
+    }),
+    contacts: requirePlatform
+      .input(
+        z
+          .object({
+            instanceIds: z.array(z.string().min(1).max(160)).max(50).nullable().optional(),
+            includeGroups: z.boolean().optional(),
+          })
+          .optional()
+      )
+      .query(() => listPlatformSupportContacts()),
+    thread: requirePlatform
+      .input(
+        z.object({
+          contactId: z.number().int().positive(),
+          instanceIds: z.array(z.string().min(1).max(160)).max(50).nullable().optional(),
+        })
+      )
+      .query(({ input }) =>
+        getPlatformSupportThread(input.contactId, input.instanceIds ?? null)
+      ),
+    renameContact: requirePlatformOperator
+      .input(z.object({ contactId: z.number().int().positive(), name: z.string().trim().min(2).max(160) }))
+      .mutation(async ({ input, ctx }) => {
+        const workspace = await ensurePlatformSupportWorkspace();
+        const existing = await getContactById(workspace.id, input.contactId);
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Lead não encontrado" });
+        if (existing.groupId) throw new TRPCError({ code: "BAD_REQUEST", message: "O nome do grupo vem do WhatsApp" });
+        const contact = await renameInboxContact(workspace.id, input.contactId, input.name, ctx.platformAdmin.userId);
+        return contact ? (await listPlatformSupportContacts()).find(item => item.id === String(input.contactId)) ?? null : null;
+      }),
+    toggleAi: requirePlatformOperator
+      .input(z.object({ contactId: z.number().int().positive(), enabled: z.boolean() }))
+      .mutation(async ({ input, ctx }) => {
+        const workspace = await ensurePlatformSupportWorkspace();
+        await setContactAi(workspace.id, input.contactId, input.enabled, ctx.platformAdmin.userId);
+        return (await listPlatformSupportContacts()).find(item => item.id === String(input.contactId)) ?? null;
+      }),
+    sendMessage: requirePlatformOperator
+      .input(
+        z.object({
+          contactId: z.number().int().positive(),
+          content: z.string().trim().min(1).max(12_000_000),
+          messageType: z.enum(["text", "image", "audio", "video", "document"]).default("text"),
+          metadata: z.record(z.string(), z.unknown()).optional(),
+          instanceIds: z.array(z.string().min(1).max(160)).max(50).nullable().optional(),
+        })
+      )
+      .mutation(({ input, ctx }) =>
+        sendPlatformSupportMessage({
+          ...input,
+          platformAdminId: ctx.platformAdmin.id,
+          actorUserId: ctx.platformAdmin.userId,
+        })
+      ),
+    markRead: requirePlatform
+      .input(z.object({ contactId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        const workspace = await ensurePlatformSupportWorkspace();
+        const marked = await markConversationRead(workspace.id, ctx.platformAdmin.userId, input.contactId);
+        if (!marked) throw new TRPCError({ code: "NOT_FOUND", message: "Conversa não encontrada" });
+        return { conversationId: marked.conversationId, lastReadMessageId: marked.lastReadMessageId, readAt: marked.readAt.toISOString() };
+      }),
+  }),
   access: requirePlatform.query(({ ctx }) => ({
     id: ctx.platformAdmin.id,
     permission: ctx.platformAdmin.permission,

@@ -43,10 +43,9 @@ import {
   PlatformAuditPage,
   PlatformGlobalAiPage,
   PlatformSupportPage,
-  PlatformSupportInboxPage,
   PlatformWorkspacePage,
 } from "./pages/PlatformAdminPage";
-import PlatformSupportInstancesPage from "./pages/PlatformSupportInstancesPage";
+import { PlatformSupportInstancesPage } from "./pages/PlatformSupportInstancesPage";
 
 function Router() {
   const [location] = useLocation();
@@ -76,7 +75,9 @@ function Router() {
           </AccessGuard>
         )}
       </Route>
-      <Route path="/inbox" component={InboxPage} />
+      <Route path="/inbox">
+        {() => <InboxPage />}
+      </Route>
       <Route path="/kanban" component={KanbanPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
@@ -88,7 +89,9 @@ function Router() {
       <Route path="/platform-admin/ai" component={PlatformGlobalAiPage} />
       <Route path="/platform-admin/support" component={PlatformSupportPage} />
       <Route path="/platform-admin/support-instances" component={PlatformSupportInstancesPage} />
-      <Route path="/platform-admin/support-inbox" component={PlatformSupportInboxPage} />
+      <Route path="/platform-admin/support-inbox">
+        {() => <InboxPage platformAdmin />}
+      </Route>
       <Route path="/platform-admin/audit" component={PlatformAuditPage} />
       <Route
         path="/platform-admin/workspaces/:id"
