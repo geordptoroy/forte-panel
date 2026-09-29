@@ -495,3 +495,10 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [ ] Implementar Inbox de suporte com sessão e escopo de workspace.
 - [ ] Expor contatos, agenda e funil com leitura/mutação auditadas.
 - [ ] Retomar smoke test real inbound/outbound após publicar e atualizar a imagem `dev`.
+
+
+## Progresso do Console Admin — 29/09/2026
+
+- [x] Mostrar instâncias Baileys escopadas no detalhe do workspace (`6937a2a`), sem secrets e com status operacional.
+- [ ] Criar fachada de Inbox de suporte com `workspaceId` + `supportSessionId`.
+- [ ] Adicionar operações de pareamento/desconexão auditadas ao Console Admin.

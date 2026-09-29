@@ -34,6 +34,8 @@ Não tratar essas ideias como funcionalidades disponíveis nem como critério do
 
 ### Fase A — Workspace de suporte e instâncias
 
+**Progresso:** a visibilidade read-only das instâncias Baileys no detalhe do workspace foi publicada em `6937a2a`. As mutações de pareamento e desconexão continuam pendentes.
+
 - listar workspaces com status e busca;
 - abrir o detalhe de um workspace com identificação sempre visível;
 - listar instâncias Baileys daquele workspace;
