@@ -6,7 +6,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 >
 > **Core ativo (2026-09-27):** consulte [`WHATSAPP-CONNECTION-FLOW-2026-09-27.md`](./WHATSAPP-CONNECTION-FLOW-2026-09-27.md) para a fase 1: CRUD de instâncias Baileys, consumo, decisões de escopo e sequência solicitada das próximas etapas. Não iniciar o console de modelos nem respostas automáticas antes da revisão do usuário.
 >
-> **Limpeza estrutural Baileys-only (execução em fatias):** [`MIGRACAO-PAPI-BAILEYS.md`](./MIGRACAO-PAPI-BAILEYS.md) registra a remoção do adapter Cloud e dos helpers/configurações legados sem consumidores ativos. O schema e as migrations históricas ainda preservam valores antigos para permitir migração segura de dados; não apagar volumes nem editar migrations já aplicadas.
+> **Limpeza estrutural Baileys-only (execução em fatias):** [`MIGRACAO-PAPI-BAILEYS.md`](./MIGRACAO-PAPI-BAILEYS.md) registra a remoção do adapter Cloud e dos helpers/configurações legados sem consumidores ativos. O schema e as migrations históricas ainda preservam valores antigos para permitir migração segura de dados; não apagar volumes nem editar migrations já aplicadas. A 0042 só foi corrigida porque o CI confirmou que sua versão original não aplicava em banco vazio.
 >
 > **Auditoria de IA/Admin:** [`AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`](./AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md) registra capacidades, agentes, credenciais e redesign futuro; é referência da etapa 2, não do código ativo agora.
 >
