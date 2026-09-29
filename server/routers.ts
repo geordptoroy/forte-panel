@@ -39,6 +39,7 @@ import {
   getAgendaSnapshot,
   getUserByEmail,
   getUserById,
+  getUserByOpenId,
   getWorkspaceMembershipContext,
   revokeUserSessions,
   setLocalPassword,
@@ -480,7 +481,7 @@ export const appRouter = router({
             role: "admin",
             lastSignedIn: new Date(),
           });
-          account = await getUserByEmail(email);
+          account = await getUserByOpenId("local_admin");
         } else if (
           !account ||
           !verifyLocalPassword(input.password, account.passwordHash)
