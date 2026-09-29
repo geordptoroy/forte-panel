@@ -27,7 +27,7 @@ import {
   getWorkspaceById,
   resetWorkspaceDevelopmentData,
   getWorkspaceUsageSnapshot,
-  listPapiInstances,
+  listBaileysInstances,
   saveNativeAgentConfig,
   savePlatformGlobalNativeAgentConfig,
 } from "./db";
@@ -1419,7 +1419,7 @@ export async function getPlatformWorkspaceDetail(workspaceId: number) {
   ] = await Promise.all([
     workspaceListItem(workspace),
     getWorkspaceMembersForPlatform(workspaceId),
-    listPapiInstances(workspaceId),
+    listBaileysInstances(workspaceId),
     listPlatformWorkspaceNotes(workspaceId),
     listPlatformAuditLogs(workspaceId),
     listWorkspaceAuditSafe(workspaceId),

@@ -1,9 +1,13 @@
 import type { WhatsappProvider } from "../integrations/contracts";
+import {
+  assertOperationalWhatsappProvider,
+  type OperationalWhatsappProvider,
+} from "../integrations/baileys-policy";
 
 type MessageMetadata = Record<string, unknown> | null | undefined;
 
 export type ReplyRoute = {
-  provider: WhatsappProvider;
+  provider: OperationalWhatsappProvider;
   instanceId?: string;
   jid?: string;
   usedLegacyFallback: boolean;
@@ -23,14 +27,14 @@ export function resolveReplyRoute(input: {
   defaultInstanceId?: string;
 }): ReplyRoute {
   const latest = input.latestInbound;
-  const provider = latest?.provider ?? input.defaultProvider;
+  const provider = assertOperationalWhatsappProvider(
+    latest?.provider ?? input.defaultProvider
+  );
   const instanceId =
     typeof latest?.metadata?.instanceId === "string" &&
     latest.metadata.instanceId.trim()
       ? latest.metadata.instanceId.trim()
-      : provider === "papi"
-        ? input.defaultInstanceId
-        : undefined;
+      : input.defaultInstanceId;
   const jid =
     typeof latest?.metadata?.jid === "string" && latest.metadata.jid.trim()
       ? latest.metadata.jid.trim()

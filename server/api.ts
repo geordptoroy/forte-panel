@@ -107,7 +107,7 @@ const messageSchema = z
     phone: z.string().min(8).max(32).optional(),
     name: z.string().max(160).optional(),
     content: z.string().min(1).max(10000),
-    provider: z.enum(["baileys", "meta_cloud_api"]).optional(),
+    provider: z.literal("baileys").optional(),
     senderType: z.enum(["ai", "human"]).optional(),
     messageType: z
       .enum([
@@ -866,15 +866,6 @@ api.post("/messages", async (req, res) => {
         parsed.data.provider ?? (await getDefaultWhatsappProvider(workspaceId));
       const senderType = parsed.data.senderType ?? "human";
       const messageType = parsed.data.messageType ?? "text";
-      if (provider === "meta_cloud_api" && messageType !== "text")
-        return {
-          statusCode: 422,
-          body: {
-            error: "unsupported_message_type",
-            message:
-              "Este tipo de mensagem ainda não é suportado pela Meta Cloud API neste worker",
-          },
-        };
       const message = await queueOutboundMessage(
         workspaceId,
         contact.id,
@@ -960,14 +951,6 @@ api.post("/messages/batch", async (req, res) => {
           item.provider ?? (await getDefaultWhatsappProvider(workspaceId));
         const senderType = item.senderType ?? "ai";
         const messageType = item.messageType ?? "text";
-        if (provider === "meta_cloud_api" && messageType !== "text")
-          return {
-            statusCode: 422,
-            body: {
-              error: "unsupported_message_type",
-              message: `Tipo não suportado no item ${index + 1}`,
-            },
-          };
         const batchId =
           parsed.data.batchId ??
           req.header("Idempotency-Key") ??

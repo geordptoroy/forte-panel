@@ -11,6 +11,7 @@ import type {
 } from "./contracts";
 import { ENV } from "../_core/env";
 import { normalizeContactPhone, normalizeWhatsappJid } from "../_core/phone";
+import { assertOperationalWhatsappProvider } from "./baileys-policy";
 
 function nowHealth(
   name: "papi" | "baileys" | "meta_cloud_api",
@@ -529,7 +530,6 @@ export function createBaileysAdapter(): BaileysAdapter {
 export function getWhatsappAdapter(
   provider: WhatsappProvider
 ): WhatsappAdapter {
-  if (provider === "meta_cloud_api") return createMetaCloudApiAdapter();
-  if (provider === "baileys") return createBaileysAdapter();
-  return createPapiAdapter();
+  assertOperationalWhatsappProvider(provider);
+  return createBaileysAdapter();
 }

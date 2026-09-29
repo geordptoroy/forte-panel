@@ -1,4 +1,5 @@
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -842,18 +843,27 @@ export const workspaceUserUsageBuckets = pgTable(
   ]
 );
 
-export const whatsappChannels = pgTable("whatsappChannels", {
-  id: serial("id").primaryKey(),
-  workspaceId: integer("workspaceId").notNull(),
-  provider: whatsappProviderEnum("provider").notNull(),
-  name: varchar("name", { length: 120 }).notNull(),
-  phoneNumber: varchar("phoneNumber", { length: 32 }),
-  phoneNumberId: varchar("phoneNumberId", { length: 100 }),
-  credentialsRef: varchar("credentialsRef", { length: 160 }),
-  active: integer("active").default(1).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+export const whatsappChannels = pgTable(
+  "whatsappChannels",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    provider: whatsappProviderEnum("provider").notNull(),
+    name: varchar("name", { length: 120 }).notNull(),
+    phoneNumber: varchar("phoneNumber", { length: 32 }),
+    phoneNumberId: varchar("phoneNumberId", { length: 100 }),
+    credentialsRef: varchar("credentialsRef", { length: 160 }),
+    active: integer("active").default(1).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    check(
+      "whatsapp_channels_operational_provider_check",
+      sql`${table.provider} = 'baileys'`
+    ),
+  ]
+);
 
 export const whatsappInstances = pgTable(
   "whatsappInstances",
@@ -861,7 +871,7 @@ export const whatsappInstances = pgTable(
     id: serial("id").primaryKey(),
     workspaceId: integer("workspaceId").notNull(),
     channelId: integer("channelId"),
-    provider: whatsappProviderEnum("provider").default("papi").notNull(),
+    provider: whatsappProviderEnum("provider").default("baileys").notNull(),
     deployment: varchar("deployment", { length: 32 })
       .default("self_hosted")
       .notNull(),
@@ -897,6 +907,10 @@ export const whatsappInstances = pgTable(
       table.workspaceId,
       table.active,
       table.isDefault
+    ),
+    check(
+      "whatsapp_instances_operational_provider_check",
+      sql`${table.provider} = 'baileys'`
     ),
   ]
 );
@@ -1159,7 +1173,7 @@ export const messages = pgTable(
     content: text("content").notNull(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     status: messageStatusEnum("status").default("received").notNull(),
-    provider: whatsappProviderEnum("provider").default("papi").notNull(),
+    provider: whatsappProviderEnum("provider").default("baileys").notNull(),
     attemptCount: integer("attemptCount").default(0).notNull(),
     lastError: text("lastError"),
     sentAt: timestamp("sentAt"),
@@ -1169,6 +1183,10 @@ export const messages = pgTable(
     uniqueIndex("messages_external_id_unique_idx")
       .on(table.externalId)
       .where(sql`${table.externalId} IS NOT NULL`),
+    check(
+      "messages_operational_provider_check",
+      sql`${table.provider} = 'baileys'`
+    ),
   ]
 );
 

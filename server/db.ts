@@ -61,6 +61,10 @@ import {
   type InsertUser,
 } from "../drizzle/schema";
 import type { WhatsappProvider } from "./integrations/contracts";
+import {
+  assertOperationalWhatsappProvider,
+  type OperationalWhatsappProvider,
+} from "./integrations/baileys-policy";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
 import {
@@ -2042,11 +2046,8 @@ export async function setDefaultPapiInstance(workspaceId: number, id: number) {
 
 export async function getDefaultWhatsappProvider(
   workspaceId: number
-): Promise<WhatsappProvider> {
+): Promise<OperationalWhatsappProvider> {
   const db = await getDb();
-  const baileysConfigured = Boolean(
-    process.env.BAILEYS_BASE_URL?.trim() && process.env.BAILEYS_API_KEY?.trim()
-  );
   if (!db) return "baileys";
   const setting = await db
     .select()
@@ -2058,15 +2059,15 @@ export async function getDefaultWhatsappProvider(
       )
     )
     .limit(1);
-  if (setting[0]?.value === "meta_cloud_api") return "meta_cloud_api";
-  if (setting[0]?.value === "baileys") return "baileys";
+  assertOperationalWhatsappProvider(setting[0]?.value ?? "baileys");
   return "baileys";
 }
 
 export async function setDefaultWhatsappProvider(
   workspaceId: number,
-  provider: WhatsappProvider
+  provider: OperationalWhatsappProvider
 ) {
+  assertOperationalWhatsappProvider(provider);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const workspace = await getActiveWorkspaceById(workspaceId);
@@ -5764,12 +5765,10 @@ export async function sendManualMessage(
       .orderBy(desc(messages.createdAt), desc(messages.id))
       .limit(1);
   const defaultProvider = await getDefaultWhatsappProvider(workspaceId);
-  const defaultPapiWebhook =
-    defaultProvider === "papi" ? await getDefaultPapiWebhook(workspaceId) : undefined;
   const route = resolveReplyRoute({
     latestInbound: latestInbound[0],
     defaultProvider,
-    defaultInstanceId: defaultPapiWebhook?.instanceId,
+    defaultInstanceId: undefined,
   });
   if (
     !route.instanceId &&
@@ -5777,10 +5776,6 @@ export async function sendManualMessage(
     instanceIds?.length === 1
   )
     route.instanceId = instanceIds[0];
-  if (route.provider === "papi" && !route.instanceId)
-    throw new Error(
-      "Associe uma instância PAPI à origem da conversa ou configure uma instância padrão para mensagens legadas"
-    );
   const createdAt = new Date();
   const metadata = {
     ...(messageMetadata ?? {}),
@@ -6884,12 +6879,11 @@ export async function ingestInboundWhatsApp(
       senderType: fromMe ? "human" : "lead",
       messageType: input.messageType ?? "text",
       content: input.content,
-      provider:
-        metadata?.provider === "baileys"
-          ? "baileys"
-          : metadata?.provider === "meta_cloud_api"
-            ? "meta_cloud_api"
-            : await getDefaultWhatsappProvider(workspace.id),
+      provider: assertOperationalWhatsappProvider(
+        typeof metadata?.provider === "string"
+          ? metadata.provider
+          : await getDefaultWhatsappProvider(workspace.id)
+      ),
       metadata,
       status: "received",
       createdAt: receivedAt,
@@ -7082,22 +7076,11 @@ export async function queueOutboundMessage(
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const selectedProvider =
-    provider ?? (await getDefaultWhatsappProvider(workspaceId));
-  const defaultPapiWebhook =
-    selectedProvider === "papi"
-      ? await getDefaultPapiWebhook(workspaceId)
-      : undefined;
+  const selectedProvider = assertOperationalWhatsappProvider(
+    provider ?? (await getDefaultWhatsappProvider(workspaceId))
+  );
   const contact = await getContactById(workspaceId, contactId);
   if (!contact) throw new Error("Contact not found");
-  if (
-    selectedProvider === "papi" &&
-    !metadata?.instanceId &&
-    !defaultPapiWebhook?.instanceId
-  )
-    throw new Error(
-      "PAPI instanceId não informado; associe uma instância em Canais conectados"
-    );
   const channels = await listWhatsappChannels(workspaceId);
   if (
     channels.length > 0 &&
@@ -7132,11 +7115,6 @@ export async function queueOutboundMessage(
   const resolvedMetadata = {
     ...metadata,
     ...(!metadata?.jid && inboundJid ? { jid: inboundJid } : {}),
-    ...(selectedProvider === "papi" &&
-    !metadata?.instanceId &&
-    defaultPapiWebhook?.instanceId
-      ? { instanceId: defaultPapiWebhook.instanceId }
-      : {}),
   };
   const created = await db
     .insert(messages)

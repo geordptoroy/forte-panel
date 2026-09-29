@@ -1247,15 +1247,11 @@ export const appRouter = router({
         provider: channel.provider,
         name: channel.name,
         phoneNumber: channel.phoneNumber,
-        configured:
-          channel.provider === "baileys"
-            ? Boolean(
-                process.env.BAILEYS_BASE_URL && process.env.BAILEYS_API_KEY
-              )
-            : Boolean(
-                process.env.META_WHATSAPP_ACCESS_TOKEN &&
-                  process.env.META_WHATSAPP_PHONE_NUMBER_ID
-              ),
+        configured: Boolean(
+          channel.provider === "baileys" &&
+            process.env.BAILEYS_BASE_URL &&
+            process.env.BAILEYS_API_KEY
+        ),
         active: channel.active === 1,
       }));
     }),
@@ -1475,17 +1471,11 @@ export const appRouter = router({
       getDefaultWhatsappProvider(ctx.workspace.workspaceId)
     ),
     setDefaultChannel: protectedProcedure
-      .input(z.object({ provider: z.enum(["baileys", "meta_cloud_api"]) }))
+      .input(z.object({ provider: z.literal("baileys") }))
       .mutation(({ input, ctx }) => {
-        const configured =
-          input.provider === "baileys"
-            ? Boolean(
-                process.env.BAILEYS_BASE_URL && process.env.BAILEYS_API_KEY
-              )
-            : Boolean(
-                process.env.META_WHATSAPP_ACCESS_TOKEN &&
-                  process.env.META_WHATSAPP_PHONE_NUMBER_ID
-              );
+        const configured = Boolean(
+          process.env.BAILEYS_BASE_URL && process.env.BAILEYS_API_KEY
+        );
         if (!configured)
           throw new TRPCError({
             code: "PRECONDITION_FAILED",

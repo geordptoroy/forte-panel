@@ -1248,7 +1248,7 @@ function AgentTab({
           <ShieldCheck size={14} />
           <span>
             O prompt é versionado. Segredos continuam fora da configuração e a
-            simulação não chama PAPI, Meta ou LLM.
+            a simulação local não chama o gateway Baileys nem nenhum modelo externo.
           </span>
         </div>
         <div className="platform-form-grid">

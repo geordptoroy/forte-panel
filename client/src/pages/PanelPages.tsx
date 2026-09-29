@@ -113,7 +113,7 @@ function ChannelStatusBanner({
         </strong>
         <span>
           {ready
-            ? `${channel?.provider === "baileys" ? "Baileys nativo" : "Meta Cloud API"}${channel?.phoneNumber ? ` · ${channel.phoneNumber}` : ""}. Mídia básica e mensagens passam pelo worker.`
+            ? `Baileys nativo${channel?.phoneNumber ? ` · ${channel.phoneNumber}` : ""}. Mídia básica e mensagens passam pelo worker.`
             : "Configure e ative um canal em Integrações antes de esperar envio ou recebimento real."}
         </span>
       </div>
