@@ -475,3 +475,12 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [ ] Inventariar dados legados por workspace/instância em banco restaurado; não apagar configurações históricas sem backup e contagem.
 - [ ] Criar e testar migration de schema ativo Baileys-only em banco vazio e restaurado; migrations já aplicadas não serão editadas.
 - [ ] Repetir quality gate PostgreSQL, gateway, staging e scan de rotas/configuração antes de declarar o bloqueador P0 fechado.
+
+
+## Inventário pré-migration Baileys — 2026-09-29
+
+- [x] Preparar `scripts/inventory-whatsapp-legacy.ts` com transação `BEGIN READ ONLY`, timeout, rollback e saída sem secrets/conteúdo.
+- [x] Adicionar `pnpm db:inventory:whatsapp` e documentar backup, restore separado, escopo por workspace e critérios de decisão em `docs/BAILEYS-DATA-INVENTORY.md`.
+- [x] Validar `pnpm check`, JSON do `package.json`, `git diff --check` e recusa segura quando `DATABASE_URL` não está configurada.
+- [ ] Executar o inventário no PostgreSQL restaurado do usuário e preservar o JSON como evidência; a sandbox não possui esse banco.
+- [ ] Revisar contagens de provider/instância, mensagens queued/processing, settings legados e colisões antes de desenhar a migration de convergência.
