@@ -3,8 +3,10 @@ import { z } from "zod";
 import {
   addPlatformWorkspaceNote,
   canPlatformAdminMutate,
+  createPlatformBaileysInstance,
   createPlatformAiConnection,
   deletePlatformAiConnection,
+  disconnectPlatformBaileysInstance,
   getActiveSupportSession,
   getPlatformGlobalAgentSnapshot,
   getPlatformAdminAccess,
@@ -280,6 +282,54 @@ export const platformRouter = router({
         after: { instanceId: instance.instanceId, phone: input.phone.slice(-4) },
       });
       return result;
+    }),
+
+  createBaileysInstance: requirePlatformOperator
+    .input(
+      supportSessionInput.extend({
+        name: z.string().trim().min(2).max(120),
+        reason: reasonInput,
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const session = await requireSession(input, ctx.platformAdmin.id, true);
+      return createPlatformBaileysInstance({
+        platformAdminId: ctx.platformAdmin.id,
+        workspaceId: input.workspaceId,
+        supportSessionId: session.id,
+        name: input.name,
+        reason: input.reason,
+      });
+    }),
+
+  disconnectBaileysInstance: requirePlatformOperator
+    .input(
+      supportSessionInput.extend({
+        instanceId: z.string().trim().min(1).max(160),
+        logout: z.boolean().default(false),
+        reason: reasonInput,
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const session = await requireSession(input, ctx.platformAdmin.id, true);
+      const instance = await getBaileysInstance(
+        input.workspaceId,
+        input.instanceId
+      );
+      if (!instance) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Instância Baileys não encontrada neste workspace",
+        });
+      }
+      return disconnectPlatformBaileysInstance({
+        platformAdminId: ctx.platformAdmin.id,
+        workspaceId: input.workspaceId,
+        supportSessionId: session.id,
+        instanceId: instance.instanceId,
+        logout: input.logout,
+        reason: input.reason,
+      });
     }),
 
   notes: requirePlatform

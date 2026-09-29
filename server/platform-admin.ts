@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import crypto from "node:crypto";
 import {
   agentPromptDrafts,
   agentPromptVersions,
@@ -25,6 +26,9 @@ import {
   getPlatformGlobalNativeAgentConfig,
   getPlatformNativeAgentConfig,
   getWorkspaceById,
+  ensureBaileysChannel,
+  createBaileysInstance,
+  getBaileysInstance,
   resetWorkspaceDevelopmentData,
   getWorkspaceUsageSnapshot,
   listBaileysInstances,
@@ -32,6 +36,11 @@ import {
   savePlatformGlobalNativeAgentConfig,
 } from "./db";
 import type { NativeAgentConfig } from "./db";
+import {
+  createBaileysInstance as createBaileysGatewayInstance,
+  deleteBaileysInstance as deleteBaileysGatewayInstance,
+  disconnectBaileys as disconnectBaileysGateway,
+} from "./baileys-gateway";
 import { ENV } from "./_core/env";
 import {
   encryptProviderSecret,
@@ -501,6 +510,65 @@ export async function resetPlatformWorkspace(input: {
     after: result,
   });
   return result;
+}
+
+export async function createPlatformBaileysInstance(input: {
+  platformAdminId: number;
+  workspaceId: number;
+  supportSessionId: number;
+  name: string;
+  reason: string;
+}) {
+  const workspace = await getWorkspaceById(input.workspaceId);
+  if (!workspace) throw new Error("Workspace não encontrado");
+  const channel = await ensureBaileysChannel(input.workspaceId);
+  const instanceId = `ws${input.workspaceId}-${crypto.randomUUID()}`;
+  await createBaileysGatewayInstance(instanceId, input.name);
+  try {
+    const instance = await createBaileysInstance(
+      input.workspaceId,
+      channel.id,
+      instanceId,
+      input.name
+    );
+    await recordPlatformAudit({
+      platformAdminId: input.platformAdminId,
+      workspaceId: input.workspaceId,
+      supportSessionId: input.supportSessionId,
+      action: "baileys_instance_created",
+      reason: input.reason,
+      summary: `Instância Baileys ${instance.name} criada pelo suporte`,
+      after: { instanceId: instance.instanceId, name: instance.name },
+    });
+    return instance;
+  } catch (error) {
+    await deleteBaileysGatewayInstance(instanceId).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function disconnectPlatformBaileysInstance(input: {
+  platformAdminId: number;
+  workspaceId: number;
+  supportSessionId: number;
+  instanceId: string;
+  logout: boolean;
+  reason: string;
+}) {
+  const instance = await getBaileysInstance(input.workspaceId, input.instanceId);
+  if (!instance) throw new Error("Instância Baileys não encontrada neste workspace");
+  const status = await disconnectBaileysGateway(instance.instanceId, input.logout);
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    workspaceId: input.workspaceId,
+    supportSessionId: input.supportSessionId,
+    action: input.logout ? "baileys_instance_logged_out" : "baileys_instance_disconnected",
+    reason: input.reason,
+    summary: `${input.logout ? "Logout" : "Desconexão"} da instância ${instance.name}`,
+    before: { instanceId: instance.instanceId, status: instance.status },
+    after: { instanceId: instance.instanceId, status: status.status ?? "unknown" },
+  });
+  return status;
 }
 
 function sessionView(session: typeof supportSessions.$inferSelect) {

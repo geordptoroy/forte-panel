@@ -890,7 +890,24 @@ function SummaryTab({
   onSupport: () => void;
 }) {
   const [phone, setPhone] = useState("");
+  const [instanceName, setInstanceName] = useState("");
   const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const utils = trpc.useUtils();
+  const createInstance = trpc.platform.createBaileysInstance.useMutation({
+    onSuccess: () => {
+      setInstanceName("");
+      toast.success("Instância Baileys criada");
+      void utils.platform.workspaceDetail.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const disconnect = trpc.platform.disconnectBaileysInstance.useMutation({
+    onSuccess: () => {
+      toast.success("Instância desconectada");
+      void utils.platform.workspaceDetail.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
   const pair = trpc.platform.requestBaileysPairingCode.useMutation({
     onSuccess: result => {
       setPairingCode(result.code);
@@ -1020,10 +1037,50 @@ function SummaryTab({
                     </small>
                   </div>
                   <WorkspaceStatus value={instance.status} />
+                  <button
+                    className="btn-ghost"
+                    disabled={!canMutate || disconnect.isPending}
+                    onClick={() => {
+                      if (!window.confirm(`Desconectar ${instance.name}?`)) return;
+                      disconnect.mutate({
+                        workspaceId: item.workspace.id,
+                        sessionId,
+                        instanceId: instance.instanceId,
+                        logout: false,
+                        reason: "Desconexão solicitada pelo suporte",
+                      });
+                    }}
+                  >
+                    Desconectar
+                  </button>
                 </div>
               ))}
             </div>
           )}
+          <div className="platform-support-actions" style={{ marginTop: 14 }}>
+            <input
+              className="input-control"
+              value={instanceName}
+              onChange={event => setInstanceName(event.target.value)}
+              placeholder="Nome da nova instância"
+              disabled={!canMutate || createInstance.isPending}
+              aria-label="Nome da nova instância Baileys"
+            />
+            <button
+              className="btn-secondary"
+              disabled={!canMutate || createInstance.isPending || instanceName.trim().length < 2}
+              onClick={() =>
+                createInstance.mutate({
+                  workspaceId: item.workspace.id,
+                  sessionId,
+                  name: instanceName.trim(),
+                  reason: "Criação de instância pelo suporte",
+                })
+              }
+            >
+              {createInstance.isPending ? "Criando…" : "Criar instância"}
+            </button>
+          </div>
           {item.instances.length > 0 && (
             <div className="platform-support-actions" style={{ marginTop: 14 }}>
               <input
