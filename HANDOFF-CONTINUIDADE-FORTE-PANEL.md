@@ -1,71 +1,15 @@
 
 
-## 20. Correção de direção: Console Admin como workspace de suporte — 2026-09-29
+## 28. Interatividade e prompts globais — 2026-09-29
 
-O usuário esclareceu que **“Minha empresa” não deve existir**. O registro reaparece porque `server/db.ts:upsertUser()` chama `ensureDemoWorkspace()` durante autenticação mesmo com `DEMO_MODE=false`; apagar/reinstalar não resolve enquanto essa criação implícita continuar. A correção deve tornar a criação do workspace padrão explicitamente opt-in e preservar a criação normal por signup/demo configurado.
+Implementado sem reabrir o bloco congelado:
 
-O usuário confirmou a exclusão permanente do workspace local **id 1, slug `forte-workspace`, nome “Minha empresa”**, incluindo instâncias/canais Baileys, contatos, conversas, mensagens, agenda, funil, configurações, auditoria e memberships. A sandbox não tem acesso ao PostgreSQL/Docker local do usuário, portanto a exclusão ainda não foi executada. O próximo chat deve primeiro entregar um procedimento transacional guardado pelo id/slug/nome e pedir a execução no container local, mantendo o login principal do Console Admin; não apagar o usuário de plataforma apenas por remover sua membership.
+- O envio persistido aceita `button`, `list` e `poll` além dos tipos já validados.
+- O Console Admin e a Inbox pública validam payloads interativos antes de enfileirar o outbound.
+- Botões exigem de 1 a 3 opções com `buttonId` e `displayText`.
+- Listas/enquetes exigem `metadata.payload`, encaminhado ao gateway Baileys pelo contrato existente de payload.
+- Foi criado teste unitário para os contratos interativos.
+- **Carrossel não foi falsamente habilitado:** o Baileys atual não oferece um contrato universal de carrossel nesta integração. A implementação deve ganhar um adapter/provider específico antes de ser exposta como funcionalidade.
+- O Console Admin ganhou editor de prompt global por `instanceId`, com versão incremental, auditoria e `enabled: false` por segurança. O pareamento fica salvo; respostas automáticas e RAG continuam desligados até os gates de IA.
 
-A decisão de produto também foi corrigida: o Console Admin deve ter na sidebar as áreas **Instâncias, Inbox, Agenda e Funil**, usando as ferramentas do workspace público para fins de suporte. Isso não significa redirecionar para `/whatsapp-connection`, `/inbox`, `/agenda` ou `/kanban` com o contexto do cliente. Cada área precisa de uma fachada administrativa que receba `workspaceId` + `supportSessionId`, respeite `read_only`/`operator`, registre auditoria e mantenha o workspace selecionado visível. O próximo smoke test deve criar uma nova instância pelo Console Admin, pareá-la por código dentro de uma sessão operadora e validar inbound/outbound; não usar a conta “Minha empresa” nem criar instância pelo terminal como fluxo principal.
-
-A implementação provisória de criação administrativa feita nesta tentativa foi desfeita por orientação do usuário; não há código não publicado pendente. O último commit válido continua sendo `ce5f9ab`, com pareamento administrativo da instância existente, mas ainda sem criação administrativa nem as páginas completas de suporte.
-
-
-## 21. Fase A concluída — operações de instância no Console Admin — 2026-09-29
-
-A fachada administrativa de instâncias Baileys avançou além do commit `ce5f9ab`: o Console Admin agora permite criar uma instância dentro de uma sessão `operator`, com `workspaceId` e `supportSessionId` explícitos, auditoria de sucesso e rollback do registro no gateway quando a persistência falhar. Também permite desconectar uma instância existente após validar ownership no workspace; a UI pede confirmação e a ação é auditada. O logout administrativo permanece separado e não é acionado por engano pelo botão de desconexão.
-
-A alteração está nos endpoints `platform.createBaileysInstance` e `platform.disconnectBaileysInstance`, no domínio `server/platform-admin.ts` e na fachada `SummaryTab` de `client/src/pages/PlatformAdminPage.tsx`. Read-only não cria nem desconecta; a sessão continua vinculada ao administrador, workspace, modo e expiração.
-
-Validação no sandbox: `pnpm check`, `pnpm build`, `pnpm test` com 204 aprovados e 47 ignorados por dependência de banco, `npm test --prefix forte-whatsapp` com 62 aprovados e `git diff --check`. Os testes PostgreSQL do suporte continuam condicionados a `DATABASE_URL` e não foram declarados executados.
-
-Próximo bloco: implementar a fachada de Inbox de suporte, sempre recebendo `workspaceId` + `supportSessionId`, com leitura em `read_only`, envio somente em `operator`, filtro de instâncias, cabeçalho explícito de workspace/sessão e auditoria das ações. Depois publicar a imagem `:dev` e executar o smoke test no Docker/staging do usuário; não usar a conta “Minha empresa” nem criar a instância pelo terminal como fluxo principal.
-
-
-## 22. Workspace padrão corrigido — 2026-09-29
-
-`upsertUser()` não chama mais `ensureDemoWorkspace()` durante login normal. O workspace padrão só é provisionado quando `DEMO_MODE=true` ou `WORKSPACE_BOOTSTRAP_ENABLED=true`; signup público continua criando seu workspace próprio de forma transacional. Foram adicionados testes unitários para a política e as flags foram documentadas nos exemplos de ambiente.
-
-Foi criado `scripts/delete-local-workspace.sql`. O script exige a confirmação literal `APAGAR WORKSPACE FORTE 1`, trava e valida exatamente o workspace ativo `id=1`, `slug=forte-workspace`, `name=Minha empresa`, remove dados com `workspaceId` e o registro do workspace dentro de uma transação, e preserva `users`, `platformAdmins` e o acesso do Console Admin. O comando PowerShell com backup e substituição da confirmação está em `LOCAL-DOCKER-TESTE.md`.
-
-Validação no sandbox: `pnpm check`, 6 testes de `server/db.auth-bootstrap.test.ts` e `git diff --check` passaram. A execução SQL real continua pendente porque o sandbox não tem `psql`, Docker ou acesso ao PostgreSQL local do usuário. Não declarar o workspace removido até o usuário executar o backup e o script no ambiente local.
-
-Depois da execução local e confirmação do resultado, a próxima fatia volta a ser a fachada de Inbox de suporte com `workspaceId` + `supportSessionId`.
-
-
-## 23. Reinstalação limpa e lock de smoke test — 2026-09-29
-
-A solicitação atual é apagar o ambiente Docker local e recomeçar com operação limpa. O procedimento oficial é `scripts/dev-reinstall.ps1 -ResetData`, que já exige a flag destrutiva, executa `docker compose down --volumes --remove-orphans`, baixa as imagens `:dev` e sobe a stack novamente. O sandbox não controla o Docker/Desktop local do usuário; portanto a execução real depende do PowerShell do usuário.
-
-Foi aplicado um cadeado visual nos dois lados: `PanelLayout` mostra `Fluxo validado` no Workspace público quando `CORE_ONLY_MODE` está ativo, e `PlatformShell` mostra `Validado` no Console Admin. Isso é uma marca de escopo congelado para o smoke test, não uma barreira de autorização. O backend continua sendo a fonte de autorização, ownership, sessão e auditoria.
-
-Após reset completo, o contrato esperado é: `DEMO_MODE=false`, `WORKSPACE_BOOTSTRAP_ENABLED=false`, login recria apenas `local_admin`, nenhum workspace padrão é criado por login, e o smoke test começa pelo Console Admin. Ordem recomendada: sessão `read_only`, seleção explícita de workspace, listagem de instância, mudança para `operator`, criação/pareamento, inbound/outbound, desconexão, auditoria e isolamento; depois repetir o mínimo no Workspace público.
-
-
-## 24. Console Admin com WhatsApp próprio — 2026-09-29
-
-A direção foi corrigida: o Console Admin agora possui uma operação própria, sem depender de sessão real de takeover em Workspaces beta. Foi criado o tenant técnico `forte-platform-support` / `Suporte Forte Platform`, oculto da listagem `Workspaces beta`, com canal Baileys próprio, instâncias próprias, Inbox própria e agente/prompt próprio.
-
-A sidebar do Console Admin agora expõe `Instâncias de suporte` e `Inbox de suporte`. As instâncias permitem criar, solicitar código de pareamento e desconectar. A Inbox lista contatos recebidos nesse tenant, abre mensagens, envia respostas pelo Baileys selecionado e edita/publica o prompt próprio do suporte. As mutações exigem `platform_support_operator`; o backend mantém o isolamento por `workspaceId` interno e registra auditoria sem inventar `supportSessionId`.
-
-Rotas: `/platform-admin/support-instances` e `/platform-admin/support-inbox`. A próxima validação deve começar por essas abas, criar a instância interna, parear o número de suporte, receber uma mensagem real, responder pelo Inbox e confirmar o prompt do agente. O fluxo de sessões para Workspaces beta continua separado e não é usado por essas abas.
-
-Validação desta fatia: `pnpm check`, build, 7 testes focados e `git diff --check` passaram. O smoke test real Baileys ainda depende do Docker/PostgreSQL local e de um número de suporte.
-
-
-## 25. Correção da conexão Baileys no Console Admin — 2026-09-29
-
-A primeira tela de `Instâncias de suporte` era simplificada demais: tinha criação e uma tentativa de código, mas não copiava os contratos públicos de `connect`, `status` e `baileysQr`. Por isso o clique em gerar código não oferecia feedback adequado e não havia QR Code.
-
-A rota foi corrigida com uma cópia funcional da interface pública de conexão, adaptada para `trpc.platform` e para o tenant interno `forte-platform-support`. A tela agora usa polling de status, `connectSupportInstance`, `supportStatus`, `supportQr` e `requestSupportPairingCode`, com QR Code renderizado, código por telefone, mensagens de erro, estado de gateway, desconexão e atualização de status.
-
-Validação: `pnpm check`, `pnpm build`, 7 testes focados e `git diff --check` passaram. O smoke test real deve repetir criação, botão `Mostrar QR Code`, leitura no WhatsApp, geração de código com telefone em formato internacional e confirmação do status conectado.
-
-
-## 26. Frontend idêntico ao Workspace público — 2026-09-29
-
-A solicitação foi aplicada literalmente. A tela administrativa de conexão agora é uma cópia do `WhatsappConnectionPage.tsx`, com o mesmo wizard, QR Code, código por telefone, cards de status, preferências, renomeação e exclusão. Apenas os contratos tRPC foram trocados por aliases `supportBaileys*` que apontam para o tenant interno.
-
-A Inbox administrativa agora reutiliza o mesmo `InboxPage` público: filtros, lista de conversas, busca, grupos, seleção de instâncias, perfil, histórico ordenado, bolhas de mensagem, anexos, áudio, gravação, composer, envio e tratamento de erro. O modo administrativo troca apenas o chrome externo para `PlatformShell` e usa `trpc.platform.supportInbox`, mantendo o frontend da Inbox intacto.
-
-Validação: `pnpm check`, `pnpm build`, 7 testes focados e `git diff --check` passaram. O próximo smoke test deve confirmar especificamente a ordem visual das mensagens inbound/outbound, o estado de envio, o erro mantido no composer e a resposta recebida no número de suporte.
+Gates executados: `pnpm check`, `pnpm build`, testes focados de interatividade/Console Admin e `git diff --check`.

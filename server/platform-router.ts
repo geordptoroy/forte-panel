@@ -22,6 +22,7 @@ import {
   listPlatformAuditLogs,
   listPlatformAiConnections,
   listPlatformGlobalAuditLogs,
+  listPlatformInstancePromptBindings,
   listPlatformWorkspaces,
   listPlatformWorkspaceNotes,
   publishPlatformAgentDraft,
@@ -30,6 +31,7 @@ import {
   rollbackPlatformAgentVersion,
   savePlatformAgentDraft,
   savePlatformGlobalAiPolicy,
+  savePlatformInstancePromptBinding,
   setPlatformWorkspaceAi,
   setPlatformWorkspaceStatus,
   simulatePlatformAgent,
@@ -60,6 +62,7 @@ import {
   updateBaileysInstanceName,
   updateBaileysInstanceSettings,
 } from "./baileys-gateway";
+import { interactiveMetadataSchema, interactiveMessageTypeSchema } from "./interactive-messages";
 
 const requirePlatform = authenticatedProcedure.use(async ({ ctx, next }) => {
   const platformAdmin = await getPlatformAdminAccess(ctx.user.id);
@@ -457,6 +460,34 @@ export const platformRouter = router({
     return getPlatformAgentSnapshot(workspace.id);
   }),
 
+  supportPromptBindings: requirePlatform.query(() => listPlatformInstancePromptBindings()),
+
+  saveSupportPromptBinding: requirePlatformOperator
+    .input(
+      z.object({
+        instanceId: z.string().trim().min(1).max(160),
+        enabled: z.boolean().default(false),
+        model: z.string().trim().min(1).max(200),
+        systemPrompt: z.string().max(30_000),
+        maxSteps: z.number().int().min(1).max(8),
+        reason: reasonInput,
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Instância de suporte não encontrada",
+        });
+      return savePlatformInstancePromptBinding({
+        ...input,
+        platformAdminId: ctx.platformAdmin.id,
+        workspaceId: workspace.id,
+      });
+    }),
+
   saveSupportPrompt: requirePlatformOperator
     .input(
       z.object({
@@ -579,6 +610,8 @@ export const platformRouter = router({
       z.object({
         contactId: z.number().int().positive(),
         content: z.string().trim().min(1).max(12_000_000),
+        messageType: z.union([z.literal("text"), interactiveMessageTypeSchema]).default("text"),
+        metadata: interactiveMetadataSchema.optional(),
         instanceId: z.string().trim().min(1).max(160).optional(),
       })
     )

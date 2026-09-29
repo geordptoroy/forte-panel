@@ -120,6 +120,10 @@ import {
 import { transcribeAudioForWorkspace } from "./_core/voiceTranscription";
 import { extractOnboardingStructuredProposal } from "./onboarding-structured";
 import {
+  interactiveMessageTypeSchema,
+  validateInteractiveMessage,
+} from "./interactive-messages";
+import {
   invokeConfiguredLLM,
   type AgentCapability,
   type AgentProviderSettings,
@@ -2858,13 +2862,19 @@ export const appRouter = router({
         contactIdInput.extend({
           content: z.string().trim().min(1).max(12_000_000),
           messageType: z
-            .enum(["text", "image", "audio", "video", "document"])
+            .union([z.literal("text"), z.enum(["image", "audio", "video", "document"]), interactiveMessageTypeSchema])
             .default("text"),
           metadata: z.record(z.string(), z.unknown()).optional(),
           instanceIds: inboxInstanceFilterSchema.shape.instanceIds,
         })
       )
       .mutation(async ({ input, ctx }) => {
+        if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll")
+          validateInteractiveMessage({
+            messageType: input.messageType,
+            content: input.content,
+            metadata: input.metadata,
+          });
         const usage = await consumeWorkspaceUserUsage(
           ctx.workspace.workspaceId,
           ctx.user.id,

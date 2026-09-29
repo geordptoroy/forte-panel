@@ -42,6 +42,8 @@ import {
   markConversationRead,
   saveNativeAgentConfig,
   savePlatformGlobalNativeAgentConfig,
+  getWorkspaceSetting,
+  upsertWorkspaceSetting,
 } from "./db";
 import type { NativeAgentConfig } from "./db";
 import {
@@ -56,6 +58,7 @@ import {
   maskProviderSecret,
   type AgentProviderSettings,
 } from "./llm-providers";
+import { validateInteractiveMessage } from "./interactive-messages";
 
 export type PlatformPermission =
   | "platform_admin"
@@ -295,6 +298,84 @@ export function safeAgentConfig(config: NativeAgentConfig): SafeAgentConfig {
 
 export async function getPlatformGlobalAgentSnapshot() {
   return safeAgentConfig(await getPlatformGlobalNativeAgentConfig());
+}
+
+const PLATFORM_INSTANCE_PROMPT_BINDINGS_KEY = "platform_instance_prompt_bindings";
+const PLATFORM_GLOBAL_CONFIG_WORKSPACE_ID = 0;
+
+export type PlatformInstancePromptBinding = {
+  instanceId: string;
+  systemPrompt: string;
+  model: string;
+  maxSteps: number;
+  enabled: boolean;
+  version: number;
+  updatedAt: string;
+};
+
+async function readPlatformInstancePromptBindings(): Promise<PlatformInstancePromptBinding[]> {
+  const setting = await getWorkspaceSetting(
+    PLATFORM_GLOBAL_CONFIG_WORKSPACE_ID,
+    PLATFORM_INSTANCE_PROMPT_BINDINGS_KEY
+  );
+  if (!setting?.value) return [];
+  try {
+    const parsed = JSON.parse(setting.value) as unknown;
+    return Array.isArray(parsed) ? (parsed as PlatformInstancePromptBinding[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function listPlatformInstancePromptBindings() {
+  return readPlatformInstancePromptBindings();
+}
+
+export async function savePlatformInstancePromptBinding(input: {
+  platformAdminId: number;
+  workspaceId: number;
+  instanceId: string;
+  systemPrompt: string;
+  model: string;
+  maxSteps: number;
+  enabled: boolean;
+  reason: string;
+}) {
+  const validation = validateAgentPromptInput({
+    systemPrompt: input.systemPrompt,
+    model: input.model,
+  });
+  if (!validation.valid) throw new Error(validation.reason);
+  const current = await readPlatformInstancePromptBindings();
+  const previous = current.find(item => item.instanceId === input.instanceId);
+  const binding: PlatformInstancePromptBinding = {
+    instanceId: input.instanceId,
+    systemPrompt: input.systemPrompt,
+    model: input.model.trim(),
+    maxSteps: Math.max(1, Math.min(8, input.maxSteps)),
+    enabled: input.enabled,
+    version: (previous?.version ?? 0) + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  const next = [
+    ...current.filter(item => item.instanceId !== input.instanceId),
+    binding,
+  ];
+  await upsertWorkspaceSetting(
+    PLATFORM_GLOBAL_CONFIG_WORKSPACE_ID,
+    PLATFORM_INSTANCE_PROMPT_BINDINGS_KEY,
+    JSON.stringify(next)
+  );
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    workspaceId: input.workspaceId,
+    action: "platform_instance_prompt_binding_updated",
+    reason: input.reason,
+    summary: `Prompt global v${binding.version} pareado à instância ${input.instanceId}`,
+    before: previous ?? null,
+    after: { ...binding, automaticReplies: "not_activated" },
+  });
+  return binding;
 }
 
 export async function savePlatformGlobalAiPolicy(input: {
@@ -1047,13 +1128,27 @@ export async function sendPlatformSupportMessage(input: {
   actorUserId: number;
   contactId: number;
   content: string;
-  messageType?: "text" | "image" | "audio" | "video" | "document";
+  messageType?:
+    | "text"
+    | "image"
+    | "audio"
+    | "video"
+    | "document"
+    | "button"
+    | "list"
+    | "poll";
   metadata?: Record<string, unknown>;
   instanceIds?: readonly string[] | null;
 }) {
   const workspace = await ensurePlatformSupportWorkspace();
   const contact = await getContactById(workspace.id, input.contactId);
   if (!contact) throw new Error("Contato não encontrado no Inbox de suporte");
+  if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll")
+    validateInteractiveMessage({
+      messageType: input.messageType,
+      content: input.content,
+      metadata: input.metadata,
+    });
   const message = await sendManualMessage(
     workspace.id,
     input.contactId,

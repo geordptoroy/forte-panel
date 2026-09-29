@@ -3048,7 +3048,7 @@ function buildBusinessPrompt(profile: OnboardingProfile, version: number) {
   return `Você atende clientes da empresa ${profile.businessName || "da empresa configurada"}, do segmento ${profile.segment}. Este é o prompt operacional publicado v${version}.\n\nDescrição do negócio:\n${profile.description || "Não informada."}\n\nServiços, duração e preços:\n${profile.services || "Consultar a equipe antes de prometer preço ou prazo."}\n\nÁrea de atendimento:\n${profile.serviceArea || "Não informada."}\n\nHorários:\n${profile.businessHours || "Consultar disponibilidade real na agenda."}\n\nTom de voz:\n${profile.toneOfVoice || emptyOnboardingProfile.toneOfVoice}\n\nPalavras e condutas proibidas:\n${profile.forbiddenWords || "Não inventar informações, preços, horários ou confirmações."}\n\nPerguntas frequentes e respostas aprovadas:\n${profile.faq || "Não cadastradas."}\n\nPolítica de cancelamento, reagendamento e sinal:\n${profile.cancellationPolicy || "Escalar para atendimento humano quando não houver regra publicada."}\n\nSempre transferir para humano quando:\n${profile.humanHandoffRules || "o cliente pedir humano, houver reclamação, risco, dúvida fora do cadastro ou negociação especial."}\n\nCritérios de qualificação e follow-up:\n${profile.qualificationRules || "Identificar serviço, localização, urgência e próximo passo."}`;
 }
 
-async function getWorkspaceSetting(workspaceId: number, key: string) {
+export async function getWorkspaceSetting(workspaceId: number, key: string) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db
@@ -3065,7 +3065,7 @@ async function getWorkspaceSetting(workspaceId: number, key: string) {
   return result[0];
 }
 
-async function upsertWorkspaceSetting(
+export async function upsertWorkspaceSetting(
   workspaceId: number,
   key: string,
   value: string
@@ -5280,7 +5280,15 @@ export async function sendManualMessage(
   contactId: number,
   content: string,
   actorUserId?: number,
-  messageType: "text" | "image" | "audio" | "video" | "document" = "text",
+  messageType:
+    | "text"
+    | "image"
+    | "audio"
+    | "video"
+    | "document"
+    | "button"
+    | "list"
+    | "poll" = "text",
   messageMetadata?: Record<string, unknown>,
   instanceIds?: readonly string[] | null
 ) {
