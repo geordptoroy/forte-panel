@@ -5330,7 +5330,8 @@ export async function sendManualMessage(
     | "document"
     | "button"
     | "list"
-    | "poll" = "text",
+    | "poll"
+    | "carousel" = "text",
   messageMetadata?: Record<string, unknown>,
   instanceIds?: readonly string[] | null
 ) {
@@ -6206,6 +6207,7 @@ export async function ingestInboundWhatsApp(
       | "poll"
       | "list"
       | "button"
+      | "carousel"
       | "react";
     metadata?: Record<string, unknown>;
     fromMe?: boolean;

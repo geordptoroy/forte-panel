@@ -532,6 +532,41 @@ export class InstanceManager {
         buttons,
         footer: typeof metadata.footer === "string" ? metadata.footer : "",
       } as unknown as AnyMessageContent;
+    } else if (messageType === "list") {
+      const sections = Array.isArray(metadata.sections) ? metadata.sections : [];
+      if (sections.length < 1)
+        throw new Error("Mensagem de lista exige ao menos uma seção");
+      message = {
+        text: content,
+        title: typeof metadata.title === "string" ? metadata.title : "",
+        footer: typeof metadata.footer === "string" ? metadata.footer : "",
+        buttonText:
+          typeof metadata.buttonText === "string" ? metadata.buttonText : "Ver opções",
+        sections,
+      } as unknown as AnyMessageContent;
+    } else if (messageType === "poll") {
+      const payload =
+        metadata.payload && typeof metadata.payload === "object"
+          ? (metadata.payload as Record<string, unknown>)
+          : {};
+      const poll =
+        payload.poll && typeof payload.poll === "object"
+          ? (payload.poll as Record<string, unknown>)
+          : payload;
+      const name = typeof poll.name === "string" ? poll.name : content;
+      const values = Array.isArray(poll.values)
+        ? poll.values.filter((value): value is string => typeof value === "string")
+        : [];
+      if (!name.trim() || values.length < 2)
+        throw new Error("Enquete exige nome e ao menos duas opções");
+      message = {
+        poll: {
+          name,
+          values,
+          selectableCount:
+            typeof poll.selectableCount === "number" ? poll.selectableCount : 1,
+        },
+      } as unknown as AnyMessageContent;
     } else {
       throw new Error(`Tipo de mensagem não suportado: ${messageType}`);
     }
@@ -577,6 +612,20 @@ export class InstanceManager {
       echo.echoContent
     );
     try {
+      if ("interactiveMessage" in (payload as Record<string, unknown>)) {
+        const externalId = await this.socket.relayMessage(
+          jid,
+          payload as never,
+          { messageId: crypto.randomUUID() }
+        );
+        this.panelMessageEchoes.rememberSentMessage(
+          externalId,
+          jid,
+          echo.messageType,
+          echo.echoContent
+        );
+        return externalId;
+      }
       const result = await this.socket.sendMessage(jid, payload);
       const externalId = result?.key?.id ?? crypto.randomUUID();
       this.panelMessageEchoes.rememberSentMessage(

@@ -302,6 +302,13 @@
       "when": 1790687657478,
       "tag": "0043_baileys_only_provider_enum",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790690000000,
+      "tag": "0044_carousel_message_type",
+      "breakpoints": true
     }
   ]
 }

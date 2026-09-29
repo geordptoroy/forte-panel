@@ -1,11 +1,15 @@
 
 
-## 29. IA do Console Admin ativa por instância — 2026-09-29
+## 30. Interatividade nativa Baileys concluída — 2026-09-29
 
-A IA deixou de ficar apenas preparada. O worker agora lê o `instanceId` do evento `message.received`, localiza o prompt global pareado àquela instância e executa o mesmo `runNativeAgent`/provedor LLM já usado pelo Workspace. O vínculo controla `enabled`, modelo, limite de etapas e system prompt; a política global da plataforma continua sendo o gate superior.
+A camada de mensagens interativas foi fechada no código, sem depender de teste manual para descobrir a integração:
 
-Foi criada a aba **Prompts por instância** na sidebar do Console Admin, em `/platform-admin/prompts`. Ela permite ler e editar o prompt global padrão, selecionar uma instância WhatsApp, editar o prompt daquela conexão, ativar/pausar o agente e acompanhar a versão salva. O salvamento permanece auditado e versionado.
+- **Botões** continuam com 1–3 opções.
+- **Listas** agora são montadas no `instance-manager` com `sections`, `rows`, `buttonText`, título e rodapé.
+- **Enquetes** agora usam o formato nativo `{ poll: { name, values, selectableCount } }` do Baileys.
+- **Carousel** aceita o `InteractiveMessage.carouselMessage` nativo via relay do socket, com validação para impedir payload arbitrário sem a estrutura nativa.
+- O Inbox ganhou composer para botões, listas e enquetes; carousel pode ser enviado pelo editor JSON do `InteractiveMessage` documentado pelo Baileys.
+- O histórico reconhece carousel e o renderiza como mensagem estruturada.
+- Foi criada a migration `0044_carousel_message_type.sql`.
 
-O comportamento esperado para o smoke test é: configurar o prompt global, selecionar a instância conectada, salvar o vínculo como ativo, enviar uma mensagem recebida no WhatsApp e confirmar que o agente responde no Inbox/WhatsApp usando aquela instância. O agente respeita o controle de IA do contato e da conversa: se estiver pausado ou sob controle humano, não responde.
-
-Gates executados nesta fase: `pnpm check`, `pnpm build`, 12 testes focados de bootstrap, Console Admin e interatividade, e `git diff --check`.
+Validação automatizada: typecheck e build do Panel, 6 testes focados do backend, 64 testes do gateway Baileys, build TypeScript do gateway e `git diff --check`.

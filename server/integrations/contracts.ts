@@ -26,6 +26,7 @@ export type InboundMessageEvent = {
     | "poll"
     | "list"
     | "button"
+    | "carousel"
     | "react";
   metadata?: Record<string, unknown>;
   fromMe?: boolean;
@@ -48,6 +49,7 @@ export type OutboundMessageCommand = {
     | "poll"
     | "list"
     | "button"
+    | "carousel"
     | "album"
     | "react"
     | "event";

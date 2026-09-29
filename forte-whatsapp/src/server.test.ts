@@ -283,6 +283,23 @@ describe("Baileys gateway HTTP contract", () => {
       content: "data:application/pdf;base64,AA==",
       metadata: { mediaMimeType: "application/pdf" },
     },
+    {
+      messageType: "list",
+      content: "Escolha um serviço",
+      metadata: {
+        buttonText: "Ver serviços",
+        sections: [{ title: "Serviços", rows: [{ rowId: "1", title: "Corte" }] }],
+      },
+    },
+    {
+      messageType: "poll",
+      content: "Qual horário prefere?",
+      metadata: {
+        payload: {
+          poll: { name: "Qual horário prefere?", values: ["Manhã", "Tarde"] },
+        },
+      },
+    },
   ])(
     "accepts $messageType sends through the selected instance",
     async ({ messageType, content, metadata }) => {

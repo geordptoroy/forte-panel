@@ -1136,14 +1136,15 @@ export async function sendPlatformSupportMessage(input: {
     | "document"
     | "button"
     | "list"
-    | "poll";
+    | "poll"
+    | "carousel";
   metadata?: Record<string, unknown>;
   instanceIds?: readonly string[] | null;
 }) {
   const workspace = await ensurePlatformSupportWorkspace();
   const contact = await getContactById(workspace.id, input.contactId);
   if (!contact) throw new Error("Contato não encontrado no Inbox de suporte");
-  if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll")
+  if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll" || input.messageType === "carousel")
     validateInteractiveMessage({
       messageType: input.messageType,
       content: input.content,

@@ -535,6 +535,7 @@ function MessageBubble({ message }: { message: Message }) {
   const structuredTypes = [
     "list",
     "poll",
+    "carousel",
     "location",
     "contact",
     "react",
@@ -900,6 +901,10 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[] | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [interactiveType, setInteractiveType] = useState<"text" | "button" | "list" | "poll" | "carousel">("text");
+  const [interactiveOptions, setInteractiveOptions] = useState("Sim\nNão");
+  const [interactiveButtonText, setInteractiveButtonText] = useState("Ver opções");
+  const [carouselPayload, setCarouselPayload] = useState('{"cards":[]}');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingError, setRecordingError] = useState("");
@@ -1048,6 +1053,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   const sendMutation = inbox.sendMessage.useMutation({
     onSuccess: async () => {
       setDraft("");
+      setInteractiveType("text");
+      setInteractiveOptions("Sim\nNão");
       clearAttachment();
       await refresh();
     },
@@ -1096,10 +1103,48 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   const send = () => {
     if (!draft.trim() && !attachment) return;
     const currentAttachment = attachment;
+    const options = interactiveOptions
+      .split("\n")
+      .map(option => option.trim())
+      .filter(Boolean);
+    if (interactiveType === "carousel") {
+      try {
+        const parsed = JSON.parse(carouselPayload) as Record<string, unknown>;
+        if (!Array.isArray(parsed.cards) || parsed.cards.length === 0)
+          throw new Error("O carousel precisa de pelo menos um card");
+        sendMutation.mutate({
+          contactId: selectedNumericId,
+          content: draft.trim() || "Carrossel",
+          messageType: "carousel",
+          metadata: { payload: { interactiveMessage: { carouselMessage: parsed } } },
+          instanceIds: selectedInstanceIds,
+        });
+        return;
+      } catch (error) {
+        setRecordingError(error instanceof Error ? error.message : "JSON de carousel inválido");
+        return;
+      }
+    }
+    const interactiveMetadata =
+      interactiveType === "button"
+        ? {
+            buttons: options.slice(0, 3).map((option, index) => ({
+              buttonId: `option-${index + 1}`,
+              buttonText: { displayText: option },
+            })),
+          }
+        : interactiveType === "list"
+          ? {
+              buttonText: interactiveButtonText,
+              sections: [{ title: "Opções", rows: options.slice(0, 10).map((option, index) => ({ rowId: `option-${index + 1}`, title: option })) }],
+            }
+          : interactiveType === "poll"
+            ? { payload: { poll: { name: draft.trim(), values: options.slice(0, 12), selectableCount: 1 } } }
+            : undefined;
     sendMutation.mutate({
       contactId: selectedNumericId,
       content: currentAttachment?.dataUrl ?? draft.trim(),
-      messageType: currentAttachment?.type ?? "text",
+      messageType: currentAttachment?.type ?? interactiveType,
       metadata: currentAttachment
         ? {
             mediaData: currentAttachment.dataUrl,
@@ -1107,7 +1152,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             fileName: currentAttachment.name,
             ...(draft.trim() ? { caption: draft.trim() } : {}),
           }
-        : undefined,
+        : interactiveMetadata,
       instanceIds: selectedInstanceIds,
     });
   };
@@ -1393,6 +1438,35 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               Não foi possível enviar. O texto/anexo foi mantido para tentar novamente.
             </div>
           )}
+          {interactiveType !== "text" && !attachment && (
+            <div className="chat-interactive-editor">
+              <label>
+                <span>Mensagem interativa</span>
+                <select className="select-control" value={interactiveType} onChange={event => setInteractiveType(event.target.value as typeof interactiveType)}>
+                  <option value="button">Botões</option>
+                  <option value="list">Lista</option>
+                  <option value="poll">Enquete</option>
+                  <option value="carousel">Carousel (JSON Baileys)</option>
+                </select>
+              </label>
+              {interactiveType === "carousel" && (
+                <label>
+                  <span>InteractiveMessage.carouselMessage</span>
+                  <textarea className="textarea-control" value={carouselPayload} onChange={event => setCarouselPayload(event.target.value)} rows={6} />
+                </label>
+              )}
+              {interactiveType !== "carousel" && <label>
+                <span>Opções, uma por linha</span>
+                <textarea className="textarea-control" value={interactiveOptions} onChange={event => setInteractiveOptions(event.target.value)} rows={3} />
+              </label>}
+              {interactiveType === "list" && (
+                <label>
+                  <span>Texto do botão</span>
+                  <input className="input-control" value={interactiveButtonText} onChange={event => setInteractiveButtonText(event.target.value)} />
+                </label>
+              )}
+            </div>
+          )}
           <div className="chat-composer">
             <input
               ref={fileInputRef}
@@ -1442,6 +1516,16 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               onClick={() => (isRecording ? stopRecording() : void startRecording())}
             >
               {isRecording ? <Square size={14} /> : <Mic size={16} />}
+            </button>
+            <button
+              className={`icon-button ${interactiveType !== "text" ? "is-active" : ""}`}
+              type="button"
+              aria-label="Mensagem interativa"
+              title="Enviar botões, lista ou enquete"
+              disabled={isRecording || sendMutation.isPending || Boolean(attachment)}
+              onClick={() => setInteractiveType(current => current === "text" ? "button" : "text")}
+            >
+              <ClipboardList size={16} />
             </button>
             <input
               className="input-control"

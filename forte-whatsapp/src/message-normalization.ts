@@ -12,6 +12,7 @@ export type BaileysMessageKind =
   | "poll"
   | "list"
   | "button"
+  | "carousel"
   | "react";
 
 export function shouldForwardLiveUpsert(
@@ -68,6 +69,7 @@ export function normalizeBaileysMessage(value: unknown): {
       body.listResponseMessage
   );
   const reaction = record(body.reactionMessage);
+  const carousel = record(body.interactiveMessage?.carouselMessage);
 
   const messageType: BaileysMessageKind = body.imageMessage
     ? "image"
@@ -92,9 +94,11 @@ export function normalizeBaileysMessage(value: unknown): {
                         body.buttonsResponseMessage ||
                         body.listResponseMessage
                       ? "button"
-                      : body.reactionMessage
-                        ? "react"
-                        : "text";
+              : carousel.cards
+                ? "carousel"
+                : body.reactionMessage
+                  ? "react"
+                  : "text";
 
   const caption =
     image.caption ?? video.caption ?? document.caption ?? button.selectedDisplayText;
@@ -123,6 +127,7 @@ export function normalizeBaileysMessage(value: unknown): {
     poll: "[enquete recebida]",
     list: "[lista recebida]",
     button: "[resposta recebida]",
+    carousel: "[carrossel recebido]",
     react: "[reação recebida]",
   };
 
@@ -173,9 +178,11 @@ export function normalizeBaileysOutgoingMessage(value: unknown): {
                         body.buttonsResponseMessage ||
                         body.listResponseMessage
                       ? "button"
-                      : body.react || body.reactionMessage
-                        ? "react"
-                        : "text";
+                      : body.interactiveMessage?.carouselMessage
+                        ? "carousel"
+                        : body.react || body.reactionMessage
+                          ? "react"
+                          : "text";
   const media = record(
     body[messageType] ??
       body[`${messageType}Message`] ??

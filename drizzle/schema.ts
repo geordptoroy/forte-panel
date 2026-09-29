@@ -136,6 +136,7 @@ export const messageTypeEnum = pgEnum("message_type", [
   "contact",
   "poll",
   "list",
+  "carousel",
   "react",
   "album",
   "event",
