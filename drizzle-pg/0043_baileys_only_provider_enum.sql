@@ -87,10 +87,10 @@ ALTER TABLE "messages"
 --> statement-breakpoint
 CREATE UNIQUE INDEX "whatsapp_instances_baileys_instance_global_unique_idx"
   ON "whatsappInstances" ("instanceId")
-  WHERE "provider"::text = 'baileys';
+  WHERE "provider" = 'baileys'::"public"."whatsapp_provider";
 --> statement-breakpoint
 CREATE UNIQUE INDEX "whatsapp_instances_baileys_workspace_default_unique_idx"
   ON "whatsappInstances" ("workspaceId")
-  WHERE "provider"::text = 'baileys'
+  WHERE "provider" = 'baileys'::"public"."whatsapp_provider"
     AND "active" = 1
     AND "isDefault" = 1;
