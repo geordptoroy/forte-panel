@@ -1,4 +1,6 @@
-# Fase 1 — Segurança e contenção
+# Fase 1 — Segurança e contenção (histórico)
+
+> **Nota de continuidade:** as seções de PAPI/Redis e os comandos de Compose deste documento são históricos e não descrevem a stack atual. A operação vigente usa Baileys pelo gateway `forte-whatsapp`; consulte [`docs/BAILEYS-INTEGRATION.md`](./docs/BAILEYS-INTEGRATION.md) e [`infra/VPS_STACK.md`](./infra/VPS_STACK.md) antes de operar.
 
 **Implementada em:** 2026-09-25  
 **Projeto:** Forte Panel  

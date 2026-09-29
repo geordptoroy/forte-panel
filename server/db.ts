@@ -62,8 +62,8 @@ import {
 } from "../drizzle/schema";
 import type { WhatsappProvider } from "./integrations/contracts";
 import {
+  OPERATIONAL_WHATSAPP_PROVIDER,
   assertOperationalWhatsappProvider,
-  type OperationalWhatsappProvider,
 } from "./integrations/baileys-policy";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
@@ -1831,458 +1831,6 @@ export async function findBaileysInstanceOwner(instanceId: string) {
     workspaceId: instance.workspaceId,
     active: instance.active === 1 && Boolean(workspace),
   };
-}
-
-export type PapiInstanceSummary = {
-  id: number;
-  workspaceId: number;
-  instanceId: string;
-  name: string;
-  deployment: string;
-  status: string;
-  active: boolean;
-  isDefault: boolean;
-  apiKeyMasked: string;
-  webhookId: string | null;
-  lastHealthError: string | null;
-  lastSeenAt: Date | null;
-};
-
-function summarizePapiInstance(
-  instance: typeof whatsappInstances.$inferSelect
-): PapiInstanceSummary {
-  return {
-    id: instance.id,
-    workspaceId: instance.workspaceId,
-    instanceId: instance.instanceId,
-    name: instance.name,
-    deployment: instance.deployment,
-    status: instance.status,
-    active: instance.active === 1,
-    isDefault: instance.isDefault === 1,
-    apiKeyMasked: maskProviderSecret(instance.encryptedApiKey ?? ""),
-    webhookId: instance.webhookId,
-    lastHealthError: instance.lastHealthError,
-    lastSeenAt: instance.lastSeenAt,
-  };
-}
-
-export async function listPapiInstances(workspaceId: number) {
-  const db = await getDb();
-  const workspace = await getActiveWorkspaceById(workspaceId);
-  if (!db || !workspace) return [];
-  const existingRows = await db
-    .select()
-    .from(whatsappInstances)
-    .where(eq(whatsappInstances.workspaceId, workspace.id))
-    .orderBy(asc(whatsappInstances.id));
-  const rows = await db
-    .select()
-    .from(whatsappInstances)
-    .where(eq(whatsappInstances.workspaceId, workspace.id))
-    .orderBy(asc(whatsappInstances.id));
-  return rows.map(summarizePapiInstance);
-}
-
-export async function upsertPapiInstance(
-  workspaceId: number,
-  input: {
-    instanceId: string;
-    name: string;
-    deployment?: "self_hosted" | "cloud";
-    apiKey?: string | null;
-    webhookId?: string | null;
-    webhookSecret?: string | null;
-    status?: string;
-    active?: boolean;
-  }
-) {
-  const db = await getDb();
-  const workspace = await getActiveWorkspaceById(workspaceId);
-  if (!db || !workspace) throw new Error("Workspace unavailable");
-  const instanceId = input.instanceId.trim();
-  if (!instanceId) throw new Error("instanceId é obrigatório");
-  const existing = await db
-    .select()
-    .from(whatsappInstances)
-    .where(
-      and(
-        eq(whatsappInstances.workspaceId, workspace.id),
-        eq(whatsappInstances.instanceId, instanceId)
-      )
-    )
-    .limit(1);
-  const values = {
-    workspaceId: workspace.id,
-    provider: "papi" as const,
-    deployment: input.deployment ?? "self_hosted",
-    instanceId,
-    name: input.name.trim() || instanceId,
-    ...(input.apiKey !== undefined
-      ? {
-          encryptedApiKey: input.apiKey
-            ? encryptProviderSecret(input.apiKey)
-            : null,
-        }
-      : {}),
-    ...(input.webhookId !== undefined ? { webhookId: input.webhookId } : {}),
-    ...(input.webhookSecret !== undefined
-      ? {
-          encryptedWebhookSecret: input.webhookSecret
-            ? encryptProviderSecret(input.webhookSecret)
-            : null,
-        }
-      : {}),
-    ...(input.status ? { status: input.status } : {}),
-    ...(input.active !== undefined ? { active: input.active ? 1 : 0 } : {}),
-    updatedAt: new Date(),
-  };
-  if (existing[0]) {
-    const updated = await db
-      .update(whatsappInstances)
-      .set(values)
-      .where(eq(whatsappInstances.id, existing[0].id))
-      .returning();
-    return summarizePapiInstance(updated[0]);
-  }
-  const created = await db
-    .insert(whatsappInstances)
-    .values({ ...values, isDefault: 0 })
-    .returning();
-  return summarizePapiInstance(created[0]);
-}
-
-export async function getPapiInstanceSecret(
-  workspaceId: number,
-  instanceId: string
-) {
-  const db = await getDb();
-  if (!db) return "";
-  const row = await db
-    .select({ encryptedApiKey: whatsappInstances.encryptedApiKey })
-    .from(whatsappInstances)
-    .where(
-      and(
-        eq(whatsappInstances.workspaceId, workspaceId),
-        eq(whatsappInstances.instanceId, instanceId),
-        eq(whatsappInstances.active, 1)
-      )
-    )
-    .limit(1);
-  return decryptProviderSecret(row[0]?.encryptedApiKey ?? "");
-}
-
-export async function updatePapiInstanceApiKey(
-  workspaceId: number,
-  instanceId: string,
-  apiKey: string
-) {
-  const db = await getDb();
-  const workspace = await getActiveWorkspaceById(workspaceId);
-  if (!db || !workspace) throw new Error("Workspace unavailable");
-  const updated = await db
-    .update(whatsappInstances)
-    .set({
-      encryptedApiKey: encryptProviderSecret(apiKey),
-      status: "configured",
-      lastHealthError: null,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(whatsappInstances.workspaceId, workspace.id),
-        eq(whatsappInstances.instanceId, instanceId),
-        eq(whatsappInstances.active, 1)
-      )
-    )
-    .returning();
-  if (!updated[0]) throw new Error("Instância PAPI não encontrada ou inativa");
-  return summarizePapiInstance(updated[0]);
-}
-
-export async function setDefaultPapiInstance(workspaceId: number, id: number) {
-  const db = await getDb();
-  const workspace = await getActiveWorkspaceById(workspaceId);
-  if (!db || !workspace) throw new Error("Workspace unavailable");
-  return db.transaction(async tx => {
-    await tx
-      .update(whatsappInstances)
-      .set({ isDefault: 0, updatedAt: new Date() })
-      .where(eq(whatsappInstances.workspaceId, workspace.id));
-    const selected = await tx
-      .update(whatsappInstances)
-      .set({ isDefault: 1, updatedAt: new Date() })
-      .where(
-        and(
-          eq(whatsappInstances.id, id),
-          eq(whatsappInstances.workspaceId, workspace.id),
-          eq(whatsappInstances.active, 1)
-        )
-      )
-      .returning();
-    if (!selected[0])
-      throw new Error("Instância PAPI não encontrada ou inativa");
-    if (selected[0].webhookId) {
-      await tx
-        .update(workspaceSettings)
-        .set({ value: selected[0].webhookId, updatedAt: new Date() })
-        .where(
-          and(
-            eq(workspaceSettings.workspaceId, workspace.id),
-            eq(workspaceSettings.key, PAPI_DEFAULT_WEBHOOK_SETTING)
-          )
-        );
-    }
-    return summarizePapiInstance(selected[0]);
-  });
-}
-
-export async function getDefaultWhatsappProvider(
-  workspaceId: number
-): Promise<OperationalWhatsappProvider> {
-  const db = await getDb();
-  if (!db) return "baileys";
-  const setting = await db
-    .select()
-    .from(workspaceSettings)
-    .where(
-      and(
-        eq(workspaceSettings.workspaceId, workspaceId),
-        eq(workspaceSettings.key, "default_whatsapp_provider")
-      )
-    )
-    .limit(1);
-  assertOperationalWhatsappProvider(setting[0]?.value ?? "baileys");
-  return "baileys";
-}
-
-export async function setDefaultWhatsappProvider(
-  workspaceId: number,
-  provider: OperationalWhatsappProvider
-) {
-  assertOperationalWhatsappProvider(provider);
-  const db = await getDb();
-  if (!db) throw new Error("Database unavailable");
-  const workspace = await getActiveWorkspaceById(workspaceId);
-  if (!workspace) throw new Error("Workspace unavailable");
-  const existing = await db
-    .select()
-    .from(workspaceSettings)
-    .where(
-      and(
-        eq(workspaceSettings.workspaceId, workspace.id),
-        eq(workspaceSettings.key, "default_whatsapp_provider")
-      )
-    )
-    .limit(1);
-  if (existing[0]) {
-    await db
-      .update(workspaceSettings)
-      .set({ value: provider, updatedAt: new Date() })
-      .where(eq(workspaceSettings.id, existing[0].id));
-  } else {
-    await db.insert(workspaceSettings).values({
-      workspaceId: workspace.id,
-      key: "default_whatsapp_provider",
-      value: provider,
-    });
-  }
-  return provider;
-}
-
-export type PapiWebhookConfig = {
-  id: string;
-  name: string;
-  instanceId: string;
-  secret: string;
-  createdAt: string;
-  legacy?: boolean;
-};
-
-export type PapiIntegrationConfig = {
-  webhooks: Array<
-    Omit<PapiWebhookConfig, "secret"> & {
-      secretMasked: string;
-      webhookUrl: string;
-    }
-  >;
-  defaultWebhookId: string | null;
-};
-
-const PAPI_WEBHOOKS_SETTING = "papi_webhooks";
-const PAPI_DEFAULT_WEBHOOK_SETTING = "papi_default_webhook";
-
-function papiWebhookBaseUrl() {
-  const configured = process.env.PAPI_WEBHOOK_URL?.trim();
-  if (configured) return configured.replace(/\/$/, "");
-  const publicUrl = process.env.PANEL_PUBLIC_URL?.trim();
-  if (publicUrl)
-    return `${publicUrl.replace(/\/$/, "")}/api/v1/webhooks/providers/papi`;
-  return "http://forte-panel:3000/api/v1/webhooks/providers/papi";
-}
-
-async function getStoredPapiWebhooks(workspaceId: number) {
-  const workspace = await getActiveWorkspaceById(workspaceId);
-  if (!workspace)
-    return { workspace: undefined, webhooks: [] as PapiWebhookConfig[] };
-  const setting = await getWorkspaceSetting(
-    workspace.id,
-    PAPI_WEBHOOKS_SETTING
-  );
-  let webhooks: PapiWebhookConfig[] = [];
-  if (setting?.value) {
-    try {
-      const stored = JSON.parse(setting.value) as PapiWebhookConfig[];
-      webhooks = stored.map(webhook => ({
-        ...webhook,
-        secret: decryptProviderSecret(webhook.secret),
-      }));
-    } catch {
-      webhooks = [];
-    }
-  }
-  return { workspace, webhooks };
-}
-
-function serializePapiWebhooks(webhooks: PapiWebhookConfig[]) {
-  return webhooks.map(webhook => ({
-    ...webhook,
-    secret: encryptProviderSecret(webhook.secret),
-  }));
-}
-
-function withPapiWebhookUrl(webhook: PapiWebhookConfig, includeSecret = false) {
-  const base = papiWebhookBaseUrl();
-  const { secret, ...safeWebhook } = webhook;
-  return {
-    ...safeWebhook,
-    ...(includeSecret ? { secret } : {}),
-    secretMasked: secret
-      ? `${secret.slice(0, 4)}…${secret.slice(-4)}`
-      : "não configurado",
-    webhookUrl: webhook.legacy
-      ? base
-      : `${base}/${encodeURIComponent(webhook.id)}`,
-  };
-}
-
-export async function getPapiIntegrationConfig(
-  workspaceId: number
-): Promise<PapiIntegrationConfig> {
-  const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
-  const setting = workspace
-    ? await getWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING)
-    : undefined;
-  const defaultWebhookId = setting?.value || (webhooks[0]?.id ?? null);
-  return {
-    webhooks: webhooks.map(webhook => withPapiWebhookUrl(webhook)),
-    defaultWebhookId,
-  };
-}
-
-export async function getPapiWebhookById(id: string, workspaceId: number) {
-  const { webhooks } = await getStoredPapiWebhooks(workspaceId);
-  return webhooks.find(webhook => webhook.id === id);
-}
-
-export async function getDefaultPapiWebhook(workspaceId: number) {
-  const config = await getPapiIntegrationConfig(workspaceId);
-  return (
-    config.webhooks.find(webhook => webhook.id === config.defaultWebhookId) ??
-    config.webhooks[0]
-  );
-}
-
-export async function createPapiWebhook(
-  workspaceId: number,
-  input: { name: string; instanceId: string }
-) {
-  const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
-  if (!workspace) throw new Error("Workspace unavailable");
-  const webhook: PapiWebhookConfig = {
-    id: crypto.randomUUID(),
-    name: input.name.trim(),
-    instanceId: input.instanceId.trim(),
-    secret: crypto.randomBytes(24).toString("hex"),
-    createdAt: new Date().toISOString(),
-  };
-  await upsertWorkspaceSetting(
-    workspace.id,
-    PAPI_WEBHOOKS_SETTING,
-    JSON.stringify(
-      serializePapiWebhooks([...webhooks.filter(item => !item.legacy), webhook])
-    )
-  );
-  if (webhooks.length === 0 || webhooks.every(item => item.legacy))
-    await upsertWorkspaceSetting(
-      workspace.id,
-      PAPI_DEFAULT_WEBHOOK_SETTING,
-      webhook.id
-    );
-  await upsertPapiInstance(workspaceId, {
-    instanceId: webhook.instanceId,
-    name: webhook.name,
-    deployment: ENV.papiDeployment as "self_hosted" | "cloud",
-    apiKey:
-      ENV.papiDeployment === "self_hosted"
-        ? (process.env.PAPI_API_KEY ?? null)
-        : undefined,
-    webhookId: webhook.id,
-    webhookSecret: webhook.secret,
-    status: "configured",
-  });
-  return withPapiWebhookUrl(webhook, true);
-}
-
-export async function setDefaultPapiWebhook(workspaceId: number, id: string) {
-  const db = await getDb();
-  const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
-  if (!db || !workspace || !webhooks.some(webhook => webhook.id === id))
-    throw new Error("Webhook PAPI não encontrado");
-  await upsertWorkspaceSetting(workspace.id, PAPI_DEFAULT_WEBHOOK_SETTING, id);
-  await db
-    .update(whatsappInstances)
-    .set({ isDefault: 0, updatedAt: new Date() })
-    .where(eq(whatsappInstances.workspaceId, workspace.id));
-  await db
-    .update(whatsappInstances)
-    .set({ isDefault: 1, updatedAt: new Date() })
-    .where(
-      and(
-        eq(whatsappInstances.workspaceId, workspace.id),
-        eq(whatsappInstances.webhookId, id),
-        eq(whatsappInstances.active, 1)
-      )
-    );
-  return id;
-}
-
-export async function deletePapiWebhook(workspaceId: number, id: string) {
-  const db = await getDb();
-  const { workspace, webhooks } = await getStoredPapiWebhooks(workspaceId);
-  if (!db || !workspace) throw new Error("Workspace unavailable");
-  const next = webhooks.filter(webhook => webhook.id !== id && !webhook.legacy);
-  await upsertWorkspaceSetting(
-    workspace.id,
-    PAPI_WEBHOOKS_SETTING,
-    JSON.stringify(serializePapiWebhooks(next))
-  );
-  await db
-    .update(whatsappInstances)
-    .set({ active: 0, isDefault: 0, updatedAt: new Date() })
-    .where(
-      and(
-        eq(whatsappInstances.workspaceId, workspace.id),
-        eq(whatsappInstances.webhookId, id)
-      )
-    );
-  const config = await getPapiIntegrationConfig(workspaceId);
-  if (config.defaultWebhookId === id)
-    await upsertWorkspaceSetting(
-      workspace.id,
-      PAPI_DEFAULT_WEBHOOK_SETTING,
-      next[0]?.id ?? ""
-    );
 }
 
 export type OnboardingProfile = {
@@ -5757,10 +5305,8 @@ export async function sendManualMessage(
       )
       .orderBy(desc(messages.createdAt), desc(messages.id))
       .limit(1);
-  const defaultProvider = await getDefaultWhatsappProvider(workspaceId);
   const route = resolveReplyRoute({
     latestInbound: latestInbound[0],
-    defaultProvider,
     defaultInstanceId: undefined,
   });
   if (
@@ -6875,7 +6421,7 @@ export async function ingestInboundWhatsApp(
       provider: assertOperationalWhatsappProvider(
         typeof metadata?.provider === "string"
           ? metadata.provider
-          : await getDefaultWhatsappProvider(workspace.id)
+          : OPERATIONAL_WHATSAPP_PROVIDER
       ),
       metadata,
       status: "received",
@@ -7070,7 +6616,7 @@ export async function queueOutboundMessage(
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const selectedProvider = assertOperationalWhatsappProvider(
-    provider ?? (await getDefaultWhatsappProvider(workspaceId))
+    provider ?? OPERATIONAL_WHATSAPP_PROVIDER
   );
   const contact = await getContactById(workspaceId, contactId);
   if (!contact) throw new Error("Contact not found");
@@ -7205,7 +6751,10 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
       .returning({ id: messages.id });
     if (claimed.length === 0) continue;
     try {
-      const adapter = getWhatsappAdapter(item.message.provider);
+      const selectedProvider = assertOperationalWhatsappProvider(
+        item.message.provider
+      );
+      const adapter = getWhatsappAdapter(selectedProvider);
       const instanceId =
         typeof item.message.metadata?.instanceId === "string"
           ? item.message.metadata.instanceId
@@ -7217,7 +6766,7 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
         messageType: item.message.messageType,
         metadata: item.message.metadata ?? undefined,
         instanceId,
-        provider: item.message.provider,
+        provider: selectedProvider,
       });
       await db
         .update(messages)

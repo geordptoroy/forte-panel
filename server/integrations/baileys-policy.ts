@@ -1,5 +1,3 @@
-import type { WhatsappProvider } from "./contracts";
-
 /**
  * Baileys is the only WhatsApp provider supported by the current product.
  * Legacy provider values may remain in historical rows during migration, but
@@ -23,10 +21,4 @@ export function assertOperationalWhatsappProvider(
     );
   }
   return OPERATIONAL_WHATSAPP_PROVIDER;
-}
-
-export function assertStoredWhatsappProvider(
-  provider: WhatsappProvider
-): OperationalWhatsappProvider {
-  return assertOperationalWhatsappProvider(provider);
 }

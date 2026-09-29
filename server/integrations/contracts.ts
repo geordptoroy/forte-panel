@@ -1,10 +1,5 @@
-export type IntegrationName =
-  | "papi"
-  | "baileys"
-  | "meta_cloud_api"
-  | "qdrant"
-  | "localai";
-export type WhatsappProvider = "papi" | "baileys" | "meta_cloud_api";
+export type IntegrationName = "baileys" | "qdrant" | "localai";
+export type WhatsappProvider = "baileys";
 
 export type IntegrationHealth = {
   name: IntegrationName;

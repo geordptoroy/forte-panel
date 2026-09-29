@@ -9,7 +9,6 @@ describe("reply routing", () => {
           provider: "baileys",
           metadata: { instanceId: "instance-origin", jid: "5511999999999@lid" },
         },
-        defaultProvider: "baileys",
         defaultInstanceId: "instance-default",
       })
     ).toEqual({
@@ -27,7 +26,6 @@ describe("reply routing", () => {
           provider: "baileys",
           metadata: { instanceId: "baileys-origin" },
         },
-        defaultProvider: "baileys",
         defaultInstanceId: "baileys-default",
       })
     ).toEqual({
@@ -37,14 +35,13 @@ describe("reply routing", () => {
     });
   });
 
-  it("uses the default only when a Baileys message has no origin metadata", () => {
+  it("uses the explicitly selected instance when a legacy message has no origin metadata", () => {
     expect(
       resolveReplyRoute({
         latestInbound: {
           provider: "baileys",
           metadata: { jid: "5511@s.whatsapp.net" },
         },
-        defaultProvider: "baileys",
         defaultInstanceId: "baileys-default",
       })
     ).toEqual({
@@ -53,5 +50,16 @@ describe("reply routing", () => {
       jid: "5511@s.whatsapp.net",
       usedLegacyFallback: true,
     });
+  });
+
+  it("fails closed for a historical message recorded with a removed provider", () => {
+    expect(() =>
+      resolveReplyRoute({
+        latestInbound: {
+          provider: "papi",
+          metadata: { instanceId: "legacy-instance" },
+        },
+      })
+    ).toThrow("único provedor");
   });
 });

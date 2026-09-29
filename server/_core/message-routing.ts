@@ -1,5 +1,5 @@
-import type { WhatsappProvider } from "../integrations/contracts";
 import {
+  OPERATIONAL_WHATSAPP_PROVIDER,
   assertOperationalWhatsappProvider,
   type OperationalWhatsappProvider,
 } from "../integrations/baileys-policy";
@@ -14,21 +14,20 @@ export type ReplyRoute = {
 };
 
 /**
- * Replies follow the provider and instance recorded on the latest inbound
- * message. The workspace default is only a legacy fallback when old messages
- * have no routing metadata at all.
+ * Replies follow the instance recorded on the latest inbound message. Legacy
+ * messages without routing metadata may use an explicitly selected instance;
+ * no provider or global channel default is consulted.
  */
 export function resolveReplyRoute(input: {
   latestInbound?: {
-    provider?: WhatsappProvider | null;
+    provider?: string | null;
     metadata?: MessageMetadata;
   };
-  defaultProvider: WhatsappProvider;
   defaultInstanceId?: string;
 }): ReplyRoute {
   const latest = input.latestInbound;
   const provider = assertOperationalWhatsappProvider(
-    latest?.provider ?? input.defaultProvider
+    latest?.provider ?? OPERATIONAL_WHATSAPP_PROVIDER
   );
   const instanceId =
     typeof latest?.metadata?.instanceId === "string" &&

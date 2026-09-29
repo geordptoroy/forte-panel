@@ -8,7 +8,7 @@
 | `forte-panel-worker` | Fila de mensagens, eventos internos e agente nativo |
 | `postgres_panel` | Dados de negócio do Forte Panel |
 | `redis_panel` | Cache/coordenação quando habilitado |
-| Provider WhatsApp (PAPI ou Meta Cloud API) | Transporte de mensagens e webhooks |
+| `forte-whatsapp` / Baileys | Transporte de mensagens e webhooks assinado |
 
 O backend não acessa banco de dados interno do provider. Persistência do CRM, agenda, equipe, configurações e histórico pertence ao PostgreSQL do Panel.
 

@@ -1,6 +1,6 @@
 # Forte Panel — Operação do beta e continuidade técnica
 
-**Atualizado em:** 26/09/2026 10:52 (America/Sao_Paulo)  
+**Atualizado em:** 29/09/2026 (America/Sao_Paulo)
 **Repositório:** `geordptoroy/forte-panel`  
 **Objetivo:** servir como referência única para executar o beta com até 10 empresas/testadores sem misturar tenants, perder mensagens ou expor credenciais.
 
@@ -22,7 +22,7 @@ Variáveis `FORTE_WORKSPACE_*_PER_MINUTE` podem sobrescrever os limites do deplo
 
 ### Chaves de integração
 
-As chaves PAPI/Meta pertencem ao workspace ou à instância do workspace, não ao usuário final. Elas são armazenadas criptografadas quando persistidas e aparecem somente mascaradas nas respostas de configuração. O segredo de webhook é mostrado apenas no momento de criação/provisionamento.
+As credenciais internas do gateway Baileys pertencem ao deployment/serviço, não ao usuário final. Elas nunca são retornadas ao frontend. O webhook interno usa segredo/assinatura e a instância é validada pelo workspace antes da ingestão.
 
 ## 2. Isolamento multi-tenant
 
@@ -49,9 +49,9 @@ As chaves compostas de deduplicação usam workspace:
 3. O worker processa `message.received`.
 4. A execução de IA consome `aiRequests` do workspace.
 5. A resposta da IA é enfileirada como mensagem outbound.
-6. Antes de chamar PAPI/Meta, o worker consome `outboundMessages` do workspace.
+6. Antes de chamar o gateway Baileys, o worker consome `outboundMessages` do workspace.
 7. Se a cota estiver cheia, a mensagem continua `queued`, sem incrementar tentativas, e será tentada na próxima janela.
-8. PAPI/Meta recebe uma chave de idempotência baseada no ID da mensagem.
+8. O gateway Baileys recebe uma chave de idempotência baseada no ID da mensagem; o ledger de efeito externo ainda é um bloqueador de release.
 
 Mensagens manuais do Inbox também consomem a cota individual do operador no momento do envio e a cota do workspace no worker.
 
@@ -93,7 +93,7 @@ Depois da aplicação, verificar que as três tabelas/constraints existem e exec
 - [ ] Definir `NODE_ENV=production` no deployment.
 - [ ] Definir `JWT_SECRET` forte e exclusivo do deployment.
 - [ ] Definir `FORTE_API_KEY` para integrações REST.
-- [ ] Definir credenciais PAPI/Meta somente no servidor ou por workspace.
+- [ ] Tornar obrigatória e persistente a chave de criptografia do auth state Baileys em staging/produção.
 - [ ] Executar migrations 0016–0018.
 - [ ] Criar dois workspaces de teste e confirmar que nenhum contato/mensagem/configuração cruza tenant.
 - [ ] Criar até 10 memberships beta, com roles mínimas necessárias.
@@ -130,8 +130,8 @@ No estado atual, os comandos passam no sandbox. Parte dos testes de isolamento �
 ## 9. Últimos blocos entregues
 
 - CRM/Inbox tenant-aware.
-- Onboarding, runtime do agente e PAPI tenant-aware.
-- Criptografia de segredos PAPI/webhook e bloqueio de fallback previsível em produção.
+- Onboarding e runtime do agente tenant-aware.
+- Gateway Baileys multi-instância, webhook assinado e bloqueio de fallback previsível em produção.
 - Idempotência, eventos, auditoria e deduplicação tenant-aware.
 - Quotas por workspace e operador.
 - Painel operacional de consumo em Integrações.
@@ -195,7 +195,7 @@ CONFIRM_RESTORE=YES RESTORE_SESSION_DIR=/tmp/forte-restore scripts/backup-restor
 
 Para remover data URLs da persistência inbound, configure `FORTE_MEDIA_PRIVATE_STORAGE_ENABLED=true`, `FORTE_MEDIA_MAX_BYTES` e o storage privado do ambiente. O Panel grava a mídia em `workspaces/<workspaceId>/whatsapp/`, mantém somente a referência e resolve URL assinada para o agente. A ativação deve ser feita primeiro em staging.
 
-O REST também aceita tipos estruturados Baileys (`list`, `poll`, `location`, `contact`, `react`, `sticker`, `album`, `event`) com `metadata.payload`; a Meta Cloud API continua limitada a texto neste worker.
+O REST também aceita tipos estruturados Baileys (`list`, `poll`, `location`, `contact`, `react`, `sticker`, `album`, `event`) com `metadata.payload`; o worker não possui fallback para outro provider.
 
 
 ## 19. Segredos, prompt e reset

@@ -1,4 +1,6 @@
-# Atualização da stack — PAPI + Forte Panel com agente nativo
+# Atualização histórica da stack — provider legado
+
+> **Não usar este arquivo para operar a stack atual.** Ele preserva o procedimento de uma versão anterior baseada em PAPI. Para o estado vigente, use [`infra/LOCAL_TEST.md`](./infra/LOCAL_TEST.md), [`infra/VPS_STACK.md`](./infra/VPS_STACK.md) e [`docs/BAILEYS-INTEGRATION.md`](./docs/BAILEYS-INTEGRATION.md). O Compose atual usa somente o gateway `forte-whatsapp`/Baileys; não execute os comandos legados deste documento.
 
 A arquitetura operacional agora é:
 

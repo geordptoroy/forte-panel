@@ -462,3 +462,16 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [ ] Diagnosticar read-only a conversa específica no banco Windows do usuário; o sandbox não tem acesso a esse banco.
 - [x] Encaminhar `messaging-history.set` para importação automática idempotente; batches usam IDs determinísticos, não baixam mídia histórica e ficam fora de IA/unread/takeover. Persistência de progresso e busca incremental continuam pendentes.
 - [ ] Decidir após evidência/teste o tratamento de `fromMe` live válido sem conversa conhecida; no momento esse envio real ainda é aceito.
+
+
+## Limpeza estrutural Baileys-only — 2026-09-29
+
+- [x] Remover o adapter Cloud e reduzir o transporte operacional ao gateway Baileys.
+- [x] Remover do `server/db.ts` os helpers CRUD, secrets, seleção de default e webhooks PAPI sem consumidores ativos.
+- [x] Remover variáveis PAPI Cloud do runtime e retirar `defaultChannel`/`setDefaultChannel` da API tRPC.
+- [x] Restringir `WhatsappProvider`/`IntegrationName` operacionais a Baileys e fazer inbound/outbound falharem fechado para provider histórico incompatível.
+- [x] Atualizar contrato REST, checklist beta, instruções locais/VPS e marcar guias PAPI antigos como históricos.
+- [x] Atualizar o detector de secrets do workflow sem nomes de providers removidos.
+- [ ] Inventariar dados legados por workspace/instância em banco restaurado; não apagar configurações históricas sem backup e contagem.
+- [ ] Criar e testar migration de schema ativo Baileys-only em banco vazio e restaurado; migrations já aplicadas não serão editadas.
+- [ ] Repetir quality gate PostgreSQL, gateway, staging e scan de rotas/configuração antes de declarar o bloqueador P0 fechado.

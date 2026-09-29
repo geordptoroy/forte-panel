@@ -2,14 +2,14 @@
 
 ## Objetivo
 
-Validar o fluxo nativo `PAPI → webhook do Forte Panel → PostgreSQL/worker → agente nativo → PAPI`, primeiro sem enviar mensagens reais.
+Validar o fluxo nativo `Baileys → webhook assinado do Forte Panel → PostgreSQL/worker → agente nativo → Baileys`, primeiro sem enviar mensagens reais.
 
 ## Pré-requisitos
 
 - Docker Engine e Docker Compose;
 - variáveis locais preparadas a partir do exemplo, com segredos únicos;
 - migrations PostgreSQL aplicadas pelo entrypoint;
-- PAPI disponível na rede Docker para testes controlados.
+- gateway `forte-whatsapp` disponível na rede Docker para testes controlados.
 
 ## Subir os serviços
 
@@ -28,9 +28,9 @@ O Panel usa PostgreSQL próprio para os dados do produto e Redis separado quando
 3. Execute typecheck, testes e build: `pnpm check && pnpm test && pnpm build`.
 4. Verifique se mensagens ficam na fila e se o worker registra erros claros quando o provider não está configurado.
 
-## Webhook PAPI e teste controlado
+## Webhook Baileys e teste controlado
 
-Configure a URL pública ou interna do Panel na PAPI: `/api/v1/webhooks/providers/papi`. Exija `X-PAPI-Webhook-Secret` e envie um `eventId` único. Primeiro use número de teste e confira idempotência, histórico, `fromMe`, takeover humano e logs. Só ative envio real depois de revisar o destino e a configuração do agente.
+O gateway já usa a URL interna `/api/v1/webhooks/providers/baileys` e o segredo/assinatura configurados no Compose. Envie um `eventId` único. Primeiro use número de teste e confira idempotência, histórico, `fromMe`, takeover humano e logs. Só ative envio real depois de revisar o destino e a configuração do agente.
 
 ## Limpeza segura
 

@@ -44,7 +44,6 @@ import {
   revokeUserSessions,
   setLocalPassword,
   touchLastSignedIn,
-  getDefaultWhatsappProvider,
   ensureBaileysChannel,
   listBaileysInstances,
   getBaileysInstance,
@@ -53,7 +52,6 @@ import {
   archiveBaileysInstance,
   consumeWorkspaceUserUsage,
   listWhatsappChannels,
-  setDefaultWhatsappProvider,
   getAuditLogForContact,
   getDashboardSnapshot,
   getWorkspaceUsageSnapshot,
@@ -1466,26 +1464,6 @@ export const appRouter = router({
             message: "Instância WhatsApp não encontrada neste workspace",
           });
         return disconnectBaileys(instance.instanceId, input.logout);
-      }),
-    defaultChannel: protectedProcedure.query(({ ctx }) =>
-      getDefaultWhatsappProvider(ctx.workspace.workspaceId)
-    ),
-    setDefaultChannel: protectedProcedure
-      .input(z.object({ provider: z.literal("baileys") }))
-      .mutation(({ input, ctx }) => {
-        const configured = Boolean(
-          process.env.BAILEYS_BASE_URL && process.env.BAILEYS_API_KEY
-        );
-        if (!configured)
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message:
-              "Configure as credenciais deste canal antes de selecioná-lo.",
-          });
-        return setDefaultWhatsappProvider(
-          ctx.workspace.workspaceId,
-          input.provider
-        );
       }),
   }),
 

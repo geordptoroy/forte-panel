@@ -11,7 +11,6 @@ import {
   failApiIdempotency,
   getContactById,
   getActiveWorkspaceById,
-  getDefaultWhatsappProvider,
   getCorePipelineSnapshot,
   getNativeAgentRuntimeConfig,
   getPublishedAiPrompt,
@@ -32,6 +31,7 @@ import {
 import { professionalCanExecuteService } from "./agenda";
 import { ScheduleError } from "./schedule";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
+import { OPERATIONAL_WHATSAPP_PROVIDER } from "./integrations/baileys-policy";
 
 const api = express.Router();
 const internalApiPaths = new Set([
@@ -862,8 +862,7 @@ api.post("/messages", async (req, res) => {
           statusCode: 404,
           body: { error: "not_found", message: "Contato não encontrado" },
         };
-      const provider =
-        parsed.data.provider ?? (await getDefaultWhatsappProvider(workspaceId));
+      const provider = parsed.data.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
       const senderType = parsed.data.senderType ?? "human";
       const messageType = parsed.data.messageType ?? "text";
       const message = await queueOutboundMessage(
@@ -947,8 +946,7 @@ api.post("/messages/batch", async (req, res) => {
               message: `Contato não encontrado no item ${index + 1}`,
             },
           };
-        const provider =
-          item.provider ?? (await getDefaultWhatsappProvider(workspaceId));
+        const provider = item.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
         const senderType = item.senderType ?? "ai";
         const messageType = item.messageType ?? "text";
         const batchId =

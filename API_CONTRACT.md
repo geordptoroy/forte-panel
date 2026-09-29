@@ -8,9 +8,9 @@ Com a API de integração fechada, permanecem disponíveis somente `GET /api/v1/
 
 ## Canais WhatsApp
 
-O domínio usa um contrato único `WhatsappAdapter`. O canal operacional do core é o **Baileys nativo**, executado pelo gateway `forte-whatsapp`. O adapter Meta Cloud API permanece opcional no código, mas não está configurado nem habilitado no ambiente local do core; PAPI aparece somente em código/documentação histórica e não deve ser configurada no Compose oficial.
+O domínio usa um contrato único `WhatsappAdapter`. O único canal operacional do core é o **Baileys nativo**, executado pelo gateway `forte-whatsapp`. PAPI e Meta não são providers selecionáveis nem fazem parte do Compose oficial. Valores históricos podem permanecer no banco até a migration de convergência, mas não são aceitos por novas operações.
 
-Cada mensagem enfileirada registra o canal escolhido; o worker seleciona o adapter sem alterar Inbox, contatos ou agenda. O adapter Baileys usa `BAILEYS_BASE_URL`, `BAILEYS_API_KEY`, `BAILEYS_WEBHOOK_SECRET` e `BAILEYS_INSTANCE_ID`. O adapter Meta usa `META_GRAPH_API_VERSION`, `META_WHATSAPP_ACCESS_TOKEN` e `META_WHATSAPP_PHONE_NUMBER_ID`, sempre no servidor.
+Cada mensagem enfileirada registra Baileys e a instância de origem; o worker seleciona o gateway sem alterar Inbox, contatos ou agenda. O transporte usa `BAILEYS_BASE_URL`, `BAILEYS_API_KEY`, `BAILEYS_WEBHOOK_SECRET` e `BAILEYS_INSTANCE_ID`, sempre no servidor.
 
 ## Autenticação
 
