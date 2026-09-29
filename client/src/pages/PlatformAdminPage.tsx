@@ -89,6 +89,9 @@ function PlatformShell({
         </div>
         <div className="platform-scope">
           <span className="live-dot" /> Operação protegida
+          <span className="platform-validated-lock" title="Fluxos validados congelados para o smoke test">
+            <LockKeyhole size={11} /> Validado
+          </span>
         </div>
         <nav className="platform-nav" aria-label="Navegação da plataforma">
           <button

@@ -890,3 +890,9 @@ a { color: inherit; text-decoration: none; }
   .chat-attachment-preview { flex-wrap: wrap; }
   .chat-attachment-preview audio { order: 3; width: 100%; }
 }
+
+
+/* Validated smoke-test lock: visual scope marker, not an authorization boundary. */
+.validated-flow-lock { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; color: #8fbca0; border: 1px solid rgba(86,214,138,.22); background: rgba(86,214,138,.045); font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+.platform-validated-lock { display: inline-flex; align-items: center; gap: 4px; margin-left: 7px; padding: 3px 5px; color: #8fbca0; border: 1px solid rgba(86,214,138,.22); background: rgba(86,214,138,.045); font-size: 7px; letter-spacing: .08em; }
+@media (max-width: 760px) { .validated-flow-lock span { display: none; } .validated-flow-lock { padding: 5px; } }

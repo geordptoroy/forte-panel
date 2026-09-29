@@ -106,3 +106,18 @@ $sql | docker compose --project-name forte-local --env-file .env --file docker-c
 ```
 
 O script aborta se a confirmação não for exata, se não encontrar exatamente um workspace ativo com os três identificadores, ou se o registro ainda existir após a operação. Ele apaga linhas tenant-scoped que possuem `workspaceId`, além do workspace e membership, mas preserva `users`, `platformAdmins` e o acesso do Console Admin. A execução é transacional: qualquer erro gera rollback. Após a execução, faça login novamente e confirme que o workspace não reaparece; não habilite `WORKSPACE_BOOTSTRAP_ENABLED` no `.env` de produção/local normal.
+
+
+## Smoke test limpo e cadeado de fluxos validados — 2026-09-29
+
+O Workspace público e o Console Admin agora exibem um cadeado visual **Fluxo validado / Validado**. Ele marca os fluxos já aprovados e congelados para o smoke test; não substitui autorização, que continua sendo aplicada no backend. No Workspace público, o escopo operacional permanece limitado a Conexões e WhatsApp pelo `CORE_ONLY_MODE`. No Console Admin, a sessão continua obrigatória para qualquer operação de workspace.
+
+Para apagar PostgreSQL, Redis e sessões Baileys e reinstalar a publicação limpa, use o script já protegido por confirmação explícita:
+
+```powershell
+.\scripts\dev-reinstall.ps1 -ResetData
+```
+
+Esse reset remove apenas volumes, containers e redes do projeto `forte-local`, baixa novamente as imagens `:dev` e sobe migrations, painel, worker e gateway. Não remove imagens/cache globais nem outros projetos Docker. Depois do reset, o primeiro login recria somente o usuário `local_admin`; o workspace padrão não é recriado porque `DEMO_MODE=false` e `WORKSPACE_BOOTSTRAP_ENABLED=false`.
+
+Smoke test prioritário após a reinstalação, começando pelo Console Admin: login de `local_admin`; abrir Workspaces; selecionar workspace; iniciar sessão `read_only`; conferir cabeçalho e expiração; listar instâncias; criar uma instância somente em `operator`; gerar QR/código; parear no aparelho de teste; confirmar status conectado; testar recebimento e envio; desconectar a instância; conferir auditoria e isolamento do workspace. Só depois repetir o fluxo mínimo no Workspace público.

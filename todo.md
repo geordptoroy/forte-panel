@@ -532,3 +532,13 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Documentar backup e execução no Docker/PowerShell em `LOCAL-DOCKER-TESTE.md`.
 - [x] Validar `pnpm check`, testes de bootstrap e `git diff --check`.
 - [ ] Executar o backup e o script no PostgreSQL local do usuário; o sandbox não possui esse banco.
+
+
+## Smoke test limpo e fluxos congelados — 2026-09-29
+
+- [x] Exibir cadeado visual `Fluxo validado` no Workspace público enquanto `CORE_ONLY_MODE` estiver ativo.
+- [x] Exibir cadeado visual `Validado` no Console Admin.
+- [x] Fixar `WORKSPACE_BOOTSTRAP_ENABLED=false` no Compose local por padrão.
+- [x] Documentar reset destrutivo completo via `scripts/dev-reinstall.ps1 -ResetData`.
+- [ ] Executar o reset no Docker/Desktop local do usuário.
+- [ ] Retomar smoke test começando pelo Console Admin: sessão, workspace, instância, operator, pareamento, inbound/outbound, desconexão e auditoria.

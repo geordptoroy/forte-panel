@@ -19,6 +19,7 @@ import {
   Inbox,
   KanbanSquare,
   LayoutDashboard,
+  LockKeyhole,
   LogOut,
   Menu,
   PanelLeftClose,
@@ -618,6 +619,14 @@ export default function PanelLayout({
               <Menu size={17} />
             </button>
             <div className="topbar-spacer" />
+            {CORE_ONLY_MODE && (
+              <div
+                className="validated-flow-lock"
+                title="Fluxo validado e congelado para o smoke test"
+              >
+                <LockKeyhole size={12} /> <span>Fluxo validado</span>
+              </div>
+            )}
             <div className="topbar-status">
               <span className="live-dot" /> {workspace?.name ?? "Forte Panel"}
             </div>

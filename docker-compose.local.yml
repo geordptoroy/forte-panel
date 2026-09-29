@@ -55,6 +55,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       DEMO_MODE: "false"
+      WORKSPACE_BOOTSTRAP_ENABLED: ${WORKSPACE_BOOTSTRAP_ENABLED:-false}
       LOCAL_AUTH_ENABLED: "true"
       LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:-admin@fortepanel.local}
       LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?LOCAL_ADMIN_PASSWORD is required}
@@ -101,6 +102,7 @@ services:
     environment:
       NODE_ENV: production
       DEMO_MODE: "false"
+      WORKSPACE_BOOTSTRAP_ENABLED: ${WORKSPACE_BOOTSTRAP_ENABLED:-false}
       LOCAL_AUTH_ENABLED: "true"
       LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:-admin@fortepanel.local}
       LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?LOCAL_ADMIN_PASSWORD is required}

@@ -31,3 +31,12 @@ Foi criado `scripts/delete-local-workspace.sql`. O script exige a confirmação 
 Validação no sandbox: `pnpm check`, 6 testes de `server/db.auth-bootstrap.test.ts` e `git diff --check` passaram. A execução SQL real continua pendente porque o sandbox não tem `psql`, Docker ou acesso ao PostgreSQL local do usuário. Não declarar o workspace removido até o usuário executar o backup e o script no ambiente local.
 
 Depois da execução local e confirmação do resultado, a próxima fatia volta a ser a fachada de Inbox de suporte com `workspaceId` + `supportSessionId`.
+
+
+## 23. Reinstalação limpa e lock de smoke test — 2026-09-29
+
+A solicitação atual é apagar o ambiente Docker local e recomeçar com operação limpa. O procedimento oficial é `scripts/dev-reinstall.ps1 -ResetData`, que já exige a flag destrutiva, executa `docker compose down --volumes --remove-orphans`, baixa as imagens `:dev` e sobe a stack novamente. O sandbox não controla o Docker/Desktop local do usuário; portanto a execução real depende do PowerShell do usuário.
+
+Foi aplicado um cadeado visual nos dois lados: `PanelLayout` mostra `Fluxo validado` no Workspace público quando `CORE_ONLY_MODE` está ativo, e `PlatformShell` mostra `Validado` no Console Admin. Isso é uma marca de escopo congelado para o smoke test, não uma barreira de autorização. O backend continua sendo a fonte de autorização, ownership, sessão e auditoria.
+
+Após reset completo, o contrato esperado é: `DEMO_MODE=false`, `WORKSPACE_BOOTSTRAP_ENABLED=false`, login recria apenas `local_admin`, nenhum workspace padrão é criado por login, e o smoke test começa pelo Console Admin. Ordem recomendada: sessão `read_only`, seleção explícita de workspace, listagem de instância, mudança para `operator`, criação/pareamento, inbound/outbound, desconexão, auditoria e isolamento; depois repetir o mínimo no Workspace público.
