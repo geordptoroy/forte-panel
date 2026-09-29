@@ -1,7 +1,7 @@
 
 
-## Próxima fase: interatividade e prompts globais — 2026-09-29
+## IA do Console Admin por instância — 2026-09-29
 
-Depois de confirmar o fluxo já congelado de conexão Baileys, Inbox, texto, áudio e imagem, validar no Console Admin uma mensagem de botões com uma a três opções, uma lista e uma enquete. Confirmar que cada mensagem é persistida com o tipo correto, segue pela mesma `instanceId` de origem e aparece na conversa sem alterar a ordem dos testes anteriores. Payload inválido deve falhar antes do gateway.
+Abra **Console Admin → Prompts por instância**. Edite e salve o prompt global padrão; depois selecione a instância Baileys já conectada, revise o texto herdado, escolha **Ativo — responder no chat** e salve o vínculo. O vínculo deve mostrar a versão e a data de atualização. A aba IA global continua sendo a fonte das conexões/modelos; a nova aba controla o prompt e o estado por instância.
 
-Na área de instâncias de suporte, selecionar uma conexão, editar o prompt global, salvar e confirmar a versão incremental e o evento de auditoria. O editor informa explicitamente que o pareamento não liga respostas automáticas. Carrossel permanece bloqueado até existir adapter/provider compatível com Baileys; não considerar uma tentativa de payload cru como teste aprovado.
+Para o smoke test, envie uma mensagem de texto ao WhatsApp da instância. Confirme que o evento recebido contém a mesma `instanceId`, que a conversa aparece no Inbox do Console Admin e que a resposta do agente chega pelo WhatsApp. Se o contato estiver com IA pausada ou a conversa em controle humano, a ausência de resposta é esperada. Para reativar, habilite a IA do contato/conversa e envie uma nova mensagem.

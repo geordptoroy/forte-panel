@@ -1,15 +1,11 @@
 
 
-## 28. Interatividade e prompts globais — 2026-09-29
+## 29. IA do Console Admin ativa por instância — 2026-09-29
 
-Implementado sem reabrir o bloco congelado:
+A IA deixou de ficar apenas preparada. O worker agora lê o `instanceId` do evento `message.received`, localiza o prompt global pareado àquela instância e executa o mesmo `runNativeAgent`/provedor LLM já usado pelo Workspace. O vínculo controla `enabled`, modelo, limite de etapas e system prompt; a política global da plataforma continua sendo o gate superior.
 
-- O envio persistido aceita `button`, `list` e `poll` além dos tipos já validados.
-- O Console Admin e a Inbox pública validam payloads interativos antes de enfileirar o outbound.
-- Botões exigem de 1 a 3 opções com `buttonId` e `displayText`.
-- Listas/enquetes exigem `metadata.payload`, encaminhado ao gateway Baileys pelo contrato existente de payload.
-- Foi criado teste unitário para os contratos interativos.
-- **Carrossel não foi falsamente habilitado:** o Baileys atual não oferece um contrato universal de carrossel nesta integração. A implementação deve ganhar um adapter/provider específico antes de ser exposta como funcionalidade.
-- O Console Admin ganhou editor de prompt global por `instanceId`, com versão incremental, auditoria e `enabled: false` por segurança. O pareamento fica salvo; respostas automáticas e RAG continuam desligados até os gates de IA.
+Foi criada a aba **Prompts por instância** na sidebar do Console Admin, em `/platform-admin/prompts`. Ela permite ler e editar o prompt global padrão, selecionar uma instância WhatsApp, editar o prompt daquela conexão, ativar/pausar o agente e acompanhar a versão salva. O salvamento permanece auditado e versionado.
 
-Gates executados: `pnpm check`, `pnpm build`, testes focados de interatividade/Console Admin e `git diff --check`.
+O comportamento esperado para o smoke test é: configurar o prompt global, selecionar a instância conectada, salvar o vínculo como ativo, enviar uma mensagem recebida no WhatsApp e confirmar que o agente responde no Inbox/WhatsApp usando aquela instância. O agente respeita o controle de IA do contato e da conversa: se estiver pausado ou sob controle humano, não responde.
+
+Gates executados nesta fase: `pnpm check`, `pnpm build`, 12 testes focados de bootstrap, Console Admin e interatividade, e `git diff --check`.

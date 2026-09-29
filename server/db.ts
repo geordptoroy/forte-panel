@@ -3477,17 +3477,59 @@ export async function getPlatformGlobalNativeAgentConfig(): Promise<NativeAgentC
   return readNativeAgentConfig(undefined);
 }
 
+export async function getPlatformInstancePromptBinding(instanceId?: string) {
+  const normalized = instanceId?.trim();
+  if (!normalized) return undefined;
+  const setting = await getWorkspaceSetting(
+    PLATFORM_GLOBAL_AGENT_WORKSPACE_ID,
+    "platform_instance_prompt_bindings"
+  );
+  if (!setting?.value) return undefined;
+  try {
+    const parsed = JSON.parse(setting.value) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
+    const binding = parsed.find(
+      (item): item is {
+        instanceId: string;
+        systemPrompt: string;
+        model: string;
+        maxSteps: number;
+        enabled: boolean;
+      } =>
+        Boolean(item) &&
+        typeof item === "object" &&
+        (item as { instanceId?: unknown }).instanceId === normalized
+    );
+    return binding;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function getNativeAgentRuntimeConfig(
-  workspaceId: number
+  workspaceId: number,
+  instanceId?: string
 ): Promise<NativeAgentConfig> {
   const workspace = await getActiveWorkspaceById(workspaceId);
-  const stored = await readStoredNativeAgentConfig(workspace?.id);
+  const binding = await getPlatformInstancePromptBinding(instanceId);
+  const stored = await readStoredNativeAgentConfig(
+    binding ? undefined : workspace?.id
+  );
   const llm = await applyPlatformAiConnections(mergeAgentProviderSettings(stored.llm));
   return {
-    enabled: stored.enabled !== false,
-    model: stored.model?.trim() || process.env.AGENT_MODEL || "gpt-5-mini",
-    systemPrompt: stored.systemPrompt ?? "",
-    maxSteps: Math.max(1, Math.min(8, Number(stored.maxSteps ?? 6))),
+    enabled: binding
+      ? binding.enabled && stored.enabled !== false
+      : stored.enabled !== false,
+    model:
+      binding?.model?.trim() ||
+      stored.model?.trim() ||
+      process.env.AGENT_MODEL ||
+      "gpt-5-mini",
+    systemPrompt: binding?.systemPrompt ?? stored.systemPrompt ?? "",
+    maxSteps: Math.max(
+      1,
+      Math.min(8, Number(binding?.maxSteps ?? stored.maxSteps ?? 6))
+    ),
     apiSource: "environment",
     llm,
   };
@@ -7431,7 +7473,14 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
             );
           continue;
         }
-        const config = await getNativeAgentRuntimeConfig(item.workspaceId);
+        const eventInstanceId =
+          typeof eventPayload.instanceId === "string"
+            ? eventPayload.instanceId
+            : undefined;
+        const config = await getNativeAgentRuntimeConfig(
+          item.workspaceId,
+          eventInstanceId
+        );
         if (!config.enabled) {
           await db
             .update(domainEvents)
@@ -7460,10 +7509,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
             workspaceId: item.workspaceId,
             contactId: Number(eventPayload.contactId ?? 0),
             conversationId: Number(eventPayload.conversationId ?? 0),
-            instanceId:
-              typeof eventPayload.instanceId === "string"
-                ? eventPayload.instanceId
-                : undefined,
+            instanceId: eventInstanceId,
             content: String(eventPayload.content ?? ""),
             messageType: String(eventPayload.messageType ?? "text"),
             metadata:

@@ -51,6 +51,7 @@ import {
   setContactAi,
   renameContact as renameInboxContact,
   getContactById,
+  getPlatformGlobalNativeAgentConfig,
 } from "./db";
 import {
   connectBaileys,
@@ -308,6 +309,31 @@ export const platformRouter = router({
     .mutation(({ input, ctx }) => deletePlatformAiConnection({ ...input, platformAdminId: ctx.platformAdmin.id })),
 
   globalAiConfig: requirePlatform.query(() => getPlatformGlobalAgentSnapshot()),
+  saveGlobalPrompt: requirePlatformOperator
+    .input(
+      z.object({
+        systemPrompt: z.string().max(30_000),
+        reason: reasonInput,
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const current = await getPlatformGlobalNativeAgentConfig();
+      const valid = validateAgentPromptInput({
+        systemPrompt: input.systemPrompt,
+        model: current.model,
+      });
+      if (!valid.valid)
+        throw new TRPCError({ code: "BAD_REQUEST", message: valid.reason });
+      return savePlatformGlobalAiPolicy({
+        platformAdminId: ctx.platformAdmin.id,
+        reason: input.reason,
+        enabled: current.enabled,
+        model: current.model,
+        systemPrompt: input.systemPrompt,
+        maxSteps: current.maxSteps,
+        llm: current.llm,
+      });
+    }),
 
   globalAudit: requirePlatform
     .input(z.object({ limit: z.number().int().min(1).max(200).default(100) }).optional())
