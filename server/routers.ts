@@ -499,6 +499,25 @@ export const appRouter = router({
         recordLoginSuccess(ctx.req, email);
         const membership = await getWorkspaceMembershipContext(account.id);
         const platformAdmin = await getPlatformAdminAccess(account.id);
+        if (platformAdmin) {
+          const token = await sdk.signSession({
+            openId: account.openId,
+            appId: "local",
+            name: account.name ?? email,
+            sessionVersion: account.sessionVersion,
+          });
+          ctx.res.cookie(COOKIE_NAME, token, {
+            ...getSessionCookieOptions(ctx.req),
+            maxAge: SESSION_TTL_MS,
+          });
+          await touchLastSignedIn(account.id);
+          return {
+            success: true,
+            platform: true,
+            role: null,
+            operationalRole: null,
+          } as const;
+        }
         if (!membership && !platformAdmin) {
           throw new TRPCError({
             code: "FORBIDDEN",
@@ -533,7 +552,7 @@ export const appRouter = router({
         }
         return {
           success: true,
-          platform: true,
+          platform: false,
           role: null,
           operationalRole: null,
         } as const;

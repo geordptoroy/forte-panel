@@ -206,7 +206,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     existingRole: existingUser?.role,
     ownerOpenId: ENV.ownerOpenId,
     canBootstrapAdmin,
-  });
+  }) && user.openId !== "local_admin";
   const textFields = ["name", "email", "loginMethod"] as const;
   for (const field of textFields) {
     if (user[field] === undefined) continue;
