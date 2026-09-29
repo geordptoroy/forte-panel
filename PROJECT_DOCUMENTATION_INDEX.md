@@ -8,7 +8,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 >
 > **Limpeza estrutural Baileys-only (execução em fatias):** [`MIGRACAO-PAPI-BAILEYS.md`](./MIGRACAO-PAPI-BAILEYS.md) registra a remoção do adapter Cloud e dos helpers/configurações legados sem consumidores ativos. O schema e as migrations históricas ainda preservam valores antigos para permitir migração segura de dados; não apagar volumes nem editar migrations já aplicadas. A 0042 só foi corrigida porque o CI confirmou que sua versão original não aplicava em banco vazio.
 >
-> **Inventário de dados antes da convergência:** [`docs/BAILEYS-DATA-INVENTORY.md`](./docs/BAILEYS-DATA-INVENTORY.md) documenta o backup, restore separado e o comando read-only que mede provider, instâncias, mensagens pendentes, settings legados e colisões de `instanceId` sem retornar secrets ou alterar registros.
+> **Inventário de dados antes da convergência:** [`docs/BAILEYS-DATA-INVENTORY.md`](./docs/BAILEYS-DATA-INVENTORY.md) documenta o backup, restore separado e o comando read-only que mede provider, instâncias, mensagens pendentes, settings legados e colisões de `instanceId` sem retornar secrets ou alterar registros. O ambiente de desenvolvimento inventariado tem 1 workspace e nenhuma entidade WhatsApp persistida.
 >
 > **Auditoria de IA/Admin:** [`AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`](./AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md) registra capacidades, agentes, credenciais e redesign futuro; é referência da etapa 2, não do código ativo agora.
 >

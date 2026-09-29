@@ -295,6 +295,13 @@
       "when": 1790630000000,
       "tag": "0042_baileys_only_operational_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1790687657478,
+      "tag": "0043_baileys_only_provider_enum",
+      "breakpoints": true
     }
   ]
 }

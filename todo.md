@@ -473,7 +473,9 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Atualizar contrato REST, checklist beta, instruções locais/VPS e marcar guias PAPI antigos como históricos.
 - [x] Atualizar o detector de secrets do workflow sem nomes de providers removidos.
 - [ ] Inventariar dados legados por workspace/instância em banco restaurado; não apagar configurações históricas sem backup e contagem.
-- [ ] Criar e testar migration de schema ativo Baileys-only em banco vazio e restaurado; migrations já aplicadas não serão editadas.
+- [x] Executar o inventário read-only no PostgreSQL de desenvolvimento: 1 workspace, zero canais/instâncias/mensagens/filas/settings legados e zero colisões.
+- [x] Criar a migration 0043 de schema ativo Baileys-only com preflight fail-closed para providers/settings legados; migrations já aplicadas não foram editadas.
+- [ ] Testar a migration 0043 em banco vazio e banco restaurado de staging/produção; não executar limpeza sem nova contagem.
 - [ ] Repetir quality gate PostgreSQL, gateway, staging e scan de rotas/configuração antes de declarar o bloqueador P0 fechado.
 
 

@@ -38,9 +38,7 @@ export const workspaceInviteStatusEnum = pgEnum("workspace_invite_status", [
   "replaced",
 ]);
 export const whatsappProviderEnum = pgEnum("whatsapp_provider", [
-  "papi",
   "baileys",
-  "meta_cloud_api",
 ]);
 export const workspaceStatusEnum = pgEnum("workspace_status", [
   "onboarding",
@@ -895,13 +893,11 @@ export const whatsappInstances = pgTable(
     ),
     uniqueIndex("whatsapp_instances_baileys_instance_global_unique_idx")
       .on(table.instanceId)
-      // The only other enum values are legacy providers; avoid referencing a
-      // newly-added enum value inside the migration transaction.
-      .where(sql`${table.provider} NOT IN ('papi', 'meta_cloud_api')`),
+      .where(sql`${table.provider} = 'baileys'`),
     uniqueIndex("whatsapp_instances_baileys_workspace_default_unique_idx")
       .on(table.workspaceId)
       .where(
-        sql`${table.provider} NOT IN ('papi', 'meta_cloud_api') AND ${table.active} = 1 AND ${table.isDefault} = 1`
+        sql`${table.provider} = 'baileys' AND ${table.active} = 1 AND ${table.isDefault} = 1`
       ),
     index("whatsapp_instances_workspace_idx").on(
       table.workspaceId,
