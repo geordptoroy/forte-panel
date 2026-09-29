@@ -16,6 +16,7 @@ import {
   MessageSquareText,
   Pause,
   Play,
+  PlugZap,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -213,108 +214,46 @@ function MetricCard({
   );
 }
 
-type AiProviderId = "nvidia_nim" | "google_gemini" | "openai_compatible";
-type AiCapability = "text" | "vision" | "audio" | "document";
-type GlobalLlmDraft = {
-  providers: Record<AiProviderId, { enabled: boolean; baseUrl: string; apiKey: string }>;
-  routing: Record<AiCapability, { provider: AiProviderId; model: string; baseUrl?: string; apiKey?: string }>;
+type AiCapability = "whatsapp_reply" | "audio_transcription" | "image_analysis" | "document_analysis" | "admin_support";
+type AiProvider = "nvidia_nim" | "google_gemini" | "openai_compatible";
+const aiCapabilityLabels: Record<AiCapability, { title: string; description: string }> = {
+  whatsapp_reply: { title: "Resposta no WhatsApp", description: "Agente que responde mensagens e executa ferramentas autorizadas." },
+  audio_transcription: { title: "Transcrição de áudio", description: "Converte mensagens de voz em texto antes do roteamento." },
+  image_analysis: { title: "Análise de imagem", description: "Interpreta fotos, comprovantes e imagens recebidas." },
+  document_analysis: { title: "Análise de documento", description: "Lê PDFs e arquivos encaminhados ao atendimento." },
+  admin_support: { title: "Suporte do Console", description: "Assistente separado para operação e diagnóstico da plataforma." },
 };
-const aiProviderLabels: Record<AiProviderId, string> = {
-  nvidia_nim: "NVIDIA NIM",
-  google_gemini: "Google Gemini",
-  openai_compatible: "OpenAI-compatible",
-};
-const aiCapabilityLabels: Record<AiCapability, string> = {
-  text: "Resposta no chat",
-  vision: "Visão",
-  audio: "Transcrição de áudio",
-  document: "Documentos/PDF",
-};
-const defaultGlobalLlm: GlobalLlmDraft = {
-  providers: {
-    nvidia_nim: { enabled: false, baseUrl: "https://integrate.api.nvidia.com/v1", apiKey: "" },
-    google_gemini: { enabled: false, baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: "" },
-    openai_compatible: { enabled: false, baseUrl: "", apiKey: "" },
-  },
-  routing: {
-    text: { provider: "nvidia_nim", model: "meta/llama-3.1-70b-instruct" },
-    vision: { provider: "google_gemini", model: "gemini-2.0-flash" },
-    audio: { provider: "google_gemini", model: "gemini-2.0-flash" },
-    document: { provider: "google_gemini", model: "gemini-2.0-flash" },
-  },
-};
+const aiProviderLabels: Record<AiProvider, string> = { nvidia_nim: "NVIDIA NIM", google_gemini: "Google Gemini", openai_compatible: "OpenAI-compatible" };
 
-function GlobalAiPolicyCard({ canMutate }: { canMutate: boolean }) {
-  const global = trpc.platform.globalAiConfig.useQuery();
-  const [enabled, setEnabled] = useState(true);
-  const [model, setModel] = useState("gpt-5-mini");
-  const [prompt, setPrompt] = useState("");
-  const [maxSteps, setMaxSteps] = useState(6);
-  const [reason, setReason] = useState("Política global inicial do agente");
-  const [llm, setLlm] = useState<GlobalLlmDraft>(defaultGlobalLlm);
-  useEffect(() => {
-    if (!global.data) return;
-    setEnabled(global.data.enabled);
-    setModel(global.data.model);
-    setPrompt(global.data.systemPrompt);
-    setMaxSteps(global.data.maxSteps);
-    setLlm(global.data.llm as GlobalLlmDraft);
-  }, [global.data]);
-  const save = trpc.platform.saveGlobalAiConfig.useMutation({
-    onSuccess: result => {
-      setEnabled(result.enabled);
-      setModel(result.model);
-      setPrompt(result.systemPrompt);
-      setMaxSteps(result.maxSteps);
-      setLlm(result.llm as GlobalLlmDraft);
-      void global.refetch();
-      toast.success("Política global da IA salva");
-    },
-    onError: error => toast.error(error.message),
-  });
-  const updateProvider = (provider: AiProviderId, field: "enabled" | "baseUrl" | "apiKey", value: boolean | string) =>
-    setLlm(current => ({ ...current, providers: { ...current.providers, [provider]: { ...current.providers[provider], [field]: value } } }));
-  const updateRoute = (capability: AiCapability, field: "provider" | "model" | "baseUrl", value: string) =>
-    setLlm(current => ({ ...current, routing: { ...current.routing, [capability]: { ...current.routing[capability], [field]: value } } }));
+function AiConnectionsCard({ canMutate }: { canMutate: boolean }) {
+  const utils = trpc.useUtils();
+  const connections = trpc.platform.aiConnections.useQuery();
+  const [form, setForm] = useState({ name: "", capability: "whatsapp_reply" as AiCapability, provider: "openai_compatible" as AiProvider, baseUrl: "", model: "", apiKey: "" });
+  const [reason, setReason] = useState("Remoção de conexão de IA");
+  const create = trpc.platform.createAiConnection.useMutation({ onSuccess: () => { setForm({ name: "", capability: "whatsapp_reply", provider: "openai_compatible", baseUrl: "", model: "", apiKey: "" }); void utils.platform.aiConnections.invalidate(); toast.success("Conexão de IA criada"); }, onError: error => toast.error(error.message) });
+  const test = trpc.platform.testAiConnection.useMutation({ onSuccess: result => { void utils.platform.aiConnections.invalidate(); result.ready ? toast.success(`${result.message} · ${result.latencyMs} ms`) : toast.error(result.message); }, onError: error => toast.error(error.message) });
+  const remove = trpc.platform.deleteAiConnection.useMutation({ onSuccess: () => { void utils.platform.aiConnections.invalidate(); toast.success("Conexão excluída"); }, onError: error => toast.error(error.message) });
   return (
     <section className="platform-card" style={{ marginBottom: 20 }}>
       <div className="platform-card-title">
         <div>
-          <span className="eyebrow">Governança global</span>
-          <h2>Política da IA para novos workspaces</h2>
+          <span className="eyebrow">Conexões da plataforma</span>
+          <h2>Uma API por função do sistema</h2>
         </div>
-        <Bot size={18} />
+        <KeyRound size={18} />
       </div>
-      <p className="platform-muted">A política é global por tipo de interação. Chaves ficam criptografadas no servidor e aparecem mascaradas depois de salvas.</p>
+      <p className="platform-muted">Cadastre a URL, modelo e chave do provedor para uma função específica. A chave fica criptografada no servidor e nunca retorna ao navegador em texto aberto.</p>
       <div className="platform-form-grid">
-        <label className="platform-field"><span>Estado global</span><select className="select-control" value={enabled ? "enabled" : "paused"} onChange={event => setEnabled(event.target.value === "enabled")}><option value="enabled">Ativa</option><option value="paused">Pausada</option></select></label>
-        <label className="platform-field"><span>Modelo lógico padrão</span><input className="input-control" value={model} onChange={event => setModel(event.target.value)} /></label>
-        <label className="platform-field"><span>Máximo de etapas do agente</span><input className="input-control" type="number" min={1} max={8} value={maxSteps} onChange={event => setMaxSteps(Number(event.target.value))} /></label>
+        <label className="platform-field"><span>Nome da conexão</span><input className="input-control" value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} placeholder="Ex.: Gemini para atendimento" /></label>
+        <label className="platform-field"><span>Função do sistema</span><select className="select-control" value={form.capability} onChange={event => setForm(current => ({ ...current, capability: event.target.value as AiCapability }))}>{Object.entries(aiCapabilityLabels).map(([key, value]) => <option key={key} value={key}>{value.title}</option>)}</select></label>
+        <label className="platform-field"><span>Provedor</span><select className="select-control" value={form.provider} onChange={event => setForm(current => ({ ...current, provider: event.target.value as AiProvider }))}>{Object.entries(aiProviderLabels).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select></label>
+        <label className="platform-field"><span>URL da API</span><input className="input-control" value={form.baseUrl} onChange={event => setForm(current => ({ ...current, baseUrl: event.target.value }))} placeholder="https://api.exemplo.com/v1" /></label>
+        <label className="platform-field"><span>Modelo</span><input className="input-control" value={form.model} onChange={event => setForm(current => ({ ...current, model: event.target.value }))} placeholder="ID exato do modelo" /></label>
+        <label className="platform-field"><span>API key do provedor</span><input className="input-control" type="password" value={form.apiKey} onChange={event => setForm(current => ({ ...current, apiKey: event.target.value }))} placeholder="Cole a chave aqui" /></label>
       </div>
-      <div className="platform-ai-provider-grid">
-        {(Object.keys(aiProviderLabels) as AiProviderId[]).map(provider => (
-          <div className="platform-ai-provider" key={provider}>
-            <div className="platform-card-title"><strong>{aiProviderLabels[provider]}</strong><label><input type="checkbox" checked={llm.providers[provider].enabled} onChange={event => updateProvider(provider, "enabled", event.target.checked)} /> Ativo</label></div>
-            <label className="platform-field"><span>URL base do provedor</span><input className="input-control" value={llm.providers[provider].baseUrl} onChange={event => updateProvider(provider, "baseUrl", event.target.value)} placeholder="https://api.exemplo.com/v1" /></label>
-            <label className="platform-field"><span>API key</span><input className="input-control" type="password" value={llm.providers[provider].apiKey} onChange={event => updateProvider(provider, "apiKey", event.target.value)} placeholder="Deixe mascarada para manter a atual" /></label>
-          </div>
-        ))}
-      </div>
-      <div className="platform-card-title"><div><span className="eyebrow">Roteamento</span><h3>Modelo global por capacidade</h3></div><Sparkles size={16} /></div>
-      <div className="platform-ai-routing-grid">
-        {(Object.keys(aiCapabilityLabels) as AiCapability[]).map(capability => (
-          <div className="platform-ai-route" key={capability}>
-            <strong>{aiCapabilityLabels[capability]}</strong>
-            <select className="select-control" value={llm.routing[capability].provider} onChange={event => updateRoute(capability, "provider", event.target.value)}>{(Object.keys(aiProviderLabels) as AiProviderId[]).map(provider => <option key={provider} value={provider}>{aiProviderLabels[provider]}</option>)}</select>
-            <input className="input-control" value={llm.routing[capability].model} onChange={event => updateRoute(capability, "model", event.target.value)} placeholder="Nome do modelo" />
-            <input className="input-control" value={llm.routing[capability].baseUrl ?? ""} onChange={event => updateRoute(capability, "baseUrl", event.target.value)} placeholder="URL específica opcional" />
-          </div>
-        ))}
-      </div>
-      <label className="platform-field full"><span>System prompt global</span><textarea className="textarea-control agent-prompt-editor" value={prompt} onChange={event => setPrompt(event.target.value)} /></label>
-      <label className="platform-field full"><span>Motivo obrigatório</span><input className="input-control" value={reason} onChange={event => setReason(event.target.value)} /></label>
-      <div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || save.isPending || !llm || reason.trim().length < 3 || model.trim().length < 1} onClick={() => save.mutate({ enabled, model: model.trim(), systemPrompt: prompt, maxSteps, reason, llm })}><Sparkles size={14} /> {save.isPending ? "Salvando…" : "Salvar política global"}</button>{!canMutate && <small className="platform-muted">Sua permissão de plataforma é somente leitura.</small>}</div>
-      {global.error && <div className="form-error">{global.error.message}</div>}
+      <div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || create.isPending || !form.name || !form.baseUrl || !form.model || !form.apiKey} onClick={() => create.mutate(form)}><KeyRound size={14} /> {create.isPending ? "Criando…" : "Criar conexão"}</button>{!canMutate && <small className="platform-muted">Sua permissão de plataforma é somente leitura.</small>}</div>
+      <div className="platform-card-title" style={{ marginTop: 24 }}><div><span className="eyebrow">Conexões cadastradas</span><h3>Roteamento disponível para o sistema</h3></div><Sparkles size={16} /></div>
+      {connections.isLoading ? <p className="platform-muted">Carregando conexões…</p> : connections.data?.length ? <div className="platform-ai-routing-grid">{connections.data.map(connection => <div className="platform-ai-route" key={connection.id}><strong>{connection.name}</strong><small>{aiCapabilityLabels[connection.capability as AiCapability]?.title} · {aiProviderLabels[connection.provider as AiProvider]}</small><span>{connection.model}</span><span className={`platform-status ${connection.status === "validated" ? "green" : connection.status === "error" ? "red" : "amber"}`}><span />{connection.status === "validated" ? "Validada" : connection.status === "error" ? "Erro no teste" : "Teste pendente"}</span><small>{connection.apiKey || "Chave cadastrada"}</small><div className="platform-form-actions"><button className="btn-secondary" disabled={!canMutate || test.isPending} onClick={() => test.mutate({ id: connection.id })}><PlugZap size={13} /> Testar</button><button className="btn-secondary" disabled={!canMutate || remove.isPending} onClick={() => { if (reason.trim().length >= 3 && window.confirm(`Excluir a conexão ${connection.name}?`)) remove.mutate({ id: connection.id, reason }); }}><XCircle size={13} /> Excluir</button></div></div>)}</div> : <p className="platform-muted">Nenhuma conexão criada. Crie a primeira acima.</p>}
     </section>
   );
 }
@@ -446,7 +385,6 @@ function PlatformAdminOverview() {
           </span>
         </div>
       </div>
-      <GlobalAiPolicyCard canMutate={Boolean(access.data?.canMutate)} />
       <div className="platform-metric-grid">
         <MetricCard
           label="Contas monitoradas"
@@ -1548,17 +1486,17 @@ export function PlatformGlobalAiPage() {
     <PlatformAccessGate>
       <PlatformShell
         title="IA global"
-        description="Configure os provedores e o roteamento global por capacidade de interação."
+        description="Cadastre a conexão de cada modelo para uma função específica do sistema."
         active="ai"
       >
         <div className="platform-banner">
           <Sparkles size={17} />
           <div>
-            <strong>Configuração centralizada por capacidade</strong>
-            <span>Texto, visão, transcrição e documentos usam o provider/modelo definido aqui como fallback da plataforma.</span>
+            <strong>Conexões por função, sem configuração espalhada</strong>
+            <span>O roteador escolherá a conexão cadastrada para responder no WhatsApp, transcrever áudio, analisar imagem/documento ou apoiar o Console.</span>
           </div>
         </div>
-        <GlobalAiPolicyCard canMutate={Boolean(access.data?.canMutate)} />
+        <AiConnectionsCard canMutate={Boolean(access.data?.canMutate)} />
       </PlatformShell>
     </PlatformAccessGate>
   );

@@ -31,7 +31,6 @@ import AccessGuard, {
   PlatformOnlyGuard,
 } from "./components/AccessGuard";
 import OnboardingPage from "./pages/OnboardingPage";
-import AiConfigPage from "./pages/AiConfigPage";
 import AiPromptPage from "./pages/AiPromptPage";
 import BillingPage from "./pages/BillingPage";
 import LoginPage from "./pages/LoginPage";
@@ -122,11 +121,7 @@ function Router() {
         )}
       </Route>
       <Route path="/ai-config">
-        {() => (
-          <PlatformOnlyGuard title="Configuração da IA">
-            <AiConfigPage />
-          </PlatformOnlyGuard>
-        )}
+        {() => <Redirect to="/platform-admin/ai" />}
       </Route>
       <Route path="/ai-prompt">
         {() => (

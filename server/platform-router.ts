@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   addPlatformWorkspaceNote,
   canPlatformAdminMutate,
+  createPlatformAiConnection,
+  deletePlatformAiConnection,
   getActiveSupportSession,
   getPlatformGlobalAgentSnapshot,
   getPlatformAdminAccess,
@@ -10,6 +12,7 @@ import {
   getPlatformWorkspaceDetail,
   isExternalProviderCallAllowedForSimulation,
   listPlatformAuditLogs,
+  listPlatformAiConnections,
   listPlatformGlobalAuditLogs,
   listPlatformWorkspaces,
   listPlatformWorkspaceNotes,
@@ -18,10 +21,11 @@ import {
   resetPlatformWorkspace,
   rollbackPlatformAgentVersion,
   savePlatformAgentDraft,
-  savePlatformGlobalAgentPolicy,
+  savePlatformGlobalAiPolicy,
   setPlatformWorkspaceAi,
   setPlatformWorkspaceStatus,
   simulatePlatformAgent,
+  testPlatformAiConnection,
   startSupportSession,
   validateAgentPromptInput,
   type PlatformPermission,
@@ -107,7 +111,14 @@ const globalLlmInput = z.object({
     document: routingConfigInput,
   }),
 });
-
+const aiConnectionCapability = z.enum([
+  "whatsapp_reply",
+  "audio_transcription",
+  "image_analysis",
+  "document_analysis",
+  "admin_support",
+]);
+const aiProvider = z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]);
 export const platformRouter = router({
   access: requirePlatform.query(({ ctx }) => ({
     id: ctx.platformAdmin.id,
@@ -118,6 +129,27 @@ export const platformRouter = router({
   })),
 
   overview: requirePlatform.query(() => listPlatformWorkspaces()),
+
+  aiConnections: requirePlatform.query(() => listPlatformAiConnections()),
+
+  createAiConnection: requirePlatformOperator
+    .input(z.object({
+      name: z.string().trim().min(2).max(120),
+      capability: aiConnectionCapability,
+      provider: aiProvider,
+      baseUrl: z.string().trim().url().max(500),
+      model: z.string().trim().min(1).max(200),
+      apiKey: z.string().trim().min(1).max(4_000),
+    }))
+    .mutation(({ input, ctx }) => createPlatformAiConnection({ ...input, platformAdminId: ctx.platformAdmin.id })),
+
+  testAiConnection: requirePlatformOperator
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(({ input, ctx }) => testPlatformAiConnection({ ...input, platformAdminId: ctx.platformAdmin.id })),
+
+  deleteAiConnection: requirePlatformOperator
+    .input(z.object({ id: z.number().int().positive(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => deletePlatformAiConnection({ ...input, platformAdminId: ctx.platformAdmin.id })),
 
   globalAiConfig: requirePlatform.query(() => getPlatformGlobalAgentSnapshot()),
 
@@ -140,7 +172,7 @@ export const platformRouter = router({
       const valid = validateAgentPromptInput(input);
       if (!valid.valid)
         throw new TRPCError({ code: "BAD_REQUEST", message: valid.reason });
-      return savePlatformGlobalAgentPolicy({
+      return savePlatformGlobalAiPolicy({
         ...input,
         platformAdminId: ctx.platformAdmin.id,
       });

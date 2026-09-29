@@ -74,6 +74,16 @@ export const platformAuditResultEnum = pgEnum("platform_audit_result", [
   "success",
   "failure",
 ]);
+export const platformAiConnectionCapabilityEnum = pgEnum(
+  "platform_ai_connection_capability",
+  [
+    "whatsapp_reply",
+    "audio_transcription",
+    "image_analysis",
+    "document_analysis",
+    "admin_support",
+  ]
+);
 export const workerHeartbeatStatusEnum = pgEnum("worker_heartbeat_status", [
   "healthy",
   "degraded",
@@ -762,7 +772,32 @@ export const workspaceSettings = pgTable("workspaceSettings", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-
+export const platformAiConnections = pgTable(
+  "platformAiConnections",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 120 }).notNull(),
+    capability: platformAiConnectionCapabilityEnum("capability").notNull(),
+    provider: varchar("provider", { length: 80 }).notNull(),
+    baseUrl: varchar("baseUrl", { length: 500 }).notNull(),
+    model: varchar("model", { length: 200 }).notNull(),
+    encryptedApiKey: text("encryptedApiKey").notNull(),
+    active: integer("active").default(1).notNull(),
+    status: varchar("status", { length: 40 }).default("pending").notNull(),
+    lastTestedAt: timestamp("lastTestedAt"),
+    lastError: text("lastError"),
+    createdBy: integer("createdBy"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    index("platform_ai_connections_capability_idx").on(table.capability, table.active),
+    uniqueIndex("platform_ai_connections_name_unique_idx").on(table.name),
+    uniqueIndex("platform_ai_connections_active_capability_unique_idx")
+      .on(table.capability)
+      .where(sql`${table.active} = 1`),
+  ]
+);
 export const workspaceUsageBuckets = pgTable(
   "workspaceUsageBuckets",
   {

@@ -41,6 +41,7 @@ import {
   onboardingPublishedVersions,
   onboardingTranscriptions,
   passwordResetTokens,
+  platformAiConnections,
   professionals,
   professionalServices,
   quotes,
@@ -3845,6 +3846,38 @@ async function readStoredNativeAgentConfig(workspaceId?: number) {
   } as Partial<NativeAgentConfig>;
 }
 
+async function applyPlatformAiConnections(settings: AgentProviderSettings) {
+  const db = await getDb();
+  if (!db) return settings;
+  const rows = await db.select().from(platformAiConnections).where(eq(platformAiConnections.active, 1));
+  const capabilityRoutes = {
+    whatsapp_reply: "text",
+    admin_support: "text",
+    audio_transcription: "audio",
+    image_analysis: "vision",
+    document_analysis: "document",
+  } as const;
+  for (const row of rows) {
+    const routeKey = capabilityRoutes[row.capability as keyof typeof capabilityRoutes];
+    if (!routeKey || !["nvidia_nim", "google_gemini", "openai_compatible"].includes(row.provider)) continue;
+    const provider = row.provider as keyof AgentProviderSettings["providers"];
+    settings.routing[routeKey] = {
+      ...settings.routing[routeKey],
+      provider,
+      baseUrl: row.baseUrl,
+      apiKey: row.encryptedApiKey,
+      model: row.model,
+    };
+    settings.providers[provider] = {
+      ...settings.providers[provider],
+      enabled: true,
+      baseUrl: row.baseUrl,
+      apiKey: row.encryptedApiKey,
+    };
+  }
+  return settings;
+}
+
 async function readNativeAgentConfig(
   workspace: { id: number } | undefined
 ): Promise<NativeAgentConfig> {
@@ -3895,13 +3928,14 @@ export async function getNativeAgentRuntimeConfig(
 ): Promise<NativeAgentConfig> {
   const workspace = await getActiveWorkspaceById(workspaceId);
   const stored = await readStoredNativeAgentConfig(workspace?.id);
+  const llm = await applyPlatformAiConnections(mergeAgentProviderSettings(stored.llm));
   return {
     enabled: stored.enabled !== false,
     model: stored.model?.trim() || process.env.AGENT_MODEL || "gpt-5-mini",
     systemPrompt: stored.systemPrompt ?? "",
     maxSteps: Math.max(1, Math.min(8, Number(stored.maxSteps ?? 6))),
     apiSource: "environment",
-    llm: mergeAgentProviderSettings(stored.llm),
+    llm,
   };
 }
 

@@ -8,6 +8,7 @@ import {
   conversations,
   messages,
   platformAdmins,
+  platformAiConnections,
   platformAuditLogs,
   platformWorkspaceNotes,
   supportSessions,
@@ -32,6 +33,8 @@ import {
 } from "./db";
 import type { NativeAgentConfig } from "./db";
 import {
+  encryptProviderSecret,
+  invokeConfiguredLLM,
   maskProviderSecret,
   type AgentProviderSettings,
 } from "./llm-providers";
@@ -241,7 +244,7 @@ export async function getPlatformGlobalAgentSnapshot() {
   return safeAgentConfig(await getPlatformGlobalNativeAgentConfig());
 }
 
-export async function savePlatformGlobalAgentPolicy(input: {
+export async function savePlatformGlobalAiPolicy(input: {
   platformAdminId: number;
   reason: string;
   enabled: boolean;
@@ -267,6 +270,161 @@ export async function savePlatformGlobalAgentPolicy(input: {
     after: saved,
   });
   return safeAgentConfig(saved);
+}
+
+export type PlatformAiCapability =
+  | "whatsapp_reply"
+  | "audio_transcription"
+  | "image_analysis"
+  | "document_analysis"
+  | "admin_support";
+export type PlatformAiProvider =
+  | "nvidia_nim"
+  | "google_gemini"
+  | "openai_compatible";
+
+function safeAiConnection(row: typeof platformAiConnections.$inferSelect) {
+  return {
+    id: row.id,
+    name: row.name,
+    capability: row.capability as PlatformAiCapability,
+    provider: row.provider as PlatformAiProvider,
+    baseUrl: row.baseUrl,
+    model: row.model,
+    apiKey: maskProviderSecret(row.encryptedApiKey),
+    active: row.active === 1,
+    status: row.status,
+    lastTestedAt: row.lastTestedAt,
+    lastError: row.lastError,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function assertAiBaseUrl(value: string) {
+  const url = new URL(value);
+  const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  if (url.protocol !== "https:" && !(local && url.protocol === "http:"))
+    throw new Error("A URL da API deve usar HTTPS (HTTP só é aceito para localhost)");
+  if (url.username || url.password)
+    throw new Error("A URL da API não pode conter usuário ou senha");
+  return value.replace(/\/+$/, "");
+}
+
+export async function listPlatformAiConnections() {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const rows = await db
+    .select()
+    .from(platformAiConnections)
+    .orderBy(asc(platformAiConnections.capability), asc(platformAiConnections.name));
+  return rows.map(safeAiConnection);
+}
+
+export async function createPlatformAiConnection(input: {
+  platformAdminId: number;
+  name: string;
+  capability: PlatformAiCapability;
+  provider: PlatformAiProvider;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const name = input.name.trim();
+  const model = input.model.trim();
+  const apiKey = input.apiKey.trim();
+  if (!name || !model || !apiKey) throw new Error("Preencha nome, modelo e API key");
+  const baseUrl = assertAiBaseUrl(input.baseUrl.trim());
+  const inserted = await db
+    .insert(platformAiConnections)
+    .values({
+      name,
+      capability: input.capability,
+      provider: input.provider,
+      baseUrl,
+      model,
+      encryptedApiKey: encryptProviderSecret(apiKey),
+      createdBy: input.platformAdminId,
+    })
+    .returning();
+  const row = inserted[0];
+  if (!row) throw new Error("Não foi possível criar a conexão de IA");
+  const safe = safeAiConnection(row);
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    action: "platform_ai_connection_created",
+    reason: `Cadastro da conexão ${name}`,
+    summary: `Conexão de IA criada para ${input.capability}`,
+    after: safe,
+  });
+  return safe;
+}
+
+export async function deletePlatformAiConnection(input: {
+  platformAdminId: number;
+  id: number;
+  reason: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const existing = (await db.select().from(platformAiConnections).where(eq(platformAiConnections.id, input.id)).limit(1))[0];
+  if (!existing) return false;
+  await db.delete(platformAiConnections).where(eq(platformAiConnections.id, input.id));
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    action: "platform_ai_connection_deleted",
+    reason: input.reason,
+    summary: `Conexão de IA ${existing.name} excluída`,
+    before: safeAiConnection(existing),
+  });
+  return true;
+}
+
+function capabilityToAgentCapability(capability: PlatformAiCapability): "text" | "vision" | "audio" | "document" {
+  if (capability === "audio_transcription") return "audio";
+  if (capability === "image_analysis") return "vision";
+  if (capability === "document_analysis") return "document";
+  return "text";
+}
+
+export async function testPlatformAiConnection(input: { platformAdminId: number; id: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const row = (await db.select().from(platformAiConnections).where(eq(platformAiConnections.id, input.id)).limit(1))[0];
+  if (!row) throw new Error("Conexão de IA não encontrada");
+  const capability = capabilityToAgentCapability(row.capability as PlatformAiCapability);
+  const provider = row.provider as PlatformAiProvider;
+  const startedAt = Date.now();
+  try {
+    const settings: AgentProviderSettings = {
+      providers: {
+        nvidia_nim: { enabled: provider === "nvidia_nim", baseUrl: row.baseUrl, apiKey: row.encryptedApiKey },
+        google_gemini: { enabled: provider === "google_gemini", baseUrl: row.baseUrl, apiKey: row.encryptedApiKey },
+        openai_compatible: { enabled: provider === "openai_compatible", baseUrl: row.baseUrl, apiKey: row.encryptedApiKey },
+      },
+      routing: {
+        text: { provider, model: row.model },
+        vision: { provider, model: row.model },
+        audio: { provider, model: row.model },
+        document: { provider, model: row.model },
+      },
+    };
+    await invokeConfiguredLLM(settings, capability, {
+      model: row.model,
+      messages: [{ role: "user", content: "Responda apenas com OK." }],
+      maxTokens: 5,
+    });
+    await db.update(platformAiConnections).set({ status: "validated", lastTestedAt: new Date(), lastError: null, updatedAt: new Date() }).where(eq(platformAiConnections.id, row.id));
+    const result = { ready: true, latencyMs: Date.now() - startedAt, message: "Conexão validada com sucesso." };
+    await recordPlatformAudit({ platformAdminId: input.platformAdminId, action: "platform_ai_connection_tested", reason: `Teste da conexão ${row.name}`, summary: `${row.name} respondeu corretamente`, after: result });
+    return result;
+  } catch (error) {
+    const message = (error instanceof Error ? error.message : "Falha desconhecida").replace(/Bearer\s+\S+/gi, "Bearer [redacted]").slice(0, 500);
+    await db.update(platformAiConnections).set({ status: "error", lastTestedAt: new Date(), lastError: message, updatedAt: new Date() }).where(eq(platformAiConnections.id, row.id));
+    return { ready: false, latencyMs: Date.now() - startedAt, message };
+  }
 }
 
 function parseSafeAgentConfig(

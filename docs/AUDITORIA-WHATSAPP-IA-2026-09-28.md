@@ -130,3 +130,11 @@ Com autorização do usuário, um gateway temporário foi pareado por QR usando 
 Durante o probe, o logger interno Baileys emitiu o objeto `histNotification`, que pode carregar referências/chaves criptografadas de mídia. Não houve download de mídia nem leitura de conteúdo pelo observer. Para reduzir esse risco, `forte-whatsapp/src/logger.ts` agora redige o objeto inteiro e `forte-whatsapp/src/logger.test.ts` testa que chaves/caminhos não aparecem. A suíte gateway completa passou com **62/62 testes**, o typecheck do gateway passou e `git diff --check` passou. A correção foi commitada em `1b8d9a1`; PostgreSQL integration (`36492929091`) e publicação (`36492928824`) concluíram com sucesso.
 
 A sessão de teste foi despareada (`logged_out`), o serviço encerrado e os arquivos temporários com credenciais/outbox/respostas removidos. O chat específico da captura continua sem diagnóstico no banco Windows; nenhuma consulta, alteração ou limpeza desse banco foi feita. O próximo bloco de produto continua sendo o importer idempotente de `messaging-history.set`, isolado do caminho live e dos efeitos de IA/unread/notificação/takeover.
+
+## Atualização — conexões de IA por função
+
+O Console Administrativo passa a tratar cada credencial de provedor como uma **conexão operacional** associada a uma função do produto, em vez de uma política global única com vários campos misturados. As funções disponíveis são `whatsapp_reply` (resposta do agente no WhatsApp), `audio_transcription` (transcrição de mensagens de voz), `image_analysis` (análise de imagens), `document_analysis` (análise de PDFs/documentos) e `admin_support` (suporte operacional do Console).
+
+Cada conexão possui nome, função, provedor, URL, modelo e chave. A chave é criptografada no banco, mascarada nas respostas e nunca é enviada de volta ao frontend em texto aberto. O cadastro, teste e exclusão exigem permissão de operador da plataforma e geram auditoria. A tela antiga `/ai-config` foi redirecionada para `/platform-admin/ai`; o prompt comercial continua sendo uma configuração separada do agente.
+
+O próximo passo de runtime é fazer o orquestrador selecionar a conexão ativa pela função, antes de chamar o provider, mantendo as barreiras de takeover humano, histórico, quota e validação de mídia descritas nesta auditoria.
