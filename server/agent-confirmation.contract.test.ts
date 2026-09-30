@@ -27,4 +27,11 @@ describe("agent confirmation gate", () => {
     const result = await appRouter.createCaller(context()).agent.pendingConfirmations();
     expect(result).toEqual([]);
   });
+
+  it("defaults the tenant kill switch to running", async () => {
+    await expect(appRouter.createCaller(context()).agent.killSwitch()).resolves.toMatchObject({
+      paused: false,
+      reason: null,
+    });
+  });
 });

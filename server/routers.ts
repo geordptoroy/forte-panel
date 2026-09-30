@@ -63,8 +63,10 @@ import {
   getOnboardingProfile,
   getOnboardingPublishCandidate,
   getNativeAgentConfig,
+  getNativeAgentKillSwitch,
   getNativeAgentRuntimeConfig,
   saveNativeAgentConfig,
+  setNativeAgentKillSwitch,
   resetWorkspaceDevelopmentData,
   revokeWorkspaceInvite,
   listContactNotes,
@@ -2253,6 +2255,24 @@ export const appRouter = router({
   }),
 
   agent: router({
+    killSwitch: requireManager.query(({ ctx }) => getNativeAgentKillSwitch(ctx.workspace.workspaceId)),
+    setKillSwitch: requireManager
+      .input(z.object({ paused: z.boolean(), reason: z.string().trim().min(1).max(500) }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await setNativeAgentKillSwitch({
+          workspaceId: ctx.workspace.workspaceId,
+          paused: input.paused,
+          reason: input.reason,
+          actorUserId: ctx.user.id,
+        });
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: input.paused ? "native_agent_kill_switch_enabled" : "native_agent_kill_switch_disabled",
+          summary: `${input.paused ? "Pausa" : "Retomada"} global do agente: ${input.reason}`,
+        });
+        return result;
+      }),
     pendingConfirmations: requireManager.query(async ({ ctx }) => {
       const rows = await listPendingAgentEffectProposals(ctx.workspace.workspaceId);
       return rows.map(row => ({
