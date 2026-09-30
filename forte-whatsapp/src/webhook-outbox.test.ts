@@ -125,4 +125,36 @@ describe("durable webhook outbox", () => {
     expect(outbox.getStatus().pending).toBe(0);
     expect(outbox.getStatus().deadLetter).toBe(1);
   });
+
+  it.each([408, 429])("retries HTTP %i instead of moving it to dead letter", async status => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "forte-outbox-"));
+    directories.push(directory);
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("retry later", { status }))
+      .mockResolvedValueOnce(new Response("ok", { status: 202 }));
+    const outbox = new WebhookOutbox({
+      directory,
+      url: "https://panel.example/webhook",
+      secret: "secret",
+      maxAttempts: 1,
+      initialBackoffMs: 20,
+      maxBackoffMs: 20,
+      fetchImpl,
+      logger,
+    });
+
+    await outbox.start();
+    await outbox.enqueue({ eventId: `event-retry-${status}`, content: "retry" });
+    await waitFor(() => fetchImpl.mock.calls.length === 1);
+    await new Promise(resolve => setTimeout(resolve, 70));
+    await outbox.flush();
+    await waitFor(() => fetchImpl.mock.calls.length === 2);
+    await outbox.stop();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(outbox.getStatus().pending).toBe(0);
+    expect(outbox.getStatus().deadLetter).toBe(0);
+    expect(await fs.readdir(path.join(directory, "dead-letter")).catch(() => [])).toHaveLength(0);
+  });
 });
