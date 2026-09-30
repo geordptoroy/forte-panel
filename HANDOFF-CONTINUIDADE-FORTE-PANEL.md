@@ -1,11 +1,9 @@
 
 
-## 40. O7.9 — Idempotência outbound fim a fim — 2026-09-30
+## 41. O7.10 — Inbound transacional e retry sem duplicação — 2026-09-30
 
-A próxima fatia de hardening implementa um ledger durável por instância no gateway Baileys. O `Idempotency-Key` agora é obrigatório nos endpoints autenticados de envio. Uma chave concluída reaproveita o mesmo `externalId` sem chamar o socket; payload diferente retorna conflito; resultado externo inconclusivo permanece `started` e falha fechado após restart, evitando reenvio automático potencialmente duplicado.
+A ingestão inbound agora executa em uma transação PostgreSQL única. A transação cobre deduplicação por `externalId`, grupo/participante, contato, conversa, lead/oportunidade, mensagem, evento `message.received`, unread, controle humano e timestamps. O helper de lead recebeu o executor da transação para não abrir uma segunda conexão no caminho inbound.
 
-A validação desta fatia deve ser feita primeiro no Sandbox: testes do ledger, contrato HTTP, typecheck e build. Ficam deliberadamente adiados para a etapa final os testes que exigem a máquina do usuário: restart real do container com timeout após aceitação do provedor, sessão WhatsApp física, Docker com volume existente, staging persistente, browser autenticado e restore completo.
+Validação local: `pnpm test` passou com 271 testes e 55 skips dependentes de PostgreSQL/staging; os testes focados de webhook passaram com 14 testes e 8 skips; `pnpm check` e `git diff --check` passaram. Mídia continua sendo persistida antes da transação por usar storage externo; compensação de blobs órfãos, crash real, restore e staging permanecem gates externos.
 
-**Estado:** concluída em código e testes locais.
-**Validação:** gateway `79 testes`, Panel `271 aprovados / 55 skipped`, typechecks do gateway/Panel e build do gateway passaram. Os skips dependentes de PostgreSQL/staging permanecem deliberadamente para a etapa final.
-**Próximo passo:** O7.10 — tornar o inbound transacional e idempotente sem duplicar contato, conversa, mensagem ou unread em retry/crash.
+**Próximo passo:** O7.11 — hardening de sessão, webhook, headers, CSRF e rate limit.

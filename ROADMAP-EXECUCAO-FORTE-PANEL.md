@@ -112,7 +112,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O7.5 | Escala | Dead-letter para falhas permanentes do webhook | **CONCLUÍDA (código + CI + Docker + smoke)** | PR #29; CI `36744892337` passou; 5 envelopes preservados em `outbox/<instanceId>/dead-letter` (`deadLetter=5`); smoke bidirecional passou |
 | O7.6 | Escala | Observabilidade da dead-letter no status da instância | **CONCLUÍDA (código + CI + Docker + smoke)** | PR #30; CI `36746224303`, imagem `36748842030` e restart passaram; status `connected`, `pending=0`, `deadLetter=5`; inbound/outbound passaram em ambos os sentidos |
 | O7.9 | Confiabilidade | Idempotência outbound fim a fim no gateway | **CONCLUÍDA (código + testes locais)** | Ledger durável por instância/chave, replay seguro e falha fechada para resultado externo inconclusivo; staging e teste físico permanecem pendentes |
-| O7.10 | Confiabilidade | Inbound transacional e retry sem duplicação | **PENDENTE** | Transação de domínio, compensação segura de mídia e retry idempotente; prova persistente fica para o gate externo |
+| O7.10 | Confiabilidade | Inbound transacional e retry sem duplicação | **CONCLUÍDA (código + testes locais)** | Transação única protege contato, conversa, lead/oportunidade, mensagem, unread e `message.received`; compensação de mídia e prova persistente ficam para o gate externo |
+| O7.11 | Confiabilidade | Hardening de sessão, webhook, headers e rate limit | **PENDENTE** | Revogação, anti-replay, CSRF, rate limit distribuído e secrets obrigatórios |
 | A1 | Adiado | TTS, múltiplos canais e automações genéricas | ADIADA | Só após o núcleo gerar valor recorrente |
 
 ---

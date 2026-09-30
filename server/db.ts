@@ -7008,6 +7008,18 @@ export async function getCorePipelineSnapshot(workspaceId: number) {
 
 export async function ingestInboundWhatsApp(
   workspaceId: number,
+  input: Parameters<typeof ingestInboundWhatsAppCore>[2]
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx =>
+    ingestInboundWhatsAppCore(tx, workspaceId, input)
+  );
+}
+
+async function ingestInboundWhatsAppCore(
+  db: any,
+  workspaceId: number,
   input: {
     eventId: string;
     phone: string;
@@ -7032,8 +7044,6 @@ export async function ingestInboundWhatsApp(
     receivedAt?: Date;
   }
 ) {
-  const db = await getDb();
-  if (!db) throw new Error("Database unavailable");
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const sourceMetadata = input.metadata ?? {};
@@ -7297,11 +7307,11 @@ export async function ingestInboundWhatsApp(
     historySync: isHistorical,
     ignored: false,
   })
-    ? await ensureLeadOpportunityForContact(workspace.id, contact, {
+      ? await ensureLeadOpportunityForContact(workspace.id, contact, {
         source: "whatsapp",
         activityAt: receivedAt,
         conversationId: conversation.id,
-      })
+      }, db)
     : undefined;
   const created = await db
     .insert(messages)
@@ -8586,9 +8596,10 @@ async function ensureLeadOpportunityForContact(
     source: LeadOpportunitySource;
     activityAt?: Date;
     conversationId?: number;
-  }
+  },
+  database?: any
 ) {
-  const db = await getDb();
+  const db = database ?? (await getDb());
   if (!db) throw new Error("Database unavailable");
   if (contact.workspaceId !== workspaceId)
     throw new Error("Lead contact does not belong to this workspace");
@@ -8601,7 +8612,7 @@ async function ensureLeadOpportunityForContact(
         updatedAt: sql`GREATEST(${leads.updatedAt}, ${options.activityAt})`,
       }
     : { updatedAt: now };
-  return db.transaction(async tx => {
+  const run = async (tx: any) => {
     const leadRows = await tx
       .insert(leads)
       .values({
@@ -8717,9 +8728,9 @@ async function ensureLeadOpportunityForContact(
       opportunityId: opportunity.id,
       opportunityStage: opportunity.stage,
     };
-  });
+  };
+  return database ? run(database) : db.transaction(run);
 }
-
 async function linkExistingOpportunityToConversation(
   workspaceId: number,
   contactId: number,
