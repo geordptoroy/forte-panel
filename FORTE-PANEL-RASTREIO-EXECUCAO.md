@@ -22,6 +22,8 @@ Atualizado em: 2026-09-30
 | Sessão persistente | Concluída | Reconectou após restart sem novo QR |
 | Release público | Bloqueado por gates externos | Ainda exige staging, restore, browser smoke, segurança e revisão final |
 
+Auditoria documental de 2026-09-30 confirmou gaps adicionais além do resumo operacional: idempotência de efeito externo no gateway, transação inbound, hardening de sessão/webhook/headers, runbook, observabilidade externa, coorte de até 10 workspaces, fallback/custo da IA, UX pública e billing continuam abertos. Detalhamento em [`AUDITORIA-GAPS-MVP-2026-09-30.md`](./AUDITORIA-GAPS-MVP-2026-09-30.md).
+
 ## Fila de coding
 
 ### C1 — Regressão de classificação HTTP da outbox
@@ -40,21 +42,27 @@ Validação: 5 testes da outbox passaram; `npm run check`, `pnpm check` e `git d
 
 ### C2 — Auditoria de contratos e superfícies de operação
 
-**Estado:** pendente.
+**Estado:** concluído nesta rodada.
 
 Revisar contratos de `/ready`, snapshot de instância, outbox, documentação Docker, logs seguros e comandos de operação. Corrigir inconsistências somente quando houver teste ou evidência concreta.
 
+Resultado: foi adicionada regressão HTTP garantindo que `/ready` preserve `webhookOutboxPending`, `webhookOutboxDeadLetter` e `webhookLastError`.
+
 ### C3 — Cobertura de falhas de restart e recuperação
 
-**Estado:** pendente.
+**Estado:** concluído nesta rodada.
 
 Adicionar testes determinísticos para restart com fila ativa, dead-letter existente e diretório ausente, sem alterar o volume real do usuário.
 
+Validação: 6 testes da outbox e 16 testes HTTP do gateway passaram; typechecks do gateway e Panel passaram.
+
 ### C4 — Revisão final de integração
 
-**Estado:** pendente.
+**Estado:** concluído nesta rodada.
 
 Rodar a suíte completa, CI PostgreSQL, testes do gateway, build das imagens e smoke Docker. Consolidar falhas em uma lista única antes de refatorar.
+
+Resultado: Panel `268 passed / 55 skipped`; gateway `76 passed`; typechecks e builds passaram; PR #32 tem CI PostgreSQL verde. Avisos observados: `OAUTH_SERVER_URL` ausente nos testes que apenas inicializam o adapter, testes persistentes explicitamente skipped e warning de bundle frontend acima de 500 kB.
 
 ## Fase final — Refatoração orientada por falhas
 
@@ -68,6 +76,8 @@ Executar somente depois de C1–C4:
 - repetir todos os gates após cada correção.
 
 **Não refatorar por preferência estética enquanto os gates ainda estiverem sendo descobertos.**
+
+**Resultado desta rodada:** nenhuma falha funcional, race ou contrato contraditório foi encontrado; nenhuma refatoração corretiva foi aplicada. O warning de bundle e a configuração ausente de OAuth ficam registrados como itens operacionais separados, não como regressões desta fila.
 
 ## Gates de release que não são substituídos por coding
 
