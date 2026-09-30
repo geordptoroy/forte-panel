@@ -10,6 +10,7 @@ import {
   completeApiIdempotency,
   failApiIdempotency,
   getContactById,
+  getCanonicalContactStage,
   getActiveWorkspaceById,
   getCorePipelineSnapshot,
   getNativeAgentRuntimeConfig,
@@ -565,7 +566,9 @@ api.post("/contacts/upsert", async (req, res) => {
             id: contact?.id,
             phone: contact?.externalPhone,
             name: contact?.name,
-            stage: contact?.stage,
+            stage: contact
+              ? await getCanonicalContactStage(workspaceId, contact.id)
+              : undefined,
           },
           created:
             !contact?.createdAt ||
@@ -644,7 +647,9 @@ api.get("/contacts/:id", async (req, res) => {
         city: contact.city,
         neighborhood: contact.neighborhood,
         serviceRequested: contact.serviceRequested,
-        stage: contact.stage,
+        stage:
+          (await getCanonicalContactStage(workspaceId, contact.id)) ??
+          contact.stage,
         urgency: contact.urgency,
         aiEnabled: Boolean(contact.aiEnabled),
         quoteCents: contact.quoteCents,
@@ -1023,10 +1028,16 @@ api.patch("/contacts/:id/stage", async (req, res) => {
           statusCode: 404,
           body: { error: "not_found", message: "Contato não encontrado" },
         };
-      await moveContactStage(workspaceId, id, parsed.data.stage);
+      const transition = await moveContactStage(
+        workspaceId,
+        id,
+        parsed.data.stage,
+        undefined,
+        "api"
+      );
       return {
         statusCode: 200,
-        body: { data: { id, stage: parsed.data.stage } },
+        body: { data: { id, stage: transition.stage } },
       };
     });
   } catch (error) {

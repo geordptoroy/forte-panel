@@ -1130,7 +1130,7 @@ function mapPlatformSupportContact(contact: any) {
     neighborhood: contact.neighborhood ?? "",
     service: contact.serviceRequested ?? "Não informado",
     urgency: contact.urgency,
-    stage: contact.stage,
+    stage: contact.opportunityStage ?? contact.stage,
     aiEnabled: contact.aiEnabled === 1,
     unread: contact.unreadCount,
     awaitingResponse: contact.awaitingResponse ?? false,

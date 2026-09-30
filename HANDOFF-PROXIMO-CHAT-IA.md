@@ -6,37 +6,32 @@
 
 ## Regras do usuário
 
-Avançar uma fatia por vez; documentar cada fatia; usar branches/PRs para revisão; **nunca mesclar automaticamente**; manter `CORE_ONLY_MODE` até prova de produção; não usar nem pedir secrets reais. Assinaturas/cobrança estão adiadas para Wave O7.
+Avançar uma fatia por vez; documentar cada fatia; preservar branches/PRs empilhadas; **nunca mesclar automaticamente**; manter `CORE_ONLY_MODE` até prova de produção PostgreSQL/WhatsApp; não usar nem pedir secrets reais. Stripe/cobrança fica para O7.
 
-## Estado de revisão
+## Estado da pilha de revisão
 
-- Branch atual: `feat/o3.2-inbox-assignment-follow-up`; implementação/teste corrigido no commit `d1b5ca8`.
-- [PR #8 — O3.2 Inbox operacional](https://github.com/geordptoroy/forte-panel/pull/8) está aberto, empilhado sobre [PR #7 — O3.1 Lead unificado](https://github.com/geordptoroy/forte-panel/pull/7). Nenhum PR foi mesclado.
-- CI PostgreSQL do PR #8: run `36708180817` passou; aplicou migrations e executou 72 arquivos/285 testes sem skips. O primeiro run (`36707960513`) falhou por um fixture do próprio teste usando o contato B sob o workspace A; corrigido em `d1b5ca8`.
-- PRs anteriores #4–#7 permanecem abertos conforme a política de revisão; não mesclar automaticamente.
+- Branch: `feat/o3.3-canonical-opportunity-stage`, filha de `feat/o3.2-inbox-assignment-follow-up`.
+- PRs #4–#8 permanecem abertos; PR [#9 — O3.3: canonical Opportunity stage history](https://github.com/geordptoroy/forte-panel/pull/9) está aberta sobre a branch/PR #8. Não mesclar automaticamente.
+- O CI PostgreSQL da PR #9, run [`36710769990`](https://github.com/geordptoroy/forte-panel/actions/runs/36710769990), passou no código de `7dc0efc`: migration 0049 aplicada; **72 arquivos/285 testes passaram, zero skips**. A PR mostrou `SUCCESS` para esse head.
+- O run #8 `36708180817` validou a migration 0048 e 72 arquivos/285 testes sem skips. O PR pai continua aberto.
 
-## O3.2 implementada em código
+## O3.3 — concluída em código e CI
 
-Migration aditiva `0048_opportunity_assignment_followup.sql` adiciona responsável da Opportunity e histórico da próxima ação. Só owner/admin/manager pode atribuir a uma membership ativa do mesmo workspace; desativar membro limpa atribuições. Cada Opportunity pode ter uma próxima ação aberta com título e prazo futuro, persistida, auditada, reagendável e concluível. O Inbox projeta responsável e estado/prazo. Nenhuma mensagem é enviada e nenhum scheduler/worker é chamado.
+Entrega detalhada: `O3.3-ENTREGA-FUNIL-CANONICO.md`.
 
-Registro completo: `O3.2-ENTREGA-INBOX-OPERACIONAL.md`. Contrato de API, Product Scope, fonte de verdade, roadmap, índice e checklist também foram atualizados.
+- `Opportunity.stage` é canônico; `contacts.stage` é somente espelho de compatibilidade.
+- Migration aditiva 0049 cria `opportunityStageHistory`, backfill idempotente e índices/checks.
+- Lead, Opportunity, baseline e vínculo à Conversation são gravados na mesma transação.
+- `moveContactStage` serializa por Opportunity e grava estágio, espelho, histórico, audit log e outbox atomicamente. Repetir o estágio atual é no-op; divergência do espelho é reparada sem falsa transição.
+- Inbox, CRM/Kanban, Agenda, REST e `leadMemoryOperation` priorizam estágio canônico; grupos continuam fora do funil comercial.
+- `PRODUCT_SCOPE.md`, `API_CONTRACT.md`, Fonte de Verdade, roadmap, plano intermediário, índice e handoffs foram atualizados.
 
-## Validação observada
+## Validações
 
-- `pnpm check`: passou.
-- `pnpm test`: 54 arquivos passaram, 18 foram ignorados; 232 testes passaram e 53 foram ignorados. Os testes DB condicionais, inclusive O3.2, são executados no workflow PostgreSQL; não há `DATABASE_URL` local neste Sandbox.
-- `pnpm build`: passou; aviso preexistente de bundle frontend acima de 500 kB.
-- `git diff --check`: passou.
-- A migration 0048 foi aplicada no PostgreSQL efêmero do CI; este resultado não equivale a banco persistente/staging ou smoke físico Baileys.
+- Sandbox: `pnpm check`, `pnpm build` e `git diff --check` passaram; `pnpm test` teve 232 aprovações/53 ignorados (18 arquivos ignorados) por não haver `DATABASE_URL`. Build com aviso conhecido de chunk frontend acima de 500 kB.
+- CI PostgreSQL: run #36710769990 aplicou as migrations e executou a suíte completa; 72/72 arquivos, 285/285 testes, sem skips.
+- O resultado do CI é efêmero; não substitui banco persistente/staging, restore, smoke visual desktop/mobile ou prova física inbound/outbound Baileys. Uma atualização documental após o commit validado pode gerar outro run; confira o estado mais recente da PR antes da próxima execução.
 
-## Limites de release
+## Próxima fatia
 
-A execução PostgreSQL efêmera de CI não substitui staging persistente, restore, smoke visual em desktop/mobile ou prova real inbound/outbound com Baileys. Rotas continuam `not_ready`; manter `CORE_ONLY_MODE`.
-
-## Próxima fatia: O3.3 — funil canônico sem duplicação de estado
-
-1. Revalidar os PRs e descobrir se algum pai foi atualizado ou fechado; preservar branches empilhadas e não fazer merge automático.
-2. Mapear todas as leituras/escritas de stage em `contacts.stage`, `opportunities.stage`, Inbox, Kanban, CRM/REST e `leadMemoryOperation`.
-3. Tornar `Opportunity.stage` a fonte canônica; centralizar mutações em um serviço tenant-scoped com auditoria e sincronização compatível, sem criar estados concorrentes.
-4. Adicionar migration/backfill idempotente e testes PostgreSQL para estados existentes, isolamento entre workspaces e todas as rotas de stage.
-5. Rodar `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check`; registrar resultado e pendências, abrir PR empilhado sobre O3.2 e aguardar revisão sem mesclar.
+**O3.4 — Orçamento com itens, validade e aprovação humana.** Manter uma fatia isolada, oportunidade tenant-scoped, proposta rastreável, aprovação humana e auditoria. Não introduzir Stripe/cobrança real nesta etapa. Preservar a pilha aberta, sem merge automático, e manter `CORE_ONLY_MODE` ativo.

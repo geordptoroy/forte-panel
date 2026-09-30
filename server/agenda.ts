@@ -1,8 +1,10 @@
-import { and, asc, eq, gte, lt, ne } from "drizzle-orm";
+import { and, asc, eq, gte, lt, ne, sql } from "drizzle-orm";
 import {
   appointmentsTable,
   availability,
   contacts,
+  leads,
+  opportunities,
   professionals,
   professionalServices,
   services,
@@ -79,11 +81,13 @@ export async function listAppointmentsForProfessional(workspaceId: number, profe
     contactPhone: contacts.externalPhone,
     contactCity: contacts.city,
     contactNeighborhood: contacts.neighborhood,
-    contactStage: contacts.stage,
+    contactStage: sql<string | null>`COALESCE(${opportunities.stage}, ${contacts.stage})`,
   }).from(appointmentsTable)
     .leftJoin(services, and(eq(services.id, appointmentsTable.serviceId), eq(services.workspaceId, workspaceId)))
     .leftJoin(professionals, and(eq(professionals.id, appointmentsTable.professionalId), eq(professionals.workspaceId, workspaceId)))
     .leftJoin(contacts, and(eq(contacts.id, appointmentsTable.contactId), eq(contacts.workspaceId, workspaceId)))
+    .leftJoin(leads, and(eq(leads.contactId, contacts.id), eq(leads.workspaceId, workspaceId)))
+    .leftJoin(opportunities, and(eq(opportunities.leadId, leads.id), eq(opportunities.workspaceId, workspaceId)))
     .where(and(...filters))
     .orderBy(asc(appointmentsTable.startsAt), asc(appointmentsTable.id));
   return rows as AgendaEntry[];

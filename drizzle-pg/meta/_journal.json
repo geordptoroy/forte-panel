@@ -344,6 +344,13 @@
       "when": 1790765100000,
       "tag": "0048_opportunity_assignment_followup",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1790767867837,
+      "tag": "0049_opportunity_stage_history",
+      "breakpoints": true
     }
   ]
 }

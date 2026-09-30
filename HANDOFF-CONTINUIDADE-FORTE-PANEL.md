@@ -62,3 +62,14 @@ A branch `feat/o3.2-inbox-assignment-follow-up` adiciona assignment tenant-scope
 Gates locais: `pnpm check`, `pnpm test` (54 arquivos aprovados/18 ignorados; 232 testes aprovados/53 ignorados por ausência de PostgreSQL), `pnpm build` e `git diff --check` passaram; build mantém o aviso existente do bundle frontend >500 kB. O primeiro PostgreSQL run do PR #8 (`36707960513`) aplicou migrations mas falhou num fixture que consultava o contato do workspace B pelo workspace A; o fixture foi corrigido no commit `d1b5ca8`. O rerun `36708180817` passou a suíte completa com 72 arquivos/285 testes e zero skips, aplicando 0048.
 
 PR [#8](https://github.com/geordptoroy/forte-panel/pull/8) está aberto e empilhado sobre o PR #7; nenhum merge foi feito. CI PostgreSQL é efêmero e não substitui staging persistente, restore, smoke desktop/mobile ou prova real Baileys; manter `CORE_ONLY_MODE` e rotas `not_ready`. Entrega: `O3.2-ENTREGA-INBOX-OPERACIONAL.md`. Próxima fatia: O3.3 — funil canônico sem duplicação de estado.
+
+
+## 36. O3.3 — Funil canônico sem duplicação de estado — 2026-09-30
+
+A branch `feat/o3.3-canonical-opportunity-stage` implementa `Opportunity.stage` como fonte comercial canônica e mantém `contacts.stage` apenas como espelho de compatibilidade. A migration aditiva 0049 cria `opportunityStageHistory` e faz backfill idempotente das oportunidades existentes. O helper cria/atualiza Lead, Opportunity, baseline e vínculo à Conversation na mesma transação. A transição centralizada serializa por Opportunity e atualiza estágio, espelho, histórico imutável, audit log e outbox na mesma transação. No-op não cria transição falsa; divergência do espelho é reparada com auditoria própria. Inbox, CRM/Kanban, Agenda, REST e `leadMemoryOperation` priorizam o estágio da Opportunity; grupos permanecem fora do funil comercial.
+
+Validação no Sandbox: `pnpm check`, `pnpm test` (54 arquivos passaram/18 ignorados; 232 testes passaram/53 ignorados), `pnpm build` e `git diff --check` passaram. Integrações que requerem PostgreSQL, incluindo O3.3, ficaram ignoradas localmente por ausência de `DATABASE_URL`. O build preserva o aviso existente de bundle frontend acima de 500 kB.
+
+A [PR #9](https://github.com/geordptoroy/forte-panel/pull/9) foi aberta empilhada sobre PR #8. O CI PostgreSQL run [`36710769990`](https://github.com/geordptoroy/forte-panel/actions/runs/36710769990), no commit `7dc0efc`, passou: aplicou 0049 e executou 72 arquivos/285 testes sem skips. O resultado é efêmero; não houve prova em staging persistente, restore, smoke mobile/desktop ou WhatsApp físico. `CORE_ONLY_MODE` permanece ativo e nenhum secret real foi usado. Detalhes: `O3.3-ENTREGA-FUNIL-CANONICO.md`.
+
+**Próxima fatia:** O3.4 — orçamento com itens, validade e aprovação humana, sem cobrança real/Stripe. Preservar a pilha aberta sem merge automático.

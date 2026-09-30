@@ -1181,6 +1181,45 @@ export const opportunities = pgTable(
   ]
 );
 
+export const opportunityStageHistory = pgTable(
+  "opportunityStageHistory",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    opportunityId: integer("opportunityId")
+      .notNull()
+      .references(() => opportunities.id, { onDelete: "cascade" }),
+    fromStage: varchar("fromStage", { length: 80 }),
+    toStage: varchar("toStage", { length: 80 }).notNull(),
+    source: varchar("source", { length: 24 }).notNull(),
+    actorUserId: integer("actorUserId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("opportunity_stage_history_timeline_idx").on(
+      table.workspaceId,
+      table.opportunityId,
+      table.createdAt,
+      table.id
+    ),
+    uniqueIndex("opportunity_stage_history_baseline_unique_idx")
+      .on(table.workspaceId, table.opportunityId)
+      .where(sql`${table.fromStage} IS NULL`),
+    check(
+      "opportunity_stage_history_source_check",
+      sql`${table.source} in ('whatsapp', 'api', 'crm', 'inbox', 'lead_memory', 'migration')`
+    ),
+    check(
+      "opportunity_stage_history_change_check",
+      sql`${table.fromStage} IS NULL OR ${table.fromStage} <> ${table.toStage}`
+    ),
+  ]
+);
+
 export const conversations = pgTable(
   "conversations",
   {
