@@ -92,8 +92,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O3.3 | Comercial | Funil canônico sem duplicação de estado | **CONCLUÍDA (código + CI PostgreSQL)** | PR #9 aberta; run `36710769990` aplicou 0049 e passou 72 arquivos/285 testes sem skips; staging e WhatsApp real continuam pendentes |
 | O3.4 | Comercial | Orçamento com itens, validade e aprovação | **CONCLUÍDA (código + CI PostgreSQL)** | PR #10 aberta; run `36720148370` passou com migration 0050; staging e revisão final continuam pendentes |
 | O3.5 | Comercial | Agenda com conflito, profissional e status | **CONCLUÍDA (código + CI PostgreSQL)** | PR #11 aberta; run `36723304885` passou; staging e revisão final continuam pendentes |
-| O3.6 | Comercial | Recebimento, ledger operacional e recibo | **EM REVISÃO (código local)** | Branch `feat/o3.6-receipts-ledger`; migration 0051; CI PostgreSQL e PR pendentes |
-| O3.7 | Comercial | Dashboard de decisões do dia | PENDENTE | Usuário vê pendências, receita e saúde do canal |
+| O3.6 | Comercial | Recebimento, ledger operacional e recibo | **CONCLUÍDA (código + CI PostgreSQL)** | PR #12 aberta; run `36729522644` passou após correção da FK composta; staging e revisão final continuam pendentes |
+| O3.7 | Comercial | Dashboard de decisões do dia | **EM REVISÃO (código local)** | Branch `feat/o3.7-daily-decisions-dashboard`; decisões, receita do ledger e saúde do canal; CI PostgreSQL e PR pendentes |
 | O4.1 | IA | Contexto comercial seguro para o agente | PENDENTE | IA consulta dados reais sem atravessar tenant |
 | O4.2 | IA | Ferramentas somente leitura e confirmação mutável | PENDENTE | IA sugere; humano/backend autoriza efeitos |
 | O4.3 | IA | Transferência para humano e kill switch | PENDENTE | Falha segura e controle operacional |

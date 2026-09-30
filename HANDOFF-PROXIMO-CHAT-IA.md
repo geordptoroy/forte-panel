@@ -1,6 +1,6 @@
 # Handoff — Forte Panel
 
-**Atualizado:** 2026-09-30 — O3.6 em revisão local
+**Atualizado:** 2026-09-30 — O3.7 em revisão local
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
@@ -48,8 +48,14 @@ Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 10 testes 
 
 A branch `feat/o3.6-receipts-ledger` foi criada sobre a O3.5 validada (`6089b3a`). A entrega está registrada em `O3.6-ENTREGA-RECEBIMENTOS-LEDGER-RECIBO.md`. A migration 0051 cria lançamentos de recebimento e recibos tenant-scoped; `billing.registerPayment` valida aprovação, valor, método, data, limite do orçamento, registra o agregado compatível e emite recibo na mesma transação. A UI agora suporta valores parciais e métodos manuais.
 
-Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes focados passaram. PostgreSQL CI e PR ainda pendentes. Não introduzir gateway, Stripe ou cobrança real.
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes focados passaram. A PR #12 está aberta e o CI PostgreSQL `36729522644` passou após a correção da FK composta da migration 0051. Não introduzir gateway, Stripe ou cobrança real.
+
+## O3.7 — implementação local em revisão
+
+A branch `feat/o3.7-daily-decisions-dashboard` foi criada sobre a O3.6 validada (`2887bac`). A entrega está registrada em `O3.7-ENTREGA-DASHBOARD-DECISOES-DIA.md`. O snapshot agora calcula decisões do dia, receita recebida no mês a partir do ledger, pendência de orçamentos e saúde tenant-scoped do canal/worker. A UI exibe links diretos para Inbox, Funil, Faturamento e Agenda sem executar efeitos externos.
+
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 15 testes focados passaram. PostgreSQL CI e PR ainda pendentes.
 
 ## Próxima fatia
 
-**O3.6 — Recebimento, ledger operacional e recibo**, somente depois de publicar e validar o PR da O3.5. Preservar a pilha aberta, sem merge automático, e manter `CORE_ONLY_MODE` ativo.
+**O4.1 — Contexto comercial seguro para o agente**, somente depois de publicar e validar a PR da O3.7. Preservar a pilha aberta, sem merge automático, e manter `CORE_ONLY_MODE` ativo.
