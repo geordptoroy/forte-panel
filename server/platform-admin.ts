@@ -12,6 +12,7 @@ import {
   platformAiConnections,
   platformAuditLogs,
   platformIncidents,
+  platformSupportTickets,
   platformWorkspaceNotes,
   supportSessions,
   users,
@@ -1842,6 +1843,35 @@ export async function setPlatformWorkspacePlan(input: {
   return { id: updated.id, plan: updated.plan };
 }
 
+export async function listPlatformSupportTickets(workspaceId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(platformSupportTickets)
+    .where(workspaceId ? eq(platformSupportTickets.workspaceId, workspaceId) : undefined)
+    .orderBy(desc(platformSupportTickets.createdAt), desc(platformSupportTickets.id)).limit(100);
+}
+export async function openPlatformSupportTicket(input: { platformAdminId: number; workspaceId: number; supportSessionId: number; priority: "low" | "normal" | "high" | "urgent"; subject: string; description: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const session = await getActiveSupportSession({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, sessionId: input.supportSessionId });
+  if (!session) throw new Error("Sessão de suporte ausente, expirada, revogada ou fora do workspace");
+  const ticket = (await db.insert(platformSupportTickets).values({ workspaceId: input.workspaceId, supportSessionId: input.supportSessionId, openedByPlatformAdminId: input.platformAdminId, priority: input.priority, subject: input.subject.trim(), description: input.description.trim(), status: "open" }).returning())[0];
+  if (!ticket) throw new Error("Não foi possível abrir o ticket");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, supportSessionId: input.supportSessionId, action: "support_ticket_opened", reason: input.subject, summary: `Ticket #${ticket.id} aberto: ${ticket.subject}`, after: { ticketId: ticket.id, priority: ticket.priority, status: ticket.status } });
+  return ticket;
+}
+export async function closePlatformSupportTicket(input: { platformAdminId: number; ticketId: number; supportSessionId: number; resolution: string; reason: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const current = (await db.select().from(platformSupportTickets).where(and(eq(platformSupportTickets.id, input.ticketId), eq(platformSupportTickets.supportSessionId, input.supportSessionId))).limit(1))[0];
+  if (!current) throw new Error("Ticket não encontrado nesta sessão de suporte");
+  const session = await getActiveSupportSession({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, sessionId: input.supportSessionId, requireOperator: true });
+  if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
+  const ticket = (await db.update(platformSupportTickets).set({ status: "closed", resolution: input.resolution.trim(), closedAt: new Date(), closedByPlatformAdminId: input.platformAdminId, updatedAt: new Date() }).where(and(eq(platformSupportTickets.id, current.id), eq(platformSupportTickets.status, "open"))).returning())[0];
+  if (!ticket) throw new Error("Ticket já está fechado");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, supportSessionId: input.supportSessionId, action: "support_ticket_closed", reason: input.reason, summary: `Ticket #${ticket.id} fechado`, before: { status: current.status }, after: { status: ticket.status, resolutionLength: ticket.resolution?.length ?? 0 } });
+  return ticket;
+}
 export async function listPlatformIncidents(workspaceId?: number) {
   const db = await getDb();
   if (!db) return [];
@@ -1885,6 +1915,7 @@ export async function getPlatformWorkspaceDetail(workspaceId: number) {
     workspaceAudit,
     agent,
     incidents,
+    tickets,
   ] = await Promise.all([
     workspaceListItem(workspace),
     getWorkspaceMembersForPlatform(workspaceId),
@@ -1894,6 +1925,7 @@ export async function getPlatformWorkspaceDetail(workspaceId: number) {
     listWorkspaceAuditSafe(workspaceId),
     getPlatformAgentSnapshot(workspaceId),
     listPlatformIncidents(workspaceId),
+    listPlatformSupportTickets(workspaceId),
   ]);
   const channels = (
     await db
@@ -1923,6 +1955,7 @@ export async function getPlatformWorkspaceDetail(workspaceId: number) {
     workspaceAudit,
     agent,
     incidents,
+    tickets,
   };
 }
 

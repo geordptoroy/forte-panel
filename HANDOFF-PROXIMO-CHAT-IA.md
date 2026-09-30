@@ -89,3 +89,7 @@ Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 7 testes f
 A branch `feat/o5.1-workspace-accounts-lifecycle` foi criada sobre a O4.4 validada (`9fa98fd`). A entrega está registrada em `O5.1-ENTREGA-CONTAS-PRODUCAO.md`. O lifecycle e health existentes foram preservados; a migration 0053 adiciona incidentes administrativos, e `setWorkspacePlan`, `incidents`, `openIncident` e `resolveIncident` tornam plano e incidentes auditáveis no control-plane.
 
 Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes focados passaram. CI PostgreSQL e PR ainda pendentes.
+
+## O5.2 em revisão — suporte, tickets e sessões auditadas
+
+A branch `feat/o5.2-support-tickets-audited-sessions` adiciona a migration `0054_platform_support_tickets.sql`, operações tenant-scoped de abertura/fechamento de tickets e os tickets no detalhe do workspace. A abertura exige sessão ativa; o fechamento exige sessão ativa em modo `operator`; ambos geram `platformAuditLogs`. `pnpm check`, `pnpm build`, `git diff --check` e a validação JSON da migration passaram. A suíte ampla local teve 51 arquivos/206 testes passando e falhas pré-existentes de dependências ausentes no pacote `forte-whatsapp` (`baileys`, `pino`, `qrcode`) e no patch pinned.

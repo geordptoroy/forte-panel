@@ -18,6 +18,9 @@ import {
   getPlatformAgentSnapshot,
   getPlatformWorkspaceDetail,
   listPlatformIncidents,
+  listPlatformSupportTickets,
+  openPlatformSupportTicket,
+  closePlatformSupportTicket,
   recordPlatformAudit,
   isExternalProviderCallAllowedForSimulation,
   listPlatformAuditLogs,
@@ -438,6 +441,15 @@ export const platformRouter = router({
     .input(z.object({ incidentId: z.number().int().positive(), reason: reasonInput }))
     .mutation(({ input, ctx }) => resolvePlatformIncident({ ...input, platformAdminId: ctx.platformAdmin.id })),
 
+  supportTickets: requirePlatform
+    .input(z.object({ workspaceId: workspaceIdInput.optional() }).optional())
+    .query(({ input }) => listPlatformSupportTickets(input?.workspaceId)),
+  openSupportTicket: requirePlatform
+    .input(supportSessionInput.extend({ priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"), subject: z.string().trim().min(3).max(180), description: z.string().trim().min(3).max(10_000) }))
+    .mutation(async ({ input, ctx }) => { await requireSession(input, ctx.platformAdmin.id); return openPlatformSupportTicket({ ...input, supportSessionId: input.sessionId, platformAdminId: ctx.platformAdmin.id }); }),
+  closeSupportTicket: requirePlatformOperator
+    .input(z.object({ ticketId: z.number().int().positive(), supportSessionId: z.number().int().positive(), resolution: z.string().trim().min(3).max(10_000), reason: reasonInput }))
+    .mutation(({ input, ctx }) => closePlatformSupportTicket({ ...input, platformAdminId: ctx.platformAdmin.id })),
   workspaceDetail: requirePlatform
     .input(supportSessionInput)
     .query(async ({ input, ctx }) => {

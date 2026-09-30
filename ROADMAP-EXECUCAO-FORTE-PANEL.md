@@ -98,8 +98,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O4.2 | IA | Ferramentas somente leitura e confirmação mutável | **CONCLUÍDA (código + CI PostgreSQL)** | PR #15 aberta; run `36731684085` passou; staging e revisão final continuam pendentes |
 | O4.3 | IA | Transferência para humano e kill switch | **CONCLUÍDA (código + CI PostgreSQL)** | PR #16 aberta; run `36732396958` passou; staging e revisão final continuam pendentes |
 | O4.4 | IA | Métricas de resolução, custo, latência e receita | **CONCLUÍDA (código + CI PostgreSQL)** | PR #17 aberta; run `36733294007` passou; staging e revisão final continuam pendentes |
-| O5.1 | Admin | Workspaces como contas de produção | **EM REVISÃO (código local)** | Branch `feat/o5.1-workspace-accounts-lifecycle`; plano auditável, incidentes e detalhe operacional; CI PostgreSQL e PR pendentes |
-| O5.2 | Admin | Suporte, tickets e sessões auditadas | PENDENTE | Operador trabalha sem misturar tenants |
+| O5.1 | Admin | Workspaces como contas de produção | **CONCLUÍDA (código + CI PostgreSQL)** | PR #18 aberta; run `36734540609` passou; staging e revisão final continuam pendentes |
+| O5.2 | Admin | Suporte, tickets e sessões auditadas | **EM REVISÃO (código local)** | Branch `feat/o5.2-support-tickets-audited-sessions`; tickets tenant-scoped, sessão obrigatória e auditoria; CI/PR pendentes |
 | O5.3 | Admin | Health de gateway, filas, storage e providers | PENDENTE | Console diagnostica problemas reais |
 | O5.4 | Admin | Quotas, planos, retenção e lifecycle | PENDENTE | Console opera o SaaS, não apenas usuários |
 | O6.1 | Confiabilidade | Testes negativos de tenancy e papéis | PENDENTE | Isolamento comprovado entre workspaces |

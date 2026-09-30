@@ -544,6 +544,30 @@ export const platformIncidents = pgTable(
 );
 
 /** Platform operators are intentionally separate from workspace roles. */
+export const platformSupportTickets = pgTable(
+  "platformSupportTickets",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    supportSessionId: integer("supportSessionId").notNull(),
+    openedByPlatformAdminId: integer("openedByPlatformAdminId").notNull(),
+    assignedToPlatformAdminId: integer("assignedToPlatformAdminId"),
+    status: varchar("status", { length: 20 }).default("open").notNull(),
+    priority: varchar("priority", { length: 20 }).default("normal").notNull(),
+    subject: varchar("subject", { length: 180 }).notNull(),
+    description: text("description").notNull(),
+    resolution: text("resolution"),
+    closedAt: timestamp("closedAt"),
+    closedByPlatformAdminId: integer("closedByPlatformAdminId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    index("platform_support_tickets_workspace_status_idx").on(table.workspaceId, table.status, table.createdAt),
+    index("platform_support_tickets_session_idx").on(table.supportSessionId, table.createdAt),
+  ]
+);
+/** Platform operators are intentionally separate from workspace roles. */
 export const platformAdmins = pgTable(
   "platformAdmins",
   {
@@ -1687,6 +1711,8 @@ export type Workspace = typeof workspaces.$inferSelect;
 export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;
 export type InsertPlatformAdmin = typeof platformAdmins.$inferInsert;
+export type PlatformSupportTicket = typeof platformSupportTickets.$inferSelect;
+export type InsertPlatformSupportTicket = typeof platformSupportTickets.$inferInsert;
 export type SupportSession = typeof supportSessions.$inferSelect;
 export type InsertSupportSession = typeof supportSessions.$inferInsert;
 export type AgentPromptVersion = typeof agentPromptVersions.$inferSelect;
