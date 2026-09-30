@@ -34,8 +34,6 @@ import {
 import { professionalCanExecuteService } from "./agenda";
 import { ScheduleError } from "./schedule";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
-import { historicalBaileysIgnoreReason } from "./baileys-webhook-policy";
-import { HistoricalWebhookAdmission } from "./historical-webhook-admission";
 import { OPERATIONAL_WHATSAPP_PROVIDER } from "./integrations/baileys-policy";
 import { messageDeliveryStatuses } from "../shared/message-delivery";
 import {
@@ -44,23 +42,30 @@ import {
 } from "./webhook-anti-replay";
 
 const api = express.Router();
-const historicalWebhookAdmission = new HistoricalWebhookAdmission(2);
 const webhookSecretCache = new Map<
   string,
   { secret: string; expiresAt: number }
 >();
+const webhookSecretInflight = new Map<string, Promise<string | undefined>>();
 const WEBHOOK_SECRET_CACHE_MS = 5_000;
 
 async function getCachedBaileysWebhookSecret(instanceId: string) {
   const cached = webhookSecretCache.get(instanceId);
   if (cached && cached.expiresAt > Date.now()) return cached.secret;
-  const secret = await getBaileysWebhookSecret(instanceId);
-  if (secret)
-    webhookSecretCache.set(instanceId, {
-      secret,
-      expiresAt: Date.now() + WEBHOOK_SECRET_CACHE_MS,
-    });
-  return secret;
+  const inflight = webhookSecretInflight.get(instanceId);
+  if (inflight) return inflight;
+  const request = getBaileysWebhookSecret(instanceId)
+    .then(secret => {
+      if (secret)
+        webhookSecretCache.set(instanceId, {
+          secret,
+          expiresAt: Date.now() + WEBHOOK_SECRET_CACHE_MS,
+        });
+      return secret;
+    })
+    .finally(() => webhookSecretInflight.delete(instanceId));
+  webhookSecretInflight.set(instanceId, request);
+  return request;
 }
 const internalApiPaths = new Set([
   "/health",
@@ -1303,13 +1308,11 @@ async function handleBaileysDeliveryStatusWebhook(
         "idempotency_conflict"
       );
     if (registered.duplicate)
-      return res
-        .status(200)
-        .json({
-          accepted: true,
-          duplicate: true,
-          eventId: parsed.data.eventId,
-        });
+      return res.status(200).json({
+        accepted: true,
+        duplicate: true,
+        eventId: parsed.data.eventId,
+      });
     leaseToken = registered.leaseToken;
     if (!leaseToken) throw new Error("Webhook lease token unavailable");
 
@@ -1399,17 +1402,13 @@ async function handleBaileysWebhook(req: Request, res: Response) {
     const normalized = getWhatsappAdapter("baileys").normalizeInbound(req.body);
     eventId = normalized.eventId;
     const isHistorical = normalized.metadata?.historySync === true;
-    if (isHistorical) {
-      const release = await historicalWebhookAdmission.acquire();
-      let released = false;
-      const releaseOnce = () => {
-        if (released) return;
-        released = true;
-        release();
-      };
-      res.once("finish", releaseOnce);
-      res.once("close", releaseOnce);
-    }
+    if (isHistorical)
+      return res.status(202).json({
+        accepted: true,
+        ignored: true,
+        eventId,
+        data: { ignored: true, reason: "historical_payload_not_importable" },
+      });
     const instanceId =
       typeof normalized.metadata?.instanceId === "string"
         ? normalized.metadata.instanceId
@@ -1453,22 +1452,6 @@ async function handleBaileysWebhook(req: Request, res: Response) {
         : typeof normalized.metadata?.jid === "string"
           ? normalized.metadata.jid
           : "";
-    const historicalIgnoreReason = historicalBaileysIgnoreReason({
-      historySync: isHistorical,
-      isGroup,
-      instanceId,
-      instanceOwner: Boolean(instanceOwner?.active),
-      groupJid,
-      phone: normalized.phone,
-      content: normalized.content,
-    });
-    if (historicalIgnoreReason)
-      return res.status(202).json({
-        accepted: true,
-        ignored: true,
-        eventId,
-        data: { ignored: true, reason: historicalIgnoreReason },
-      });
     if (
       isGroup &&
       (!instanceId || !instanceOwner || !groupJid.endsWith("@g.us"))

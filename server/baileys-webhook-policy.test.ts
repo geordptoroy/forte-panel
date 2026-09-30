@@ -12,20 +12,22 @@ describe("Baileys historical webhook policy", () => {
     content: "mensagem antiga",
   };
 
-  it("does not ignore an importable historical event", () => {
-    expect(historicalBaileysIgnoreReason(base)).toBeUndefined();
+  it("acknowledges every historical event before database ingestion", () => {
+    expect(historicalBaileysIgnoreReason(base)).toBe(
+      "historical_payload_not_importable"
+    );
   });
 
   it("acknowledges historical events without content", () => {
-    expect(
-      historicalBaileysIgnoreReason({ ...base, content: "   " })
-    ).toBe("historical_payload_not_importable");
+    expect(historicalBaileysIgnoreReason({ ...base, content: "   " })).toBe(
+      "historical_payload_not_importable"
+    );
   });
 
   it("acknowledges historical events with an unusable phone", () => {
-    expect(
-      historicalBaileysIgnoreReason({ ...base, phone: "123" })
-    ).toBe("historical_payload_not_importable");
+    expect(historicalBaileysIgnoreReason({ ...base, phone: "123" })).toBe(
+      "historical_payload_not_importable"
+    );
   });
 
   it("does not weaken group ownership validation", () => {
@@ -36,5 +38,11 @@ describe("Baileys historical webhook policy", () => {
         groupJid: "5511999999999@s.whatsapp.net",
       })
     ).toBe("historical_payload_not_importable");
+  });
+
+  it("allows live events through the policy", () => {
+    expect(
+      historicalBaileysIgnoreReason({ ...base, historySync: false })
+    ).toBeUndefined();
   });
 });

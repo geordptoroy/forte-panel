@@ -136,7 +136,6 @@ Pendente honesto: o gateway mostrou `webhookOutboxPending: 5` e `webhookLastErro
 
 O gateway `forte-whatsapp` foi reiniciado isoladamente, sem remover volumes. Após 15 segundos, a mesma sessão voltou como `connected`, sem novo QR Code, e o usuário confirmou novo ciclo inbound/outbound funcionando. A outbox continua com 5 arquivos pendentes e `webhookLastError: webhook_http_400`; a reconexão não limpou os eventos históricos. Portanto, marcar reconexão e continuidade WhatsApp como aprovadas, mas manter o webhook histórico pendente até investigar os 400.
 
-
 ## Atualização 2026-09-30 — O7.16 até O7.27
 
 A execução avançou na branch atual `feat/o7.15-storage-reconciliation-observability`, sem merge automático e mantendo `CORE_ONLY_MODE` ativo.
@@ -183,7 +182,6 @@ Integrar os comandos O7.25–O7.27 em um orquestrador único de preflight do reh
 
 Não declarar MVP SaaS público nem desligar `CORE_ONLY_MODE`. Não mesclar PRs automaticamente. Para continuar, primeiro revalidar branch, status, remoto e o hash do commit deste handoff.
 
-
 ## Atualização 2026-09-30 — O7.28
 
 Foi criado o preflight único `pnpm preflight:restore-rehearsal BACKUP_DIR EVIDENCE.json PREFLIGHT.json`. Ele executa na ordem pacote → isolamento → relatório, sem rede e sem mutações. Pacote inválido interrompe o fluxo; endpoint produtivo, outbound ligado, sessão reutilizada, rollback ausente, readiness falha ou decisão não aprovada deixam o processo com código diferente de zero.
@@ -202,7 +200,6 @@ Foi criado `scripts/start-restore-rehearsal.ps1`, que valida a presença do paco
 
 Oracle/OCI, deploy público e a preparação ARM64 ficam **adiados**. O próximo trabalho deve voltar ao MVP visível: executar e fechar o fluxo autenticado de onboarding → conexão WhatsApp → Inbox → inbound/outbound → estado comercial, corrigindo somente as falhas observadas no Docker/browser do usuário. O `ROADMAP-EXECUCAO-FORTE-PANEL.md` é a fonte canônica; as seções históricas deste handoff não devem reabrir O3.4/O5.1.
 
-
 ### Atualização posterior — MVP.1: estabilização de sidebar, sessão e Inbox
 
 Implementada a primeira correção da aceitação MVP, mantendo `CORE_ONLY_MODE = true`:
@@ -210,7 +207,7 @@ Implementada a primeira correção da aceitação MVP, mantendo `CORE_ONLY_MODE 
 - rotas já expostas na sidebar operacional (`dashboard`, `kanban`, `agenda`, `contacts`, `billing`, `integrations`, `team`, `services`, `professionals`, `my-work` e `settings`) agora passam pelo catálogo core; planos/consumo e governança técnica de IA continuam bloqueados;
 - a sidebar usa o catálogo operacional inteiro, sem liberar automaticamente Console Admin ou rotas internas;
 - erro transitório de `auth.me` (por exemplo, PostgreSQL saturado durante sincronização) não é mais interpretado como sessão encerrada: o usuário recebe retry, sem redirecionamento indevido para login;
-- webhooks `historySync` do Baileys passaram a ter no máximo dois imports concorrentes por processo, e o segredo por instância tem cache curto de 5 segundos para evitar uma consulta PostgreSQL por evento histórico;
+- webhooks `historySync` do Baileys agora recebem `202` e são descartados antes de resolver ownership ou gravar no PostgreSQL; o segredo por instância tem cache curto de 5 segundos com deduplicação de requests concorrentes;
 - testes novos cobrem o admission concorrente; contratos de core/acessibilidade, typecheck, Prettier e `git diff --check` passaram;
 - a suíte completa local ainda falha somente na camada já conhecida de dependências ausentes do subprojeto `forte-whatsapp` (`baileys`, `pino`, `qrcode`) e no teste do patch pinned; 73 arquivos passaram, 18 foram pulados e 1 teste do patch falhou por arquivo ausente.
 

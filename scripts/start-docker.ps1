@@ -15,6 +15,12 @@ $services = @(
     "forte-panel-worker",
     "forte-whatsapp"
 )
+$buildServices = @(
+    "forte-panel-migrations",
+    "forte-panel",
+    "forte-panel-worker",
+    "forte-whatsapp"
+)
 
 if (-not (Test-Path $envPath)) {
     throw "Arquivo .env não encontrado em $envPath. Crie-o a partir do exemplo local antes de iniciar a stack."
@@ -49,10 +55,14 @@ function Invoke-Compose {
     }
 }
 
-Write-Host "Atualizando imagens publicadas da branch dev..."
+Write-Host "Atualizando imagens base e construindo o código atual do repositório..."
 Invoke-Compose `
-    -Arguments ($composeArgs + @("pull") + $services) `
-    -FailureMessage "Falha ao baixar as imagens. Verifique o Docker Desktop, a rede e o acesso ao GHCR."
+    -Arguments ($composeArgs + @("pull", "postgres_panel", "redis_panel")) `
+    -FailureMessage "Falha ao baixar PostgreSQL/Redis. Verifique o Docker Desktop e a rede."
+
+Invoke-Compose `
+    -Arguments ($composeArgs + @("build", "--pull") + $buildServices) `
+    -FailureMessage "Falha ao construir as imagens locais do Panel/gateway."
 
 Write-Host "Iniciando Forte Panel sem apagar volumes..."
 Invoke-Compose `
