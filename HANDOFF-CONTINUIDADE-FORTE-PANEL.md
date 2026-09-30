@@ -1,9 +1,9 @@
 
 
-## 41. O7.10 — Inbound transacional e retry sem duplicação — 2026-09-30
+## 42. O7.11 — Hardening HTTP, sessão e webhook — 2026-09-30
 
-A ingestão inbound agora executa em uma transação PostgreSQL única. A transação cobre deduplicação por `externalId`, grupo/participante, contato, conversa, lead/oportunidade, mensagem, evento `message.received`, unread, controle humano e timestamps. O helper de lead recebeu o executor da transação para não abrir uma segunda conexão no caminho inbound.
+A primeira fatia de hardening aplica headers globais de segurança no Express, HSTS somente sob HTTPS, comparação constant-time do bearer no gateway e cobertura explícita da política de origem/CSRF e rate limits existentes. Não foram declarados concluídos rotação/revogação de secrets, rate limit distribuído, browser smoke, staging ou revisão legal.
 
-Validação local: `pnpm test` passou com 271 testes e 55 skips dependentes de PostgreSQL/staging; os testes focados de webhook passaram com 14 testes e 8 skips; `pnpm check` e `git diff --check` passaram. Mídia continua sendo persistida antes da transação por usar storage externo; compensação de blobs órfãos, crash real, restore e staging permanecem gates externos.
+Validação local: headers 2 testes, request security 9 testes e contrato HTTP do gateway 16 testes passaram; typecheck do Panel e gateway passaram; `git diff --check` passou.
 
-**Próximo passo:** O7.11 — hardening de sessão, webhook, headers, CSRF e rate limit.
+**Próximo passo:** O7.12 — runbook, restore e compensação de storage.

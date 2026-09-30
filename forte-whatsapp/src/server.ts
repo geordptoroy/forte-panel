@@ -1,4 +1,5 @@
 import http from "node:http";
+import crypto from "node:crypto";
 import QRCode from "qrcode";
 import { config } from "./config.js";
 import { parseBaileysInstanceSettings } from "./instance-settings.js";
@@ -196,7 +197,14 @@ export function createServer(registry: InstanceRegistry) {
 }
 
 function authorized(req: http.IncomingMessage) {
-  return req.headers.authorization === `Bearer ${config.apiKey}`;
+  const provided = req.headers.authorization ?? "";
+  const expected = `Bearer ${config.apiKey}`;
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+  return (
+    providedBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+  );
 }
 
 function requiredIdempotencyKey(req: http.IncomingMessage) {
