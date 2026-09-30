@@ -265,22 +265,22 @@ describe("Baileys gateway HTTP contract", () => {
     { messageType: "text", content: "Olá", metadata: {} },
     {
       messageType: "image",
-      content: "data:image/png;base64,AA==",
-      metadata: { mediaMimeType: "image/png" },
+      content: "https://media.example.test/image.png?signature=opaque",
+      metadata: { mediaMimeType: "image/png", mediaStorageKey: "workspaces/1/outbound/image.png" },
     },
     {
       messageType: "audio",
-      content: "data:audio/ogg;base64,AA==",
+      content: "https://media.example.test/audio.ogg?signature=opaque",
       metadata: { mediaMimeType: "audio/ogg" },
     },
     {
       messageType: "video",
-      content: "data:video/mp4;base64,AA==",
+      content: "https://media.example.test/video.mp4?signature=opaque",
       metadata: { mediaMimeType: "video/mp4" },
     },
     {
       messageType: "document",
-      content: "data:application/pdf;base64,AA==",
+      content: "https://media.example.test/document.pdf?signature=opaque",
       metadata: { mediaMimeType: "application/pdf" },
     },
     {
@@ -336,5 +336,21 @@ describe("Baileys gateway HTTP contract", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "phone_required",
     });
+  });
+
+  it("rejects embedded media data URLs before calling the manager", async () => {
+    sentMessageInstance = "";
+    const response = await fetch(`${baseUrl}/api/instances/test-instance/send`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone: "5511999999999@s.whatsapp.net",
+        messageType: "image",
+        content: "data:image/png;base64,AA==",
+        metadata: { mediaMimeType: "image/png" },
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect(sentMessageInstance).toBe("");
   });
 });

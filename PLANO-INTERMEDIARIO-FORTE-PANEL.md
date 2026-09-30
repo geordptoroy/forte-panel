@@ -668,3 +668,8 @@ A etapa Revisão inclui cenários fixos seguros para serviço/preço fora do cat
 A confirmação humana grava apenas fingerprint SHA-256, modo, data e autor em `workspace_settings`. Mudanças no candidato invalidam a revisão; o gate é repetido server-side em `publishOnboardingDraft`. Rollback continua versionado e registra a revisão explícita da versão restaurada. Cobertura adicionada para fingerprint e normalização; teste PostgreSQL de publicação/revisão/obsolescência/rollback adicionado, mas condicionado ao banco.
 Validação: `pnpm check` passou; `pnpm test` passou — 214 passaram, 48 ignorados em 65 arquivos; `pnpm build` passou (aviso de bundle >500 kB); `git diff --check` passou. Sem PostgreSQL local, o teste persistido não foi executado. Nenhuma migration nova. A rota permanece `not_ready`.
 Próxima fatia: **O1.4 — retomada, autosave, missing/conflict e estados vazios**.
+
+
+---
+## Continuidade — O1.4–O2.4 Onboarding e canal resiliente — 2026-09-30
+O bloco O1.4–O2.4 concluiu retomada do onboarding, backoff/logoff final do gateway, lease de inbound com fencing, recibos monotônicos e upload privado de anexos. A entrega técnica e os limites estão em `O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`. Gates no Sandbox: check, testes (225 pass / 51 skip), build e diff check do Panel; check, 72 testes e build do gateway. A migration 0046 é aditiva/manual; 0045/0046 aguardam validação PostgreSQL persistente, e ainda falta prova física WhatsApp/storage. PR #6 está aberto e empilhado sobre O1.3, sem merge. Próxima fatia: O3.1 — introduzir Lead explícito e relacionar conversa/oportunidade, preservando isolamento e idempotência.

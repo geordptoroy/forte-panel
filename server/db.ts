@@ -60,6 +60,11 @@ import {
   workspaces,
   type InsertUser,
 } from "../drizzle/schema";
+import { messageDeliveryRank, type MessageDeliveryStatus } from "../shared/message-delivery";
+import {
+  isSupportedInboxMimeType,
+  isWorkspaceInboxMediaKey,
+} from "./inbox-media-upload";
 import type { WhatsappProvider } from "./integrations/contracts";
 import {
   OPERATIONAL_WHATSAPP_PROVIDER,
@@ -2173,22 +2178,46 @@ export async function pauseOnboardingSession(workspaceId: number) {
   return session;
 }
 
-async function touchOnboardingSession(workspaceId: number, nextStep: string | null, completed: boolean) {
+export async function setOnboardingCurrentStep(
+  workspaceId: number,
+  ownerUserId: number,
+  stepKey: "identity" | "offering" | "operations" | "guardrails" | "review" | "activation"
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const now = new Date();
+  const [session] = await db
+    .update(onboardingSessions)
+    .set({
+      ownerUserId,
+      status: "active",
+      currentStep: stepKey,
+      pausedAt: null,
+      lastActivityAt: now,
+      updatedAt: now,
+    })
+    .where(eq(onboardingSessions.workspaceId, workspaceId))
+    .returning();
+  if (!session) throw new Error("ONBOARDING_SESSION_NOT_FOUND");
+  return session;
+}
+
+async function touchOnboardingSession(workspaceId: number, completed: boolean) {
   const db = await getDb();
   if (!db) return;
   const now = new Date();
-  const existing = completed ? await getOnboardingSession(workspaceId) : undefined;
+  const existing = await getOnboardingSession(workspaceId);
   await db
     .update(onboardingSessions)
     .set({
       status: completed ? "completed" : "active",
-      currentStep: nextStep ?? "review",
+      ...(completed ? { currentStep: "activation" } : {}),
       lastActivityAt: now,
       completedAt: completed ? now : null,
       updatedAt: now,
     })
     .where(eq(onboardingSessions.workspaceId, workspaceId));
-  if (completed && existing)
+  if (completed && existing && existing.status !== "completed")
     await recordOnboardingTelemetry({
       workspaceId,
       sessionId: existing.id,
@@ -3250,7 +3279,6 @@ export async function saveOnboardingProfile(
   }
   await touchOnboardingSession(
     workspaceId,
-    nextChecklist.nextStep?.id ?? null,
     nextChecklist.nextStep === null
   );
   const nextVersion = current.version + 1;
@@ -5531,6 +5559,25 @@ export async function sendManualMessage(
     instanceIds?.length === 1
   )
     route.instanceId = instanceIds[0];
+  const mediaMessageTypes = ["image", "audio", "video", "document"];
+  if (mediaMessageTypes.includes(messageType)) {
+    const mediaStorageKey = messageMetadata?.mediaStorageKey;
+    const mediaMimeType = messageMetadata?.mediaMimeType;
+    const mediaSizeBytes = messageMetadata?.mediaSizeBytes;
+    if (
+      typeof mediaStorageKey !== "string" ||
+      !isWorkspaceInboxMediaKey(workspaceId, mediaStorageKey) ||
+      typeof mediaMimeType !== "string" ||
+      !isSupportedInboxMimeType(messageType as "image" | "audio" | "video" | "document", mediaMimeType) ||
+      typeof mediaSizeBytes !== "number" ||
+      !Number.isInteger(mediaSizeBytes) ||
+      mediaSizeBytes < 1 ||
+      mediaSizeBytes > 8 * 1024 * 1024 ||
+      typeof messageMetadata?.mediaData === "string" ||
+      typeof messageMetadata?.mediaUrl === "string"
+    )
+      throw new Error("Invalid or non-private outbound media reference");
+  }
   const createdAt = new Date();
   const metadata = {
     ...(messageMetadata ?? {}),
@@ -6181,6 +6228,8 @@ export async function failAgentEffect(input: {
     );
 }
 
+const WEBHOOK_EVENT_LEASE_MS = 10 * 60 * 1000;
+
 export async function registerWebhookEvent(input: {
   eventId: string;
   provider: string;
@@ -6190,6 +6239,9 @@ export async function registerWebhookEvent(input: {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const payload = JSON.stringify(input.payload);
+  const now = new Date();
+  const leaseToken = crypto.randomUUID();
+  const leaseUntil = new Date(now.getTime() + WEBHOOK_EVENT_LEASE_MS);
   const inserted = await db
     .insert(webhookEvents)
     .values({
@@ -6198,13 +6250,15 @@ export async function registerWebhookEvent(input: {
       payload,
       workspaceId: input.workspaceId,
       status: "received",
+      leaseToken,
+      leaseUntil,
     })
     .onConflictDoNothing({
       target: [webhookEvents.workspaceId, webhookEvents.eventId],
     })
     .returning();
   if (inserted[0])
-    return { duplicate: false, conflict: false, event: inserted[0] };
+    return { duplicate: false, conflict: false, event: inserted[0], leaseToken };
   const existing = await db
     .select()
     .from(webhookEvents)
@@ -6218,19 +6272,34 @@ export async function registerWebhookEvent(input: {
   if (existing[0]) {
     if (existing[0].payload !== payload)
       return { duplicate: true, conflict: true, event: existing[0] };
-    if (existing[0].status === "failed") {
+    const leaseExpired = !existing[0].leaseUntil || existing[0].leaseUntil <= now;
+    const canReclaim = existing[0].status === "failed" ||
+      (existing[0].status === "received" && leaseExpired);
+    if (canReclaim) {
       const retried = await db
         .update(webhookEvents)
-        .set({ status: "received", payload, processedAt: null })
+        .set({
+          status: "received",
+          payload,
+          processedAt: null,
+          leaseToken,
+          leaseUntil,
+        })
         .where(
           and(
             eq(webhookEvents.id, existing[0].id),
-            eq(webhookEvents.status, "failed")
+            or(
+              eq(webhookEvents.status, "failed"),
+              and(
+                eq(webhookEvents.status, "received"),
+                or(isNull(webhookEvents.leaseUntil), lte(webhookEvents.leaseUntil, now))
+              )
+            )
           )
         )
         .returning();
       if (retried[0])
-        return { duplicate: false, conflict: false, event: retried[0] };
+        return { duplicate: false, conflict: false, event: retried[0], leaseToken };
     }
     return { duplicate: true, conflict: false, event: existing[0] };
   }
@@ -6240,20 +6309,80 @@ export async function registerWebhookEvent(input: {
 export async function markWebhookEvent(
   workspaceId: number,
   eventId: string,
-  status: "processed" | "failed"
+  status: "processed" | "failed",
+  leaseToken: string
 ) {
   const db = await getDb();
   if (!db) return;
   await db
     .update(webhookEvents)
-    .set({ status, processedAt: new Date() })
+    .set({ status, processedAt: new Date(), leaseToken: null, leaseUntil: null })
     .where(
       and(
         eq(webhookEvents.workspaceId, workspaceId),
         eq(webhookEvents.eventId, eventId),
-        eq(webhookEvents.status, "received")
+        eq(webhookEvents.status, "received"),
+        eq(webhookEvents.leaseToken, leaseToken)
       )
     );
+}
+
+export async function reconcileBaileysDeliveryStatus(input: {
+  workspaceId: number;
+  instanceId: string;
+  messageId: string;
+  status: MessageDeliveryStatus;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const matching = await db
+    .select({ id: messages.id, metadata: messages.metadata })
+    .from(messages)
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+    .where(
+      and(
+        eq(contacts.workspaceId, input.workspaceId),
+        eq(messages.externalId, input.messageId),
+        eq(messages.provider, "baileys"),
+        eq(messages.direction, "outbound"),
+        eq(messages.status, "sent"),
+        sql`${messages.metadata}->>'instanceId' = ${input.instanceId}`
+      )
+    )
+    .limit(1);
+  if (!matching[0]) return false;
+
+  const existingStatus = matching[0].metadata?.deliveryStatus;
+  const incomingRank = messageDeliveryRank(input.status);
+  if (messageDeliveryRank(existingStatus) >= incomingRank) return true;
+
+  await db
+    .update(messages)
+    .set({
+      metadata: sql`jsonb_set(
+        COALESCE(${messages.metadata}, '{}'::jsonb),
+        '{deliveryStatus}',
+        to_jsonb(${input.status}::text),
+        true
+      )`,
+    })
+    .where(
+      and(
+        eq(messages.id, matching[0].id),
+        eq(messages.externalId, input.messageId),
+        eq(messages.provider, "baileys"),
+        eq(messages.direction, "outbound"),
+        eq(messages.status, "sent"),
+        sql`${messages.metadata}->>'instanceId' = ${input.instanceId}`,
+        sql`CASE COALESCE(${messages.metadata}->>'deliveryStatus', 'sent')
+          WHEN 'read' THEN 3
+          WHEN 'delivered' THEN 2
+          ELSE 1
+        END <= ${incomingRank}`
+      )
+    );
+  return true;
 }
 
 export async function getCorePipelineSnapshot(workspaceId: number) {
@@ -6868,10 +6997,36 @@ export async function queueOutboundMessage(
     typeof latestInbound[0]?.metadata?.jid === "string"
       ? latestInbound[0].metadata.jid
       : undefined;
+  const outboundMediaTypes = ["image", "audio", "video", "document"];
+  const isOutboundMedia = outboundMediaTypes.includes(messageType);
+  if (
+    typeof metadata?.mediaData === "string" ||
+    typeof metadata?.mediaUrl === "string"
+  )
+    throw new Error("Outbound media must use a private storage reference");
+  if (isOutboundMedia) {
+    const mediaStorageKey = metadata?.mediaStorageKey;
+    const mediaMimeType = metadata?.mediaMimeType;
+    const mediaSizeBytes = metadata?.mediaSizeBytes;
+    if (
+      typeof mediaStorageKey !== "string" ||
+      !isWorkspaceInboxMediaKey(workspaceId, mediaStorageKey) ||
+      typeof mediaMimeType !== "string" ||
+      !isSupportedInboxMimeType(messageType as "image" | "audio" | "video" | "document", mediaMimeType) ||
+      typeof mediaSizeBytes !== "number" ||
+      !Number.isInteger(mediaSizeBytes) ||
+      mediaSizeBytes < 1 ||
+      mediaSizeBytes > 8 * 1024 * 1024
+    )
+      throw new Error("Invalid or non-private outbound media reference");
+  }
   const resolvedMetadata = {
     ...metadata,
     ...(!metadata?.jid && inboundJid ? { jid: inboundJid } : {}),
   };
+  const storedContent = isOutboundMedia
+    ? String(metadata?.fileName ?? `[${messageType}]`)
+    : content;
   const created = await db
     .insert(messages)
     .values({
@@ -6879,7 +7034,7 @@ export async function queueOutboundMessage(
       direction: "outbound",
       senderType,
       messageType,
-      content,
+      content: storedContent,
       metadata: Object.keys(resolvedMetadata).length
         ? resolvedMetadata
         : undefined,
@@ -6892,7 +7047,7 @@ export async function queueOutboundMessage(
     .update(contacts)
     .set({
       ...(senderType === "human" ? { aiEnabled: 0, unreadCount: 0 } : {}),
-      lastMessagePreview: content.slice(0, 500),
+      lastMessagePreview: storedContent.slice(0, 500),
       lastMessageAt: createdAt,
       updatedAt: createdAt,
     })
@@ -6976,12 +7131,23 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
         typeof item.message.metadata?.instanceId === "string"
           ? item.message.metadata.instanceId
           : undefined;
+      let sendContent = item.message.content;
+      let sendMetadata = item.message.metadata ?? undefined;
+      if (["image", "audio", "video", "document"].includes(item.message.messageType)) {
+        const mediaUrl = await resolvePrivateMediaUrl(sendMetadata);
+        if (!mediaUrl)
+          throw new Error("Private outbound attachment is missing or unavailable");
+        sendContent = mediaUrl;
+        const { mediaStorageKey: _key, mediaSizeBytes: _size, ...providerMetadata } =
+          sendMetadata ?? {};
+        sendMetadata = providerMetadata;
+      }
       const result = await adapter.sendMessage({
         idempotencyKey: `forte-message-${item.message.id}`,
         phone: item.phone,
-        content: item.message.content,
+        content: sendContent,
         messageType: item.message.messageType,
-        metadata: item.message.metadata ?? undefined,
+        metadata: sendMetadata,
         instanceId,
         provider: selectedProvider,
       });

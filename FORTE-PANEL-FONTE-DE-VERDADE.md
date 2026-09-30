@@ -36,8 +36,11 @@ O transporte operacional escolhido é **Baileys**, por meio do gateway interno `
 - A UI não oferece escolha entre providers.
 - O navegador nunca recebe a chave do gateway.
 - Cada instância tem `instanceId` próprio, globalmente único no gateway.
+- Reconexão automática usa backoff exponencial limitado; desconexão/logout explícito não deve ser revertido por timer pendente.
 - O Panel resolve o workspace; o gateway não decide tenancy.
 - Outbound sem instância explícita deve falhar fechado.
+- Eventos inbound usam outbox e lease recuperável; recibos outbound só atualizam mensagem do mesmo workspace/instância/externalId e nunca regridem o status.
+- Anexos outbound ficam em storage privado do workspace; mensagens e gateway não recebem data URL/base64 persistida, e o gateway só baixa HTTPS público e assinado.
 - PAPI e Meta permanecem somente em histórico, compatibilidade transitória ou migrations antigas até a convergência segura.
 - Não apagar dados, volumes, sessões ou migrations aplicadas como forma de “limpeza”.
 
@@ -170,8 +173,12 @@ Há um serviço separado com:
 - lock de sessão;
 - estado criptografado quando a chave está configurada;
 - webhook outbox durável com assinatura e retry;
+- lease de processamento com expiração e fencing de token;
+- backoff limitado por instância e final para logout explícito;
 - normalização de texto, imagem, áudio, vídeo e documento;
 - envio genérico e tipos interativos recentes;
+- reconciliação monotônica de `sent`/`delivered`/`read` para mensagens próprias;
+- mídia de saída via storage privado, limite de 8 MB, URL assinada temporária e guarda contra SSRF;
 - readiness e health;
 - preservação de `jid`, `instanceId`, `externalId`, `fromMe` e metadata.
 
@@ -216,7 +223,7 @@ O código já possui Kanban de ciclo de vida de workspaces, testes locais do age
 - auditoria atômica de todas as mutações legadas;
 - zero skips críticos no gate de release;
 - pipeline completa de histórico/backfill sem disparar IA;
-- storage privado final de mídia;
+- prova persistente de upload privado, entrega por URL assinada e política de limpeza de objetos órfãos;
 - fallback explícito entre modelos/capabilities;
 - custo/token por provider e workspace;
 - hardening completo de SSRF, CSRF, replay, revogação de sessão e headers;
@@ -580,6 +587,9 @@ Todo componente assíncrono deve ter:
 - Separar `notify`, `append` e `messaging-history.set`.
 - Importar histórico sem IA, unread ou notificações.
 - Implementar reconciliação de status e DLQ.
+- Usar lease de webhook com expiração e fencing para recuperação após crash.
+- Backoff de reconexão limitado e cancelado por disconnect/logout explícito.
+- Mídia outbound via storage privado; URL assinada HTTPS só é resolvida no envio.
 - Tornar chave de sessão obrigatória em produção.
 
 **Saída:** mensagem percorre o ciclo completo com `workspaceId`, `instanceId`, JID, externalId e status observável.
@@ -616,6 +626,7 @@ Todo componente assíncrono deve ter:
 - Texto e áudio equivalentes.
 - Serviços, preços, duração e disponibilidade devem usar o catálogo operacional persistido; os modos de preço são fixo, “a partir de” e “sob consulta”. Horário semanal descreve jornada, não uma vaga específica.
 - Autosave, retomada e “decidir depois”.
+- A retomada restaura a etapa visitada; autosaves são serializados e uma resposta antiga nunca limpa nem substitui edição mais nova. Loading/erro de leitura não deve aparecer como formulário vazio salvável.
 - Preview curto por bloco.
 - Exemplos seguros para serviço/preço ausente, horário específico e transferência humana; simulação por IA é opcional e só ocorre com consentimento `llm`, sem consultar catálogo/agenda nem executar ações.
 - O responsável revisa os exemplos antes de publicar; a revisão fica vinculada ao perfil-candidato exato e qualquer mudança exige nova revisão. Confirmação humana por bloco e rollback continuam obrigatórios.

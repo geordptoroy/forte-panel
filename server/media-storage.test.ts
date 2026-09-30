@@ -9,6 +9,9 @@ describe("private media storage contract", () => {
     });
     expect(decodeMediaDataUrl("https://example.test/file.png")).toBeNull();
     expect(decodeMediaDataUrl("data:image/png,plain-text")).toBeNull();
+    expect(
+      decodeMediaDataUrl("data:audio/webm;codecs=opus;base64,SGk=")
+    )?.toMatchObject({ mimeType: "audio/webm", buffer: Buffer.from("Hi") });
   });
 
   it("keeps metadata unchanged when private storage is disabled", async () => {

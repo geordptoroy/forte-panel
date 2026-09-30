@@ -21,6 +21,7 @@ import {
   listWhatsappChannels,
   findBaileysInstanceOwner,
   markWebhookEvent,
+  reconcileBaileysDeliveryStatus,
   moveContactStage,
   queueOutboundMessage,
   registerWebhookEvent,
@@ -32,6 +33,7 @@ import { professionalCanExecuteService } from "./agenda";
 import { ScheduleError } from "./schedule";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { OPERATIONAL_WHATSAPP_PROVIDER } from "./integrations/baileys-policy";
+import { messageDeliveryStatuses } from "../shared/message-delivery";
 
 const api = express.Router();
 const internalApiPaths = new Set([
@@ -1150,6 +1152,7 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
     );
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
+  let eventLeaseToken: string | undefined;
   try {
     const registered = await registerWebhookEvent({
       eventId: parsed.data.eventId,
@@ -1170,8 +1173,10 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
         duplicate: true,
         eventId: parsed.data.eventId,
       });
+    eventLeaseToken = registered.leaseToken;
+    if (!eventLeaseToken) throw new Error("Webhook lease token unavailable");
     const result = await ingestInboundWhatsApp(workspaceId, parsed.data);
-    await markWebhookEvent(workspaceId, parsed.data.eventId, "processed");
+    await markWebhookEvent(workspaceId, parsed.data.eventId, "processed", eventLeaseToken);
     return res.status(202).json({
       accepted: true,
       duplicate: "duplicate" in result && result.duplicate === true,
@@ -1180,7 +1185,8 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
       data: result,
     });
   } catch (error) {
-    await markWebhookEvent(workspaceId, parsed.data.eventId, "failed");
+    if (eventLeaseToken)
+      await markWebhookEvent(workspaceId, parsed.data.eventId, "failed", eventLeaseToken);
     return fail(
       res,
       500,
@@ -1189,6 +1195,65 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
     );
   }
 });
+
+const baileysDeliveryEventSchema = z.object({
+  eventType: z.literal("message_status"),
+  eventId: z.string().trim().min(8).max(180),
+  instanceId: z.string().trim().min(1).max(160),
+  messageId: z.string().trim().min(1).max(180),
+  status: z.enum(messageDeliveryStatuses),
+  fromMe: z.literal(true),
+});
+
+async function handleBaileysDeliveryStatusWebhook(req: Request, res: Response) {
+  const parsed = baileysDeliveryEventSchema.safeParse(req.body);
+  if (!parsed.success)
+    return fail(res, 400, "Atualização de entrega Baileys inválida", "invalid_delivery_status");
+
+  let leaseToken: string | undefined;
+  let workspaceId: number | undefined;
+  try {
+    const owner = await findBaileysInstanceOwner(parsed.data.instanceId);
+    if (!owner?.active)
+      return fail(res, 404, "Instância Baileys não registrada ou inativa", "unknown_baileys_instance");
+    workspaceId = owner.workspaceId;
+    const registered = await registerWebhookEvent({
+      eventId: parsed.data.eventId,
+      provider: "baileys",
+      payload: parsed.data,
+      workspaceId,
+    });
+    if (registered.conflict)
+      return fail(res, 409, "O evento Baileys já foi usado com outro payload", "idempotency_conflict");
+    if (registered.duplicate)
+      return res.status(200).json({ accepted: true, duplicate: true, eventId: parsed.data.eventId });
+    leaseToken = registered.leaseToken;
+    if (!leaseToken) throw new Error("Webhook lease token unavailable");
+
+    const matched = await reconcileBaileysDeliveryStatus({
+      workspaceId,
+      instanceId: parsed.data.instanceId,
+      messageId: parsed.data.messageId,
+      status: parsed.data.status,
+    });
+    if (!matched) {
+      await markWebhookEvent(workspaceId, parsed.data.eventId, "failed", leaseToken);
+      leaseToken = undefined;
+      return fail(res, 503, "Mensagem enviada ainda não encontrada; o callback será repetido", "outbound_message_not_ready");
+    }
+    await markWebhookEvent(workspaceId, parsed.data.eventId, "processed", leaseToken);
+    return res.status(202).json({ accepted: true, eventId: parsed.data.eventId });
+  } catch (error) {
+    if (workspaceId && leaseToken)
+      await markWebhookEvent(workspaceId, parsed.data.eventId, "failed", leaseToken);
+    return fail(
+      res,
+      500,
+      error instanceof Error ? error.message : "Falha ao reconciliar status Baileys",
+      "internal_error"
+    );
+  }
+}
 
 async function handleBaileysWebhook(req: Request, res: Response) {
   const configuredSecret = process.env.BAILEYS_WEBHOOK_SECRET?.trim() ?? "";
@@ -1208,8 +1273,11 @@ async function handleBaileysWebhook(req: Request, res: Response) {
     !requireApiKey(req, res)
   )
     return;
+  if (req.body?.eventType === "message_status")
+    return handleBaileysDeliveryStatusWebhook(req, res);
   let eventId = "baileys-unknown-event";
   let workspaceId: number | undefined;
+  let eventLeaseToken: string | undefined;
   try {
     const normalized = getWhatsappAdapter("baileys").normalizeInbound(req.body);
     eventId = normalized.eventId;
@@ -1288,6 +1356,8 @@ async function handleBaileysWebhook(req: Request, res: Response) {
       );
     if (registered.duplicate)
       return res.status(200).json({ accepted: true, duplicate: true, eventId });
+    eventLeaseToken = registered.leaseToken;
+    if (!eventLeaseToken) throw new Error("Webhook lease token unavailable");
     const result = await ingestInboundWhatsApp(workspaceId, {
       ...normalized,
       metadata: {
@@ -1296,7 +1366,7 @@ async function handleBaileysWebhook(req: Request, res: Response) {
         ...(instanceId ? { instanceId } : {}),
       },
     });
-    await markWebhookEvent(workspaceId, eventId, "processed");
+    await markWebhookEvent(workspaceId, eventId, "processed", eventLeaseToken);
     return res.status(202).json({
       accepted: true,
       duplicate: "duplicate" in result && result.duplicate === true,
@@ -1310,7 +1380,8 @@ async function handleBaileysWebhook(req: Request, res: Response) {
       eventId,
       error: error instanceof Error ? error.message : String(error),
     });
-    if (workspaceId) await markWebhookEvent(workspaceId, eventId, "failed");
+    if (workspaceId && eventLeaseToken)
+      await markWebhookEvent(workspaceId, eventId, "failed", eventLeaseToken);
     return fail(
       res,
       500,

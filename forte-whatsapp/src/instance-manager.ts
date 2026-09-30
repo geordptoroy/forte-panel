@@ -29,6 +29,9 @@ import {
   requestPairingCodeWhenReady,
   shouldUseRemoteLogout,
 } from "./pairing-code.js";
+import { reconnectDelayMs } from "./reconnect-policy.js";
+import { normalizeBaileysMessageStatus, type DeliveryStatus } from "./delivery-status.js";
+import { isAllowedOutboundMediaUrl } from "./media-reference.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
 import {
   normalizeBaileysMessage,
@@ -84,8 +87,13 @@ export class InstanceManager {
   private pairingCleanup?: Promise<void>;
   private credsSaveQueue: Promise<void> = Promise.resolve();
   private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private reconnectAttempts = 0;
   private readonly webhookOutbox: WebhookOutbox;
   private readonly panelMessageEchoes = new PanelMessageEchoTracker();
+  private readonly pendingDeliveryUpdates = new Map<
+    string,
+    { status: DeliveryStatus; expiresAt: number }
+  >();
   private readonly groupSubjectCache = new Map<
     string,
     { subject: string; expiresAt: number }
@@ -219,6 +227,9 @@ export class InstanceManager {
       socket.ev.on("messages.upsert", ({ messages, type, requestId }) =>
         this.handleMessages(messages, type, requestId)
       );
+      socket.ev.on("messages.update", updates => {
+        for (const update of updates) this.handleMessageStatusUpdate(update);
+      });
       socket.ev.on("messaging-history.set", ({ chats, contacts, messages, syncType, progress, isLatest, chunkOrder }) => {
         logger.info(
           {
@@ -253,6 +264,7 @@ export class InstanceManager {
         lastError: error instanceof Error ? error.message : "connection failed",
       });
       await this.releaseSessionLock();
+      this.scheduleReconnect();
       throw error;
     } finally {
       this.starting = false;
@@ -262,6 +274,7 @@ export class InstanceManager {
   async stop(logout = false): Promise<void> {
     this.suppressReconnectUntil = Date.now() + 5_000;
     this.clearReconnectTimer();
+    this.reconnectAttempts = 0;
     const pairingWasPending = this.pairingAwaitingAcceptance;
     this.pairingAwaitingAcceptance = false;
     this.pairingAcceptedRestartPending = false;
@@ -288,6 +301,7 @@ export class InstanceManager {
   async deleteSession(): Promise<void> {
     this.suppressReconnectUntil = Date.now() + 5_000;
     this.clearReconnectTimer();
+    this.reconnectAttempts = 0;
     const pairingWasPending = this.pairingAwaitingAcceptance;
     this.pairingAwaitingAcceptance = false;
     this.pairingAcceptedRestartPending = false;
@@ -394,6 +408,33 @@ export class InstanceManager {
     }
   }
 
+  private scheduleReconnect() {
+    if (
+      Date.now() < this.suppressReconnectUntil ||
+      this.snapshot.status === "logged_out"
+    ) return;
+    this.clearReconnectTimer();
+    const attempt = this.reconnectAttempts + 1;
+    const delayMs = reconnectDelayMs(attempt);
+    this.reconnectAttempts = attempt;
+    logger.warn(
+      { instanceId: this.instanceId, attempt, delayMs },
+      "scheduling WhatsApp reconnect"
+    );
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      void this.start().catch(error =>
+        logger.error(
+          {
+            instanceId: this.instanceId,
+            message: error instanceof Error ? error.message : String(error),
+          },
+          "automatic WhatsApp reconnect failed"
+        )
+      );
+    }, delayMs);
+  }
+
   private waitForPairingReady(socket: WASocket): Promise<void> {
     if (this.socket !== socket)
       return Promise.reject(
@@ -479,6 +520,11 @@ export class InstanceManager {
   ): Promise<string> {
     if (!this.socket || this.snapshot.status !== "connected")
       throw new Error("WhatsApp instance is not connected");
+    if (
+      ["image", "audio", "video", "document"].includes(messageType) &&
+      (!isAllowedOutboundMediaUrl(content) || typeof metadata.mediaData === "string")
+    )
+      throw new Error("Mídia de saída exige uma URL HTTPS privada válida");
     const jid = phone.includes("@")
       ? phone
       : phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
@@ -585,6 +631,7 @@ export class InstanceManager {
         echo.messageType,
         echo.echoContent
       );
+      this.flushPendingDeliveryUpdate(externalId);
       return externalId;
     } catch (error) {
       this.panelMessageEchoes.forgetPending(
@@ -624,6 +671,7 @@ export class InstanceManager {
           echo.messageType,
           echo.echoContent
         );
+        this.flushPendingDeliveryUpdate(externalId);
         return externalId;
       }
       const result = await this.socket.sendMessage(jid, payload);
@@ -634,6 +682,7 @@ export class InstanceManager {
         echo.messageType,
         echo.echoContent
       );
+      this.flushPendingDeliveryUpdate(externalId);
       return externalId;
     } catch (error) {
       this.panelMessageEchoes.forgetPending(
@@ -643,6 +692,60 @@ export class InstanceManager {
       );
       throw error;
     }
+  }
+
+  private handleMessageStatusUpdate(update: {
+    key?: { id?: string | null; fromMe?: boolean | null };
+    update?: { status?: unknown };
+  }) {
+    const messageId = update.key?.id;
+    if (!messageId || update.key?.fromMe !== true) return;
+    const status = normalizeBaileysMessageStatus(update.update?.status);
+    if (!status) return;
+    if (this.panelMessageEchoes.hasSentId(messageId)) {
+      this.enqueueDeliveryStatus(messageId, status);
+      return;
+    }
+
+    const now = Date.now();
+    for (const [id, pending] of this.pendingDeliveryUpdates)
+      if (pending.expiresAt <= now) this.pendingDeliveryUpdates.delete(id);
+    this.pendingDeliveryUpdates.set(messageId, { status, expiresAt: now + 120_000 });
+    while (this.pendingDeliveryUpdates.size > 256)
+      this.pendingDeliveryUpdates.delete(this.pendingDeliveryUpdates.keys().next().value!);
+  }
+
+  private flushPendingDeliveryUpdate(messageId: string) {
+    const pending = this.pendingDeliveryUpdates.get(messageId);
+    this.pendingDeliveryUpdates.delete(messageId);
+    if (!pending || pending.expiresAt <= Date.now()) return;
+    this.enqueueDeliveryStatus(messageId, pending.status);
+  }
+
+  private enqueueDeliveryStatus(messageId: string, status: DeliveryStatus) {
+    const eventId = instanceScopedEventId(
+      this.instanceId,
+      `message-status:${messageId}:${status}`
+    );
+    void this.webhookOutbox
+      .enqueue({
+        eventId,
+        eventType: "message_status",
+        instanceId: this.instanceId,
+        messageId,
+        status,
+        fromMe: true,
+      })
+      .catch(error =>
+        logger.error(
+          {
+            instanceId: this.instanceId,
+            messageId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "failed to persist outbound delivery receipt"
+        )
+      );
   }
 
   private set(next: Partial<InstanceSnapshot>) {
@@ -675,6 +778,7 @@ export class InstanceManager {
     if (update.connection === "open") {
       this.pairingAwaitingAcceptance = false;
       this.pairingAcceptedRestartPending = false;
+      this.reconnectAttempts = 0;
       const user = socket.user?.id;
       this.set({
         status: "connected",
@@ -722,11 +826,7 @@ export class InstanceManager {
         return;
       }
       if (!loggedOut && Date.now() >= this.suppressReconnectUntil) {
-        this.clearReconnectTimer();
-        this.reconnectTimer = setTimeout(() => {
-          this.reconnectTimer = undefined;
-          void this.start();
-        }, 3_000);
+        this.scheduleReconnect();
       }
     }
   }

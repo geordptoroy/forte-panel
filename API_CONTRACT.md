@@ -68,6 +68,8 @@ O evento deve conter `eventId`, `phone`, `content` e `receivedAt`; `name`, `mess
 
 O callback interno `/api/v1/webhooks/providers/baileys` pode responder `202 accepted` com `ignored: true` quando o gateway/API filtrar história/backfill, corpo vazio ou texto-placeholder. O evento ignorado é reconhecido para encerrar a outbox e não cria lead, conversa ou mensagem. A resposta inclui `eventId` e o motivo em `data.reason`; não significa que o histórico foi importado.
 
+O mesmo callback interno aceita eventos de recibo `eventType: "message_status"` com `eventId`, `instanceId`, `messageId`, `status` (`sent`, `delivered` ou `read`) e `fromMe: true`. A outbox cria IDs idempotentes por instância/mensagem/status; o Panel só atualiza uma mensagem outbound já confirmada como `sent` quando workspace, instância e `externalId` coincidem. A atualização é monotônica (`sent` → `delivered` → `read`), portanto um recibo atrasado não regride o Inbox.
+
 ### Operações de memória comercial
 
 Use o Forte Panel como fonte única para CRM, anotações e agenda; não mantenha uma segunda base privada de estado do lead. A API disponível para clientes autorizados é `POST /api/v1/lead-memory`, que aceita `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota` com `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`.
@@ -79,15 +81,15 @@ O gateway Baileys suporta estes formatos no worker:
 | `messageType`       | `content`                  | `metadata`                                 | Operação Baileys                       |
 | ------------------- | -------------------------- | ------------------------------------------ | -------------------------------------- |
 | `text` (padrão)     | Texto da mensagem          | Opcional                                   | `POST /api/instances/:instanceId/send` |
-| `audio`             | URL ou conteúdo compatível | `{ "ptt": true, "mimetype": "audio/ogg" }` | `POST /api/instances/:instanceId/send` |
-| `image`             | URL ou conteúdo compatível | `caption?`, `mimetype?`                    | `POST /api/instances/:instanceId/send` |
-| `video`             | URL ou conteúdo compatível | `caption?`, `mimetype?`, `ptv?`            | `POST /api/instances/:instanceId/send` |
-| `document`          | URL ou conteúdo compatível | `fileName`, `mimetype?`                    | `POST /api/instances/:instanceId/send` |
+| `audio`             | URL HTTPS assinada de storage privado | `{ "ptt": true, "mimetype": "audio/ogg" }` | `POST /api/instances/:instanceId/send` |
+| `image`             | URL HTTPS assinada de storage privado | `caption?`, `mimetype?`                    | `POST /api/instances/:instanceId/send` |
+| `video`             | URL HTTPS assinada de storage privado | `caption?`, `mimetype?`, `ptv?`            | `POST /api/instances/:instanceId/send` |
+| `document`          | URL HTTPS assinada de storage privado | `fileName`, `mimetype?`                    | `POST /api/instances/:instanceId/send` |
 | `button`/interativo | Texto do corpo             | `buttons`, `footer?` e payload compatível  | `POST /api/instances/:instanceId/send` |
 
 O gateway usa `Authorization: Bearer <BAILEYS_API_KEY>`. Tipos avançados devem ser enviados no payload genérico e só podem ser apresentados na interface quando houver suporte comprovado no canal selecionado. O worker recupera jobs presos após reinício e tenta novamente até `WORKER_MAX_ATTEMPTS` antes de marcar `failed`. A chave idempotente protege a fila do painel; a confirmação final de entrega depende da resposta do canal.
 
-O composer manual do Inbox aceita arquivos de até 8 MB para `image`, `audio`, `video` e `document`. Na implementação atual o arquivo é convertido para data URL e enviado em `metadata.mediaData`; o worker usa esse valor para o gateway, enquanto o banco guarda um rótulo no campo `content`. A migração para storage privado com URL assinada é obrigatória antes de arquivos grandes em produção.
+O composer manual do Inbox aceita arquivos de até 8 MB para `image`, `audio`, `video` e `document`. `inbox.uploadAttachment` e `platform.supportInbox.uploadAttachment` exigem autenticação apropriada, allowlist de MIME/type e workspace; os bytes são gravados em storage privado sob o prefixo do workspace. A fila persiste somente `mediaStorageKey`, MIME, tamanho e nome; data URLs e URLs fornecidas pelo cliente são rejeitadas. No momento do envio, o worker gera URL assinada HTTPS de curta duração e encaminha somente essa URL ao gateway. O gateway rejeita data URLs, HTTP, hosts locais/privados e mídia sem URL HTTPS. Chaves internas de storage não devem ser expostas como links públicos.
 
 ```json
 {

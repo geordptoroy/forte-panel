@@ -65,6 +65,10 @@ import {
   updateBaileysInstanceSettings,
 } from "./baileys-gateway";
 import { interactiveMetadataSchema, interactiveMessageTypeSchema } from "./interactive-messages";
+import {
+  INBOX_MEDIA_MAX_DATA_URL_CHARS,
+  uploadPrivateInboxAttachment,
+} from "./inbox-media-upload";
 
 const requirePlatform = authenticatedProcedure.use(async ({ ctx, next }) => {
   const platformAdmin = await getPlatformAdminAccess(ctx.user.id);
@@ -211,6 +215,34 @@ export const platformRouter = router({
     .input(z.object({ instanceId: z.string().min(1).max(160), confirmDeletion: z.literal(true) }))
     .mutation(async ({ input }) => { const workspace = await ensurePlatformSupportWorkspace(); await deleteBaileysGatewayInstance(input.instanceId).catch(() => undefined); await archiveBaileysInstance(workspace.id, input.instanceId); return { success: true, instanceId: input.instanceId } as const; }),
   supportInbox: router({
+    uploadAttachment: requirePlatformOperator
+      .input(
+        z.object({
+          fileName: z.string().trim().min(1).max(160),
+          messageType: z.enum(["image", "audio", "video", "document"]),
+          mimeType: z.string().trim().min(1).max(120),
+          dataUrl: z.string().min(1).max(INBOX_MEDIA_MAX_DATA_URL_CHARS),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const workspace = await ensurePlatformSupportWorkspace();
+        try {
+          return await uploadPrivateInboxAttachment({
+            workspaceId: workspace.id,
+            type: input.messageType,
+            fileName: input.fileName,
+            mimeType: input.mimeType,
+            dataUrl: input.dataUrl,
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "";
+          if (reason === "INBOX_MEDIA_INVALID")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Formato de anexo não suportado para este tipo de mensagem." });
+          if (reason === "INBOX_MEDIA_TOO_LARGE")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "O anexo está vazio ou excede o limite de 8 MB." });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível guardar o anexo com segurança. Tente novamente." });
+        }
+      }),
     instances: requirePlatform.query(async () => {
       const snapshot = await getPlatformSupportSnapshot();
       return snapshot.instances;
@@ -262,7 +294,7 @@ export const platformRouter = router({
             z.enum(["image", "audio", "video", "document"]),
             interactiveMessageTypeSchema,
           ]).default("text"),
-          metadata: interactiveMetadataSchema.optional(),
+          metadata: z.record(z.string(), z.unknown()).optional(),
           instanceIds: z.array(z.string().min(1).max(160)).min(1).max(1),
         })
       )
