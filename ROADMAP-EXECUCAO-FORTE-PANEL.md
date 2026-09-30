@@ -115,7 +115,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O7.10 | Confiabilidade | Inbound transacional e retry sem duplicação | **CONCLUÍDA (código + testes locais)** | Transação única protege contato, conversa, lead/oportunidade, mensagem, unread e `message.received`; compensação de mídia e prova persistente ficam para o gate externo |
 | O7.11 | Confiabilidade | Hardening de sessão, webhook, headers e rate limit | **CONCLUÍDA (primeira fatia local)** | Headers globais, bearer constant-time, origem/CSRF e rate limits cobertos; revogação/rotação, rate limit distribuído e staging continuam pendentes |
 | O7.12 | Confiabilidade | Runbook, restore e compensação de storage | **CONCLUÍDA (primeira fatia local)** | Manifesto verificado antes do restore, alvo separado e tar de sessão vazio válido; off-host, DB/mídia/sessão real, RPO/RTO e rollback seguem pendentes |
-| O7.13 | Operação | Restore rehearsal e compensação de blobs | **PENDENTE** | Ambiente limpo, restore completo, limpeza de órfãos, retenção, alertas e rollback por digest |
+| O7.13 | Operação | Restore rehearsal e compensação de blobs | **CONCLUÍDA (política local)** | Classificação segura por workspace, referências e janela de proteção; provider list/delete, retenção e restore real seguem pendentes |
+| O7.14 | Operação | Provider de storage com listagem/remoção condicionada | **PENDENTE** | Implementar contrato paginado, delete por chave/etag, métricas e ensaio em ambiente limpo |
 | A1 | Adiado | TTS, múltiplos canais e automações genéricas | ADIADA | Só após o núcleo gerar valor recorrente |
 
 ---
