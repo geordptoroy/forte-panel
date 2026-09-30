@@ -295,12 +295,12 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 
 | Campo | Valor inicial |
 |---|---|
-| Branch | `feat/o1.2-operational-service-catalog` |
+| Branch | `feat/o1.3-attendance-rule-simulation` |
 | Base auditada | `cad2b8a` |
 | Última fatia concluída | `P0.3` — seeds e bootstrap isolados por ambiente |
-| Última fatia concluída por este roadmap | `O1.2` — catálogo operacional conectado ao onboarding |
-| Último commit de implementação deste roadmap | `6bd2442` — `feat: connect onboarding to operational service catalog` |
-| Pull request | [#4](https://github.com/geordptoroy/forte-panel/pull/4) — aberto, não mesclado |
+| Última fatia concluída por este roadmap | `O1.3` — revisão de exemplos vinculada ao candidato publicado |
+| Último commit de implementação deste roadmap | `6f5a812` — `feat: add consent-gated onboarding example review` |
+| Pull request | [#5](https://github.com/geordptoroy/forte-panel/pull/5) — aberto, empilhado sobre o PR #4 (O1.2); não mesclado |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.
