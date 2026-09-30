@@ -3560,6 +3560,7 @@ export async function getPublishedAiPrompt(workspaceId: number) {
 
 export type NativeAgentConfig = {
   enabled: boolean;
+  killSwitch?: { paused: boolean; reason: string | null; changedAt: string | null };
   model: string;
   systemPrompt: string;
   maxSteps: number;
@@ -3568,6 +3569,28 @@ export type NativeAgentConfig = {
 };
 
 const PLATFORM_GLOBAL_AGENT_WORKSPACE_ID = 0;
+const NATIVE_AGENT_KILL_SWITCH_KEY = "native_agent_kill_switch";
+
+export async function getNativeAgentKillSwitch(workspaceId: number) {
+  const setting = await getWorkspaceSetting(workspaceId, NATIVE_AGENT_KILL_SWITCH_KEY);
+  if (!setting?.value) return { paused: false, reason: null, changedAt: null };
+  try {
+    const parsed = JSON.parse(setting.value) as Partial<{ paused: boolean; reason: string; changedAt: string }>;
+    return {
+      paused: parsed.paused === true,
+      reason: typeof parsed.reason === "string" ? parsed.reason : null,
+      changedAt: typeof parsed.changedAt === "string" ? parsed.changedAt : null,
+    };
+  } catch {
+    return { paused: false, reason: null, changedAt: null };
+  }
+}
+
+export async function setNativeAgentKillSwitch(input: { workspaceId: number; paused: boolean; reason: string; actorUserId: number }) {
+  const changedAt = new Date().toISOString();
+  await upsertWorkspaceSetting(input.workspaceId, NATIVE_AGENT_KILL_SWITCH_KEY, JSON.stringify({ paused: input.paused, reason: input.reason.trim(), changedAt, changedBy: input.actorUserId }));
+  return getNativeAgentKillSwitch(input.workspaceId);
+}
 
 async function readStoredNativeAgentConfig(workspaceId?: number) {
   const globalSetting = await getWorkspaceSetting(
@@ -3706,14 +3729,16 @@ export async function getNativeAgentRuntimeConfig(
 ): Promise<NativeAgentConfig> {
   const workspace = await getActiveWorkspaceById(workspaceId);
   const binding = await getPlatformInstancePromptBinding(instanceId);
+  const killSwitch = await getNativeAgentKillSwitch(workspaceId);
   const stored = await readStoredNativeAgentConfig(
     binding ? undefined : workspace?.id
   );
   const llm = await applyPlatformAiConnections(mergeAgentProviderSettings(stored.llm));
   return {
-    enabled: binding
+    enabled: !killSwitch.paused && (binding
       ? binding.enabled && stored.enabled !== false
-      : stored.enabled !== false,
+      : stored.enabled !== false),
+    killSwitch,
     model:
       binding?.model?.trim() ||
       stored.model?.trim() ||
@@ -8329,6 +8354,26 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
           eventInstanceId
         );
         if (!config.enabled) {
+          if (config.killSwitch?.paused) {
+            await db
+              .update(domainEvents)
+              .set({
+                status: "pending",
+                workerId: null,
+                claimedAt: null,
+                leaseUntil: null,
+                availableAt: new Date(Date.now() + 30_000),
+                lastError: `native_agent_kill_switch:${config.killSwitch.reason ?? "manual"}`,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(domainEvents.id, item.id),
+                  eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)
+                )
+              );
+            continue;
+          }
           await db
             .update(domainEvents)
             .set({

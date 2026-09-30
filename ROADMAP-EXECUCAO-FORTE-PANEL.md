@@ -95,8 +95,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O3.6 | Comercial | Recebimento, ledger operacional e recibo | **CONCLUÍDA (código + CI PostgreSQL)** | PR #12 aberta; run `36729522644` passou após correção da FK composta; staging e revisão final continuam pendentes |
 | O3.7 | Comercial | Dashboard de decisões do dia | **CONCLUÍDA (código + CI PostgreSQL)** | PR #13 aberta; run `36730266465` passou; staging e revisão final continuam pendentes |
 | O4.1 | IA | Contexto comercial seguro para o agente | **CONCLUÍDA (código + CI PostgreSQL)** | PR #14 aberta; run `36730874541` passou; staging e revisão final continuam pendentes |
-| O4.2 | IA | Ferramentas somente leitura e confirmação mutável | **EM REVISÃO (código local)** | Branch `feat/o4.2-agent-confirmation-gate`; propostas pendentes e confirmação manager/owner; CI PostgreSQL e PR pendentes |
-| O4.3 | IA | Transferência para humano e kill switch | PENDENTE | Falha segura e controle operacional |
+| O4.2 | IA | Ferramentas somente leitura e confirmação mutável | **CONCLUÍDA (código + CI PostgreSQL)** | PR #15 aberta; run `36731684085` passou; staging e revisão final continuam pendentes |
+| O4.3 | IA | Transferência para humano e kill switch | **EM REVISÃO (código local)** | Branch `feat/o4.3-agent-kill-switch`; pausa tenant-scoped, eventos preservados e auditoria; CI PostgreSQL e PR pendentes |
 | O4.4 | IA | Métricas de resolução, custo, latência e receita | PENDENTE | IA medida por resultado, não por prompt |
 | O5.1 | Admin | Workspaces como contas de produção | PENDENTE | Lifecycle, saúde, plano e incidente reais |
 | O5.2 | Admin | Suporte, tickets e sessões auditadas | PENDENTE | Operador trabalha sem misturar tenants |
