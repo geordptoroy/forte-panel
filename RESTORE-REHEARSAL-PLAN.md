@@ -87,6 +87,14 @@ pnpm check:restore-rehearsal-isolation "$BACKUP_DIR/evidence.json"
 
 Esse gate exige `CORE_ONLY_MODE=true`, tráfego bloqueado, outbound desativado, endpoints fora dos hosts de produção, sessão restaurada em diretório separado, rollback preparado e readiness aprovada.
 
+Para executar os gates em uma única ordem, usar o preflight:
+
+```bash
+pnpm preflight:restore-rehearsal "$BACKUP_DIR" "$BACKUP_DIR/evidence.json" "$BACKUP_DIR/preflight.json"
+```
+
+O preflight verifica o pacote primeiro, depois o isolamento e por fim gera a decisão/relatório. Se o pacote falhar, nenhum passo posterior é executado. Se isolamento ou relatório não forem aprovados, o processo termina com código diferente de zero e o restore não deve começar.
+
 ### 4.2 Preparação do banco
 
 Usar um `DATABASE_URL` novo, com usuário e banco exclusivos:

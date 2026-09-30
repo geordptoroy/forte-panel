@@ -22,13 +22,13 @@ Isso não equivale ainda a um **MVP SaaS público pronto para convidar clientes 
 | Prioridade | Gap | Situação | Evidência/critério de fechamento |
 |---|---|---|---|
 | P0 | Staging PostgreSQL persistente com dois ou mais workspaces | Aberto | Migrations limpas, testes negativos e nenhum acesso cruzado em ambiente persistente |
-| P0 | Restore completo | O7.12 corrigiu verificação prévia, O7.25 gate offline, O7.26 relatório sem aprovação parcial e O7.27 isolamento/readiness/rollback; restore completo ainda aberto | Restaurar banco, blobs/mídia e sessão Baileys em ambiente limpo; validar health, tenancy e pareamento |
+| P0 | Restore completo | O7.12 corrigiu verificação prévia; O7.25–O7.28 cobrem pacote, relatório, isolamento e preflight único; restore completo ainda aberto | Restaurar banco, blobs/mídia e sessão Baileys em ambiente limpo; validar health, tenancy e pareamento |
 | P0 | Browser smoke real desktop/mobile | Aberto | Login, onboarding, conexão, Inbox, envio, estados de erro e acessibilidade em navegador autenticado |
 | P0 | Segurança de sessão e secrets | O7.11 iniciado; headers/CSRF/origem/bearer cobertos, secrets e staging pendentes | Chave de auth Baileys obrigatória, rotação, revogação de sessão, ownership de storage, headers e CSRF verificados |
 | P0 | Efeito externo idempotente no gateway | Código O7.9 concluído; prova externa pendente | Ledger/single-flight por instância e chave; timeout/restart não pode duplicar envio |
 | P0 | Inbound transacional | Código O7.10 concluído; crash/restore persistente ainda pendente | Crash em qualquer etapa resulta em commit completo ou nenhum efeito; retry não duplica mensagem/unread/contato |
 | P0 | Quality gate sem skips críticos | Parcial — O7.24 | PostgreSQL integration agora falha com skips e os workflows validam configuração fail-closed; E2E, browser e staging continuam gates externos |
-| P0 | Runbook operacional | O7.12 iniciado e O7.27 adicionou gate automatizado de isolamento; incidente, RPO/RTO e rollback real ainda abertos | Pareamento, troca de número, logout, reconnect, DLQ, replay, restore, incidente, RPO/RTO e rollback |
+| P0 | Runbook operacional | O7.12 iniciado e O7.27–O7.28 adicionaram isolamento e preflight fail-closed; incidente, RPO/RTO e rollback real ainda abertos | Pareamento, troca de número, logout, reconnect, DLQ, replay, restore, incidente, RPO/RTO e rollback |
 | P0 | Revisão legal e de risco Baileys | Aberto | Termos, privacidade, retenção, exclusão, consentimento e aviso de uso de WhatsApp não oficial |
 
 ## 3. Gaps de produto — o núcleo de negócio ainda não está completo

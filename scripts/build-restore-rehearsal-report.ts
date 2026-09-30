@@ -52,6 +52,10 @@ export type RestoreRehearsalReport = {
   };
   safety: { noProductionTraffic: boolean; rollbackDemonstrated: boolean };
   reasons: string[];
+  preflight?: {
+    packageVerified: boolean;
+    isolationDecision: "approved" | "inconclusive" | "blocked";
+  };
 };
 
 function parseDate(value: string, name: string) {

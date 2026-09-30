@@ -182,3 +182,12 @@ O workflow PostgreSQL falha se reportar skips; o workflow de publicação execut
 Integrar os comandos O7.25–O7.27 em um orquestrador único de preflight do rehearsal, na ordem: verificar pacote, validar isolamento, preparar/validar evidências, gerar relatório e bloquear fail-closed antes de qualquer restore. Depois executar os gates externos na máquina do usuário: PostgreSQL/Docker, provider de mídia, Redis isolado, sessão Baileys separada, browser smoke e WhatsApp físico.
 
 Não declarar MVP SaaS público nem desligar `CORE_ONLY_MODE`. Não mesclar PRs automaticamente. Para continuar, primeiro revalidar branch, status, remoto e o hash do commit deste handoff.
+
+
+## Atualização 2026-09-30 — O7.28
+
+Foi criado o preflight único `pnpm preflight:restore-rehearsal BACKUP_DIR EVIDENCE.json PREFLIGHT.json`. Ele executa na ordem pacote → isolamento → relatório, sem rede e sem mutações. Pacote inválido interrompe o fluxo; endpoint produtivo, outbound ligado, sessão reutilizada, rollback ausente, readiness falha ou decisão não aprovada deixam o processo com código diferente de zero.
+
+Entrega: `O7.28-ENTREGA-PREFLIGHT-RESTORE-REHEARSAL.md`. O plano, runbook, rastreio e auditoria foram atualizados. Testes do slice: 10 passaram; typecheck e `git diff --check` passaram.
+
+Depois desta atualização, criar commit e push da branch atual. O próximo chat deve revalidar `git status`, branch, remoto e o hash mais recente antes de continuar. Próxima fatia recomendada: executar o preflight em um fixture completo no Sandbox e, depois, preparar somente o gate externo Docker/staging; não executar restore destrutivo, não desligar `CORE_ONLY_MODE` e não mesclar a PR.

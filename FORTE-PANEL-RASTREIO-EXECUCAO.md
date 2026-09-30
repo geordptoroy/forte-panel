@@ -45,6 +45,7 @@ Auditoria documental de 2026-09-30 confirmou gaps adicionais além do resumo ope
 17. **O7.25 — Gate de restore rehearsal:** concluído em código; verificador offline exige banco, sessão Baileys e inventário de mídia com hashes, sem executar mutações.
 18. **O7.26 — Relatório de restore rehearsal:** concluído em código; gerador redigido calcula RPO/RTO e emite somente `approved`, `inconclusive` ou `blocked`, sem aprovação parcial.
 19. **O7.27 — Isolamento do restore rehearsal:** concluído em código; gate verifica CORE_ONLY_MODE, tráfego bloqueado, outbound desligado, endpoints não produtivos, sessão separada, rollback e readiness.
+20. **O7.28 — Preflight único do restore rehearsal:** concluído em código; orquestrador executa pacote → isolamento → relatório e bloqueia fail-closed antes de qualquer restore.
 5. **O7.13 — Qualidade e escala:** quality gate sem skips críticos, concorrência, paginação, métricas e coorte de dois/dez workspaces.
 6. **Produto público:** onboarding final, UX/a11y, IA avançada, billing, termos e cadastro público somente depois dos gates P0.
 
@@ -138,6 +139,13 @@ O plano operacional do restore está em [`RESTORE-REHEARSAL-PLAN.md`](./RESTORE-
 - Endpoint produtivo, outbound, sessão reutilizada ou rollback ausente bloqueiam o ensaio.
 - O script é somente avaliador; não faz rede nem altera serviços.
 - Detalhes estão em [`O7.27-ENTREGA-ISOLAMENTO-RESTORE-REHEARSAL.md`](./O7.27-ENTREGA-ISOLAMENTO-RESTORE-REHEARSAL.md).
+
+### O7.28 — Preflight único do restore rehearsal
+
+- `pnpm preflight:restore-rehearsal BACKUP_DIR EVIDENCE.json PREFLIGHT.json` combina os três gates.
+- Falha do pacote interrompe o fluxo; falha de isolamento ou decisão inconclusiva retorna código diferente de zero.
+- Nenhum restore, delete, rede ou abertura de tráfego é executado pelo preflight.
+- Detalhes estão em [`O7.28-ENTREGA-PREFLIGHT-RESTORE-REHEARSAL.md`](./O7.28-ENTREGA-PREFLIGHT-RESTORE-REHEARSAL.md).
 
 ## Fila de coding
 
