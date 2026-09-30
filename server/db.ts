@@ -32,6 +32,7 @@ import {
   messages,
   notifications,
   opportunities,
+  opportunityFollowUps,
   onboardingAudioAssets,
   onboardingSessions,
   onboardingConflictResolutions,
@@ -63,6 +64,7 @@ import {
   type InsertUser,
 } from "../drizzle/schema";
 import { messageDeliveryRank, type MessageDeliveryStatus } from "../shared/message-delivery";
+import { isFutureNextActionDueAt } from "../shared/inbox-next-action";
 import {
   initialOpportunityStage,
   shouldUpsertLeadFromInbound,
@@ -5199,6 +5201,57 @@ export async function listInboxContacts(
         ...(includeGroups ? [] : [isNull(contacts.groupId)])
       )
     );
+  const operationalRows = await db
+    .select({
+      contactId: contacts.id,
+      assignedMemberId: workspaceMembers.id,
+      assignedMemberName: users.name,
+      nextActionId: opportunityFollowUps.id,
+      nextActionTitle: opportunityFollowUps.title,
+      nextActionDueAt: opportunityFollowUps.dueAt,
+    })
+    .from(opportunities)
+    .innerJoin(
+      leads,
+      and(
+        eq(leads.id, opportunities.leadId),
+        eq(leads.workspaceId, workspaceId)
+      )
+    )
+    .innerJoin(
+      contacts,
+      and(
+        eq(contacts.id, leads.contactId),
+        eq(contacts.workspaceId, workspaceId)
+      )
+    )
+    .leftJoin(
+      workspaceMembers,
+      and(
+        eq(workspaceMembers.id, opportunities.assignedMemberId),
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.active, 1)
+      )
+    )
+    .leftJoin(users, eq(users.id, workspaceMembers.userId))
+    .leftJoin(
+      opportunityFollowUps,
+      and(
+        eq(opportunityFollowUps.workspaceId, workspaceId),
+        eq(opportunityFollowUps.opportunityId, opportunities.id),
+        eq(opportunityFollowUps.status, "open")
+      )
+    )
+    .where(
+      and(
+        eq(opportunities.workspaceId, workspaceId),
+        eq(contacts.workspaceId, workspaceId),
+        ...(includeGroups ? [] : [isNull(contacts.groupId)])
+      )
+    );
+  const operationalByContactId = new Map(
+    operationalRows.map(row => [row.contactId, row])
+  );
   const leadByContactId = new Map(leadRows.map(row => [row.contactId, row]));
   const groupIds = contactRows
     .map(contact => contact.groupId)
@@ -5337,11 +5390,24 @@ export async function listInboxContacts(
         : undefined;
       const group = contact.groupId ? groupById.get(contact.groupId) : undefined;
       const lead = leadByContactId.get(contact.id);
+      const operational = operationalByContactId.get(contact.id);
       return {
         ...contact,
         leadId: lead?.leadId ?? null,
         opportunityId: lead?.opportunityId ?? null,
         opportunityStage: lead?.opportunityStage ?? null,
+        assignedMemberId: operational?.assignedMemberId ?? null,
+        assignedMemberName: operational?.assignedMemberName ?? null,
+        nextAction:
+          operational?.nextActionId == null ||
+          !operational.nextActionTitle ||
+          !operational.nextActionDueAt
+            ? null
+            : {
+                id: operational.nextActionId,
+                title: operational.nextActionTitle,
+                dueAt: operational.nextActionDueAt,
+              },
         isGroup: Boolean(contact.groupId),
         groupJid: group?.jid ?? null,
         groupSubject: group?.subject ?? null,
@@ -8257,4 +8323,281 @@ async function linkExistingOpportunityToConversation(
   if (!linked[0])
     throw new Error("Conversation could not be linked to the Opportunity");
   return opportunity.id;
+}
+
+
+export async function listInboxAssignableMembers(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: workspaceMembers.id,
+      name: users.name,
+      role: workspaceMembers.role,
+    })
+    .from(workspaceMembers)
+    .leftJoin(users, eq(users.id, workspaceMembers.userId))
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.active, 1)
+      )
+    )
+    .orderBy(asc(users.name), asc(workspaceMembers.id));
+}
+
+type DatabaseTransaction = Parameters<
+  Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]
+>[0];
+
+async function findWorkspaceOpportunityForContact(
+  tx: DatabaseTransaction,
+  workspaceId: number,
+  contactId: number
+) {
+  return (
+    await tx
+      .select({
+        id: opportunities.id,
+        contactId: contacts.id,
+      })
+      .from(opportunities)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, opportunities.leadId),
+          eq(leads.workspaceId, workspaceId)
+        )
+      )
+      .innerJoin(
+        contacts,
+        and(
+          eq(contacts.id, leads.contactId),
+          eq(contacts.workspaceId, workspaceId)
+        )
+      )
+      .where(
+        and(
+          eq(opportunities.workspaceId, workspaceId),
+          eq(contacts.id, contactId),
+          isNull(contacts.groupId)
+        )
+      )
+      .limit(1)
+  )[0];
+}
+
+export async function assignInboxOpportunity(
+  workspaceId: number,
+  contactId: number,
+  assignedMemberId: number | null,
+  actorUserId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx => {
+    const target = await findWorkspaceOpportunityForContact(
+      tx,
+      workspaceId,
+      contactId
+    );
+    if (!target) return undefined;
+    await tx.execute(
+      sql`SELECT "id" FROM "opportunities" WHERE "id" = ${target.id} AND "workspaceId" = ${workspaceId} FOR UPDATE`
+    );
+    if (assignedMemberId !== null) {
+      const member = (
+        await tx
+          .select({ id: workspaceMembers.id })
+          .from(workspaceMembers)
+          .where(
+            and(
+              eq(workspaceMembers.id, assignedMemberId),
+              eq(workspaceMembers.workspaceId, workspaceId),
+              eq(workspaceMembers.active, 1)
+            )
+          )
+          .limit(1)
+      )[0];
+      if (!member) throw new Error("MEMBER_NOT_ASSIGNABLE");
+    }
+    const current = (
+      await tx
+        .select({ assignedMemberId: opportunities.assignedMemberId })
+        .from(opportunities)
+        .where(
+          and(
+            eq(opportunities.id, target.id),
+            eq(opportunities.workspaceId, workspaceId)
+          )
+        )
+        .limit(1)
+    )[0];
+    if (!current) return undefined;
+    if ((current.assignedMemberId ?? null) === assignedMemberId)
+      return { opportunityId: target.id, assignedMemberId, changed: false };
+
+    await tx
+      .update(opportunities)
+      .set({ assignedMemberId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(opportunities.id, target.id),
+          eq(opportunities.workspaceId, workspaceId)
+        )
+      );
+    await tx.insert(auditLogs).values({
+      workspaceId,
+      actorUserId,
+      contactId,
+      action: "opportunity_assigned",
+      summary: assignedMemberId === null
+        ? `Opportunity ${target.id} ficou sem responsável`
+        : `Opportunity ${target.id} atribuída ao membro ${assignedMemberId}`,
+    });
+    return { opportunityId: target.id, assignedMemberId, changed: true };
+  });
+}
+
+export async function setOpportunityNextAction(
+  workspaceId: number,
+  contactId: number,
+  input: { title: string; dueAt: Date },
+  actorUserId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const title = input.title.trim();
+  const now = new Date();
+  if (title.length < 3 || title.length > 180)
+    throw new Error("INVALID_NEXT_ACTION_TITLE");
+  if (!isFutureNextActionDueAt(input.dueAt, now))
+    throw new Error("INVALID_NEXT_ACTION_DUE_AT");
+
+  return db.transaction(async tx => {
+    const target = await findWorkspaceOpportunityForContact(
+      tx,
+      workspaceId,
+      contactId
+    );
+    if (!target) return undefined;
+    await tx.execute(
+      sql`SELECT "id" FROM "opportunities" WHERE "id" = ${target.id} AND "workspaceId" = ${workspaceId} FOR UPDATE`
+    );
+    const existing = (
+      await tx
+        .select()
+        .from(opportunityFollowUps)
+        .where(
+          and(
+            eq(opportunityFollowUps.workspaceId, workspaceId),
+            eq(opportunityFollowUps.opportunityId, target.id),
+            eq(opportunityFollowUps.status, "open")
+          )
+        )
+        .limit(1)
+    )[0];
+    const saved = existing
+      ? (
+          await tx
+            .update(opportunityFollowUps)
+            .set({ title, dueAt: input.dueAt, updatedAt: now })
+            .where(
+              and(
+                eq(opportunityFollowUps.id, existing.id),
+                eq(opportunityFollowUps.workspaceId, workspaceId),
+                eq(opportunityFollowUps.opportunityId, target.id),
+                eq(opportunityFollowUps.status, "open")
+              )
+            )
+            .returning()
+        )[0]
+      : (
+          await tx
+            .insert(opportunityFollowUps)
+            .values({
+              workspaceId,
+              opportunityId: target.id,
+              title,
+              dueAt: input.dueAt,
+              status: "open",
+              createdByUserId: actorUserId,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning()
+        )[0];
+    if (!saved) throw new Error("NEXT_ACTION_SAVE_FAILED");
+    await tx.insert(auditLogs).values({
+      workspaceId,
+      actorUserId,
+      contactId,
+      action: existing
+        ? "opportunity_next_action_rescheduled"
+        : "opportunity_next_action_created",
+      summary: `Próxima ação do Opportunity ${target.id} ${existing ? "reagendada" : "criada"} para ${input.dueAt.toISOString()}`,
+    });
+    return saved;
+  });
+}
+
+export async function completeOpportunityNextAction(
+  workspaceId: number,
+  contactId: number,
+  actorUserId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx => {
+    const target = await findWorkspaceOpportunityForContact(
+      tx,
+      workspaceId,
+      contactId
+    );
+    if (!target) return undefined;
+    await tx.execute(
+      sql`SELECT "id" FROM "opportunities" WHERE "id" = ${target.id} AND "workspaceId" = ${workspaceId} FOR UPDATE`
+    );
+    const open = (
+      await tx
+        .select({ id: opportunityFollowUps.id })
+        .from(opportunityFollowUps)
+        .where(
+          and(
+            eq(opportunityFollowUps.workspaceId, workspaceId),
+            eq(opportunityFollowUps.opportunityId, target.id),
+            eq(opportunityFollowUps.status, "open")
+          )
+        )
+        .limit(1)
+    )[0];
+    if (!open) return { completed: false as const };
+    const now = new Date();
+    const completed = await tx
+      .update(opportunityFollowUps)
+      .set({
+        status: "completed",
+        completedAt: now,
+        completedByUserId: actorUserId,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(opportunityFollowUps.id, open.id),
+          eq(opportunityFollowUps.workspaceId, workspaceId),
+          eq(opportunityFollowUps.opportunityId, target.id),
+          eq(opportunityFollowUps.status, "open")
+        )
+      )
+      .returning({ id: opportunityFollowUps.id });
+    if (!completed[0]) return { completed: false as const };
+    await tx.insert(auditLogs).values({
+      workspaceId,
+      actorUserId,
+      contactId,
+      action: "opportunity_next_action_completed",
+      summary: `Próxima ação ${open.id} do Opportunity ${target.id} concluída`,
+    });
+    return { completed: true as const, followUpId: open.id };
+  });
 }

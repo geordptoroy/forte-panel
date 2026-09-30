@@ -2,37 +2,41 @@
 
 **Atualizado:** 2026-09-30
 **Repositório:** `geordptoroy/forte-panel`
-**Caminho observado:** `/home/ubuntu/forte-panel` — revalidar ambiente, branch, HEAD, status, remote, ferramentas e disponibilidade do PostgreSQL antes de reutilizar este workspace.
+**Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
 ## Regras do usuário
 
 Avançar uma fatia por vez; documentar cada fatia; usar branches/PRs para revisão; **nunca mesclar automaticamente**; manter `CORE_ONLY_MODE` até prova de produção; não usar nem pedir secrets reais. Assinaturas/cobrança estão adiadas para Wave O7.
 
-## Estado do stack de revisão
+## Estado de revisão
 
-- PR [#4](https://github.com/geordptoroy/forte-panel/pull/4): O1.2 → `main`, aberto.
-- PR [#5](https://github.com/geordptoroy/forte-panel/pull/5): O1.3 → `feat/o1.2-operational-service-catalog`, aberto.
-- PR [#6](https://github.com/geordptoroy/forte-panel/pull/6): O1.4–O2.4 → `feat/o1.3-attendance-rule-simulation`, aberto.
-- PR [#7](https://github.com/geordptoroy/forte-panel/pull/7): O3.1 → `feat/o1.4-o2.4-operational-core`, aberto; branch `feat/o3.1-unified-leads`.
+- Branch atual: `feat/o3.2-inbox-assignment-follow-up`; implementação/teste corrigido no commit `d1b5ca8`.
+- [PR #8 — O3.2 Inbox operacional](https://github.com/geordptoroy/forte-panel/pull/8) está aberto, empilhado sobre [PR #7 — O3.1 Lead unificado](https://github.com/geordptoroy/forte-panel/pull/7). Nenhum PR foi mesclado.
+- CI PostgreSQL do PR #8: run `36708180817` passou; aplicou migrations e executou 72 arquivos/285 testes sem skips. O primeiro run (`36707960513`) falhou por um fixture do próprio teste usando o contato B sob o workspace A; corrigido em `d1b5ca8`.
+- PRs anteriores #4–#7 permanecem abertos conforme a política de revisão; não mesclar automaticamente.
 
-Todos permanecem sem merge. PR #7 é filho do PR #6; não apontá-lo diretamente para `main` enquanto os pais estiverem abertos.
+## O3.2 implementada em código
 
-## Última fatia — O3.1
+Migration aditiva `0048_opportunity_assignment_followup.sql` adiciona responsável da Opportunity e histórico da próxima ação. Só owner/admin/manager pode atribuir a uma membership ativa do mesmo workspace; desativar membro limpa atribuições. Cada Opportunity pode ter uma próxima ação aberta com título e prazo futuro, persistida, auditada, reagendável e concluível. O Inbox projeta responsável e estado/prazo. Nenhuma mensagem é enviada e nenhum scheduler/worker é chamado.
 
-Entrega: [`O3.1-ENTREGA-LEAD-UNIFICADO.md`](./O3.1-ENTREGA-LEAD-UNIFICADO.md).
+Registro completo: `O3.2-ENTREGA-INBOX-OPERACIONAL.md`. Contrato de API, Product Scope, fonte de verdade, roadmap, índice e checklist também foram atualizados.
 
-- Modelo explícito: Contact como identidade, Lead por `(workspaceId, contactId)`, Opportunity por Lead e `Conversation.opportunityId`.
-- `Opportunity.stage` é canônico; `contacts.stage` é espelho compatível sincronizado pelas mutações de estágio.
-- Inbound individual Baileys aceito ao vivo faz upsert idempotente e associa a conversa; `fromMe`, grupo, histórico/backfill e eventos ignorados/inválidos não viram Lead comercial.
-- Migration aditiva `0047_unified_leads_opportunities.sql`, com backfill dos contatos individuais e links existentes; aplicada com sucesso no PostgreSQL efêmero do GitHub CI.
-- A Fonte de Verdade, `PRODUCT_SCOPE.md`, `API_CONTRACT.md`, roadmap, tracker e índice foram atualizados.
+## Validação observada
 
-**Gates no Sandbox:** `pnpm check` passou; `pnpm test` — 53 arquivos passaram, 18 ignorados, 228 testes passaram e 52 ignorados; `pnpm build` passou com aviso existente de bundle frontend acima de 500 kB; `git diff --check` passou. Sem `DATABASE_URL` local, mas GitHub PostgreSQL CI aplicou 0047 e passou os 7 testes O3.1: PR #6 run `36664794193` passou 276 testes/70 arquivos; PR #7 run `36664802619` passou 280 testes/71 arquivos. O fixture legado dependente de demo foi isolado no PR #6 em `9e3e48d`; ambos os checks estão verdes. CI efêmero não substitui smoke em staging/produção nem prova física de WhatsApp; rotas continuam `not_ready` e `CORE_ONLY_MODE` permanece ligado.
+- `pnpm check`: passou.
+- `pnpm test`: 54 arquivos passaram, 18 foram ignorados; 232 testes passaram e 53 foram ignorados. Os testes DB condicionais, inclusive O3.2, são executados no workflow PostgreSQL; não há `DATABASE_URL` local neste Sandbox.
+- `pnpm build`: passou; aviso preexistente de bundle frontend acima de 500 kB.
+- `git diff --check`: passou.
+- A migration 0048 foi aplicada no PostgreSQL efêmero do CI; este resultado não equivale a banco persistente/staging ou smoke físico Baileys.
 
-## Próxima fatia — O3.2: Inbox operacional com assignment e follow-up
+## Limites de release
 
-Consultar novamente `FORTE-PANEL-FONTE-DE-VERDADE.md`, `PRODUCT_SCOPE.md`, `ROADMAP-EXECUCAO-FORTE-PANEL.md`, `API_CONTRACT.md` e o código atual. Antes de alterar, revalidar a branch `feat/o3.1-unified-leads`, PRs #4–#7, HEAD, árvore de trabalho e PostgreSQL.
+A execução PostgreSQL efêmera de CI não substitui staging persistente, restore, smoke visual em desktop/mobile ou prova real inbound/outbound com Baileys. Rotas continuam `not_ready`; manter `CORE_ONLY_MODE`.
 
-Escopo de início: mapear assignment/follow-up já existentes para evitar duplicar estado; definir uma próxima ação clara por Lead/Opportunity com ownership tenant-scoped, autorização e auditoria; expor e operar isso no Inbox. Adicionar migration somente se necessária, testes de isolamento e reconciliação, documentação/handoff e gates `check`, `test`, `build`, `git diff --check`. Se follow-up depender de execução em background, ler a skill `automation-and-scheduling` antes de escolher a arquitetura.
+## Próxima fatia: O3.3 — funil canônico sem duplicação de estado
 
-Preservar `CORE_ONLY_MODE`, não usar secrets reais e manter a entrega em branch/PR empilhado. Sem merge automático.
+1. Revalidar os PRs e descobrir se algum pai foi atualizado ou fechado; preservar branches empilhadas e não fazer merge automático.
+2. Mapear todas as leituras/escritas de stage em `contacts.stage`, `opportunities.stage`, Inbox, Kanban, CRM/REST e `leadMemoryOperation`.
+3. Tornar `Opportunity.stage` a fonte canônica; centralizar mutações em um serviço tenant-scoped com auditoria e sincronização compatível, sem criar estados concorrentes.
+4. Adicionar migration/backfill idempotente e testes PostgreSQL para estados existentes, isolamento entre workspaces e todas as rotas de stage.
+5. Rodar `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check`; registrar resultado e pendências, abrir PR empilhado sobre O3.2 e aguardar revisão sem mesclar.

@@ -337,6 +337,13 @@
       "when": 1790738138246,
       "tag": "0047_unified_leads_opportunities",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790765100000,
+      "tag": "0048_opportunity_assignment_followup",
+      "breakpoints": true
     }
   ]
 }

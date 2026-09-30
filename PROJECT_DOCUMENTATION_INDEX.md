@@ -30,11 +30,11 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 1. [`ROADMAP-EXECUCAO-FORTE-PANEL.md`](./ROADMAP-EXECUCAO-FORTE-PANEL.md) — fila operacional por fatias e estado a atualizar a cada `próximo`.
 2. [`AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md`](./AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md) — matriz atual de rotas, dados demo, simulações e prontidão pública.
 3. [`HANDOFF-CONTINUIDADE-FORTE-PANEL.md`](./HANDOFF-CONTINUIDADE-FORTE-PANEL.md) — histórico de execução, decisões e próximo passo.
-4. [`HANDOFF-PROXIMO-CHAT-IA.md`](./HANDOFF-PROXIMO-CHAT-IA.md) — contexto operacional e instruções para O3.2.
+4. [`HANDOFF-PROXIMO-CHAT-IA.md`](./HANDOFF-PROXIMO-CHAT-IA.md) — contexto operacional e instruções para O3.3.
 5. [`O1.1-ENTREGA-ONBOARDING-WIZARD.md`](./O1.1-ENTREGA-ONBOARDING-WIZARD.md) — decisões e critérios da entrega do wizard de seis passos.
 6. [`O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`](./O1.2-ENTREGA-CATALOGO-OPERACIONAL.md) — catálogo, modos de preço, disponibilidade, segurança, migration e validação.
 7. [`O1.3-ENTREGA-REGRAS-E-REVISAO-EXEMPLOS.md`](./O1.3-ENTREGA-REGRAS-E-REVISAO-EXEMPLOS.md) — simulação, revisão humana, gate de publicação e validação.
-8. [`O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`](./O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md) — retomada, confiabilidade Baileys, recibos e anexos privados; [`O3.1-ENTREGA-LEAD-UNIFICADO.md`](./O3.1-ENTREGA-LEAD-UNIFICADO.md) — Lead/Opportunity e limites da prova.
+8. [`O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`](./O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md) — retomada, confiabilidade Baileys, recibos e anexos privados; [`O3.1-ENTREGA-LEAD-UNIFICADO.md`](./O3.1-ENTREGA-LEAD-UNIFICADO.md) — Lead/Opportunity; [`O3.2-ENTREGA-INBOX-OPERACIONAL.md`](./O3.2-ENTREGA-INBOX-OPERACIONAL.md) — assignment e próxima ação.
 9. [`todo.md`](./todo.md) — checklist vivo da implementação.
 10. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
 11. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual histórico de operação, migrations, quotas e segurança.

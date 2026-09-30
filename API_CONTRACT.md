@@ -146,4 +146,16 @@ O gateway `forte-whatsapp` preserva o contrato `WhatsappAdapter` e não altera a
 
 Para evitar materializar histórico como conversa nova, o caminho live só encaminha `messages.upsert` com `type: "notify"` e sem `requestId`. `append` e backfill são ignorados. `messaging-history.set/status` registra apenas contagens/progresso; ainda não existe importação automática do histórico. Fallback textual desconhecido é marcado como placeholder e ignorado antes de criar lead, enquanto placeholders de mídia continuam válidos conforme `messageType`. Antes de persistir mídia, o backend confirma que a instância Baileys está ativa e pertence ao workspace autenticado.
 
-Ainda são pendências de produção: storage privado de mídia com URL assinada, store de sessão durável/criptografado, lifecycle multi-instância e E2E real em staging. Iniciar chamada não é tratado como envio normal de mensagem; requer signaling próprio.
+Storage privado de mídia com URL assinada, sessão persistente/criptografada e lifecycle multi-instância já estão implementados; ainda faltam prova de limpeza de objetos órfãos, restore e E2E real em staging. Iniciar chamada não é tratado como envio normal de mensagem; requer signaling próprio.
+
+
+## Inbox: assignment e próxima ação (tRPC interno)
+
+Estas operações não adicionam endpoints à REST API opcional (que continua fechada por padrão); são procedures tRPC autenticadas pelo workspace ativo:
+
+- `inbox.assignmentOptions` retorna membros ativos do workspace somente a quem tem capacidade de gestão; agentes recebem lista vazia.
+- `inbox.assignOpportunity` aceita `contactId` e `assignedMemberId` (ou `null` para desatribuir), exige owner/admin/manager e valida que o contato tenha Opportunity e que a membership-alvo esteja ativa no mesmo workspace. A atribuição persiste em `opportunities.assignedMemberId` e registra auditoria.
+- `inbox.setNextAction` recebe `contactId`, título e `dueAt` ISO-8601 no futuro; membros ativos com acesso ao Inbox podem criar ou reagendar a única próxima ação aberta da Opportunity. A chave por workspace/Opportunity e o bloqueio transacional evitam ações abertas duplicadas.
+- `inbox.completeNextAction` conclui a ação aberta de forma idempotente; criar, reagendar e concluir registram auditoria. O Inbox projeta nome do responsável, título e prazo e calcula estados agendado/atrasado.
+
+Uma próxima ação é um lembrete operacional interno: não chama worker, WhatsApp, provider externo ou scheduler, não envia mensagens e não altera estágio. Membros inativos deixam de ser elegíveis e, ao desativar uma membership já atribuída, o responsável da Opportunity é limpo.

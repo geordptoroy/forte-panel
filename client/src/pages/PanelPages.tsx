@@ -50,6 +50,7 @@ import PanelLayout, {
 } from "@/components/PanelLayout";
 import { PlatformShell } from "./PlatformAdminPage";
 import { trpc } from "@/lib/trpc";
+import { getNextActionState } from "@shared/inbox-next-action";
 import {
   WhatsappConnectionPage,
   WorkspaceUsagePage,
@@ -71,6 +72,21 @@ const stageOrder = [
 ] as const;
 const formatCurrency = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+function toLocalDateTimeInput(value?: string | null) {
+  const date = value ? new Date(value) : new Date(Date.now() + 60 * 60 * 1000);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+
+function formatNextActionDue(value: string) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })
+    : "Prazo inválido";
+}
 
 function ChannelStatusBanner({
   loading,
@@ -173,6 +189,10 @@ type ContactLike = {
   }>;
   pushName?: string | null;
   nameSource?: string;
+  opportunityId?: string | null;
+  assignedMemberId?: string | null;
+  assignedMemberName?: string | null;
+  nextAction?: { id: string; title: string; dueAt: string } | null;
 };
 type Message = {
   id: string | number;
@@ -459,6 +479,23 @@ function ConversationList({
               )}
             </div>
             <div className="conversation-preview">{contact.lastMessage}</div>
+            {!contact.isGroup && (() => {
+              const actionState = getNextActionState(contact.nextAction?.dueAt);
+              return (
+                <div className="conversation-operational-state">
+                  <span className="conversation-assignee">
+                    {contact.assignedMemberName || "Sem responsável"}
+                  </span>
+                  <span className={`next-action-chip is-${actionState}`}>
+                    {actionState === "none"
+                      ? "Sem próxima ação"
+                      : actionState === "overdue"
+                        ? "Ação atrasada"
+                        : `Até ${formatNextActionDue(contact.nextAction!.dueAt)}`}
+                  </span>
+                </div>
+              );
+            })()}
             <div className="conversation-bottom">
               <span>{formatChatTime(contact.lastMessageAt)}</span>
               <span
@@ -697,10 +734,38 @@ function ConversationProfile({
       onRenamed();
     },
   });
+  const assignmentOptionsQuery = trpc.inbox.assignmentOptions.useQuery(
+    undefined,
+    { enabled: isOpen && !platformAdmin }
+  );
+  const assignMutation = trpc.inbox.assignOpportunity.useMutation({
+    onSuccess: onRenamed,
+  });
+  const nextActionMutation = trpc.inbox.setNextAction.useMutation({
+    onSuccess: onRenamed,
+  });
+  const completeNextActionMutation = trpc.inbox.completeNextAction.useMutation({
+    onSuccess: onRenamed,
+  });
+  const [nextActionTitle, setNextActionTitle] = useState(
+    contact.nextAction?.title ?? ""
+  );
+  const [nextActionDueAt, setNextActionDueAt] = useState(
+    toLocalDateTimeInput(contact.nextAction?.dueAt)
+  );
   useEffect(() => {
     setNameDraft(contact.name);
     setEditingName(false);
   }, [contact.id, contact.name]);
+  useEffect(() => {
+    setNextActionTitle(contact.nextAction?.title ?? "");
+    setNextActionDueAt(toLocalDateTimeInput(contact.nextAction?.dueAt));
+  }, [
+    contact.id,
+    contact.nextAction?.id,
+    contact.nextAction?.title,
+    contact.nextAction?.dueAt,
+  ]);
   useEffect(() => {
     if (!isOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -715,6 +780,16 @@ function ConversationProfile({
       name: nameDraft.trim(),
     });
   };
+  const saveNextAction = () => {
+    const dueAt = new Date(nextActionDueAt);
+    if (!Number.isFinite(dueAt.getTime())) return;
+    nextActionMutation.mutate({
+      contactId: Number(contact.id),
+      title: nextActionTitle.trim(),
+      dueAt: dueAt.toISOString(),
+    });
+  };
+  const nextActionState = getNextActionState(contact.nextAction?.dueAt);
   return (
     <div className={`inbox-profile-drawer ${isOpen ? "is-open" : ""}`}>
       <button
@@ -881,10 +956,135 @@ function ConversationProfile({
                 <div className="profile-field">
                   <span>Próxima ação</span>
                   <strong>
-                    {contact.daysNoReply > 0 ? "Fazer follow-up" : "Aguardar retorno"}
+                    {nextActionState === "none"
+                      ? "Sem próxima ação"
+                      : nextActionState === "overdue"
+                        ? "Ação atrasada"
+                        : `Agendada · ${formatNextActionDue(contact.nextAction!.dueAt)}`}
                   </strong>
                 </div>
               </div>
+              {!platformAdmin && (
+                <section
+                  className="inbox-operational-panel"
+                  aria-label="Responsável e próxima ação"
+                >
+                  <h4>Responsável</h4>
+                  {assignmentOptionsQuery.data?.canAssign ? (
+                    <label>
+                      <span>Responsável comercial</span>
+                      <select
+                        className="select-control"
+                        value={contact.assignedMemberId ?? ""}
+                        disabled={
+                          !contact.opportunityId || assignMutation.isPending
+                        }
+                        onChange={event =>
+                          assignMutation.mutate({
+                            contactId: Number(contact.id),
+                            assignedMemberId: event.target.value
+                              ? Number(event.target.value)
+                              : null,
+                          })
+                        }
+                      >
+                        <option value="">Sem responsável</option>
+                        {assignmentOptionsQuery.data.members.map(member => (
+                          <option key={member.id} value={member.id}>
+                            {member.name} · {member.role}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <div className="profile-field">
+                      <span>Responsável atual</span>
+                      <strong>{contact.assignedMemberName || "Sem responsável"}</strong>
+                    </div>
+                  )}
+                  {assignMutation.error && (
+                    <small className="profile-error" role="alert">
+                      {assignMutation.error.message}
+                    </small>
+                  )}
+                  {!contact.opportunityId && (
+                    <small>Este contato ainda não possui uma oportunidade operacional.</small>
+                  )}
+
+                  <div className="next-action-current">
+                    <span>Próxima ação registrada</span>
+                    <strong>
+                      {contact.nextAction?.title || "Nenhuma ação agendada"}
+                    </strong>
+                    {contact.nextAction && (
+                      <small>
+                        {formatNextActionDue(contact.nextAction.dueAt)}
+                      </small>
+                    )}
+                    {contact.nextAction && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={completeNextActionMutation.isPending}
+                        onClick={() =>
+                          completeNextActionMutation.mutate({
+                            contactId: Number(contact.id),
+                          })
+                        }
+                      >
+                        {completeNextActionMutation.isPending
+                          ? "Concluindo..."
+                          : "Marcar como concluída"}
+                      </button>
+                    )}
+                  </div>
+                  <label>
+                    <span>Descrição da próxima ação</span>
+                    <input
+                      className="input-control"
+                      maxLength={180}
+                      value={nextActionTitle}
+                      disabled={!contact.opportunityId}
+                      onChange={event => setNextActionTitle(event.target.value)}
+                      placeholder="Ex.: Retornar com o orçamento"
+                    />
+                  </label>
+                  <label>
+                    <span>Prazo</span>
+                    <input
+                      className="input-control"
+                      type="datetime-local"
+                      value={nextActionDueAt}
+                      disabled={!contact.opportunityId}
+                      onChange={event => setNextActionDueAt(event.target.value)}
+                    />
+                  </label>
+                  {(nextActionMutation.error ||
+                    completeNextActionMutation.error) && (
+                    <small className="profile-error" role="alert">
+                      {nextActionMutation.error?.message ||
+                        completeNextActionMutation.error?.message}
+                    </small>
+                  )}
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={
+                      !contact.opportunityId ||
+                      nextActionMutation.isPending ||
+                      nextActionTitle.trim().length < 3 ||
+                      !nextActionDueAt
+                    }
+                    onClick={saveNextAction}
+                  >
+                    {nextActionMutation.isPending
+                      ? "Salvando..."
+                      : contact.nextAction
+                        ? "Atualizar próxima ação"
+                        : "Agendar próxima ação"}
+                  </button>
+                </section>
+              )}
               <div className="profile-actions">
                 <PageLink href={`/contacts/${contact.id}`} className="btn-secondary">
                   <UserRound size={13} /> Abrir ficha completa
