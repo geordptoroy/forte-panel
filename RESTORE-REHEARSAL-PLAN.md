@@ -130,6 +130,26 @@ No Windows/PowerShell, a segunda stack pode ser criada sem tocar na stack ativa 
 
 O script exige o pacote já verificado (`manifest-*.txt`, dump, sessão e `media.json`), valida o Compose e sobe inicialmente somente PostgreSQL e Redis do projeto `forte-rehearsal`, com volumes e redes separados. Panel, worker e gateway ficam para depois do restore, evitando migrations que dependam de rede externa antes de o banco ser restaurado. As redes são internas, a API pública fica desligada e o script não executa restore nem remove volumes. O QR não deve ser escaneado nesse ambiente.
 
+Depois de confirmar visualmente que os dois serviços estão `healthy`, executar o restore somente com confirmação explícita:
+
+```powershell
+.\scripts\restore-restore-rehearsal.ps1 `
+  -BackupDir "C:\Users\<usuario>\Desktop\restore-rehearsal\rr-local-01" `
+  -ConfirmRestore
+```
+
+Esse comando aceita apenas o projeto `forte-rehearsal`, verifica o container PostgreSQL pelo label do Compose, restaura o dump nesse banco e extrai a sessão somente no volume `forte-rehearsal_forte_whatsapp_sessions`. Ele rejeita o container `forte_postgres_panel` e não inicia a aplicação.
+
+Somente depois do restore:
+
+```powershell
+.\scripts\start-restore-rehearsal.ps1 `
+  -BackupDir "C:\Users\<usuario>\Desktop\restore-rehearsal\rr-local-01" `
+  -StartApplication
+```
+
+O modo `-StartApplication` usa uma migration no-op no rehearsal, pois o schema já veio do dump; não faz download de dependências nem abre o tráfego externo.
+
 Para descartar somente o ambiente de ensaio, depois de registrar as evidências:
 
 ```powershell

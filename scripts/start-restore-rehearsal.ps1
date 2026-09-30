@@ -4,7 +4,8 @@ param(
     [string]$BackupDir,
     [int]$PanelPort = 3102,
     [int]$BaileysPort = 3110,
-    [string]$ProjectName = "forte-rehearsal"
+    [string]$ProjectName = "forte-rehearsal",
+    [switch]$StartApplication
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,6 +37,8 @@ Set-Content -Path $baseComposeFile -Value $baseCompose -Encoding utf8
 
 $override = @"
 services:
+  forte-panel-migrations:
+    command: ["sh", "-c", "exit 0"]
   forte-panel:
     ports:
       - "127.0.0.1:$PanelPort`:3000"
@@ -75,10 +78,20 @@ Write-Host "Não executando restore, não removendo volumes e não conectando Wh
 & docker compose @composeArgs up --detach --remove-orphans --pull never postgres_panel redis_panel
 if ($LASTEXITCODE -ne 0) { Fail "Falha ao subir a stack isolada." }
 
+if ($StartApplication) {
+    Write-Host "Iniciando Panel, worker e gateway após restore explícito..."
+    & docker compose @composeArgs up --detach --remove-orphans --pull never forte-panel forte-panel-worker forte-whatsapp
+    if ($LASTEXITCODE -ne 0) { Fail "Falha ao iniciar a aplicação do rehearsal." }
+}
+
 Write-Host ""
 Write-Host "Infraestrutura isolada iniciada. Estado:"
 & docker compose @composeArgs ps
 Write-Host ""
 Write-Host "Próximo passo: restaurar o pacote no PostgreSQL isolado; somente depois iniciar Panel/gateway."
+if ($StartApplication) {
+    Write-Host "Panel do rehearsal: http://localhost:$PanelPort"
+    Write-Host "Gateway do rehearsal: http://localhost:$BaileysPort"
+}
 Write-Host "Compose base temporário: $baseComposeFile"
 Write-Host "Para descartar SOMENTE esta stack depois do ensaio: docker compose $($composeArgs -join ' ') down --volumes --remove-orphans"
