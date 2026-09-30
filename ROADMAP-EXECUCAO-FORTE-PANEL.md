@@ -121,6 +121,10 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O7.16 | Operação | Provider real, auditoria persistida e restore rehearsal | **PENDENTE** | Conectar API autorizada, alertas, retenção, execução controlada e ambiente limpo |
 | A1 | Adiado | TTS, múltiplos canais e automações genéricas | ADIADA | Só após o núcleo gerar valor recorrente |
 
+### Trabalho explicitamente adiado
+
+- **Oracle Cloud/OCI, deploy público e promoção final das imagens ARM64:** ficam depois do MVP controlado estar demonstrável e dos gates de staging, browser, segurança, restore e WhatsApp físico estarem fechados. A publicação multi-arquitetura já pode existir como preparação técnica, mas não é a próxima fatia e não autoriza deploy público.
+
 ---
 
 ## 4. Onda P0 — Fundação pública

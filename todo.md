@@ -4,6 +4,8 @@
 **Fase de código atual:** O1.4–O2.4 e O3.1–O3.3 concluídas em código; a PR [#9](https://github.com/geordptoroy/forte-panel/pull/9) passou CI PostgreSQL (run `36710769990`, 72 arquivos/285 testes, zero skips). O3.4 é a próxima fatia; prova persistente/staging e WhatsApp real seguem pendentes, manter o core contido.
 **Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
 
+> **Nota de continuidade (2026-09-30):** este arquivo preserva o checklist/histórico antigo. A fila canônica e a próxima fatia estão em `ROADMAP-EXECUCAO-FORTE-PANEL.md`; não voltar para O3.4 apenas por causa das linhas históricas acima. Oracle/OCI e deploy ARM64 ficam adiados até o MVP controlado estar demonstrável.
+
 ## Direção registrada — 2026-09-27: core antes do restante
 
 ## Continuidade registrada — 2026-09-29: onboarding público em seis passos

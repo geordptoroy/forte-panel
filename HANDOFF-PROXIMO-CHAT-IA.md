@@ -197,3 +197,7 @@ Depois desta atualização, criar commit e push da branch atual. O próximo chat
 Foi adicionado `pnpm prepare:restore-rehearsal BACKUP_DIR MEDIA_INVENTORY.json`. O comando anexa um inventário de mídia fornecido pelo operador, calcula seu SHA-256, atualiza o manifesto com modo privado e revalida o pacote inteiro. Ele não acessa provider, não executa restore e não apaga volumes. Como o provider atual só oferece presign de PUT/GET, a exportação física dos blobs e seus hashes continua sendo gate externo; não declarar o rehearsal aprovado sem essa evidência.
 
 Foi criado `scripts/start-restore-rehearsal.ps1`, que valida a presença do pacote e sobe somente uma segunda stack Compose (`forte-rehearsal`) com containers, volumes, redes internas e portas separadas. O script não executa restore, não remove volumes, mantém a API pública desligada e não deve receber um QR real. O Sandbox validou typecheck/diff/documentação; a execução do Compose deve ser feita na máquina Windows com Docker Desktop.
+
+### Decisão de continuidade — depois do rehearsal
+
+Oracle/OCI, deploy público e a preparação ARM64 ficam **adiados**. O próximo trabalho deve voltar ao MVP visível: executar e fechar o fluxo autenticado de onboarding → conexão WhatsApp → Inbox → inbound/outbound → estado comercial, corrigindo somente as falhas observadas no Docker/browser do usuário. O `ROADMAP-EXECUCAO-FORTE-PANEL.md` é a fonte canônica; as seções históricas deste handoff não devem reabrir O3.4/O5.1.
