@@ -76,6 +76,7 @@ import {
 } from "./baileys-gateway";
 import { interactiveMetadataSchema, interactiveMessageTypeSchema } from "./interactive-messages";
 import { getSaaSBillingCatalog } from "./saas-billing";
+import { getSaaSSubscriptionLifecycleCatalog } from "./saas-subscription-lifecycle";
 import {
   INBOX_MEDIA_MAX_DATA_URL_CHARS,
   uploadPrivateInboxAttachment,
@@ -410,6 +411,7 @@ export const platformRouter = router({
     }),
 
   saasBillingBoundary: requirePlatform.query(() => getSaaSBillingCatalog()),
+  saasSubscriptionLifecycle: requirePlatform.query(() => getSaaSSubscriptionLifecycleCatalog()),
   workspaces: requirePlatform
     .input(
       z.object({ search: z.string().trim().max(160).default("") }).optional()
