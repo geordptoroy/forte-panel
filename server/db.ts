@@ -186,6 +186,15 @@ export function shouldProvisionDefaultWorkspace(input: {
 }) {
   return input.demoMode || input.bootstrapEnabled;
 }
+export function isDemoRuntimeAllowed(env: NodeJS.ProcessEnv = process.env) {
+  if (env.DEMO_MODE !== "true") return false;
+  const runtime = env.DEMO_ENVIRONMENT?.trim().toLowerCase();
+  return (
+    env.NODE_ENV === "development" ||
+    env.NODE_ENV === "test" ||
+    runtime === "qa"
+  );
+}
 
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
@@ -249,12 +258,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     .from(users)
     .where(eq(users.openId, user.openId))
     .limit(1);
-  const workspace = shouldProvisionDefaultWorkspace({
-    demoMode: process.env.DEMO_MODE === "true",
-    bootstrapEnabled: process.env.WORKSPACE_BOOTSTRAP_ENABLED === "true",
-  })
+  const workspace = isDemoRuntimeAllowed()
     ? await ensureDemoWorkspace()
-    : undefined;
+    : process.env.WORKSPACE_BOOTSTRAP_ENABLED === "true"
+      ? await ensureWorkspaceBootstrap()
+      : undefined;
   if (persisted[0] && workspace && shouldAssignBootstrapOwner) {
     await ensureWorkspaceMember(workspace.id, persisted[0].id, "owner");
   }
@@ -1505,16 +1513,11 @@ export async function processWorkspaceQuotaAlertsOnce(
   return { processed, skipped: false };
 }
 
-export async function ensureDemoWorkspace() {
+export async function ensureWorkspaceBootstrap() {
   const db = await getDb();
   if (!db) return undefined;
-  const demoMode = process.env.DEMO_MODE === "true";
-  const slug = demoMode
-    ? DEMO_WORKSPACE_SLUG
-    : (process.env.WORKSPACE_SLUG ?? "forte-workspace");
-  const name = demoMode
-    ? "Forte Serviços Demo"
-    : (process.env.WORKSPACE_NAME ?? "Minha empresa");
+  const slug = process.env.WORKSPACE_SLUG ?? "forte-workspace";
+  const name = process.env.WORKSPACE_NAME ?? "Minha empresa";
   await db
     .insert(workspaces)
     .values({
@@ -1532,6 +1535,31 @@ export async function ensureDemoWorkspace() {
     .select()
     .from(workspaces)
     .where(eq(workspaces.slug, slug))
+    .limit(1);
+  return result[0];
+}
+
+export async function ensureDemoWorkspace() {
+  if (!isDemoRuntimeAllowed()) return undefined;
+  const db = await getDb();
+  if (!db) return undefined;
+  await db
+    .insert(workspaces)
+    .values({
+      name: "Forte Serviços Demo",
+      slug: DEMO_WORKSPACE_SLUG,
+      segment: process.env.WORKSPACE_SEGMENT ?? "servicos",
+      plan: "starter",
+      timezone: process.env.WORKSPACE_TIMEZONE ?? "America/Sao_Paulo",
+    })
+    .onConflictDoUpdate({
+      target: workspaces.slug,
+      set: { name: "Forte Serviços Demo", updatedAt: new Date() },
+    });
+  const result = await db
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.slug, DEMO_WORKSPACE_SLUG))
     .limit(1);
   return result[0];
 }
@@ -1570,7 +1598,7 @@ export async function ensureWorkspaceMember(
 
 export async function ensureDemoWhatsappChannels() {
   const db = await getDb();
-  if (!db || process.env.DEMO_MODE !== "true") return [];
+  if (!db || !isDemoRuntimeAllowed()) return [];
   const workspace = await ensureDemoWorkspace();
   if (!workspace) return [];
   const existing = await db
@@ -4330,7 +4358,7 @@ const seedMessages = [
 
 export async function ensureDemoInbox() {
   const db = await getDb();
-  if (!db || process.env.DEMO_MODE !== "true") return;
+  if (!db || !isDemoRuntimeAllowed()) return;
   const workspace = await ensureDemoWorkspace();
   if (!workspace) return;
   await db
@@ -4413,7 +4441,7 @@ const seedServices = [
 
 export async function ensureDemoAgenda(workspaceId: number) {
   const db = await getDb();
-  if (!db || process.env.DEMO_MODE !== "true") return;
+  if (!db || !isDemoRuntimeAllowed()) return;
   const workspace = (
     await db
       .select()
@@ -4625,7 +4653,7 @@ export async function getAgendaSnapshot(
       .limit(1)
   )[0];
   if (!workspace) return emptySnapshot;
-  if (workspace.slug === DEMO_WORKSPACE_SLUG)
+  if (workspace.slug === DEMO_WORKSPACE_SLUG && isDemoRuntimeAllowed())
     await ensureDemoAgenda(workspaceId);
   const professionalFilter = professionalId
     ? and(
@@ -4767,7 +4795,7 @@ export async function createAgendaAppointment(
       .limit(1)
   )[0];
   if (!workspace) throw new Error("Workspace unavailable");
-  if (workspace.slug === DEMO_WORKSPACE_SLUG)
+  if (workspace.slug === DEMO_WORKSPACE_SLUG && isDemoRuntimeAllowed())
     await ensureDemoAgenda(workspaceId);
   if (input.endsAt <= input.startsAt)
     throw new ScheduleError(

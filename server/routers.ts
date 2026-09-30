@@ -23,11 +23,11 @@ import {
 } from "./inbox-instance-filter";
 import {
   ensureDemoInbox,
+  isDemoRuntimeAllowed,
   acceptWorkspaceInvite,
   assertOnboardingSourceConsent,
   createPublicSignup,
   createOnboardingAudioAsset,
-  ensureDemoWorkspace,
   createLocalWorkspaceMember,
   createWorkspaceInvite,
   createProfessional,
@@ -2951,6 +2951,11 @@ export const appRouter = router({
         };
       }),
     seed: requireInbox.mutation(async () => {
+      if (!isDemoRuntimeAllowed())
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Seed de demonstração disponível somente em ambiente QA/dev autorizado",
+        });
       await ensureDemoInbox();
       return { success: true } as const;
     }),
