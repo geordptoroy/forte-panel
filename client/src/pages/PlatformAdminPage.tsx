@@ -110,7 +110,7 @@ export function PlatformShell({
             className={active === "workspaces" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/workspaces")}
           >
-            <Users size={15} /> Workspaces beta
+            <Users size={15} /> Workspaces
           </button>
           <button
             className={active === "ai" ? "is-active" : ""}
@@ -314,7 +314,7 @@ function StartSupport({
   canMutate: boolean;
   onStarted: (sessionId: number) => void;
 }) {
-  const [reason, setReason] = useState("Acompanhamento operacional do beta");
+  const [reason, setReason] = useState("Acompanhamento operacional do workspace");
   const [mode, setMode] = useState<"read_only" | "operator">("read_only");
   const start = trpc.platform.startSupportSession.useMutation({
     onSuccess: session => {
@@ -405,7 +405,7 @@ function PlatformAdminOverview() {
   const [reasonWorkspaceId, setReasonWorkspaceId] = useState<number | null>(
     null
   );
-  const [reason, setReason] = useState("Acompanhamento operacional do beta");
+  const [reason, setReason] = useState("Acompanhamento operacional do workspace");
   const [draggedWorkspaceId, setDraggedWorkspaceId] = useState<number | null>(null);
   const [statusChange, setStatusChange] = useState<{
     workspaceId: number;
@@ -427,7 +427,7 @@ function PlatformAdminOverview() {
   return (
     <PlatformShell
       title="Console Administrativo"
-      description="Operação de contas beta sem misturar o console da plataforma com os workspaces clientes."
+      description="Operação de contas e ciclo de vida dos workspaces clientes, sem misturar o control-plane com a operação do cliente."
     >
       <div className="platform-banner">
         <ShieldCheck size={17} />
@@ -542,7 +542,7 @@ function PlatformAdminOverview() {
                           <button className="btn-ghost" onClick={() => navigate(`/platform-admin/workspaces/${item.id}`)}>
                             Detalhe
                           </button>
-                          <button className="btn-ghost" onClick={() => { setReasonWorkspaceId(item.id); setReason("Acompanhamento operacional do beta"); }}>
+                          <button className="btn-ghost" onClick={() => { setReasonWorkspaceId(item.id); setReason("Acompanhamento operacional do workspace"); }}>
                             Suporte
                           </button>
                         </div>
@@ -558,7 +558,7 @@ function PlatformAdminOverview() {
       <section className="platform-card">
         <div className="platform-card-title">
           <div>
-            <span className="eyebrow">Contas beta</span>
+            <span className="eyebrow">Contas de clientes</span>
             <h2>Workspaces</h2>
           </div>
           <div className="platform-search">
@@ -588,7 +588,7 @@ function PlatformAdminOverview() {
           <PlatformState
             icon={Users}
             title="Nenhum workspace encontrado"
-            description="Ajuste a busca ou aguarde o primeiro cadastro beta."
+            description="Ajuste a busca ou aguarde o primeiro cadastro de cliente."
           />
         ) : (
           <div className="platform-table-wrap">
@@ -654,7 +654,7 @@ function PlatformAdminOverview() {
                           className="btn-ghost"
                           onClick={() => {
                             setReasonWorkspaceId(item.id);
-                            setReason("Acompanhamento operacional do beta");
+                            setReason("Acompanhamento operacional do workspace");
                           }}
                         >
                           Suporte
@@ -972,7 +972,7 @@ function PlatformWorkspaceDetail({ workspaceId }: { workspaceId: number }) {
             startOperator.mutate({
               workspaceId,
               mode: "operator",
-              reason: "Ação mutável de suporte autorizada no beta",
+              reason: "Ação mutável de suporte autorizada no workspace",
               expiresInMinutes: 30,
             })
           }
@@ -1317,7 +1317,7 @@ function SupportTab({
   onOperator: () => void;
 }) {
   const [body, setBody] = useState("");
-  const [reason, setReason] = useState("Registro de suporte beta");
+  const [reason, setReason] = useState("Registro de suporte");
   const notes = trpc.platform.notes.useQuery({
     workspaceId: item.workspace.id,
     sessionId,
@@ -1440,7 +1440,7 @@ function SupportTab({
             className="textarea-control"
             value={body}
             onChange={event => setBody(event.target.value)}
-            placeholder="Ex.: validar configuração do canal no staging."
+            placeholder="Ex.: validar configuração do canal em produção."
           />
         </label>
         <button
@@ -1503,7 +1503,7 @@ function AgentTab({
   const [maxSteps, setMaxSteps] = useState(
     agent.draft?.config.maxSteps ?? agent.current.maxSteps
   );
-  const [reason, setReason] = useState("Ajuste operacional do agente no beta");
+  const [reason, setReason] = useState("Ajuste operacional do agente");
   const [message, setMessage] = useState(
     "Olá, gostaria de saber mais sobre os serviços."
   );
@@ -1864,7 +1864,7 @@ export function PlatformSupportInstancesPage() {
   }, [selectedPromptBinding?.systemPrompt, globalAi.data?.systemPrompt]);
   return (
     <PlatformAccessGate>
-      <PlatformShell title="Instâncias de suporte" description="Conexões Baileys próprias da operação da plataforma, fora dos Workspaces beta." active="support-instances">
+      <PlatformShell title="Instâncias de suporte" description="Conexões Baileys próprias da operação da plataforma, separadas dos workspaces clientes." active="support-instances">
         <div className="platform-banner"><ShieldCheck size={17} /><div><strong>Tenant interno: {snapshot.data?.workspace.name ?? "Suporte Forte Platform"}</strong><span>Estas instâncias pertencem ao Console Admin e não a uma conta de cliente.</span></div></div>
         <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Nova conexão</span><h2>Adicionar instância de suporte</h2></div><PlugZap size={18} /></div><div className="platform-form-grid"><label className="platform-field"><span>Nome</span><input className="input-control" value={name} onChange={event => setName(event.target.value)} /></label><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || create.isPending || name.trim().length < 2} onClick={() => create.mutate({ name })}><PlugZap size={13} /> {create.isPending ? "Criando…" : "Criar instância"}</button></div></div></section>
         <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Conexões do console</span><h2>WhatsApp de suporte</h2></div><Activity size={18} /></div>{snapshot.isLoading ? <PlatformState icon={RefreshCw} title="Carregando instâncias" description="Consultando o tenant interno do suporte." loading /> : (snapshot.data?.instances ?? []).length === 0 ? <PlatformState icon={PlugZap} title="Nenhuma instância criada" description="Crie a primeira conexão própria do Console Admin." /> : <div className="platform-table-wrap"><table className="platform-table"><thead><tr><th>Instância</th><th>Status</th><th>Pairing</th><th /></tr></thead><tbody>{(snapshot.data?.instances ?? []).map(instance => <tr key={instance.instanceId}><td><strong>{instance.name}</strong><small>{instance.instanceId}</small></td><td><WorkspaceStatus value={instance.status} /></td><td><div className="platform-form-actions"><input className="input-control" placeholder="DDD + número" value={phone} onChange={event => setPhone(event.target.value)} /><button className="btn-secondary" disabled={!canMutate || pair.isPending || phone.length < 8} onClick={() => pair.mutate({ instanceId: instance.instanceId, phone })}><KeyRound size={13} /> Código</button></div></td><td><button className="btn-ghost" disabled={!canMutate || disconnect.isPending} onClick={() => disconnect.mutate({ instanceId: instance.instanceId, logout: false })}>Desconectar</button></td></tr>)}</tbody></table></div>}</section>
@@ -1893,7 +1893,7 @@ export function PlatformSupportInboxPage() {
   return (
     <PlatformAccessGate>
       <PlatformShell title="Inbox de suporte" description="Mensagens recebidas nas instâncias próprias do Console Admin, com agente e prompt separados." active="support-inbox">
-        <div className="platform-banner"><MessageSquareText size={17} /><div><strong>Atendimento do Console Admin</strong><span>Esta Inbox usa somente o tenant interno de suporte; Workspaces beta não aparecem aqui.</span></div></div>
+        <div className="platform-banner"><MessageSquareText size={17} /><div><strong>Atendimento do Console Admin</strong><span>Esta Inbox usa somente o tenant interno de suporte; workspaces clientes não aparecem aqui.</span></div></div>
         <div className="platform-two-columns"><section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Conversas</span><h2>WhatsApp de suporte</h2></div></div>{(contacts.data ?? []).map(contact => <button key={contact.id} className={`platform-member ${selectedId === Number(contact.id) ? "is-active" : ""}`} onClick={() => setSelectedId(Number(contact.id))}><div className="platform-channel-icon"><MessageSquareText size={14} /></div><div><strong>{contact.name}</strong><small>{contact.phone || "Grupo"} · {contact.lastMessage}</small></div></button>)}</section><section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Conversa</span><h2>{selected?.name ?? "Selecione uma conversa"}</h2></div></div>{selectedId === null ? <PlatformState icon={MessageSquareText} title="Inbox pronta" description="Quando o WhatsApp de suporte receber uma mensagem, ela aparecerá aqui." /> : <><div className="platform-note-list">{(thread.data?.messages ?? []).map(message => <div key={message.id}><strong>{message.sender}</strong><small>{fmtDate(message.time)}</small><p>{message.text}</p></div>)}</div><div className="platform-form-actions"><input className="input-control" value={draft} onChange={event => setDraft(event.target.value)} placeholder="Responder pelo WhatsApp de suporte" /><button className="btn-primary" disabled={!canMutate || send.isPending || !draft.trim()} onClick={() => send.mutate({ contactId: selectedId, content: draft })}>Enviar</button></div></>}</section></div>
         <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Agente próprio</span><h2>Prompt do suporte da plataforma</h2></div><Bot size={18} /></div>{prompt && <><textarea className="input-control agent-prompt-editor" value={promptText} onChange={event => setPromptText(event.target.value)} /><div className="platform-form-actions"><button className="btn-secondary" disabled={!canMutate || savePrompt.isPending} onClick={() => savePrompt.mutate({ enabled: prompt.enabled, model: prompt.model, systemPrompt: promptText, maxSteps: prompt.maxSteps })}>Salvar rascunho</button><button className="btn-primary" disabled={!canMutate || publishPrompt.isPending} onClick={() => publishPrompt.mutate()}>Publicar prompt</button></div></>}</section>
       </PlatformShell>
@@ -1941,7 +1941,7 @@ export function PlatformPromptsPage() {
   const instanceTest = trpc.platform.simulateSupportInstanceAgent.useMutation({
     onSuccess: result => {
       setTestResult({ ...result, output: result.output ?? "" });
-      toast.success("Teste local da instância concluído");
+      toast.success("Simulação controlada da instância concluída");
     },
     onError: error => toast.error(error.message),
   });
