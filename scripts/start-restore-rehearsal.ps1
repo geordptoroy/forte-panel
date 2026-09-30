@@ -69,17 +69,16 @@ Write-Host "Validando a configuração da stack isolada..."
 & docker compose @composeArgs config | Out-Null
 if ($LASTEXITCODE -ne 0) { Fail "Compose do rehearsal inválido; nada foi iniciado." }
 
-Write-Host "Subindo somente a stack isolada '$ProjectName'."
+Write-Host "Subindo somente PostgreSQL e Redis isolados do rehearsal '$ProjectName'."
+Write-Host "Panel, worker e gateway serão iniciados somente depois do restore."
 Write-Host "Não executando restore, não removendo volumes e não conectando WhatsApp real."
-& docker compose @composeArgs up --detach --remove-orphans --pull never
+& docker compose @composeArgs up --detach --remove-orphans --pull never postgres_panel redis_panel
 if ($LASTEXITCODE -ne 0) { Fail "Falha ao subir a stack isolada." }
 
 Write-Host ""
-Write-Host "Stack isolada iniciada. Estado:"
+Write-Host "Infraestrutura isolada iniciada. Estado:"
 & docker compose @composeArgs ps
 Write-Host ""
-Write-Host "Panel do rehearsal: http://localhost:$PanelPort"
-Write-Host "Gateway do rehearsal: http://localhost:$BaileysPort"
-Write-Host "Próximo passo manual: validar o preflight e somente depois restaurar no destino isolado."
+Write-Host "Próximo passo: restaurar o pacote no PostgreSQL isolado; somente depois iniciar Panel/gateway."
 Write-Host "Compose base temporário: $baseComposeFile"
 Write-Host "Para descartar SOMENTE esta stack depois do ensaio: docker compose $($composeArgs -join ' ') down --volumes --remove-orphans"

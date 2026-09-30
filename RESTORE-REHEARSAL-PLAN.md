@@ -128,7 +128,7 @@ No Windows/PowerShell, a segunda stack pode ser criada sem tocar na stack ativa 
   -BackupDir "C:\Users\<usuario>\Desktop\restore-rehearsal\rr-local-01"
 ```
 
-O script exige o pacote já verificado (`manifest-*.txt`, dump, sessão e `media.json`), valida o Compose e sobe o projeto `forte-rehearsal` com volumes, containers, redes e portas separados (`3102`/`3110` por padrão). As redes são internas, a API pública fica desligada e o script não executa restore nem remove volumes. O QR não deve ser escaneado nesse ambiente.
+O script exige o pacote já verificado (`manifest-*.txt`, dump, sessão e `media.json`), valida o Compose e sobe inicialmente somente PostgreSQL e Redis do projeto `forte-rehearsal`, com volumes e redes separados. Panel, worker e gateway ficam para depois do restore, evitando migrations que dependam de rede externa antes de o banco ser restaurado. As redes são internas, a API pública fica desligada e o script não executa restore nem remove volumes. O QR não deve ser escaneado nesse ambiente.
 
 Para descartar somente o ambiente de ensaio, depois de registrar as evidências:
 
