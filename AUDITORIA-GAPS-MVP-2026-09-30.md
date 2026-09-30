@@ -26,7 +26,7 @@ Isso não equivale ainda a um **MVP SaaS público pronto para convidar clientes 
 | P0 | Browser smoke real desktop/mobile | Aberto | Login, onboarding, conexão, Inbox, envio, estados de erro e acessibilidade em navegador autenticado |
 | P0 | Segurança de sessão e secrets | Aberto | Chave de auth Baileys obrigatória, rotação, revogação de sessão, ownership de storage, headers e CSRF verificados |
 | P0 | Efeito externo idempotente no gateway | Código O7.9 concluído; prova externa pendente | Ledger/single-flight por instância e chave; timeout/restart não pode duplicar envio |
-| P0 | Inbound transacional | Aberto nos documentos de auditoria | Crash em qualquer etapa resulta em commit completo ou nenhum efeito; retry não duplica mensagem/unread/contato |
+| P0 | Inbound transacional | Código O7.10 concluído; crash/restore persistente ainda pendente | Crash em qualquer etapa resulta em commit completo ou nenhum efeito; retry não duplica mensagem/unread/contato |
 | P0 | Quality gate sem skips críticos | Aberto | PostgreSQL, migrations, policy, gateway, E2E, browser e staging precisam ser gates obrigatórios, não apenas testes opcionais |
 | P0 | Runbook operacional | Aberto | Pareamento, troca de número, logout, reconnect, DLQ, replay, restore, incidente, RPO/RTO e rollback |
 | P0 | Revisão legal e de risco Baileys | Aberto | Termos, privacidade, retenção, exclusão, consentimento e aviso de uso de WhatsApp não oficial |

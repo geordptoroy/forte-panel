@@ -10,6 +10,8 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 
 > **Auditoria consolidada de gaps do MVP (2026-09-30):** consulte [`AUDITORIA-GAPS-MVP-2026-09-30.md`](./AUDITORIA-GAPS-MVP-2026-09-30.md). Ela separa o MVP técnico já comprovado dos bloqueadores de produto público, segurança, staging, restore e operação.
 
+> **Entrega O7.10:** consulte [`O7.10-ENTREGA-INBOUND-TRANSACIONAL.md`](./O7.10-ENTREGA-INBOUND-TRANSACIONAL.md) para a fronteira transacional da ingestão inbound e suas limitações externas.
+
 > **Auditoria e proteção de ingestão WhatsApp/IA (2026-09-28):** consulte [`docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`](./docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md). A primeira fatia de proteção agora filtra `append`/backfill e texto-placeholder e verifica ownership da instância antes de salvar mídia; a importação histórica e o Console unificado de IA continuam pendentes.
 >
 > **Core ativo (2026-09-27):** consulte [`WHATSAPP-CONNECTION-FLOW-2026-09-27.md`](./WHATSAPP-CONNECTION-FLOW-2026-09-27.md) para a fase 1: CRUD de instâncias Baileys, consumo, decisões de escopo e sequência solicitada das próximas etapas. Não iniciar o console de modelos nem respostas automáticas antes da revisão do usuário.
