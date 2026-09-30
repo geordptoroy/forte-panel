@@ -299,7 +299,7 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 | Base auditada | `cad2b8a` |
 | Última fatia concluída | `P0.1` — matriz em `AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md` |
 | Última fatia concluída por este roadmap | nenhuma |
-| Último commit deste roadmap | `19b6ccd` — `docs: establish executable public product roadmap` |
+| Último commit deste roadmap | `3fd2802` — `docs: classify public release surfaces` |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.
