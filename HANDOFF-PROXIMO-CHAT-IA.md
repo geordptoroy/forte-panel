@@ -117,3 +117,7 @@ O CI PostgreSQL da O6.2 passou no run `36736764694`. A branch `feat/o6.3-browser
 ## O7.1 em revisão — fronteira de billing SaaS
 
 O CI PostgreSQL da O6.3 passou no run `36737154671`. A branch `feat/o7.1-saas-billing-boundary` adiciona `server/saas-billing.ts`, testes de contrato e a rota read-only `platform.saasBillingBoundary`; `workspaceGovernance.billing` agora usa a mesma fronteira. Plano técnico/quota, custo de provider (`agent_outcome_metrics`), receita operacional (quotes/payments) e cobrança SaaS ficam separados. Billing SaaS permanece `not_configured`, sem preço, moeda ou checkout. 15 testes focados, `pnpm check`, `pnpm build` e `git diff --check` passaram. Não integrar pagamento nesta fatia.
+
+## O7.2 em revisão — lifecycle da assinatura SaaS
+
+O CI PostgreSQL da O7.1 passou no run `36737881060`. A branch `feat/o7.2-saas-subscription-lifecycle` adiciona a máquina de estados pura `server/saas-subscription-lifecycle.ts` e seus contratos: trial de 14 dias, ativação, upgrade, downgrade, past_due, cancelamento no fim do período, retenção, cancelamento imediato e restart explícito. Cada transição exige motivo e retorna before/after; execução fica `not_configured` e exige provider. A rota read-only `platform.saasSubscriptionLifecycle` publica o catálogo. 17 testes focados, `pnpm check`, `pnpm build` e `git diff --check` passaram. Não persistir assinatura nem ligar checkout nesta fatia sem provider aprovado.
