@@ -94,6 +94,6 @@ Entrega: `O7.5-ENTREGA-DLQ-WEBHOOK.md`.
 
 A branch `feat/o7.6-webhook-dead-letter-observability` será criada sobre `feat/o7.5-webhook-dead-letter`, sem merge automático. O snapshot da instância passa a expor somente `webhookOutboxDeadLetter`, a quantidade de arquivos JSON na dead-letter, separado de `webhookOutboxPending` e `webhookLastError`. Nenhum payload, URL ou secret é exposto e o diretório não volta para a fila ativa.
 
-Validação: `npm exec vitest run src/webhook-outbox.test.ts` passou com 3 testes; `npm run check` e `npm run build` do gateway passaram; `pnpm check` do Panel e `git diff --check` passaram. Docker/staging e sessão real não foram alterados.
+Validação: `npm exec vitest run src/webhook-outbox.test.ts` passou com 3 testes; `npm run check` e `npm run build` do gateway passaram; `pnpm check` do Panel e `git diff --check` passaram. A PR #30 passou no CI PostgreSQL no run `36746224303`. Docker/staging e sessão real não foram alterados.
 
 Entrega: `O7.6-ENTREGA-OBSERVABILIDADE-DLQ.md`.
