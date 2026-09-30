@@ -51,6 +51,8 @@ import {
   quotes,
   quoteApprovalHistory,
   quoteItems,
+  quotePayments,
+  quoteReceipts,
   services,
   users,
   webhookEvents,
@@ -6234,7 +6236,13 @@ export async function listQuotes(workspaceId: number) {
   const itemRows = ids.length ? await db.select().from(quoteItems).where(and(eq(quoteItems.workspaceId, workspaceId), inArray(quoteItems.quoteId, ids))).orderBy(asc(quoteItems.position), asc(quoteItems.id)) : [];
   const itemsByQuote = new Map<number, typeof itemRows>();
   for (const item of itemRows) itemsByQuote.set(item.quoteId, [...(itemsByQuote.get(item.quoteId) ?? []), item]);
-  return rows.map(({ quote, contact }) => ({ ...quote, approvalStatus: effectiveQuoteApprovalStatus(quote), items: itemsByQuote.get(quote.id) ?? [], contactName: contact?.name ?? "Contato removido", contactInitials: (contact?.name ?? "CR").split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase() }));
+  const paymentRows = ids.length ? await db.select().from(quotePayments).where(and(eq(quotePayments.workspaceId, workspaceId), inArray(quotePayments.quoteId, ids))).orderBy(desc(quotePayments.receivedAt), desc(quotePayments.id)) : [];
+  const receiptRows = ids.length ? await db.select().from(quoteReceipts).where(and(eq(quoteReceipts.workspaceId, workspaceId), inArray(quoteReceipts.quoteId, ids))).orderBy(desc(quoteReceipts.issuedAt), desc(quoteReceipts.id)) : [];
+  const paymentsByQuote = new Map<number, typeof paymentRows>();
+  const receiptsByQuote = new Map<number, typeof receiptRows>();
+  for (const payment of paymentRows) paymentsByQuote.set(payment.quoteId, [...(paymentsByQuote.get(payment.quoteId) ?? []), payment]);
+  for (const receipt of receiptRows) receiptsByQuote.set(receipt.quoteId, [...(receiptsByQuote.get(receipt.quoteId) ?? []), receipt]);
+  return rows.map(({ quote, contact }) => ({ ...quote, approvalStatus: effectiveQuoteApprovalStatus(quote), items: itemsByQuote.get(quote.id) ?? [], payments: paymentsByQuote.get(quote.id) ?? [], receipts: receiptsByQuote.get(quote.id) ?? [], contactName: contact?.name ?? "Contato removido", contactInitials: (contact?.name ?? "CR").split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase() }));
 }
 export async function createQuote(input: { contactId: number; opportunityId?: number; serviceName: string; description?: string; quotedCents: number; items?: QuoteItemInput[]; validUntil?: Date; dueDate?: Date; notes?: string }, workspaceId: number, actorUserId: number) {
   const db = await getDb();
@@ -6295,6 +6303,31 @@ export async function updateQuotePayment(id: number, receivedCents: number, work
     const updated = (await tx.update(quotes).set({ receivedCents, paymentStatus, status: legacyQuoteStatus(existing.approvalStatus, paymentStatus), updatedAt: now }).where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId))).returning())[0];
     await tx.insert(auditLogs).values({ workspaceId, actorUserId, contactId: existing.contactId, action: "quote_payment_updated", summary: `Recebimento do orçamento ${id} atualizado para ${receivedCents} centavos` });
     return updated;
+  });
+}
+export async function registerQuotePayment(input: { quoteId: number; amountCents: number; method: "pix" | "cash" | "card" | "transfer" | "other"; receivedAt?: Date; notes?: string }, workspaceId: number, actorUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx => {
+    await assertActiveQuoteActor(tx, workspaceId, actorUserId);
+    if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) throw new Error("PAYMENT_AMOUNT_MUST_BE_POSITIVE");
+    const existing = (await tx.select().from(quotes).where(and(eq(quotes.id, input.quoteId), eq(quotes.workspaceId, workspaceId))).for("update").limit(1))[0];
+    if (!existing) throw new Error("Quote not found");
+    if (effectiveQuoteApprovalStatus(existing) !== "approved") throw new Error("QUOTE_NOT_APPROVED");
+    if (existing.paymentStatus === "cancelled") throw new Error("QUOTE_CANCELLED");
+    const nextReceivedCents = existing.receivedCents + input.amountCents;
+    if (nextReceivedCents > existing.quotedCents) throw new Error("QUOTE_RECEIVED_CENTS_EXCEEDS_TOTAL");
+    const now = new Date();
+    const receivedAt = input.receivedAt ?? now;
+    if (receivedAt > now) throw new Error("PAYMENT_DATE_CANNOT_BE_IN_FUTURE");
+    const payment = (await tx.insert(quotePayments).values({ workspaceId, quoteId: input.quoteId, amountCents: input.amountCents, method: input.method, receivedAt, notes: input.notes?.trim() || null, actorUserId, createdAt: now }).returning())[0];
+    if (!payment) throw new Error("PAYMENT_CREATE_FAILED");
+    const paymentStatus: QuotePaymentState = nextReceivedCents >= existing.quotedCents ? "paid" : "partially_paid";
+    const quote = (await tx.update(quotes).set({ receivedCents: nextReceivedCents, paymentStatus, status: legacyQuoteStatus(existing.approvalStatus, paymentStatus), updatedAt: now }).where(and(eq(quotes.id, input.quoteId), eq(quotes.workspaceId, workspaceId))).returning())[0];
+    const receipt = (await tx.insert(quoteReceipts).values({ workspaceId, quoteId: input.quoteId, paymentId: payment.id, receiptNumber: `FP-${workspaceId}-${input.quoteId}-${payment.id}`, issuedAt: now, issuedByUserId: actorUserId, createdAt: now }).returning())[0];
+    if (!receipt || !quote) throw new Error("RECEIPT_CREATE_FAILED");
+    await tx.insert(auditLogs).values({ workspaceId, actorUserId, contactId: existing.contactId, action: "quote_payment_registered", summary: `Recebimento ${payment.id} de ${input.amountCents} centavos registrado no orçamento ${input.quoteId}; recibo ${receipt.receiptNumber}` });
+    return { payment, receipt, quote };
   });
 }
 export async function getActiveQuoteSummaryByContact(workspaceId: number, contactIds: number[]) {

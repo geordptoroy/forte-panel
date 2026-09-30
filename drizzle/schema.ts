@@ -1512,6 +1512,58 @@ export const quoteApprovalHistory = pgTable(
   ]
 );
 
+export const quotePayments = pgTable(
+  "quotePayments",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    quoteId: integer("quoteId").notNull(),
+    amountCents: integer("amountCents").notNull(),
+    method: varchar("method", { length: 30 }).notNull(),
+    receivedAt: timestamp("receivedAt").notNull(),
+    notes: varchar("notes", { length: 500 }),
+    actorUserId: integer("actorUserId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("quote_payments_workspace_quote_idx").on(
+      table.workspaceId,
+      table.quoteId,
+      table.receivedAt,
+      table.id
+    ),
+  ]
+);
+
+export const quoteReceipts = pgTable(
+  "quoteReceipts",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    quoteId: integer("quoteId").notNull(),
+    paymentId: integer("paymentId").notNull(),
+    receiptNumber: varchar("receiptNumber", { length: 80 }).notNull(),
+    issuedAt: timestamp("issuedAt").notNull(),
+    issuedByUserId: integer("issuedByUserId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("quote_receipts_workspace_number_unique_idx").on(
+      table.workspaceId,
+      table.receiptNumber
+    ),
+    uniqueIndex("quote_receipts_workspace_payment_unique_idx").on(
+      table.workspaceId,
+      table.paymentId
+    ),
+    index("quote_receipts_workspace_quote_idx").on(
+      table.workspaceId,
+      table.quoteId,
+      table.issuedAt
+    ),
+  ]
+);
+
 export const auditLogs = pgTable("auditLogs", {
   id: serial("id").primaryKey(),
   workspaceId: integer("workspaceId").notNull(),
@@ -1642,5 +1694,9 @@ export type QuoteItem = typeof quoteItems.$inferSelect;
 export type InsertQuoteItem = typeof quoteItems.$inferInsert;
 export type QuoteApprovalHistory = typeof quoteApprovalHistory.$inferSelect;
 export type InsertQuoteApprovalHistory = typeof quoteApprovalHistory.$inferInsert;
+export type QuotePayment = typeof quotePayments.$inferSelect;
+export type InsertQuotePayment = typeof quotePayments.$inferInsert;
+export type QuoteReceipt = typeof quoteReceipts.$inferSelect;
+export type InsertQuoteReceipt = typeof quoteReceipts.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;

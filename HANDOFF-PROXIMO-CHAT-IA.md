@@ -1,6 +1,6 @@
 # Handoff — Forte Panel
 
-**Atualizado:** 2026-09-30 — O3.5 em revisão local
+**Atualizado:** 2026-09-30 — O3.6 em revisão local
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
@@ -42,7 +42,13 @@ Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 13 testes 
 
 A branch `feat/o3.5-agenda-conflicts-status` foi criada sobre a O3.4 validada (`d8bbf52`). A entrega está registrada em `O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md`. A agenda já tinha conflitos transacionais, profissionais, disponibilidade e status; esta fatia expôs o reagendamento via `agenda.reschedule`, restringiu a operação ao profissional autorizado e adicionou a ação na agenda diária. O reagendamento revalida jornada e conflito e volta para `requested`, exigindo nova confirmação.
 
-Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 10 testes focados passaram; 3 testes de isolamento foram ignorados por dependerem de PostgreSQL. PR e CI PostgreSQL ainda pendentes.
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 10 testes focados passaram; 3 testes de isolamento foram ignorados por dependerem de PostgreSQL. A PR #11 está aberta e o CI PostgreSQL `36723304885` passou; staging persistente e revisão final continuam pendentes.
+
+## O3.6 — implementação local em revisão
+
+A branch `feat/o3.6-receipts-ledger` foi criada sobre a O3.5 validada (`6089b3a`). A entrega está registrada em `O3.6-ENTREGA-RECEBIMENTOS-LEDGER-RECIBO.md`. A migration 0051 cria lançamentos de recebimento e recibos tenant-scoped; `billing.registerPayment` valida aprovação, valor, método, data, limite do orçamento, registra o agregado compatível e emite recibo na mesma transação. A UI agora suporta valores parciais e métodos manuais.
+
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes focados passaram. PostgreSQL CI e PR ainda pendentes. Não introduzir gateway, Stripe ou cobrança real.
 
 ## Próxima fatia
 
