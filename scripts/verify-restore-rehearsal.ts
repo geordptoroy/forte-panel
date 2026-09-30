@@ -35,7 +35,9 @@ function requireArtifact(dir: string, name: string, expectedHash: string) {
 }
 
 export function validateMediaInventory(path: string) {
-  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+  const parsed: unknown = JSON.parse(
+    readFileSync(path, "utf8").replace(/^\uFEFF/, "")
+  );
   if (!Array.isArray(parsed)) throw new Error("media_inventory_must_be_array");
   for (const item of parsed) {
     if (!item || typeof item !== "object")
