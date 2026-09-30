@@ -166,6 +166,19 @@ export const quoteStatusEnum = pgEnum("quote_status", [
   "pago",
   "cancelado",
 ]);
+export const quoteApprovalStatusEnum = pgEnum("quote_approval_status", [
+  "draft",
+  "pending",
+  "approved",
+  "rejected",
+  "expired",
+]);
+export const quotePaymentStatusEnum = pgEnum("quote_payment_status", [
+  "unpaid",
+  "partially_paid",
+  "paid",
+  "cancelled",
+]);
 export const servicePriceTypeEnum = pgEnum("service_price_type", servicePriceTypes);
 
 export const users = pgTable(
@@ -1436,16 +1449,68 @@ export const quotes = pgTable("quotes", {
   id: serial("id").primaryKey(),
   workspaceId: integer("workspaceId").notNull(),
   contactId: integer("contactId").notNull(),
+  opportunityId: integer("opportunityId"),
   serviceName: varchar("serviceName", { length: 160 }).notNull(),
   description: text("description"),
   quotedCents: integer("quotedCents").default(0).notNull(),
   receivedCents: integer("receivedCents").default(0).notNull(),
   status: quoteStatusEnum("status").default("orcamento").notNull(),
+  approvalStatus: quoteApprovalStatusEnum("approvalStatus").default("draft").notNull(),
+  paymentStatus: quotePaymentStatusEnum("paymentStatus").default("unpaid").notNull(),
+  validUntil: timestamp("validUntil"),
+  approvedAt: timestamp("approvedAt"),
+  approvedByUserId: integer("approvedByUserId"),
+  rejectedAt: timestamp("rejectedAt"),
+  rejectedByUserId: integer("rejectedByUserId"),
   dueDate: timestamp("dueDate"),
   notes: varchar("notes", { length: 1000 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
+export const quoteItems = pgTable(
+  "quoteItems",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    quoteId: integer("quoteId").notNull(),
+    position: integer("position").default(0).notNull(),
+    serviceName: varchar("serviceName", { length: 160 }).notNull(),
+    description: text("description"),
+    quantity: integer("quantity").default(1).notNull(),
+    unitPriceCents: integer("unitPriceCents").default(0).notNull(),
+    totalCents: integer("totalCents").default(0).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("quote_items_workspace_quote_position_unique_idx").on(
+      table.workspaceId,
+      table.quoteId,
+      table.position
+    ),
+    index("quote_items_workspace_quote_idx").on(table.workspaceId, table.quoteId),
+  ]
+);
+export const quoteApprovalHistory = pgTable(
+  "quoteApprovalHistory",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    quoteId: integer("quoteId").notNull(),
+    fromStatus: quoteApprovalStatusEnum("fromStatus"),
+    toStatus: quoteApprovalStatusEnum("toStatus").notNull(),
+    actorUserId: integer("actorUserId"),
+    note: varchar("note", { length: 1000 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("quote_approval_history_workspace_quote_idx").on(
+      table.workspaceId,
+      table.quoteId,
+      table.createdAt,
+      table.id
+    ),
+  ]
+);
 
 export const auditLogs = pgTable("auditLogs", {
   id: serial("id").primaryKey(),
@@ -1573,5 +1638,9 @@ export type Appointment = typeof appointmentsTable.$inferSelect;
 export type InsertAppointment = typeof appointmentsTable.$inferInsert;
 export type Quote = typeof quotes.$inferSelect;
 export type InsertQuote = typeof quotes.$inferInsert;
+export type QuoteItem = typeof quoteItems.$inferSelect;
+export type InsertQuoteItem = typeof quoteItems.$inferInsert;
+export type QuoteApprovalHistory = typeof quoteApprovalHistory.$inferSelect;
+export type InsertQuoteApprovalHistory = typeof quoteApprovalHistory.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;

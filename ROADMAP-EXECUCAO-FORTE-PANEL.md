@@ -90,7 +90,7 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | **CONCLUÍDA (código)** | Migration 0047 e 7 integrações passaram no PostgreSQL CI; PRs #6/#7 abertos e CI verde; smoke persistente/staging e WhatsApp real pendentes |
 | O3.2 | Comercial | Inbox operacional com assignment e follow-up | **CONCLUÍDA (código)** | PR #8 aberto sobre O3.1; migration 0048 aplicada no CI; run `36708180817` passou 285 testes/72 arquivos sem skips; staging e WhatsApp real continuam pendentes |
 | O3.3 | Comercial | Funil canônico sem duplicação de estado | **CONCLUÍDA (código + CI PostgreSQL)** | PR #9 aberta; run `36710769990` aplicou 0049 e passou 72 arquivos/285 testes sem skips; staging e WhatsApp real continuam pendentes |
-| O3.4 | Comercial | Orçamento com itens, validade e aprovação | PENDENTE | Conversa pode gerar proposta rastreável |
+| O3.4 | Comercial | Orçamento com itens, validade e aprovação | **EM REVISÃO (código local)** | Branch `feat/o3.4-quote-approval`; CI PostgreSQL e PR ainda pendentes |
 | O3.5 | Comercial | Agenda com conflito, profissional e status | PENDENTE | Orçamento aprovado pode virar agendamento real |
 | O3.6 | Comercial | Recebimento, ledger operacional e recibo | PENDENTE | Serviço concluído fecha ciclo de receita |
 | O3.7 | Comercial | Dashboard de decisões do dia | PENDENTE | Usuário vê pendências, receita e saúde do canal |
@@ -298,7 +298,7 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 | Branch | `feat/o1.3-attendance-rule-simulation` |
 | Base auditada | `cad2b8a` |
 | Última fatia concluída | `P0.3` — seeds e bootstrap isolados por ambiente |
-| Última fatia concluída por este roadmap | `O1.3` — revisão de exemplos vinculada ao candidato publicado |
+| Última fatia concluída por este roadmap | `O3.3` — estágio canônico e histórico com CI PostgreSQL verde |
 | Último commit de implementação deste roadmap | `6f5a812` — `feat: add consent-gated onboarding example review` |
 | Pull request | [#5](https://github.com/geordptoroy/forte-panel/pull/5) — aberto, empilhado sobre o PR #4 (O1.2); não mesclado |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
