@@ -314,6 +314,7 @@ Resposta inclui:
 | `webhookOutboxPending` | number | Eventos pendentes |
 | `webhookLastError` | string opcional | Último erro da outbox |
 | `updatedAt` | ISO string | Última alteração |
+| `webhookOutboxDeadLetter` | number | Eventos movidos para dead-letter por falha permanente |
 
 Exemplo:
 
@@ -323,7 +324,8 @@ Exemplo:
   "status": "qr",
   "qr": "2@...",
   "updatedAt": "2026-09-27T22:00:00.000Z",
-  "webhookOutboxPending": 0
+  "webhookOutboxPending": 0,
+  "webhookOutboxDeadLetter": 0
 }
 ```
 

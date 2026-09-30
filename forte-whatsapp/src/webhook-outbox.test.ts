@@ -116,8 +116,9 @@ describe("durable webhook outbox", () => {
     const deadLetter = path.join(directory, "dead-letter");
     const [file] = await fs.readdir(deadLetter);
     await expect(fs.readFile(path.join(deadLetter, file), "utf8")).resolves.toContain(
-      '"quarantineReason":"permanent_webhook_failure"'
+      '\"quarantineReason\":\"permanent_webhook_failure\"'
     );
     expect(outbox.getStatus().pending).toBe(0);
+    expect(outbox.getStatus().deadLetter).toBe(1);
   });
 });

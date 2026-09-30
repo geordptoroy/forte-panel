@@ -51,6 +51,7 @@ export class WebhookOutbox {
   private readonly inFlight = new Set<string>();
   private timer?: ReturnType<typeof setInterval>;
   private pending = 0;
+  private deadLetter = 0;
   private lastError?: string;
 
   constructor(options: WebhookOutboxOptions) {
@@ -65,7 +66,11 @@ export class WebhookOutbox {
   }
 
   getStatus() {
-    return { pending: this.pending, lastError: this.lastError };
+    return {
+      pending: this.pending,
+      deadLetter: this.deadLetter,
+      lastError: this.lastError,
+    };
   }
 
   async start() {
@@ -136,8 +141,20 @@ export class WebhookOutbox {
       this.pending = entries.filter(
         entry => entry.isFile() && entry.name.endsWith(".json")
       ).length;
+      try {
+        const deadLetterEntries = await fs.readdir(
+          path.join(this.directory, "dead-letter"),
+          { withFileTypes: true }
+        );
+        this.deadLetter = deadLetterEntries.filter(
+          entry => entry.isFile() && entry.name.endsWith(".json")
+        ).length;
+      } catch {
+        this.deadLetter = 0;
+      }
     } catch {
       this.pending = 0;
+      this.deadLetter = 0;
     }
   }
 

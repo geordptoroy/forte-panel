@@ -109,7 +109,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O7.2 | Monetização | Trial, upgrade, downgrade, cancelamento e retenção | **CONCLUÍDA (código + CI PostgreSQL)** | PR #26 aberta; run `36738425579` passou; provider de billing ainda não configurado |
 | O7.3 | Escala | Observabilidade, incidentes e release público | **EM REVISÃO (código + Docker local parcial)** | PR #27; CI `36738759085` passou; Docker local validou health/readiness, migrations, pareamento, inbound e outbound; 5 eventos históricos na outbox ainda reportam `webhook_http_400`; staging/release público permanecem bloqueados |
 | O7.4 | Escala | Reconciliação de histórico Baileys não importável | **CONCLUÍDA (código + CI PostgreSQL)** | PR #28; CI `36743491124` passou; `202 ignored` encerra retry infinito de histórico incompleto; confirmação da limpeza dos 5 eventos reais continua pendente |
-| O7.5 | Escala | Dead-letter para falhas permanentes do webhook | **EM REVISÃO (código + testes do gateway)** | HTTP 4xx permanente vai para `outbox/dead-letter`; 408/429, 5xx e rede continuam retryáveis; staging permanece pendente |
+| O7.5 | Escala | Dead-letter para falhas permanentes do webhook | **CONCLUÍDA (código + CI PostgreSQL)** | PR #29; CI `36744892337` passou; HTTP 4xx permanente vai para `outbox/dead-letter`; staging permanece pendente |
+| O7.6 | Escala | Observabilidade da dead-letter no status da instância | **EM REVISÃO (código + testes do gateway)** | Snapshot expõe somente `webhookOutboxDeadLetter`; staging permanece pendente |
 | A1 | Adiado | TTS, múltiplos canais e automações genéricas | ADIADA | Só após o núcleo gerar valor recorrente |
 
 ---
