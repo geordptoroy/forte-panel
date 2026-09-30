@@ -5,7 +5,9 @@ import {
   contacts,
   conversations,
   domainEvents,
+  leads,
   messages,
+  opportunities,
   whatsappGroupParticipants,
   whatsappGroups,
   whatsappInstances,
@@ -13,11 +15,15 @@ import {
 } from "../drizzle/schema";
 import {
   getDb,
+  getConversationByContact,
   ingestInboundWhatsApp,
   listInboxContacts,
   listMessagesForContact,
+  moveContactStage,
+  queueOutboundMessage,
   renameContact,
   sendManualMessage,
+  upsertApiContact,
 } from "./db";
 
 const hasDatabase = Boolean(
@@ -36,6 +42,8 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
   const phoneIgnored = `551155${suffix.slice(-8)}`;
   const phoneHistorical = `551133${suffix.slice(-8)}`;
   const phoneForeignInstance = `551144${suffix.slice(-8)}`;
+  const phoneLiveLead = `551222${suffix.slice(-8)}`;
+  const phoneApiLead = `551223${suffix.slice(-8)}`;
   let workspaceAId = 0;
   let workspaceBId = 0;
   let contactAId = 0;
@@ -201,6 +209,7 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
   afterAll(async () => {
     const db = await getDb();
     if (!db) return;
+    const workspaceIds = [workspaceAId, workspaceBId].filter(Boolean);
     if (workspaceAId || workspaceBId)
       await db
         .delete(domainEvents)
@@ -209,22 +218,46 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
       await db
         .delete(auditLogs)
         .where(inArray(auditLogs.workspaceId, [workspaceAId, workspaceBId].filter(Boolean)));
-    const conversationIds = [
+    const tenantContacts = workspaceIds.length
+      ? await db
+          .select({ id: contacts.id })
+          .from(contacts)
+          .where(inArray(contacts.workspaceId, workspaceIds))
+      : [];
+    const contactIds = Array.from(new Set([
+      ...[
+        contactAId,
+        contactBId,
+        existingContactId,
+        fromMeContactId,
+        ...groupContactIds,
+      ].filter(Boolean),
+      ...tenantContacts.map(contact => contact.id),
+    ]));
+    const tenantConversations = contactIds.length
+      ? await db
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(inArray(conversations.contactId, contactIds))
+      : [];
+    const conversationIds = Array.from(new Set([
+      ...[
       conversationAId,
       conversationBId,
       existingConversationId,
       fromMeConversationId,
       ...groupConversationIds,
-    ].filter(Boolean);
+      ].filter(Boolean),
+      ...tenantConversations.map(conversation => conversation.id),
+    ]));
     if (conversationIds.length)
       await db.delete(messages).where(inArray(messages.conversationId, conversationIds));
-    const contactIds = [
-      contactAId,
-      contactBId,
-      existingContactId,
-      fromMeContactId,
-      ...groupContactIds,
-    ].filter(Boolean);
+    if (workspaceIds.length)
+      await db
+        .delete(opportunities)
+        .where(inArray(opportunities.workspaceId, workspaceIds));
+    if (workspaceIds.length)
+      await db.delete(leads).where(inArray(leads.workspaceId, workspaceIds));
     if (contactIds.length)
       await db.delete(conversations).where(inArray(conversations.contactId, contactIds));
     if (contactIds.length)
@@ -320,6 +353,17 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
     fromMeContactId = contact.id;
     expect(contact.aiEnabled).toBe(0);
     expect(contact.unreadCount).toBe(0);
+    expect(
+      await db
+        .select({ id: leads.id })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.workspaceId, workspaceAId),
+            eq(leads.contactId, contact.id)
+          )
+        )
+    ).toHaveLength(0);
 
     const conversation = (
       await db
@@ -509,6 +553,17 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
     expect(contact).toMatchObject({ aiEnabled: 1, unreadCount: 0 });
     expect(conversation).toMatchObject({ humanControlled: 0, unreadCount: 0 });
     expect(
+      await db
+        .select({ id: leads.id })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.workspaceId, workspaceAId),
+            eq(leads.contactId, contact.id)
+          )
+        )
+    ).toHaveLength(0);
+    expect(
       await db.select({ id: messages.id }).from(messages).where(eq(messages.externalId, input.eventId))
     ).toHaveLength(1);
     expect(
@@ -626,6 +681,17 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
       await db.select().from(contacts).where(eq(contacts.groupId, groupA2.id)).limit(1)
     )[0]!;
     groupContactIds.push(groupContactA1.id, groupContactA2.id);
+    expect(
+      await db
+        .select({ id: leads.id })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.workspaceId, workspaceAId),
+            inArray(leads.contactId, [groupContactA1.id, groupContactA2.id])
+          )
+        )
+    ).toHaveLength(0);
     expect(groupContactA1).toMatchObject({
       name: groupSubject,
       aiEnabled: 0,
@@ -732,5 +798,211 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
         )
       );
     expect(receivedEvents).toHaveLength(0);
+  });
+
+  it("creates one workspace-scoped Lead and linked Opportunity for live inbound", async () => {
+    const db = await getDb();
+    if (!db) throw new Error("database unavailable");
+    const firstAt = new Date("2026-09-30T00:00:00.000Z");
+    const firstInput = {
+      eventId: `lead-live-${suffix}`,
+      phone: phoneLiveLead,
+      name: "Novo lead comercial",
+      content: "Olá, gostaria de um orçamento",
+      messageType: "text" as const,
+      receivedAt: firstAt,
+      metadata: {
+        provider: "baileys",
+        instanceId: instanceA1,
+        jid: `${phoneLiveLead}@s.whatsapp.net`,
+        upsertType: "notify",
+      },
+    };
+    const first = await ingestInboundWhatsApp(workspaceAId, firstInput);
+    if (
+      !("leadId" in first) ||
+      typeof first.leadId !== "number" ||
+      !("opportunityId" in first) ||
+      typeof first.opportunityId !== "number" ||
+      !("opportunityStage" in first)
+    )
+      throw new Error("Live inbound did not return its Lead/Opportunity link");
+    const leadId = first.leadId;
+    const opportunityId = first.opportunityId;
+    expect(first.opportunityStage).toBe("Novo contato");
+
+    const duplicate = await ingestInboundWhatsApp(workspaceAId, firstInput);
+    expect(duplicate).toMatchObject({ duplicate: true });
+    const secondAt = new Date(firstAt.getTime() + 5_000);
+    const second = await ingestInboundWhatsApp(workspaceAId, {
+      ...firstInput,
+      eventId: `lead-live-follow-up-${suffix}`,
+      content: "Também posso enviar fotos do serviço",
+      receivedAt: secondAt,
+    });
+    if (
+      !("leadId" in second) ||
+      second.leadId !== leadId ||
+      !("opportunityId" in second) ||
+      second.opportunityId !== opportunityId
+    )
+      throw new Error("A repeat inbound created a second Lead/Opportunity");
+
+    const contact = (
+      await db
+        .select()
+        .from(contacts)
+        .where(
+          and(
+            eq(contacts.workspaceId, workspaceAId),
+            eq(contacts.externalPhone, phoneLiveLead)
+          )
+        )
+        .limit(1)
+    )[0]!;
+    const leadRows = await db
+      .select()
+      .from(leads)
+      .where(
+        and(
+          eq(leads.workspaceId, workspaceAId),
+          eq(leads.contactId, contact.id)
+        )
+      );
+    expect(leadRows).toHaveLength(1);
+    expect(leadRows[0]).toMatchObject({ id: leadId, source: "whatsapp" });
+    expect(leadRows[0]?.lastActivityAt?.getTime()).toBe(secondAt.getTime());
+
+    const opportunityRows = await db
+      .select()
+      .from(opportunities)
+      .where(
+        and(
+          eq(opportunities.workspaceId, workspaceAId),
+          eq(opportunities.leadId, leadId)
+        )
+      );
+    expect(opportunityRows).toHaveLength(1);
+    expect(opportunityRows[0]).toMatchObject({
+      id: opportunityId,
+      stage: "Novo contato",
+    });
+    const conversation = await getConversationByContact(
+      workspaceAId,
+      contact.id
+    );
+    expect(conversation).toMatchObject({
+      opportunityId,
+      opportunityStage: "Novo contato",
+    });
+    const inboxBeforeMove = await listInboxContacts(workspaceAId);
+    expect(inboxBeforeMove.find(row => row.id === contact.id)).toMatchObject({
+      leadId,
+      opportunityId,
+      opportunityStage: "Novo contato",
+    });
+
+    await moveContactStage(workspaceAId, contact.id, "Em atendimento");
+    const updatedContact = (
+      await db.select().from(contacts).where(eq(contacts.id, contact.id)).limit(1)
+    )[0]!;
+    const updatedOpportunity = (
+      await db
+        .select()
+        .from(opportunities)
+        .where(eq(opportunities.id, opportunityId))
+        .limit(1)
+    )[0]!;
+    expect(updatedContact.stage).toBe("Em atendimento");
+    expect(updatedOpportunity.stage).toBe("Em atendimento");
+    const inboxAfterMove = await listInboxContacts(workspaceAId);
+    expect(inboxAfterMove.find(row => row.id === contact.id)?.opportunityStage).toBe(
+      "Em atendimento"
+    );
+
+    const otherWorkspace = await ingestInboundWhatsApp(workspaceBId, {
+      ...firstInput,
+      eventId: `lead-live-other-workspace-${suffix}`,
+      metadata: {
+        provider: "baileys",
+        instanceId: instanceB1,
+        jid: `${phoneLiveLead}@s.whatsapp.net`,
+        upsertType: "notify",
+      },
+    });
+    if (
+      !("leadId" in otherWorkspace) ||
+      typeof otherWorkspace.leadId !== "number" ||
+      !("opportunityId" in otherWorkspace) ||
+      typeof otherWorkspace.opportunityId !== "number"
+    )
+      throw new Error("Second workspace did not receive its own commercial records");
+    expect(otherWorkspace.leadId).not.toBe(leadId);
+    expect(otherWorkspace.opportunityId).not.toBe(opportunityId);
+    const otherContact = (
+      await db
+        .select()
+        .from(contacts)
+        .where(
+          and(
+            eq(contacts.workspaceId, workspaceBId),
+            eq(contacts.externalPhone, phoneLiveLead)
+          )
+        )
+        .limit(1)
+    )[0]!;
+    expect(
+      await db
+        .select({ id: leads.id })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.workspaceId, workspaceBId),
+            eq(leads.contactId, otherContact.id)
+          )
+        )
+    ).toHaveLength(1);
+    const apiContact = await upsertApiContact(workspaceAId, {
+      phone: phoneApiLead,
+      name: "Lead de integração API",
+    });
+    if (!apiContact) throw new Error("API contact upsert returned no contact");
+    const apiLead = (
+      await db
+        .select()
+        .from(leads)
+        .where(
+          and(
+            eq(leads.workspaceId, workspaceAId),
+            eq(leads.contactId, apiContact.id)
+          )
+        )
+        .limit(1)
+    )[0]!;
+    const apiOpportunity = (
+      await db
+        .select()
+        .from(opportunities)
+        .where(
+          and(
+            eq(opportunities.workspaceId, workspaceAId),
+            eq(opportunities.leadId, apiLead.id)
+          )
+        )
+        .limit(1)
+    )[0]!;
+    expect(apiLead.source).toBe("api");
+    await queueOutboundMessage(
+      workspaceAId,
+      apiContact.id,
+      "Contato iniciado pelo time",
+      "baileys",
+      "human"
+    );
+    const apiConversation = await getConversationByContact(
+      workspaceAId,
+      apiContact.id
+    );
+    expect(apiConversation?.opportunityId).toBe(apiOpportunity.id);
   });
 });

@@ -74,6 +74,10 @@ O mesmo callback interno aceita eventos de recibo `eventType: "message_status"` 
 
 Use o Forte Panel como fonte única para CRM, anotações e agenda; não mantenha uma segunda base privada de estado do lead. A API disponível para clientes autorizados é `POST /api/v1/lead-memory`, que aceita `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota` com `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`.
 
+O CRM separa `Contact` (identidade) de `Lead` (registro comercial) e `Opportunity` (negociação/estágio). Inicialmente, o par `(workspaceId, contactId)` determina um único Lead e cada Lead tem uma Opportunity; a `Conversation` referencia a Opportunity. `Opportunity.stage` é canônico e `contacts.stage` é mantido como espelho compatível. A criação/atualização de etapa pelo CRM e por `PATCH /api/v1/contacts/:id/stage` mantém os dois valores sincronizados; o Inbox projeta os IDs comerciais e o estágio canônico quando disponíveis.
+
+Somente inbound individual aceito ao vivo promove ou atualiza Lead/Opportunity. `fromMe`, grupos, `append`/backfill, placeholders inválidos e eventos ignorados não criam registro comercial. O evento de domínio `message.received` inclui `leadId`, `opportunityId` e `opportunityStage` para que consumidores autorizados não precisem inferir o funil a partir de um Contact isolado.
+
 Mensagens enviadas por `POST /api/v1/messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio. Toda mutação exige `Idempotency-Key`; retries iguais retornam a resposta original e o mesmo key com body diferente conflita. O payload aceita `contactId` ou `phone`, `provider`, `senderType: "ai" | "human"` (padrão `human`), `messageType`, `instanceId` e `metadata`. Para Baileys, o fluxo preserva o JID completo recebido no webhook e usa a instância do workspace; não há fallback global entre tenants. Mensagens `ai` não desligam `aiEnabled` nem ativam `humanControlled`; mensagens `human` mantêm o comportamento de takeover do painel.
 
 O gateway Baileys suporta estes formatos no worker:

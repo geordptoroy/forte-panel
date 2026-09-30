@@ -44,6 +44,12 @@ PAPI, Meta e valores legados permanecem somente para compatibilidade/migração 
 
 Baileys é uma biblioteca independente sobre WhatsApp Web/Linked Devices, não a API oficial WhatsApp Business. A implementação ativa precisa informar os riscos de sessão, desconexão, mudanças de protocolo, políticas do WhatsApp, privacidade e suporte. Não usar spam, envio indiscriminado ou automação abusiva.
 
+### Identidade comercial no CRM
+
+`Contact` representa a identidade operacional da pessoa; `Lead` representa o registro comercial tenant-scoped associado a esse contato; `Opportunity` representa a negociação e mantém o estágio do funil. Na primeira entrega, há no máximo um Lead por `(workspaceId, contactId)` e uma Opportunity por Lead; suportar múltiplas negociações para a mesma pessoa pode ser avaliado em uma fatia posterior. `Conversation` guarda o vínculo direto com a Opportunity ativa. `Opportunity.stage` é a fonte canônica; `contacts.stage` permanece como espelho compatível e é atualizado junto.
+
+Uma mensagem individual aceita e recebida ao vivo pode criar/atualizar Lead e Opportunity. Mensagens próprias (`fromMe`), grupos, histórico/backfill, eventos ignorados ou payloads inválidos não devem ser promovidos como novo lead comercial. A migration aditiva faz backfill de contatos individuais existentes sem mover dados entre workspaces.
+
 ## Módulos de produto
 
 | Módulo | O que resolve | Prioridade |

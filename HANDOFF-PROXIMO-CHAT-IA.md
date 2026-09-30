@@ -2,46 +2,37 @@
 
 **Atualizado:** 2026-09-30
 **Repositório:** `geordptoroy/forte-panel`
-**Caminho observado:** `/home/ubuntu/forte-panel` — revalidar ambiente, branch, HEAD, status, remote, ferramentas e `DATABASE_URL` antes de reutilizar o workspace.
+**Caminho observado:** `/home/ubuntu/forte-panel` — revalidar ambiente, branch, HEAD, status, remote, ferramentas e disponibilidade do PostgreSQL antes de reutilizar este workspace.
 
-## Contexto e regras do usuário
+## Regras do usuário
 
-O objetivo é transformar o Forte Panel de beta/demo em SaaS público multiempresa para negócios que operam por WhatsApp. Executar uma fatia por vez; documentar cada fatia; manter branches/PRs para revisão; **nunca mesclar automaticamente**; manter `CORE_ONLY_MODE` até prova de produção; não usar nem pedir secrets reais. Stripe/subscription está adiado para O7.1/O7.2.
+Avançar uma fatia por vez; documentar cada fatia; usar branches/PRs para revisão; **nunca mesclar automaticamente**; manter `CORE_ONLY_MODE` até prova de produção; não usar nem pedir secrets reais. Assinaturas/cobrança estão adiadas para Wave O7.
 
-## Estado de GitHub verificado
+## Estado do stack de revisão
 
 - PR [#4](https://github.com/geordptoroy/forte-panel/pull/4): O1.2 → `main`, aberto.
 - PR [#5](https://github.com/geordptoroy/forte-panel/pull/5): O1.3 → `feat/o1.2-operational-service-catalog`, aberto.
-- PR [#6](https://github.com/geordptoroy/forte-panel/pull/6): O1.4–O2.4 → `feat/o1.3-attendance-rule-simulation`, aberto e empilhado. Commit de implementação `c1cd9d6` (`feat: harden onboarding and WhatsApp operations`). Nenhum desses PRs foi mesclado.
-- Não mesclar um PR filho diretamente em `main` enquanto os pais permanecerem abertos. Para O3.1, partir da branch O1.4–O2.4 e abrir outro PR empilhado sobre ela.
+- PR [#6](https://github.com/geordptoroy/forte-panel/pull/6): O1.4–O2.4 → `feat/o1.3-attendance-rule-simulation`, aberto.
+- PR [#7](https://github.com/geordptoroy/forte-panel/pull/7): O3.1 → `feat/o1.4-o2.4-operational-core`, aberto; branch `feat/o3.1-unified-leads`.
 
-## Último bloco fechado — O1.4 a O2.4
+Todos permanecem sem merge. PR #7 é filho do PR #6; não apontá-lo diretamente para `main` enquanto os pais estiverem abertos.
 
-Entrega detalhada: `O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`.
+## Última fatia — O3.1
 
-- O1.4: etapa de onboarding retomável, autosave serializado e estados seguros de loading/erro.
-- O2.1: backoff exponencial limitado; logout manual é final.
-- O2.2: lease de webhook recuperável e token fencing; migration aditiva manual `0046` registrada no journal.
-- O2.3: recibos outbound monotônicos e limitados por workspace/instância/externalId.
-- O2.4: upload autenticado privado até 8 MiB; o worker cria URL assinada HTTPS curta somente no envio.
+Entrega: [`O3.1-ENTREGA-LEAD-UNIFICADO.md`](./O3.1-ENTREGA-LEAD-UNIFICADO.md).
 
-Validação no Sandbox: `pnpm check`; `pnpm test` — 225 aprovados, 51 ignorados em 70 arquivos; `pnpm build` com aviso existente de bundle frontend >500 kB; `npm --prefix forte-whatsapp run check`; `npm --prefix forte-whatsapp test` — 72 aprovados; `npm --prefix forte-whatsapp run build`; `git diff --check`.
+- Modelo explícito: Contact como identidade, Lead por `(workspaceId, contactId)`, Opportunity por Lead e `Conversation.opportunityId`.
+- `Opportunity.stage` é canônico; `contacts.stage` é espelho compatível sincronizado pelas mutações de estágio.
+- Inbound individual Baileys aceito ao vivo faz upsert idempotente e associa a conversa; `fromMe`, grupo, histórico/backfill e eventos ignorados/inválidos não viram Lead comercial.
+- Migration aditiva `0047_unified_leads_opportunities.sql`, com backfill dos contatos individuais e links existentes; aplicada com sucesso no PostgreSQL efêmero do GitHub CI.
+- A Fonte de Verdade, `PRODUCT_SCOPE.md`, `API_CONTRACT.md`, roadmap, tracker e índice foram atualizados.
 
-**Ainda não provado:** testes PostgreSQL condicionais (sem `DATABASE_URL`), aplicação/rollback das migrations 0045/0046, reconexão/QR/inbound/outbound em número real de teste, entrega física de mídias/recibos, restore e browser desktop/mobile. Não declarar staging/produção pronta. O release permanece `not_ready`/`CORE_ONLY_MODE`.
+**Gates no Sandbox:** `pnpm check` passou; `pnpm test` — 53 arquivos passaram, 18 ignorados, 228 testes passaram e 52 ignorados; `pnpm build` passou com aviso existente de bundle frontend acima de 500 kB; `git diff --check` passou. Sem `DATABASE_URL` local, mas GitHub PostgreSQL CI aplicou 0047 e passou os 7 testes O3.1: PR #6 run `36664794193` passou 276 testes/70 arquivos; PR #7 run `36664802619` passou 280 testes/71 arquivos. O fixture legado dependente de demo foi isolado no PR #6 em `9e3e48d`; ambos os checks estão verdes. CI efêmero não substitui smoke em staging/produção nem prova física de WhatsApp; rotas continuam `not_ready` e `CORE_ONLY_MODE` permanece ligado.
 
-## Próxima fatia — O3.1: Lead unificado entre contato, conversa e oportunidade
+## Próxima fatia — O3.2: Inbox operacional com assignment e follow-up
 
-Fontes a consultar novamente: `FORTE-PANEL-FONTE-DE-VERDADE.md`, `PRODUCT_SCOPE.md`, `ROADMAP-EXECUCAO-FORTE-PANEL.md`, `PROJECT_DOCUMENTATION_INDEX.md` e este handoff. A Fonte de Verdade prevalece se houver material histórico divergente.
+Consultar novamente `FORTE-PANEL-FONTE-DE-VERDADE.md`, `PRODUCT_SCOPE.md`, `ROADMAP-EXECUCAO-FORTE-PANEL.md`, `API_CONTRACT.md` e o código atual. Antes de alterar, revalidar a branch `feat/o3.1-unified-leads`, PRs #4–#7, HEAD, árvore de trabalho e PostgreSQL.
 
-Auditoria feita: `contacts` hoje contém `stage` e funciona como lead implícito; não existem tabelas explícitas `leads` nem `opportunities`. `conversations` tem vínculo único por contato. A ingestão Baileys valida ownership da instância, deduplica pelo `eventId`, cria/atualiza contato, conversa e mensagem; histórico/backfill, grupos, `fromMe` e placeholders não devem virar novo inbound comercial.
+Escopo de início: mapear assignment/follow-up já existentes para evitar duplicar estado; definir uma próxima ação clara por Lead/Opportunity com ownership tenant-scoped, autorização e auditoria; expor e operar isso no Inbox. Adicionar migration somente se necessária, testes de isolamento e reconciliação, documentação/handoff e gates `check`, `test`, `build`, `git diff --check`. Se follow-up depender de execução em background, ler a skill `automation-and-scheduling` antes de escolher a arquitetura.
 
-Implementar nesta fatia:
-
-1. Modelo explícito e tenant-scoped para Lead relacionado ao Contact existente e a uma Opportunity com stage; preservar os registros atuais via migration aditiva e backfill sem editar migrations históricas.
-2. Inbound Baileys deve criar ou atualizar Lead/Opportunity de forma idempotente, em retry e corrida concorrente, usando a identidade de contato do workspace; não criar duplicatas por evento.
-3. Conectar a Conversation à Opportunity (ou ao Lead que a possui) e expor a relação/stage nas consultas usadas pelo Inbox/CRM; manter compatibilidade do stage legado sem duas fontes divergentes.
-4. Não converter grupos, histórico/backfill, `fromMe`, evento ignorado ou payload inválido em lead comercial.
-5. Testes para isolamento entre workspaces, deduplicação, reentrada, link Contact–Lead–Conversation–Opportunity e projeção/sincronização do stage. Se PostgreSQL continuar indisponível, deixar o teste de integração condicional e registrar explicitamente o bloqueio.
-6. Atualizar API/contratos, Fonte de Verdade, `PRODUCT_SCOPE.md` se necessário, roadmap, `todo.md`, índice e handoffs; criar migration `0047` aditiva se o schema exigir.
-
-Abrir branch `feat/o3.1-unified-leads` a partir de `feat/o1.4-o2.4-operational-core`; publicar PR empilhado sobre essa branch. Não mesclar PR #6 ou o novo PR automaticamente. Executar `pnpm check`, `pnpm test`, `pnpm build`, gates do gateway se tocados e `git diff --check` antes de publicar.
+Preservar `CORE_ONLY_MODE`, não usar secrets reais e manter a entrega em branch/PR empilhado. Sem merge automático.

@@ -217,6 +217,9 @@ type MappableContact = Omit<
   | "groupInstanceId"
   | "groupParticipantCount"
   | "groupParticipants"
+  | "leadId"
+  | "opportunityId"
+  | "opportunityStage"
 > & {
   awaitingResponse?: boolean;
   needsOperatorResponse?: boolean;
@@ -226,6 +229,9 @@ type MappableContact = Omit<
   groupInstanceId?: string | null;
   groupParticipantCount?: number;
   groupParticipants?: ContactRow["groupParticipants"];
+  leadId?: number | null;
+  opportunityId?: number | null;
+  opportunityStage?: string | null;
 };
 
 const mapContact = (contact: MappableContact) => ({
@@ -238,13 +244,16 @@ const mapContact = (contact: MappableContact) => ({
   groupInstanceId: contact.groupInstanceId ?? null,
   groupParticipantCount: contact.groupParticipantCount ?? 0,
   groupParticipants: contact.groupParticipants ?? [],
+  leadId: contact.leadId == null ? null : String(contact.leadId),
+  opportunityId:
+    contact.opportunityId == null ? null : String(contact.opportunityId),
   pushName: contact.pushName,
   nameSource: contact.nameSource,
   city: contact.city ?? "",
   neighborhood: contact.neighborhood ?? "",
   service: contact.serviceRequested ?? "Não informado",
   urgency: contact.urgency,
-  stage: contact.stage,
+  stage: contact.opportunityStage ?? contact.stage,
   aiEnabled: contact.aiEnabled === 1,
   unread: contact.unreadCount,
   awaitingResponse: contact.awaitingResponse ?? false,
