@@ -146,7 +146,7 @@ O gateway `forte-whatsapp` preserva o contrato `WhatsappAdapter` e não altera a
 
 Para evitar materializar histórico como conversa nova, o caminho live só encaminha `messages.upsert` com `type: "notify"` e sem `requestId`. `append` e backfill são ignorados. `messaging-history.set/status` registra apenas contagens/progresso; ainda não existe importação automática do histórico. Fallback textual desconhecido é marcado como placeholder e ignorado antes de criar lead, enquanto placeholders de mídia continuam válidos conforme `messageType`. Antes de persistir mídia, o backend confirma que a instância Baileys está ativa e pertence ao workspace autenticado.
 
-Ainda são pendências de produção: storage privado de mídia com URL assinada, store de sessão durável/criptografado, lifecycle multi-instância e E2E real em staging. Iniciar chamada não é tratado como envio normal de mensagem; requer signaling próprio.
+Storage privado de mídia com URL assinada, sessão persistente/criptografada e lifecycle multi-instância já estão implementados; ainda faltam prova de limpeza de objetos órfãos, restore e E2E real em staging. Iniciar chamada não é tratado como envio normal de mensagem; requer signaling próprio.
 
 
 ## Inbox: assignment e próxima ação (tRPC interno)

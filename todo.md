@@ -1,7 +1,7 @@
 # Forte Panel — acompanhamento do produto público
 
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
-**Fase de código atual:** O1.4–O2.4, O3.1 e O3.2 concluídas em código; PRs #6–#7 têm CI verde, O3.2 aguarda PR/CI PostgreSQL e O3.3 é a próxima fatia. A prova persistente/staging e o WhatsApp real seguem pendentes; manter o core contido.
+**Fase de código atual:** O1.4–O2.4, O3.1 e O3.2 concluídas em código; PRs #6–#8 estão abertos e O3.2 tem CI PostgreSQL verde. O3.3 é a próxima fatia; prova persistente/staging e WhatsApp real seguem pendentes, manter o core contido.
 **Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
 
 ## Direção registrada — 2026-09-27: core antes do restante
@@ -16,7 +16,7 @@
 - [x] Executar O1.4: persistir etapa de retomada, serializar autosave e mostrar estados de loading/erro sem formulário vazio salvável.
 - [x] Executar O2.1–O2.4: backoff/logout explícito, lease de webhook recuperável, recibos outbound monotônicos e anexos em storage privado — detalhes em `O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`.
 - [x] Executar O3.1: Lead explícito, Opportunity e Conversation tenant-scoped; [PR #7](https://github.com/geordptoroy/forte-panel/pull/7) e detalhes em `O3.1-ENTREGA-LEAD-UNIFICADO.md`. Migration e integração passaram no PostgreSQL CI; prova persistente/staging e WhatsApp real ainda pendentes.
-- [x] Executar O3.2: assignment de Opportunity somente a membership ativa do workspace; próxima ação única, persistida, auditada e exibida no Inbox; detalhes em `O3.2-ENTREGA-INBOX-OPERACIONAL.md`. Check/test/build locais passaram; PostgreSQL CI pendente.
+- [x] Executar O3.2: assignment de Opportunity somente a membership ativa do workspace; próxima ação única, persistida, auditada e exibida no Inbox; [PR #8](https://github.com/geordptoroy/forte-panel/pull/8) e detalhes em `O3.2-ENTREGA-INBOX-OPERACIONAL.md`. Check/test/build locais passaram; PostgreSQL CI run `36708180817` aplicou 0048 e passou 285 testes sem skips.
 - [ ] Executar O3.3: funil canônico sem duplicação de estado.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
