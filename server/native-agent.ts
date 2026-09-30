@@ -11,6 +11,7 @@ import {
   listMessagesForContact,
   listContactNotes,
   queueOutboundMessage,
+  recordAgentRun,
   completeAgentEffect,
   createAgentEffectProposal,
   failAgentEffect,
@@ -197,7 +198,7 @@ function fallbackPrompt(profilePrompt: string) {
   return `${profilePrompt}\n\nVocê é o agente nativo do Forte Panel. Você atende pelo WhatsApp em português do Brasil. Use as ferramentas para consultar e alterar dados reais; nunca invente disponibilidade, preço, cadastro ou confirmação. Antes de criar agendamento, confirme explicitamente serviço, profissional, data e horário. Quando houver pedido de humano, reclamação, risco, negociação especial ou incerteza, use transferir_humano. Depois de executar uma ferramenta, responda de forma curta, clara e cordial.`;
 }
 
-export async function runNativeAgent(
+async function runNativeAgentCore(
   event: NativeAgentEvent,
   config: AgentConfig
 ) {
@@ -261,6 +262,13 @@ export async function runNativeAgent(
   history.push({ role: "user", content: entryContent });
   let messages: Message[] = [{ role: "system", content: system }, ...history];
   const maxSteps = Math.max(1, Math.min(8, config.maxSteps || 6));
+  const startedAt = Date.now();
+  let toolCalls = 0;
+  let transferred = false;
+  let pendingConfirmation = false;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let totalTokens = 0;
   for (let step = 0; step < maxSteps; step += 1) {
     const response = await invokeConfiguredLLM(
       config.llm,
@@ -273,6 +281,9 @@ export async function runNativeAgent(
         maxTokens: 1800,
       }
     );
+    inputTokens += response.usage?.prompt_tokens ?? 0;
+    outputTokens += response.usage?.completion_tokens ?? 0;
+    totalTokens += response.usage?.total_tokens ?? 0;
     const assistant = response.choices[0]?.message;
     if (!assistant) throw new Error("O modelo não retornou resposta");
     messages.push({
@@ -298,9 +309,10 @@ export async function runNativeAgent(
             ...(event.instanceId ? { instanceId: event.instanceId } : {}),
           }
         );
-      return { response: text, steps: step + 1, model: response.model };
+      return { response: text, steps: step + 1, model: response.model, toolCalls, transferred, pendingConfirmation, inputTokens, outputTokens, totalTokens, latencyMs: Date.now() - startedAt };
     }
     for (const call of assistant.tool_calls) {
+      toolCalls += 1;
       const args = asObject(JSON.parse(call.function.arguments || "{}"));
       const result = await executeTool(
         call.function.name,
@@ -308,6 +320,9 @@ export async function runNativeAgent(
         event,
         call.id
       );
+      const flags = result as { transferred?: boolean; pendingConfirmation?: boolean };
+      transferred ||= flags.transferred === true;
+      pendingConfirmation ||= flags.pendingConfirmation === true;
       messages.push({
         role: "tool",
         tool_call_id: call.id,
@@ -316,6 +331,32 @@ export async function runNativeAgent(
     }
   }
   throw new Error("O agente excedeu o número máximo de etapas");
+}
+
+export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfig) {
+  const startedAt = Date.now();
+  try {
+    const result = await runNativeAgentCore(event, config);
+    await recordAgentRun({
+      workspaceId: event.workspaceId,
+      eventId: event.eventId,
+      contactId: event.contactId,
+      model: result.model,
+      outcome: result.pendingConfirmation ? "pending_confirmation" : result.transferred ? "transferred" : "resolved",
+      steps: result.steps,
+      toolCalls: result.toolCalls,
+      transferred: result.transferred,
+      pendingConfirmation: result.pendingConfirmation,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      totalTokens: result.totalTokens,
+      latencyMs: result.latencyMs,
+    });
+    return result;
+  } catch (error) {
+    await recordAgentRun({ workspaceId: event.workspaceId, eventId: event.eventId, contactId: event.contactId, outcome: "failed", steps: 0, toolCalls: 0, transferred: false, pendingConfirmation: false, latencyMs: Date.now() - startedAt });
+    throw error;
+  }
 }
 
 const mutatingTools = new Set([

@@ -978,6 +978,31 @@ export const agentEffects = pgTable(
   ]
 );
 
+export const agentRuns = pgTable(
+  "agentRuns",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    eventId: varchar("eventId", { length: 180 }).notNull(),
+    contactId: integer("contactId").notNull(),
+    model: varchar("model", { length: 180 }),
+    outcome: varchar("outcome", { length: 40 }).notNull(),
+    steps: integer("steps").default(0).notNull(),
+    toolCalls: integer("toolCalls").default(0).notNull(),
+    transferred: integer("transferred").default(0).notNull(),
+    pendingConfirmation: integer("pendingConfirmation").default(0).notNull(),
+    inputTokens: integer("inputTokens"),
+    outputTokens: integer("outputTokens"),
+    totalTokens: integer("totalTokens"),
+    latencyMs: integer("latencyMs").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("agent_runs_workspace_event_unique_idx").on(table.workspaceId, table.eventId),
+    index("agent_runs_workspace_created_idx").on(table.workspaceId, table.createdAt),
+  ]
+);
+
 export const webhookEvents = pgTable(
   "webhookEvents",
   {
