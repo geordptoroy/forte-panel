@@ -1,7 +1,7 @@
 # Forte Panel — acompanhamento do produto público
 
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
-**Fase de código atual:** O1.4–O2.4 e O3.1 concluídas em código; O3.2 é a próxima fatia. A migration 0047 e a prova PostgreSQL permanecem pendentes; o core continua contido até a prova persistente e a prova real do caminho WhatsApp → Inbox → lead.
+**Fase de código atual:** O1.4–O2.4 e O3.1 concluídas em código; PRs #6/#7 abertos com CI verde, O3.2 é a próxima fatia. Migration 0047 e cenários O3.1 passaram no PostgreSQL CI; smoke persistente/staging e WhatsApp real seguem pendentes, então o core continua contido.
 **Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
 
 ## Direção registrada — 2026-09-27: core antes do restante
@@ -15,7 +15,7 @@
 - [x] Executar O1.3: regras de atendimento, exemplos seguros, simulação opcional e revisão humana vinculada ao candidato de publicação; entrega em `O1.3-ENTREGA-REGRAS-E-REVISAO-EXEMPLOS.md`.
 - [x] Executar O1.4: persistir etapa de retomada, serializar autosave e mostrar estados de loading/erro sem formulário vazio salvável.
 - [x] Executar O2.1–O2.4: backoff/logout explícito, lease de webhook recuperável, recibos outbound monotônicos e anexos em storage privado — detalhes em `O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`.
-- [x] Executar O3.1: Lead explícito, Opportunity e Conversation tenant-scoped; entrega em `O3.1-ENTREGA-LEAD-UNIFICADO.md`. Migration 0047/teste PostgreSQL aguardam banco persistente.
+- [x] Executar O3.1: Lead explícito, Opportunity e Conversation tenant-scoped; [PR #7](https://github.com/geordptoroy/forte-panel/pull/7) e detalhes em `O3.1-ENTREGA-LEAD-UNIFICADO.md`. Migration e integração passaram no PostgreSQL CI; prova persistente/staging e WhatsApp real ainda pendentes.
 - [ ] Executar O3.2: Inbox operacional com assignment e follow-up.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.

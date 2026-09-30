@@ -673,3 +673,10 @@ Próxima fatia: **O1.4 — retomada, autosave, missing/conflict e estados vazios
 ---
 ## Continuidade — O1.4–O2.4 Onboarding e canal resiliente — 2026-09-30
 O bloco O1.4–O2.4 concluiu retomada do onboarding, backoff/logoff final do gateway, lease de inbound com fencing, recibos monotônicos e upload privado de anexos. A entrega técnica e os limites estão em `O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`. Gates no Sandbox: check, testes (225 pass / 51 skip), build e diff check do Panel; check, 72 testes e build do gateway. A migration 0046 é aditiva/manual; 0045/0046 aguardam validação PostgreSQL persistente, e ainda falta prova física WhatsApp/storage. PR #6 está aberto e empilhado sobre O1.3, sem merge. Próxima fatia: O3.1 — introduzir Lead explícito e relacionar conversa/oportunidade, preservando isolamento e idempotência.
+
+
+---
+## Continuidade — O3.1 Lead unificado entre contato, conversa e oportunidade — 2026-09-30
+O Contact passou a ter um Lead explícito tenant-scoped; cada Lead tem uma Opportunity e a Conversation guarda o vínculo direto. `Opportunity.stage` é canônico, com `contacts.stage` como espelho compatível. O inbound Baileys individual aceito ao vivo cria/atualiza essas entidades com upsert idempotente; grupos, `fromMe`, história/backfill e eventos inválidos/ignorados ficam de fora. `drizzle-pg/0047_unified_leads_opportunities.sql` faz backfill aditivo dos contatos individuais e links de conversa; não foi aplicado em PostgreSQL persistente.
+
+A validação local passou: check, 228 testes (52 ignorados), build e diff check. O Sandbox não tem `DATABASE_URL`, mas o PostgreSQL CI aplicou 0047 e os 7 testes O3.1 passaram. O fixture preexistente dependente de demo foi corrigido no commit `9e3e48d` do PR #6. Ambos os jobs finais passaram: PR #6 run `36664794193` (70 arquivos/276 testes) e PR #7 run `36664802619` (71 arquivos/280 testes). Head O3.1 `805940b` está na branch `feat/o3.1-unified-leads`; PR #7 permanece aberto e empilhado sobre o PR #6, sem merge. CI efêmero não equivale a staging/produção: manter `CORE_ONLY_MODE`. Próxima fatia: O3.2 — assignment e follow-up operacional no Inbox.
