@@ -6,7 +6,6 @@ import {
   Bell,
   CalendarCheck2,
   Check,
-  CheckCircle2,
   ClipboardList,
   ChevronDown,
   CircleDollarSign,
@@ -55,32 +54,23 @@ import {
   WhatsappConnectionPage,
   WorkspaceUsagePage,
 } from "./WhatsappConnectionPage";
-import {
-  appointments,
-  contacts,
-  events,
-  formatCurrency,
-  getContact,
-  integrations,
-  quotes,
-  stageOrder,
-  type Contact,
-  type Message,
-  type Stage,
-} from "@/lib/demoData";
 export { WhatsappConnectionPage, WorkspaceUsagePage };
 
-function DemoBanner() {
-  return (
-    <div className="demo-banner operational-banner">
-      <CheckCircle2 size={15} />
-      <span>
-        <strong>Operação conectada:</strong> dados persistidos no CRM; mensagens
-        externas passam pela fila e pelo worker configurado.
-      </span>
-    </div>
-  );
-}
+const stageOrder = [
+  "Novo contato",
+  "Triagem",
+  "Aguardando foto",
+  "Avaliação pendente",
+  "Orçamento enviado",
+  "Aguardando decisão",
+  "Visita solicitada",
+  "Agendado",
+  "Concluído",
+  "Sem retorno",
+  "Perdido",
+] as const;
+const formatCurrency = (value: number) =>
+  value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 function ChannelStatusBanner({
   loading,
@@ -154,8 +144,22 @@ function EventIcon({ type }: { type: string }) {
   return <MessageCircle size={15} />;
 }
 
-type ContactLike = Omit<Contact, "stage"> & {
+type ContactLike = {
+  id: string;
+  name: string;
+  phone: string;
+  city: string;
+  neighborhood: string;
+  service: string;
+  urgency: string;
   stage: string;
+  aiEnabled: boolean;
+  unread: number;
+  lastMessage: string;
+  lastMessageAt: string;
+  quote: number;
+  daysNoReply: number;
+  initials: string;
   isGroup?: boolean;
   groupJid?: string | null;
   groupSubject?: string | null;
@@ -169,6 +173,14 @@ type ContactLike = Omit<Contact, "stage"> & {
   }>;
   pushName?: string | null;
   nameSource?: string;
+};
+type Message = {
+  id: string | number;
+  sender: string;
+  time: string;
+  text: string;
+  messageType?: string;
+  metadata?: Record<string, unknown> | null;
 };
 
 function formatChatTime(value: string) {
@@ -1868,7 +1880,7 @@ export function AgendaPage() {
                 onChange={event => setContactId(event.target.value)}
               >
                 <option value="">Cliente sem cadastro</option>
-                {(contactsQuery.data ?? contacts).map(contact => (
+                {(contactsQuery.data ?? []).map(contact => (
                   <option key={contact.id} value={contact.id}>
                     {contact.name}
                   </option>
@@ -1935,7 +1947,7 @@ export function AgendaPage() {
           </div>
           {createMutation.error && (
             <div
-              className="demo-banner"
+              className="form-error"
               style={{ marginTop: 15, marginBottom: 0 }}
             >
               <Info size={14} /> {createMutation.error.message}
@@ -2210,7 +2222,6 @@ export function ContactsPage() {
         </button>
       }
     >
-      <DemoBanner />
       {showForm && (
         <section className="surface contact-form-panel">
           <SectionTitle eyebrow="Novo cadastro" title="Adicionar contato" />
@@ -2438,7 +2449,6 @@ export function ContactDetailPage() {
         </PageLink>
       }
     >
-      <DemoBanner />
       <div className="detail-layout">
         <aside className="surface detail-nav">
           {[
@@ -2658,200 +2668,6 @@ export function ContactDetailPage() {
             </div>
           )}
         </section>
-      </div>
-    </PanelLayout>
-  );
-}
-
-export function BillingPage() {
-  const [showForm, setShowForm] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [localQuotes, setLocalQuotes] = useState(quotes);
-  const totalQuoted = localQuotes.reduce((sum, quote) => sum + quote.quoted, 0);
-  const totalReceived = localQuotes.reduce(
-    (sum, quote) => sum + quote.received,
-    0
-  );
-  return (
-    <PanelLayout
-      eyebrow="Financeiro / Controle manual"
-      title="Faturamento"
-      description="Orçamentos e recebimentos, sem gateway de pagamento."
-      actions={
-        <button
-          className="btn-primary"
-          onClick={() => {
-            setShowForm(true);
-            setSaved(false);
-          }}
-        >
-          <Plus size={13} /> Novo orçamento
-        </button>
-      }
-    >
-      <DemoBanner />
-      <div className="billing-summary">
-        <div className="surface billing-card">
-          <span>Total orçado</span>
-          <strong>{formatCurrency(totalQuoted)}</strong>
-        </div>
-        <div className="surface billing-card">
-          <span>Total aprovado</span>
-          <strong className="blue">{formatCurrency(950)}</strong>
-        </div>
-        <div className="surface billing-card">
-          <span>Recebido</span>
-          <strong className="green">{formatCurrency(totalReceived)}</strong>
-        </div>
-        <div className="surface billing-card">
-          <span>Pendente</span>
-          <strong className="amber">
-            {formatCurrency(totalQuoted - totalReceived)}
-          </strong>
-        </div>
-        <div className="surface billing-card">
-          <span>Em aberto</span>
-          <strong>
-            {localQuotes
-              .filter(quote => quote.status !== "Pago")
-              .length.toString()
-              .padStart(2, "0")}
-          </strong>
-        </div>
-      </div>
-      <div className="billing-layout">
-        <section className="surface form-panel">
-          <SectionTitle
-            eyebrow="Registros recentes"
-            title="Orçamentos"
-            action={
-              <select className="select-control" style={{ width: 145 }}>
-                <option>Setembro 2026</option>
-                <option>Agosto 2026</option>
-              </select>
-            }
-          />
-          {localQuotes.map(quote => {
-            const contact = getContact(quote.contactId);
-            return (
-              <div className="quote-row" key={quote.id}>
-                <div className="avatar">{contact.initials}</div>
-                <div className="row-copy">
-                  <strong>{contact.name}</strong>
-                  <small>
-                    {quote.service} · {quote.description}
-                  </small>
-                  <div style={{ marginTop: 7 }}>
-                    <StatusBadge
-                      tone={
-                        quote.status === "Pago"
-                          ? "green"
-                          : quote.status === "Aprovado"
-                            ? "blue"
-                            : "amber"
-                      }
-                    >
-                      {quote.status}
-                    </StatusBadge>
-                  </div>
-                </div>
-                <div className="quote-amount">
-                  <strong>{formatCurrency(quote.quoted)}</strong>
-                  <small>
-                    Pendente {formatCurrency(quote.quoted - quote.received)}
-                  </small>
-                </div>
-              </div>
-            );
-          })}
-        </section>
-        {showForm ? (
-          <section className="surface form-panel">
-            <SectionTitle eyebrow="Novo registro" title="Criar orçamento" />
-            <div className="form-grid">
-              <div className="form-field full">
-                <label>Cliente</label>
-                <select className="select-control">
-                  <option>Selecione um contato</option>
-                  {contacts.map(contact => (
-                    <option key={contact.id}>{contact.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-field">
-                <label>Serviço</label>
-                <input
-                  className="input-control"
-                  placeholder="Ex.: Instalação"
-                />
-              </div>
-              <div className="form-field">
-                <label>Valor do orçamento</label>
-                <input className="input-control" placeholder="R$ 0,00" />
-              </div>
-              <div className="form-field full">
-                <label>Descrição</label>
-                <textarea
-                  className="textarea-control"
-                  placeholder="Descreva o serviço e as condições..."
-                />
-              </div>
-              <div className="form-field">
-                <label>Vencimento</label>
-                <input type="date" className="input-control" />
-              </div>
-              <div className="form-field">
-                <label>Status</label>
-                <select className="select-control">
-                  <option>Orçamento</option>
-                  <option>Aguardando aprovação</option>
-                  <option>Aprovado</option>
-                </select>
-              </div>
-            </div>
-            {saved && (
-              <div
-                className="demo-banner"
-                style={{ marginTop: 15, marginBottom: 0 }}
-              >
-                <CheckCircle2 size={14} /> Orçamento salvo localmente em modo
-                demo.
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button
-                className="btn-primary"
-                onClick={() => {
-                  setSaved(true);
-                  setShowForm(false);
-                }}
-              >
-                Salvar orçamento
-              </button>
-              <button
-                className="btn-secondary"
-                onClick={() => setShowForm(false)}
-              >
-                Cancelar
-              </button>
-            </div>
-          </section>
-        ) : (
-          <section className="surface form-panel">
-            <EmptyState
-              icon={WalletCards}
-              title="Controle financeiro manual"
-              description="Registre orçamento, recebimento e pendência sem processar pagamentos reais."
-            />
-            <button
-              className="btn-secondary"
-              style={{ width: "100%", marginTop: 13 }}
-              onClick={() => setShowForm(true)}
-            >
-              <Plus size={13} /> Adicionar registro
-            </button>
-          </section>
-        )}
       </div>
     </PanelLayout>
   );
