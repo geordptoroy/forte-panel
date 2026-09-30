@@ -33,6 +33,7 @@ import {
 import { professionalCanExecuteService } from "./agenda";
 import { ScheduleError } from "./schedule";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
+import { historicalBaileysIgnoreReason } from "./baileys-webhook-policy";
 import { OPERATIONAL_WHATSAPP_PROVIDER } from "./integrations/baileys-policy";
 import { messageDeliveryStatuses } from "../shared/message-delivery";
 
@@ -1329,12 +1330,29 @@ async function handleBaileysWebhook(req: Request, res: Response) {
         instanceId ? "unknown_baileys_instance" : "instance_id_required"
       );
     const isGroup = normalized.metadata?.isGroup === true;
+    const isHistorical = normalized.metadata?.historySync === true;
     const groupJid =
       typeof normalized.metadata?.groupJid === "string"
         ? normalized.metadata.groupJid
         : typeof normalized.metadata?.jid === "string"
           ? normalized.metadata.jid
           : "";
+    const historicalIgnoreReason = historicalBaileysIgnoreReason({
+      historySync: isHistorical,
+      isGroup,
+      instanceId,
+      instanceOwner: Boolean(instanceOwner?.active),
+      groupJid,
+      phone: normalized.phone,
+      content: normalized.content,
+    });
+    if (historicalIgnoreReason)
+      return res.status(202).json({
+        accepted: true,
+        ignored: true,
+        eventId,
+        data: { ignored: true, reason: historicalIgnoreReason },
+      });
     if (
       isGroup &&
       (!instanceId || !instanceOwner || !groupJid.endsWith("@g.us"))
