@@ -23,3 +23,5 @@ O onboarding agora lê e grava no catálogo existente de serviços, profissionai
 Validação no Sandbox: `pnpm check`, `pnpm build` e `git diff --check` passaram; `pnpm test` passou com 212 testes aprovados e 48 ignorados (incluindo os que requerem PostgreSQL). Não houve prova manual no PostgreSQL persistente nem publicação de onboarding; o estado de release continua `not_ready`. A geração automática Drizzle está bloqueada por colisão preexistente nos snapshots 0041/0043; a migration 0045 foi registrada manualmente, seguindo o padrão do SQL 0044.
 
 **Próxima fatia:** O1.3 — regras de atendimento e revisão de exemplos. Preservar publicação humana, estados de revisão e o gate de produto; não desativar `CORE_ONLY_MODE` nesta etapa.
+
+**Commit de implementação:** `6bd2442` — `feat: connect onboarding to operational service catalog` (branch `feat/o1.2-operational-service-catalog`).

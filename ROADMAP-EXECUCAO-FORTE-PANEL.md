@@ -299,7 +299,7 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 | Base auditada | `cad2b8a` |
 | Última fatia concluída | `P0.3` — seeds e bootstrap isolados por ambiente |
 | Última fatia concluída por este roadmap | `O1.2` — catálogo operacional conectado ao onboarding |
-| Último commit deste roadmap | Atualizar após o commit desta branch |
+| Último commit de implementação deste roadmap | `6bd2442` — `feat: connect onboarding to operational service catalog` |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.

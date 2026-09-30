@@ -60,5 +60,5 @@ O gate técnico da última alteração deve ser executado antes do commit. O gat
 
 Começar revalidando ambiente, branch, `git status`, remote e serviços disponíveis. Ler `PROJECT_DOCUMENTATION_INDEX.md`, a fonte canônica, o roadmap, este handoff e `O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`; depois comparar a documentação com `client`, `server` e `drizzle`. A próxima fatia é O1.3. Após implementar, executar `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check`; registrar testes PostgreSQL como pendentes se não houver banco. Publicar apenas na branch de trabalho e atualizar/criar PR; nunca fazer merge automaticamente.
 
-**Commit da fatia O1.2:** preencher após o commit.
+**Commit da implementação O1.2:** `6bd2442` — `feat: connect onboarding to operational service catalog`.
 **Branch de trabalho:** `feat/o1.2-operational-service-catalog`.
