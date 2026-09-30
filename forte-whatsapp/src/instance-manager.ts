@@ -32,6 +32,7 @@ import {
 import { reconnectDelayMs } from "./reconnect-policy.js";
 import { normalizeBaileysMessageStatus, type DeliveryStatus } from "./delivery-status.js";
 import { isAllowedOutboundMediaUrl } from "./media-reference.js";
+import { SendLedger, stableFingerprint } from "./send-ledger.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
 import {
   normalizeBaileysMessage,
@@ -90,6 +91,7 @@ export class InstanceManager {
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private reconnectAttempts = 0;
   private readonly webhookOutbox: WebhookOutbox;
+  private readonly sendLedger: SendLedger;
   private readonly panelMessageEchoes = new PanelMessageEchoTracker();
   private readonly pendingDeliveryUpdates = new Map<
     string,
@@ -128,6 +130,9 @@ export class InstanceManager {
       maxBackoffMs: config.webhookMaxBackoffMs,
       logger,
     });
+    this.sendLedger = new SendLedger(
+      path.join(config.sessionDir, instanceId, "send-ledger")
+    );
   }
 
   getStatus(): InstanceSnapshot {
@@ -518,6 +523,21 @@ export class InstanceManager {
     phone: string,
     messageType: string,
     content: string,
+    metadata: Record<string, unknown> = {},
+    idempotencyKey?: string
+  ): Promise<string> {
+    if (!idempotencyKey?.trim()) throw new Error("idempotency_key_required");
+    return this.sendLedger.execute(
+      idempotencyKey,
+      stableFingerprint({ phone, messageType, content, metadata }),
+      () => this.sendMessageOnce(phone, messageType, content, metadata)
+    );
+  }
+
+  private async sendMessageOnce(
+    phone: string,
+    messageType: string,
+    content: string,
     metadata: Record<string, unknown> = {}
   ): Promise<string> {
     if (!this.socket || this.snapshot.status !== "connected")
@@ -646,6 +666,19 @@ export class InstanceManager {
   }
 
   async sendPayload(
+    phone: string,
+    payload: AnyMessageContent,
+    idempotencyKey?: string
+  ): Promise<string> {
+    if (!idempotencyKey?.trim()) throw new Error("idempotency_key_required");
+    return this.sendLedger.execute(
+      idempotencyKey,
+      stableFingerprint({ phone, payload }),
+      () => this.sendPayloadOnce(phone, payload)
+    );
+  }
+
+  private async sendPayloadOnce(
     phone: string,
     payload: AnyMessageContent
   ): Promise<string> {

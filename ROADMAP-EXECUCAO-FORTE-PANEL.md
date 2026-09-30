@@ -111,6 +111,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O7.4 | Escala | Reconciliação de histórico Baileys não importável | **CONCLUÍDA (código + CI + Docker + smoke)** | PR #28; CI `36743491124` passou; 5 históricos deixaram a fila ativa (`pending=0`) sem apagar volume; smoke inbound e outbound passaram com `eventos=1`, `entregues=1`, `falhas=0` em cada direção |
 | O7.5 | Escala | Dead-letter para falhas permanentes do webhook | **CONCLUÍDA (código + CI + Docker + smoke)** | PR #29; CI `36744892337` passou; 5 envelopes preservados em `outbox/<instanceId>/dead-letter` (`deadLetter=5`); smoke bidirecional passou |
 | O7.6 | Escala | Observabilidade da dead-letter no status da instância | **CONCLUÍDA (código + CI + Docker + smoke)** | PR #30; CI `36746224303`, imagem `36748842030` e restart passaram; status `connected`, `pending=0`, `deadLetter=5`; inbound/outbound passaram em ambos os sentidos |
+| O7.9 | Confiabilidade | Idempotência outbound fim a fim no gateway | **CONCLUÍDA (código + testes locais)** | Ledger durável por instância/chave, replay seguro e falha fechada para resultado externo inconclusivo; staging e teste físico permanecem pendentes |
+| O7.10 | Confiabilidade | Inbound transacional e retry sem duplicação | **PENDENTE** | Transação de domínio, compensação segura de mídia e retry idempotente; prova persistente fica para o gate externo |
 | A1 | Adiado | TTS, múltiplos canais e automações genéricas | ADIADA | Só após o núcleo gerar valor recorrente |
 
 ---

@@ -320,7 +320,11 @@ describe("Baileys gateway HTTP contract", () => {
         `${baseUrl}/api/instances/test-instance/send`,
         {
           method: "POST",
-          headers: { ...auth, "Content-Type": "application/json" },
+          headers: {
+            ...auth,
+            "Content-Type": "application/json",
+            "Idempotency-Key": `server-send-${messageType}`,
+          },
           body: JSON.stringify({
             phone: "5511999999999@s.whatsapp.net",
             messageType,
@@ -342,7 +346,11 @@ describe("Baileys gateway HTTP contract", () => {
   it("rejects malformed sends before calling the manager", async () => {
     const response = await fetch(`${baseUrl}/api/instances/test-instance/send`, {
       method: "POST",
-      headers: { ...auth, "Content-Type": "application/json" },
+      headers: {
+        ...auth,
+        "Content-Type": "application/json",
+        "Idempotency-Key": "server-malformed-1",
+      },
       body: JSON.stringify({ messageType: "audio" }),
     });
     expect(response.status).toBe(400);
@@ -355,7 +363,11 @@ describe("Baileys gateway HTTP contract", () => {
     sentMessageInstance = "";
     const response = await fetch(`${baseUrl}/api/instances/test-instance/send`, {
       method: "POST",
-      headers: { ...auth, "Content-Type": "application/json" },
+      headers: {
+        ...auth,
+        "Content-Type": "application/json",
+        "Idempotency-Key": "server-media-1",
+      },
       body: JSON.stringify({
         phone: "5511999999999@s.whatsapp.net",
         messageType: "image",

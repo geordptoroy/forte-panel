@@ -807,6 +807,10 @@ O `WebhookOutbox` foi criado para impedir perda silenciosa de mensagens inbound 
 5. em falha, agenda nova tentativa;
 6. ao reiniciar, reprocessa arquivos pendentes.
 
+### Idempotência outbound
+
+Toda chamada autenticada de `POST /api/instances/:instanceId/send` ou `send-text` exige `Idempotency-Key`. O gateway persiste um ledger por instância em `send-ledger/`, antes de chamar o socket. Uma chave concluída devolve o mesmo `externalId` sem chamar o provedor novamente; a mesma chave com payload diferente retorna conflito. Se o resultado externo ficar inconclusivo por timeout ou crash, o registro permanece `started` e novas tentativas falham fechadas com `idempotency_in_progress`, em vez de arriscar uma segunda mensagem.
+
 ### Envelope persistido
 
 ```json
