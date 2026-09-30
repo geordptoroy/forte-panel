@@ -117,6 +117,7 @@ export default function OnboardingPage() {
   const metricsQuery = trpc.onboarding.metrics.useQuery({ windowDays: 30 });
   const versionsQuery = trpc.onboarding.versions.useQuery();
   const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [currentStep, setCurrentStep] = useState(0);
   const [published, setPublished] = useState(false);
   const [savedVersion, setSavedVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
@@ -170,6 +171,17 @@ export default function OnboardingPage() {
   const [voiceCorrectionMode, setVoiceCorrectionMode] = useState(false);
   const [proposalMessage, setProposalMessage] = useState("");
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
+  const onboardingSteps = [
+    { id: "identity", title: "Negócio", description: "Identidade e posicionamento" },
+    { id: "offering", title: "Serviços", description: "Oferta, preços e duração" },
+    { id: "operations", title: "Operação", description: "Área, horários e capacidade" },
+    { id: "guardrails", title: "Atendimento", description: "Tom, triagem e limites" },
+    { id: "review", title: "Revisão", description: "Resumo e confirmação" },
+    { id: "activation", title: "Ativação", description: "Publicar e conectar canal" },
+  ] as const;
+  const currentStepId = onboardingSteps[currentStep]?.id ?? "identity";
+  const goToNextStep = () => setCurrentStep(step => Math.min(onboardingSteps.length - 1, step + 1));
+  const goToPreviousStep = () => setCurrentStep(step => Math.max(0, step - 1));
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
@@ -414,8 +426,37 @@ export default function OnboardingPage() {
     <PanelLayout
       eyebrow="Sistema / Configuração"
       title="Configuração da empresa"
-      description="Defina a identidade, as regras e o prompt operacional do atendimento. A configuração da IA fica em uma tela separada."
+      description="Configure o essencial em seis passos. Você pode salvar, corrigir e continuar depois sem conhecer detalhes técnicos de IA."
     >
+      <section className="surface" data-step={currentStepId} style={{ padding: 18, marginBottom: 18 }} aria-label="Progresso da configuração">
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", marginBottom: 14 }}>
+          <div>
+            <div className="muted" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em" }}>Passo {currentStep + 1} de {onboardingSteps.length}</div>
+            <h2 style={{ margin: "5px 0 3px", fontSize: 18 }}>{onboardingSteps[currentStep]?.title}</h2>
+            <p className="muted" style={{ margin: 0, fontSize: 11 }}>{onboardingSteps[currentStep]?.description}. Responda por texto; áudio é opcional.</p>
+          </div>
+          <strong className="green" style={{ fontSize: 20 }}>{Math.round(((currentStep + 1) / onboardingSteps.length) * 100)}%</strong>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${onboardingSteps.length}, minmax(0, 1fr))`, gap: 5, marginBottom: 14 }}>
+          {onboardingSteps.map((step, index) => (
+            <button
+              key={step.id}
+              type="button"
+              className={index === currentStep ? "btn-primary" : index < currentStep ? "btn-secondary" : "btn-ghost"}
+              style={{ minWidth: 0, padding: "8px 5px", fontSize: 9 }}
+              onClick={() => setCurrentStep(index)}
+              aria-current={index === currentStep ? "step" : undefined}
+            >{index + 1}. {step.title}</button>
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+          <span className="muted" style={{ fontSize: 10 }}>O rascunho é salvo automaticamente.</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="btn-secondary" onClick={goToPreviousStep} disabled={currentStep === 0}>Voltar</button>
+            <button type="button" className="btn-primary" onClick={goToNextStep} disabled={currentStep === onboardingSteps.length - 1}>Próximo</button>
+          </div>
+        </div>
+      </section>
       <div className="surface" style={{ padding: 18, marginBottom: 18 }}>
         <div className="demo-banner" style={{ margin: 0 }}>
           <Info size={15} />
@@ -431,7 +472,7 @@ export default function OnboardingPage() {
         )}
       </div>
       {governanceQuery.data && (
-        <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+        <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "activation" ? undefined : "none" }}>
           <SectionTitle eyebrow="Governança" title="Consentimento e retenção" />
           <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11 }}>
             Fontes automáticas só poderão ser conectadas com consentimento vigente. Política {governanceQuery.data.policyVersion}.
@@ -470,7 +511,7 @@ export default function OnboardingPage() {
           {(setSourceConsent.error || saveRetentionPolicy.error) && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} /> {(setSourceConsent.error || saveRetentionPolicy.error)?.message}</div>}
         </section>
       )}
-      <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+      <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
         <SectionTitle
           eyebrow="Entrada por voz"
           title="Responda falando, revise antes de usar"
@@ -570,7 +611,7 @@ export default function OnboardingPage() {
         )}
       </section>
       {profileQuery.data?.checklist && (
-        <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+        <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start" }}>
             <div>
               <SectionTitle eyebrow="Próximo passo" title="Checklist da empresa" />
@@ -596,7 +637,7 @@ export default function OnboardingPage() {
         </section>
       )}
       {metricsQuery.data && (
-        <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+        <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
           <SectionTitle eyebrow="Medição · últimos 30 dias" title="Qualidade do onboarding" action={<span className="muted" style={{ fontSize: 10 }}>sem conteúdo de respostas</span>} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
             {[
@@ -619,7 +660,7 @@ export default function OnboardingPage() {
         </section>
       )}
       {versionsQuery.data && versionsQuery.data.length > 0 && (
-        <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+        <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "activation" ? undefined : "none" }}>
           <SectionTitle eyebrow="Histórico imutável" title="Versões publicadas" action={<span className="muted" style={{ fontSize: 10 }}>rollback cria nova versão</span>} />
           <div style={{ display: "grid", gap: 7 }}>
             {versionsQuery.data.map(version => (
@@ -638,7 +679,7 @@ export default function OnboardingPage() {
         </section>
       )}
       {(profileQuery.data?.stepAnswers ?? []).length > 0 && (
-        <section className="surface" style={{ padding: 18, marginBottom: 18 }}>
+        <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
           <SectionTitle
             eyebrow="Revisão humana"
             title="Confirme cada bloco antes de publicar"
@@ -749,7 +790,7 @@ export default function OnboardingPage() {
           {(confirmStep.error || resolveConflict.error) && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} /> {(confirmStep.error || resolveConflict.error)?.message}</div>}
         </section>
       )}
-      <section className="surface" style={{ padding: 22 }}>
+      <section className="surface" style={{ padding: 22, display: currentStepId === "identity" ? undefined : "none" }}>
         <SectionTitle eyebrow="Identidade do negócio" title="Sobre a empresa" />
         <div className="form-grid">
           {field("businessName", "Nome da empresa", "Ex.: Clínica Vida Plena")}
@@ -764,27 +805,50 @@ export default function OnboardingPage() {
             "O que a empresa faz e para quem atende",
             true
           )}
-          {field(
-            "services",
-            "Serviços, preços e duração",
-            "Um serviço por linha. Inclua regras de orçamento.",
-            true
-          )}
-          {field(
-            "serviceArea",
-            "Cidade e área de atendimento",
-            "Cidades, bairros e deslocamento",
-            true
-          )}
-          {field(
-            "businessHours",
-            "Horários e profissionais",
-            "Dias, horários e quem atende",
-            true
-          )}
         </div>
       </section>
-      <section className="surface" style={{ padding: 22, marginTop: 18 }}>
+      <section className="surface" style={{ padding: 22, display: currentStepId === "offering" ? undefined : "none" }}>
+        <SectionTitle eyebrow="Oferta" title="Serviços que sua empresa oferece" />
+        <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11 }}>
+          Informe o que pode ser apresentado ao cliente. Se o preço variar, explique quando a equipe deve confirmar antes de prometer.
+        </p>
+        <div className="form-grid">
+          {field("services", "Serviços, preços e duração", "Um serviço por linha. Inclua preço fixo, a partir de, duração ou regra de orçamento.", true)}
+        </div>
+      </section>
+      <section className="surface" style={{ padding: 22, display: currentStepId === "operations" ? undefined : "none" }}>
+        <SectionTitle eyebrow="Funcionamento" title="Onde e quando sua equipe atende" />
+        <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11 }}>
+          Essas informações ajudam o atendimento a orientar o cliente sem inventar disponibilidade.
+        </p>
+        <div className="form-grid">
+          {field("serviceArea", "Cidade e área de atendimento", "Cidades, bairros, deslocamento e limites", true)}
+          {field("businessHours", "Horários e profissionais", "Dias, horários, intervalos e quem atende", true)}
+        </div>
+      </section>
+      <section className="surface" style={{ padding: 22, display: currentStepId === "activation" ? undefined : "none" }}>
+        <SectionTitle eyebrow="Pronto para começar" title="Ative o atendimento com segurança" />
+        <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11, lineHeight: 1.5 }}>
+          Publicar cria uma versão operacional das regras confirmadas. O agente só poderá usar o que foi informado e aprovado; depois, conecte o canal de WhatsApp para começar a atender.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            className="btn-primary"
+            disabled={saveMutation.isPending || !readyForHumanApprovedPublish}
+            onClick={() => saveMutation.mutate({ profile, publish: true })}
+            title={!readyForHumanApprovedPublish ? "Revise e confirme os quatro blocos obrigatórios antes de publicar" : undefined}
+          >
+            <Sparkles size={13} /> {saveMutation.isPending ? "Publicando..." : "Publicar configuração"}
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => setLocation("/whatsapp-connection")} disabled={!published}>
+            Conectar WhatsApp
+          </button>
+          {published && <span className="green" style={{ fontSize: 11 }}><CheckCircle2 size={13} /> Configuração v{savedVersion} publicada</span>}
+        </div>
+        {!readyForHumanApprovedPublish && <p className="muted" style={{ margin: "12px 0 0", fontSize: 10 }}>Ainda faltam blocos obrigatórios confirmados. Volte à Revisão para ver exatamente o que falta.</p>}
+        {saveMutation.error && <div className="demo-banner" style={{ marginTop: 14, marginBottom: 0 }}><Info size={14} /> {saveMutation.error.message}</div>}
+      </section>
+      <section className="surface" style={{ padding: 22, marginTop: 18, display: currentStepId === "guardrails" ? undefined : "none" }}>
         <SectionTitle
           eyebrow="Comportamento da IA"
           title="Regras de atendimento"

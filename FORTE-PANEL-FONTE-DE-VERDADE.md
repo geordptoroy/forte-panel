@@ -612,7 +612,7 @@ Todo componente assíncrono deve ter:
 
 ### Bloco 5 — Onboarding e produto para leigos
 
-- Wizard de dez blocos curtos.
+- Wizard público de seis etapas, agrupando os dez blocos internos em cartões curtos de negócio.
 - Texto e áudio equivalentes.
 - Autosave, retomada e “decidir depois”.
 - Preview curto por bloco.

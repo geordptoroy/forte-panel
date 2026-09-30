@@ -29,19 +29,21 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 1. [`ROADMAP-EXECUCAO-FORTE-PANEL.md`](./ROADMAP-EXECUCAO-FORTE-PANEL.md) — fila operacional por fatias e estado a atualizar a cada `próximo`.
 2. [`AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md`](./AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md) — matriz atual de rotas, dados demo, simulações e prontidão pública.
 3. [`HANDOFF-CONTINUIDADE-FORTE-PANEL.md`](./HANDOFF-CONTINUIDADE-FORTE-PANEL.md) — histórico de execução, decisões e próximo passo.
-3. [`todo.md`](./todo.md) — checklist vivo da implementação.
-4. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
-5. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual histórico de operação, migrations, quotas e segurança.
-6. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão histórica do que funciona e pendências.
-7. [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) — auditoria de divergências e roadmap histórico.
-8. [`PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`](./PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md) — plano histórico P0–P3.
-9. [`AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md`](./AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md) — auditoria e decisões históricas.
-10. [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md) — referência especialista de onboarding e financeiro.
-11. [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md) — referência especialista de onboarding.
-12. [`GUIA-CONVITES-E-PERMISSOES.md`](./GUIA-CONVITES-E-PERMISSOES.md) — referência especialista de RBAC/ABAC.
-13. [`GUIA-UX-CLAREZA-E-FACILIDADE.md`](./GUIA-UX-CLAREZA-E-FACILIDADE.md) — referência especialista de UX.
-14. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência e ambiente validado.
-15. [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) — reset opcional, Docker, migrations e PostgreSQL local.
+4. [`HANDOFF-PROXIMO-CHAT-IA.md`](./HANDOFF-PROXIMO-CHAT-IA.md) — contexto operacional para o próximo chat continuar O1.2.
+5. [`O1.1-ENTREGA-ONBOARDING-WIZARD.md`](./O1.1-ENTREGA-ONBOARDING-WIZARD.md) — decisões e critérios da entrega do wizard de seis passos.
+6. [`todo.md`](./todo.md) — checklist vivo da implementação.
+7. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
+8. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual histórico de operação, migrations, quotas e segurança.
+9. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão histórica do que funciona e pendências.
+10. [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) — auditoria de divergências e roadmap histórico.
+11. [`PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`](./PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md) — plano histórico P0–P3.
+12. [`AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md`](./AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md) — auditoria e decisões históricas.
+13. [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md) — referência especialista de onboarding e financeiro.
+14. [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md) — referência especialista de onboarding.
+15. [`GUIA-CONVITES-E-PERMISSOES.md`](./GUIA-CONVITES-E-PERMISSOES.md) — referência especialista de RBAC/ABAC.
+16. [`GUIA-UX-CLAREZA-E-FACILIDADE.md`](./GUIA-UX-CLAREZA-E-FACILIDADE.md) — referência especialista de UX.
+17. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência e ambiente validado.
+18. [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) — reset opcional, Docker, migrations e PostgreSQL local.
 
 ## Produto e tenancy
 

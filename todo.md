@@ -1,10 +1,17 @@
 # Forte Panel — acompanhamento do produto público
 
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
-**Fase de código atual:** etapa 1 do core — CRUD e conexão de instâncias Baileys na única página ativa. A integração está funcional; a revisão pendente é visual e o consumo permanece congelado.
+**Fase de código atual:** O1.1 concluída — wizard público de onboarding em seis passos; o core continua contido até a prova real do caminho WhatsApp → Inbox → lead.
 **Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
 
 ## Direção registrada — 2026-09-27: core antes do restante
+
+## Continuidade registrada — 2026-09-29: onboarding público em seis passos
+
+- [x] Criar wizard visual de seis passos em `client/src/pages/OnboardingPage.tsx`, preservando autosave, sessão, consentimento, confirmação humana, publicação versionada e rollback.
+- [x] Separar identidade, serviços, operação, atendimento, revisão e ativação em cartões de linguagem de negócio.
+- [x] Criar `O1.1-ENTREGA-ONBOARDING-WIZARD.md` e `HANDOFF-PROXIMO-CHAT-IA.md` para continuidade entre chats.
+- [ ] Executar O1.2: conectar serviços, preços, duração e disponibilidade ao catálogo operacional persistido.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.
