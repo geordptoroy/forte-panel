@@ -2055,6 +2055,9 @@ export function AgendaPage() {
   const cancelMutation = trpc.agenda.cancel.useMutation({
     onSuccess: () => agendaQuery.refetch(),
   });
+  const rescheduleMutation = trpc.agenda.reschedule.useMutation({
+    onSuccess: () => agendaQuery.refetch(),
+  });
   const days = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
   const serviceOptions = agendaQuery.data?.services ?? [];
   const professionalOptions = agendaQuery.data?.professionals ?? [];
@@ -2092,6 +2095,8 @@ export function AgendaPage() {
         status: statusLabel(item.status),
         rawStatus: item.status,
         notes: item.notes ?? "",
+        startsAt,
+        endsAt,
       };
     }
   );
@@ -2123,6 +2128,15 @@ export function AgendaPage() {
       endsAt,
       notes: notes || undefined,
     });
+  };
+  const rescheduleAppointment = (appointment: (typeof agendaItems)[number]) => {
+    const nextDate = window.prompt("Nova data (AAAA-MM-DD)", appointment.startsAt.toISOString().slice(0, 10));
+    if (!nextDate) return;
+    const nextTime = window.prompt("Novo horário (HH:MM)", appointment.time);
+    if (!nextTime) return;
+    const startsAt = new Date(`${nextDate}T${nextTime}:00`);
+    const endsAt = new Date(startsAt.getTime() + Number.parseInt(appointment.duration, 10) * 60000);
+    rescheduleMutation.mutate({ id: Number(appointment.id), startsAt, endsAt });
   };
   return (
     <PanelLayout
@@ -2354,6 +2368,16 @@ export function AgendaPage() {
                                   }
                                 >
                                   Cancelar
+                                </button>
+                              )}
+                            {appointment.status !== "Cancelado" &&
+                              appointment.status !== "Concluído" && (
+                                <button
+                                  className="btn-secondary"
+                                  disabled={rescheduleMutation.isPending}
+                                  onClick={() => rescheduleAppointment(appointment)}
+                                >
+                                  Reagendar
                                 </button>
                               )}
                           </div>

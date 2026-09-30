@@ -7676,7 +7676,8 @@ export async function rescheduleAgendaAppointment(
   workspaceId: number,
   appointmentId: number,
   startsAt: Date,
-  endsAt: Date
+  endsAt: Date,
+  restrictToProfessionalId?: number
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -7694,16 +7695,18 @@ export async function rescheduleAgendaAppointment(
       "O horário final precisa ser maior que o inicial"
     );
   return db.transaction(async tx => {
+    const appointmentFilters = [
+      eq(appointmentsTable.id, appointmentId),
+      eq(appointmentsTable.workspaceId, workspaceId),
+      ...(restrictToProfessionalId === undefined
+        ? []
+        : [eq(appointmentsTable.professionalId, restrictToProfessionalId)]),
+    ];
     const appointment = (
       await tx
         .select()
         .from(appointmentsTable)
-        .where(
-          and(
-            eq(appointmentsTable.id, appointmentId),
-            eq(appointmentsTable.workspaceId, workspaceId)
-          )
-        )
+        .where(and(...appointmentFilters))
         .limit(1)
     )[0];
     if (!appointment) return undefined;
@@ -7748,12 +7751,7 @@ export async function rescheduleAgendaAppointment(
     const updated = await tx
       .update(appointmentsTable)
       .set({ startsAt, endsAt, status: "requested", updatedAt: new Date() })
-      .where(
-        and(
-          eq(appointmentsTable.id, appointmentId),
-          eq(appointmentsTable.workspaceId, workspaceId)
-        )
-      )
+      .where(and(...appointmentFilters))
       .returning();
     return updated[0];
   });

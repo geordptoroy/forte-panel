@@ -33,6 +33,7 @@ import {
   createProfessional,
   createAgendaAppointment,
   cancelAgendaAppointment,
+  rescheduleAgendaAppointment,
   updateAgendaStatus,
   createQuote,
   confirmOnboardingStep,
@@ -2643,6 +2644,56 @@ export const appRouter = router({
           summary: `Agendamento ${input.id} atualizado para ${input.status}`,
         });
         return { id: updated.id, status: updated.status };
+      }),
+    reschedule: protectedProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          startsAt: z.coerce.date(),
+          endsAt: z.coerce.date(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
+        if (!access.memberActive)
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Seu acesso está desativado neste workspace",
+          });
+        if (input.endsAt <= input.startsAt)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "O horário final precisa ser maior que o inicial",
+          });
+        let updated;
+        try {
+          updated = await rescheduleAgendaAppointment(
+            ctx.workspace.workspaceId,
+            input.id,
+            input.startsAt,
+            input.endsAt,
+            access.canSeeFullAgenda ? undefined : (access.professionalId ?? -1)
+          );
+        } catch (error) {
+          throwScheduleTrpcError(error);
+        }
+        if (!updated)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Agendamento não encontrado para o seu acesso",
+          });
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: "appointment_rescheduled",
+          summary: `Agendamento ${input.id} reagendado para ${input.startsAt.toISOString()}`,
+        });
+        return {
+          id: updated.id,
+          status: updated.status,
+          startsAt: updated.startsAt.toISOString(),
+          endsAt: updated.endsAt.toISOString(),
+        };
       }),
     cancel: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
