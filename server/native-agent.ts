@@ -11,8 +11,8 @@ import {
   listMessagesForContact,
   listContactNotes,
   queueOutboundMessage,
-  claimAgentEffect,
   completeAgentEffect,
+  createAgentEffectProposal,
   failAgentEffect,
   setContactAi,
 } from "./db";
@@ -336,38 +336,51 @@ async function executeTool(
     .createHash("sha256")
     .update(JSON.stringify({ name, args }))
     .digest("hex");
-  const claim = await claimAgentEffect({
+  const proposal = await createAgentEffectProposal({
     workspaceId: event.workspaceId,
     eventId: event.eventId,
     toolCallId,
     toolName: name,
     fingerprint,
+    proposal: {
+      kind: "human_confirmation_required",
+      action: name,
+      args,
+      event: {
+        eventId: event.eventId,
+        workspaceId: event.workspaceId,
+        contactId: event.contactId,
+        conversationId: event.conversationId,
+        instanceId: event.instanceId,
+      },
+    },
   });
-  if (claim.completed) return claim.result;
-  if (claim.conflict)
-    throw new Error(`Efeito do agente em conflito para ${name}`);
-  if (claim.inProgress || !claim.claimed)
-    throw new Error(
-      `Efeito do agente ainda está em processamento para ${name}`
-    );
+  if (!proposal) throw new Error("Não foi possível registrar a confirmação");
+  return {
+    pendingConfirmation: true,
+    confirmationId: proposal.id,
+    action: name,
+    message: "A ação foi preparada e aguarda confirmação humana.",
+  };
+}
+
+export async function confirmNativeAgentEffect(input: {
+  workspaceId: number;
+  effect: { id: number; eventId: string; toolCallId: string; toolName: string; result: string | null };
+  actorUserId: number;
+}) {
+  if (!input.effect.result) throw new Error("Proposta do agente sem payload");
+  const proposal = JSON.parse(input.effect.result) as {
+    args: Record<string, unknown>;
+    event: NativeAgentEvent;
+  };
+  const event = { ...proposal.event, workspaceId: input.workspaceId };
   try {
-    const result = await executeToolEffect(name, args, event);
-    await completeAgentEffect({
-      workspaceId: event.workspaceId,
-      eventId: event.eventId,
-      toolCallId,
-      result,
-    });
+    const result = await executeToolEffect(input.effect.toolName, proposal.args, event);
+    await completeAgentEffect({ workspaceId: input.workspaceId, eventId: input.effect.eventId, toolCallId: input.effect.toolCallId, result: { ...result, confirmedByUserId: input.actorUserId } });
     return result;
   } catch (error) {
-    await failAgentEffect({
-      workspaceId: event.workspaceId,
-      eventId: event.eventId,
-      toolCallId,
-      result: {
-        error: error instanceof Error ? error.message : "Falha na ferramenta",
-      },
-    });
+    await failAgentEffect({ workspaceId: input.workspaceId, eventId: input.effect.eventId, toolCallId: input.effect.toolCallId, result: { error: error instanceof Error ? error.message : "Falha na ferramenta" } });
     throw error;
   }
 }
