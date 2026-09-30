@@ -110,6 +110,7 @@ import {
 } from "./llm-providers";
 import { persistInboundMedia, resolvePrivateMediaUrl } from "./media-storage";
 import { onboardingFollowUpFieldKeys } from "./onboarding-followups";
+import { fingerprintOnboardingProfile } from "./onboarding-review";
 
 const DOMAIN_EVENT_WORKER_ID =
   process.env.WORKER_ID?.trim() || `worker-${crypto.randomUUID()}`;
@@ -1888,6 +1889,32 @@ export type OnboardingProfile = {
   qualificationRules: string;
 };
 
+const onboardingExampleReviewSettingKey = "onboarding_examples_review";
+type OnboardingExampleReviewMode = "safe" | "ai" | "rollback";
+type OnboardingExampleReviewRecord = {
+  profileFingerprint: string;
+  mode: OnboardingExampleReviewMode;
+  reviewedAt: string;
+  reviewedBy: number;
+};
+
+function parseOnboardingExampleReview(value?: string | null): OnboardingExampleReviewRecord | null {
+  if (!value) return null;
+  try {
+    const record = JSON.parse(value) as Partial<OnboardingExampleReviewRecord>;
+    if (
+      typeof record.profileFingerprint !== "string" ||
+      !/^[a-f0-9]{64}$/.test(record.profileFingerprint) ||
+      !["safe", "ai", "rollback"].includes(String(record.mode)) ||
+      typeof record.reviewedAt !== "string" ||
+      typeof record.reviewedBy !== "number"
+    ) return null;
+    return record as OnboardingExampleReviewRecord;
+  } catch {
+    return null;
+  }
+}
+
 const emptyOnboardingProfile: OnboardingProfile = {
   businessName: "",
   segment: "servicos",
@@ -3156,6 +3183,8 @@ export async function getOnboardingProfile(workspaceId: number) {
       published: false,
       checklist: getOnboardingChecklist(emptyOnboardingProfile, false),
       stepAnswers: [],
+      exampleReview: { isCurrent: false, mode: null, reviewedAt: null },
+      publishCandidateFingerprint: fingerprintOnboardingProfile(emptyOnboardingProfile),
     };
   const profileSetting = await getWorkspaceSetting(
     workspace.id,
@@ -3176,6 +3205,11 @@ export async function getOnboardingProfile(workspaceId: number) {
     : undefined;
   const checklist = getOnboardingChecklist(profile, Boolean(published?.prompt));
   const stepAnswers = await listOnboardingStepAnswers(workspaceId);
+  const publishCandidate = profileFromConfirmedOnboardingAnswers(profile, stepAnswers);
+  const savedExampleReview = parseOnboardingExampleReview(
+    (await getWorkspaceSetting(workspace.id, onboardingExampleReviewSettingKey))?.value
+  );
+  const exampleReviewIsCurrent = savedExampleReview?.profileFingerprint === fingerprintOnboardingProfile(publishCandidate);
   return {
     profile,
     version: published?.version ?? 0,
@@ -3183,6 +3217,10 @@ export async function getOnboardingProfile(workspaceId: number) {
     published: Boolean(published?.prompt),
     checklist,
     stepAnswers,
+    exampleReview: exampleReviewIsCurrent
+      ? { isCurrent: true, mode: savedExampleReview.mode, reviewedAt: savedExampleReview.reviewedAt }
+      : { isCurrent: false, mode: null, reviewedAt: null },
+    publishCandidateFingerprint: fingerprintOnboardingProfile(publishCandidate),
   };
 }
 
@@ -3272,6 +3310,36 @@ function profileFromConfirmedOnboardingAnswers(
   return profile;
 }
 
+export async function getOnboardingPublishCandidate(workspaceId: number) {
+  const onboarding = await getOnboardingProfile(workspaceId);
+  return profileFromConfirmedOnboardingAnswers(onboarding.profile, onboarding.stepAnswers);
+}
+
+export async function confirmOnboardingExampleReview(input: {
+  workspaceId: number;
+  reviewedBy: number;
+  mode: "safe" | "ai";
+  profileFingerprint?: string;
+}) {
+  const profile = await getOnboardingPublishCandidate(input.workspaceId);
+  const currentFingerprint = fingerprintOnboardingProfile(profile);
+  if (input.mode === "ai" && input.profileFingerprint !== currentFingerprint)
+    throw new Error("ONBOARDING_EXAMPLE_REVIEW_STALE");
+  const reviewedAt = new Date().toISOString();
+  const record: OnboardingExampleReviewRecord = {
+    profileFingerprint: currentFingerprint,
+    mode: input.mode,
+    reviewedAt,
+    reviewedBy: input.reviewedBy,
+  };
+  await upsertWorkspaceSetting(
+    input.workspaceId,
+    onboardingExampleReviewSettingKey,
+    JSON.stringify(record)
+  );
+  return { isCurrent: true, mode: record.mode, reviewedAt };
+}
+
 export async function listOnboardingPublishedVersions(workspaceId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -3310,6 +3378,11 @@ export async function publishOnboardingDraft(workspaceId: number, publishedBy: n
     const missing = checklist.items.filter(item => item.required && !item.complete).map(item => item.title).join(", ");
     throw new Error(`ONBOARDING_INCOMPLETE:${missing}`);
   }
+  const exampleReview = parseOnboardingExampleReview(
+    (await getWorkspaceSetting(workspaceId, onboardingExampleReviewSettingKey))?.value
+  );
+  if (!exampleReview || exampleReview.profileFingerprint !== fingerprintOnboardingProfile(profile))
+    throw new Error("ONBOARDING_EXAMPLE_REVIEW_REQUIRED");
   const latest = (
     await db
       .select({ id: onboardingPublishedVersions.id, version: onboardingPublishedVersions.version })
@@ -3414,6 +3487,20 @@ export async function rollbackOnboardingPublishedVersion(
     else await tx.insert(workspaceSettings).values({ workspaceId, key: "ai_prompt_published", value, updatedAt: publishedAt });
     await tx.update(workspaceSettings).set({ value: JSON.stringify(profile), updatedAt: publishedAt })
       .where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "onboarding_profile")));
+    const reviewSetting = (
+      await tx.select({ id: workspaceSettings.id }).from(workspaceSettings)
+        .where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, onboardingExampleReviewSettingKey)))
+        .orderBy(desc(workspaceSettings.updatedAt), desc(workspaceSettings.id)).limit(1)
+    )[0];
+    const reviewValue = JSON.stringify({
+      profileFingerprint: fingerprintOnboardingProfile(profile),
+      mode: "rollback",
+      reviewedAt: publishedAt.toISOString(),
+      reviewedBy: rolledBackBy,
+    } satisfies OnboardingExampleReviewRecord);
+    if (reviewSetting)
+      await tx.update(workspaceSettings).set({ value: reviewValue, updatedAt: publishedAt }).where(eq(workspaceSettings.id, reviewSetting.id));
+    else await tx.insert(workspaceSettings).values({ workspaceId, key: onboardingExampleReviewSettingKey, value: reviewValue, updatedAt: publishedAt });
     return [inserted];
   });
   await persistOnboardingStepAnswers(workspaceId, profile, rolledBackBy);

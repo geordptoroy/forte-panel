@@ -81,8 +81,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | P0.5 | Fundação pública | Catálogo de estados e release gate por rota | **CONCLUÍDA** | `release-catalog.ts` governa estados e exposição incremental |
 | O1.1 | Onboarding | Wizard público de 6 passos | **CONCLUÍDA** | Owner configura negócio sem conhecer IA técnica |
 | O1.2 | Onboarding | Serviços, preços, duração e disponibilidade | **CONCLUÍDA (código)** | Catálogo operacional persistido, modos de preço e jornada semanal; prova com PostgreSQL/UI real permanece pendente |
-| O1.3 | Onboarding | Regras de atendimento e revisão de exemplos | **PRÓXIMA** | Publicação humana de configuração segura |
-| O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | PENDENTE | Onboarding tolerante a interrupções |
+| O1.3 | Onboarding | Regras de atendimento e revisão de exemplos | **CONCLUÍDA (código)** | Revisão humana vinculada ao candidato exato; prova persistida com PostgreSQL permanece pendente |
+| O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | **PRÓXIMA** | Onboarding tolerante a interrupções |
 | O2.1 | Canal | Saúde do WhatsApp e ciclo de conexão | PENDENTE | QR, pairing, reconexão e erros acionáveis |
 | O2.2 | Canal | Inbound idempotente e histórico sem efeitos colaterais | PENDENTE | Mensagem recebida uma vez, com status observável |
 | O2.3 | Canal | Outbound com `instanceId`, fila e reconciliação | PENDENTE | Envio rastreável até gateway e telefone |
@@ -295,12 +295,12 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 
 | Campo | Valor inicial |
 |---|---|
-| Branch | `feat/o1.2-operational-service-catalog` |
+| Branch | `feat/o1.3-attendance-rule-simulation` |
 | Base auditada | `cad2b8a` |
 | Última fatia concluída | `P0.3` — seeds e bootstrap isolados por ambiente |
-| Última fatia concluída por este roadmap | `O1.2` — catálogo operacional conectado ao onboarding |
-| Último commit de implementação deste roadmap | `6bd2442` — `feat: connect onboarding to operational service catalog` |
-| Pull request | [#4](https://github.com/geordptoroy/forte-panel/pull/4) — aberto, não mesclado |
+| Última fatia concluída por este roadmap | `O1.3` — revisão de exemplos vinculada ao candidato publicado |
+| Último commit de implementação deste roadmap | `6f5a812` — `feat: add consent-gated onboarding example review` |
+| Pull request | [#5](https://github.com/geordptoroy/forte-panel/pull/5) — aberto, empilhado sobre o PR #4 (O1.2); não mesclado |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.

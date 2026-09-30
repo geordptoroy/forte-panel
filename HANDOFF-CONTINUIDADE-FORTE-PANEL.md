@@ -26,3 +26,11 @@ Validação no Sandbox: `pnpm check`, `pnpm build` e `git diff --check` passaram
 
 **Commit de implementação:** `6bd2442` — `feat: connect onboarding to operational service catalog` (branch `feat/o1.2-operational-service-catalog`).
 **PR:** [#4](https://github.com/geordptoroy/forte-panel/pull/4), aberto contra `main`, não mesclado.
+
+
+## 32. O1.3 — Regras de atendimento e revisão de exemplos — 2026-09-29
+A etapa Revisão agora apresenta três cenários seguros fixos (serviço/preço não confirmado, horário específico e pedido de atendimento humano). Com consentimento `llm`, o responsável pode simular respostas do rascunho atual; a simulação não consulta catálogo nem agenda, não executa ações e não armazena o texto gerado. As saídas são temporárias, limitadas e só podem ser copiadas ao FAQ como rascunho.
+A confirmação de revisão é registrada em `workspace_settings` com hash do perfil-candidato, modo, data e responsável. O servidor bloqueia a publicação se o hash não corresponder exatamente ao candidato atual; editar o candidato torna a revisão obsoleta. Os quatro blocos obrigatórios, estados `draft/missing/conflict`, consentimentos, versionamento e rollback permanecem intactos. Um rollback explicitamente acionado registra a versão restaurada como revisão atual.
+Validação no Sandbox: `pnpm check` passou; `pnpm test` passou com 214 testes aprovados e 48 ignorados (inclui testes condicionais a PostgreSQL); `pnpm build` passou, com o aviso do bundle frontend acima de 500 kB; `git diff --check` passou. Os testes persistidos de publicação/revisão não executaram por ausência de PostgreSQL/DATABASE_URL. Nenhuma migration foi criada. O release catalog continua `not_ready`; `/onboarding` não foi liberado.
+**Próxima fatia:** O1.4 — retomada, autosave, missing/conflict e estados vazios. Não ampliar para Stripe, WhatsApp ou release gate nesta etapa.
+**Entrega:** `O1.3-ENTREGA-REGRAS-E-REVISAO-EXEMPLOS.md`. Commit `6f5a812` na branch `feat/o1.3-attendance-rule-simulation`; PR [#5](https://github.com/geordptoroy/forte-panel/pull/5), empilhado sobre o PR [#4](https://github.com/geordptoroy/forte-panel/pull/4) da O1.2. Ambos permanecem sem merge.

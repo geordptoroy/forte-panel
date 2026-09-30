@@ -36,6 +36,7 @@ import {
   updateAgendaStatus,
   createQuote,
   confirmOnboardingStep,
+  confirmOnboardingExampleReview,
   getAgendaSnapshot,
   getUserByEmail,
   getUserById,
@@ -59,6 +60,7 @@ import {
   getOnboardingTelemetrySummary,
   listOnboardingPublishedVersions,
   getOnboardingProfile,
+  getOnboardingPublishCandidate,
   getNativeAgentConfig,
   getNativeAgentRuntimeConfig,
   saveNativeAgentConfig,
@@ -119,6 +121,7 @@ import {
 } from "./onboarding-audio";
 import { transcribeAudioForWorkspace } from "./_core/voiceTranscription";
 import { extractOnboardingStructuredProposal } from "./onboarding-structured";
+import { simulateOnboardingRuleExamples } from "./onboarding-simulation";
 import {
   interactiveMessageTypeSchema,
   validateInteractiveMessage,
@@ -1801,6 +1804,77 @@ export const appRouter = router({
             throw new TRPCError({
               code: "BAD_REQUEST",
               message: "Resolva os conflitos dos blocos obrigatórios antes de publicar.",
+            });
+          if (error instanceof Error && error.message === "ONBOARDING_EXAMPLE_REVIEW_REQUIRED")
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Revise os exemplos do atendimento e confirme essa revisão antes de publicar.",
+            });
+          throw error;
+        }
+      }),
+    simulateExamples: requireOnboardingEditor.mutation(async ({ ctx }) => {
+      const workspaceId = ctx.workspace.workspaceId;
+      try {
+        await assertOnboardingSourceConsent(workspaceId, "llm");
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith("ONBOARDING_SOURCE_CONSENT_REQUIRED:"))
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Conceda o consentimento para processamento por IA antes de simular respostas.",
+          });
+        throw error;
+      }
+      const session = await getOnboardingSession(workspaceId);
+      if (!session)
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Inicie o onboarding antes de simular exemplos." });
+      try {
+        const profile = await getOnboardingPublishCandidate(workspaceId);
+        const result = await simulateOnboardingRuleExamples(profile);
+        await recordOnboardingTelemetry({
+          workspaceId,
+          sessionId: session.id,
+          eventType: "review_examples_simulated",
+          stepKey: "review",
+          source: "llm",
+          inputTokens: result.llm.inputTokens,
+          outputTokens: result.llm.outputTokens,
+          totalTokens: result.llm.totalTokens,
+          metadata: { model: result.llm.model.slice(0, 120), exampleCount: result.examples.length },
+        });
+        return { examples: result.examples, profileFingerprint: result.profileFingerprint };
+      } catch {
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: "Não foi possível simular as respostas agora. Revise os exemplos seguros ou tente novamente.",
+        });
+      }
+    }),
+    reviewExamples: requireOnboardingEditor
+      .input(z.object({
+        mode: z.enum(["safe", "ai"]),
+        profileFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const result = await confirmOnboardingExampleReview({
+            workspaceId: ctx.workspace.workspaceId,
+            reviewedBy: ctx.user.id,
+            mode: input.mode,
+            profileFingerprint: input.profileFingerprint,
+          });
+          await logWorkspaceAction({
+            workspaceId: ctx.workspace.workspaceId,
+            actorUserId: ctx.user.id,
+            action: "onboarding_examples_reviewed",
+            summary: `Exemplos de atendimento revisados pelo responsável (${input.mode})`,
+          });
+          return result;
+        } catch (error) {
+          if (error instanceof Error && error.message === "ONBOARDING_EXAMPLE_REVIEW_STALE")
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "O rascunho mudou desde a simulação. Gere ou revise os exemplos novamente.",
             });
           throw error;
         }

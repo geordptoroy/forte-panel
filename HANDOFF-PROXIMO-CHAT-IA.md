@@ -2,64 +2,30 @@
 
 ## Contexto do produto
 
-O Forte Panel está sendo transformado de um conjunto de superfícies beta/demo em um SaaS público de operação comercial para negócios atendidos por WhatsApp. A ordem estratégica é: saneamento público, onboarding simples, WhatsApp confiável, lead e Inbox, orçamento, agenda, recebimento, IA supervisionada, Console Admin de produção e, por fim, planos/cobrança/escala.
+O Forte Panel está sendo transformado de superfícies beta/demo em um SaaS público de operação comercial para negócios atendidos por WhatsApp. A sequência atual é saneamento público → onboarding → WhatsApp confiável → lead/Inbox → orçamento → agenda/recebimento → IA supervisionada → Admin de produção → planos e cobrança.
 
-O repositório é `geordptoroy/forte-panel`, atualmente na branch `feat/o1.2-operational-service-catalog`, no caminho `/home/ubuntu/forte-panel`. A instrução operacional vigente é avançar fatia por fatia, documentar tudo, validar e publicar em uma branch/PR; preferir PR a commit direto em `main`. O próximo chat deve revalidar checkout, remote, status e disponibilidade do PostgreSQL antes de reutilizar caminhos/estado.
+O repositório é `geordptoroy/forte-panel`, no caminho `/home/ubuntu/forte-panel`. A branch é `feat/o1.3-attendance-rule-simulation`; o commit de implementação O1.3 é `6f5a812`. Revalidar ambiente, branch, HEAD, status, remote e disponibilidade do PostgreSQL antes de reutilizar qualquer estado.
 
-## Último estado conhecido
+## Estado de GitHub
 
-A P0.5 criou `client/src/release-catalog.ts`, um catálogo tipado com estados `public_ready`, `internal_only`, `simulation_only` e `not_ready`. O `client/src/core-mode.ts` consulta esse catálogo para decidir o que fica exposto durante a contenção. A navegação reduzida de `PanelLayout` usa `CORE_NAV_ROUTES` em vez de duplicar os caminhos.
+- O PR [#4](https://github.com/geordptoroy/forte-panel/pull/4) contém O1.2 e segue aberto contra `main`; o último estado observado reportou `mergeStateStatus=UNSTABLE`.
+- O PR [#5](https://github.com/geordptoroy/forte-panel/pull/5) contém O1.3 e foi aberto contra a branch `feat/o1.2-operational-service-catalog`, portanto está **empilhado** sobre #4. Não mesclar #5 isoladamente para `main` nem fazer merge automático.
+- O1.3 está publicada na branch remota; commits posteriores de atualização de handoff podem estar no topo quando esta nota for lida.
 
-No modo atual, ficam expostos no núcleo operacional `/whatsapp-connection`, `/inbox` e `/platform-admin/*`. As demais rotas são catalogadas, mas continuam bloqueadas até suas fatias funcionais. Login, cadastro, recuperação, reset e convite continuam públicos no fluxo de autenticação.
+## Última fatia: O1.3 — regras e revisão de exemplos
 
-A O1.1 adicionou o wizard público de seis passos em `client/src/pages/OnboardingPage.tsx`. A estrutura visual é:
+A etapa Revisão do onboarding mostra três casos seguros fixos: serviço/preço fora do catálogo, pedido de horário específico e reclamação/pedido de pessoa. Se houver consentimento `llm`, o responsável pode gerar uma prévia estruturada com o perfil-candidato atual. Essa chamada não acessa catálogo/agenda real, não executa ferramentas, não confirma blocos, não publica e não persiste as respostas; uma resposta só pode ser reutilizada no FAQ como rascunho editável.
 
-| Passo | Conteúdo | Estado técnico |
-|---|---|---|
-| 1. Negócio | Nome, segmento e descrição | Usa `onboarding.profile` e autosave |
-| 2. Serviços | Oferta, preço, duração e regra de orçamento | O1.2 conecta ao catálogo persistido; preço `fixed`, `starting_at` ou `quote`, vínculo opcional e fallback “decidir depois” |
-| 3. Operação | Área, horários e profissionais | O1.2 cadastra profissionais e disponibilidade semanal por profissional; jornada não promete vaga |
-| 4. Atendimento | Tom, FAQ, limites, humano e qualificação | Usa confirmação humana por bloco |
-| 5. Revisão | Checklist, áudio/texto, conflitos e confirmações | Mantém consentimento e revisão existentes |
-| 6. Ativação | Retenção, publicação e conexão WhatsApp | Conexão fica habilitada somente depois de publicar |
+A revisão humana fica registrada em `workspace_settings` com fingerprint do candidato de publicação, modo, data e responsável. O hash fica obsoleto após alteração do candidato, e `publishOnboardingDraft` o verifica novamente no servidor. Identidade, oferta, operação e limites continuam exigindo confirmação humana por bloco, checklist completo e ausência de conflitos. Rollback continua imutável/versionado e registra a revisão da versão restaurada.
 
-O wizard é uma camada de experiência. Ele não substitui a validação server-side: publicação continua exigindo os blocos obrigatórios confirmados, sem conflitos pendentes e com checklist completo.
+Arquivos de entrega: `O1.3-ENTREGA-REGRAS-E-REVISAO-EXEMPLOS.md`, `server/onboarding-simulation.ts`, `server/onboarding-review.ts` e os tipos/testes em `shared/`.
 
-## Entrega registrada nesta continuação
+## Validação e limites
 
-- `client/src/pages/OnboardingPage.tsx` e `client/src/pages/CatalogPage.tsx`: onboarding e catálogo operacional conectados.
-- `drizzle/schema.ts`, `drizzle-pg/0045_service_price_mode.sql` e journal: modos de preço persistidos com defaults compatíveis.
-- `server/workspace.ts`, `server/routers.ts`, `server/db.ts`, `server/api.ts` e `server/native-agent.ts`: validação tenant-scoped, contrato REST e ferramenta de agenda com semântica explícita.
-- `O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`, `API_CONTRACT.md`, fonte canônica, roadmap, `todo.md` e handoffs: decisões, segurança, testes e limitações registrados.
+No Sandbox: `pnpm check` passou; `pnpm test` passou com **214 testes aprovados e 48 ignorados em 65 arquivos**; `pnpm build` passou com aviso de bundle frontend acima de 500 kB; `git diff --check` passou. O teste PostgreSQL de publicação/revisão/obsolescência/rollback foi adicionado, mas ficou ignorado por ausência de `DATABASE_URL`/PostgreSQL.
 
-## Estado funcional atual
+Nenhuma migration nova foi criada. O onboarding continua como `not_ready` no release catalog; `/onboarding` não foi liberado, `CORE_ONLY_MODE` permanece, e ainda falta prova manual persistente/browser. Esta fatia não inicia Stripe, WhatsApp nem cobrança SaaS. A integração comercial própria do Forte Panel continua no roadmap O7.1/O7.2, posterior ao núcleo operacional e aos gates do produto.
 
-O onboarding já possui contratos persistidos e procedures para sessão, autosave, perfil, checklist, consentimento, retenção, áudio, transcrição, proposta estruturada, missing fields, conflitos, confirmação, publicação versionada e rollback. O código atual ainda tem blocos administrativos de métricas e histórico de versões; eles foram agrupados nas etapas de revisão/ativação para não ficarem misturados com o primeiro formulário.
+## Próximo passo
 
-O onboarding continua classificado como `not_ready` no release catalog enquanto não houver prova completa com banco persistente, navegador, microfone, canal WhatsApp e publicação real. O1.2 não libera `/onboarding` no gate.
-
-## Próxima ação recomendada
-
-A próxima fatia é **O1.3 — regras de atendimento e revisão de exemplos**. Ler primeiro `O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`, `ROADMAP-EXECUCAO-FORTE-PANEL.md`, a fonte canônica e o código real. Trabalhar os exemplos/regras dentro dos contratos existentes de revisão e publicação; a IA pode sugerir, mas não confirmar nem publicar blocos. Preserve `draft/missing/conflict`, revisão humana, versionamento e rollback. Não amplie o escopo para O1.4, WhatsApp ou release gate sem instrução/aceite de produto.
-
-Validação da fatia anterior: `pnpm check`, `pnpm build` e `git diff --check` passaram; `pnpm test` passou com 212 testes aprovados e 48 ignorados por dependências condicionais ao PostgreSQL. A migration 0045 ainda não foi aplicada em banco real. A tentativa de `drizzle-kit generate` encontrou colisão preexistente entre snapshots 0041/0043; conferir o documento de entrega e não reescrever snapshots históricos sem necessidade.
-
-## Regras de produto que não podem ser quebradas
-
-O cliente final não deve ver termos como provider, webhook, token, prompt técnico ou gateway como requisito de configuração. A IA pode transcrever, estruturar e redigir rascunhos, mas não pode inventar preço, prazo, disponibilidade, política ou promessa. Toda publicação precisa de confirmação humana e versão com rollback.
-
-O Forte Panel registra recebimentos manuais; não deve afirmar que cobrou ou liquidou o cliente. O WhatsApp precisa sempre preservar workspace, instância, JID, externalId, direção e status. Envio outbound deve falhar fechado quando a instância não for explícita. Seeds/demo ficam restritos a ambientes autorizados e não podem contaminar signup ou produção.
-
-O Console Admin é control-plane interno. Ações de suporte devem exigir autorização, motivo e auditoria. O administrador pode ajudar a criar rascunho, simular e revisar, mas não publicar silenciosamente em nome do cliente.
-
-## Gates e bloqueios
-
-O gate técnico da última alteração deve ser executado antes do commit. O gate de produto continua pendente para prova manual com PostgreSQL persistente, microfone e número WhatsApp real. Não apagar dados nem alterar secrets. Não desligar `CORE_ONLY_MODE` antes de fechar o caminho WhatsApp → Inbox → lead.
-
-## Como continuar no próximo chat
-
-Começar revalidando ambiente, branch, `git status`, remote e serviços disponíveis. Ler `PROJECT_DOCUMENTATION_INDEX.md`, a fonte canônica, o roadmap, este handoff e `O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`; depois comparar a documentação com `client`, `server` e `drizzle`. A próxima fatia é O1.3. Após implementar, executar `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check`; registrar testes PostgreSQL como pendentes se não houver banco. Publicar apenas na branch de trabalho e atualizar/criar PR; nunca fazer merge automaticamente.
-
-**Commit da implementação O1.2:** `6bd2442` — `feat: connect onboarding to operational service catalog`.
-**Branch de trabalho:** `feat/o1.2-operational-service-catalog`.
-**PR aberto:** [#4](https://github.com/geordptoroy/forte-panel/pull/4), ainda não mesclado.
+A próxima fatia é **O1.4 — retomada, autosave, missing/conflict e estados vazios**. Antes de começar, revisar `PROJECT_DOCUMENTATION_INDEX.md`, `ROADMAP-EXECUCAO-FORTE-PANEL.md`, `FORTE-PANEL-FONTE-DE-VERDADE.md`, o handoff e a entrega O1.3; confirmar o estado dos PRs #4 e #5. Trabalhar em branch separada empilhada sobre O1.3, se os PRs continuarem pendentes. Executar `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check`; registrar testes PostgreSQL como pendentes se o banco não estiver disponível. Não ampliar para billing, release gate ou integração real do WhatsApp sem o corte correspondente no roadmap.
