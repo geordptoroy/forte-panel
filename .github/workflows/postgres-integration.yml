@@ -29,7 +29,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/forte_panel_test
-      JWT_SECRET: integration-test-secret
+      JWT_SECRET: integration-test-secret-with-at-least-32-characters
       NODE_ENV: test
 
     steps:
@@ -56,6 +56,9 @@ jobs:
 
       - name: Apply versioned migrations
         run: pnpm exec drizzle-kit migrate
+
+      - name: Validate production configuration contract
+        run: NODE_ENV=production FORTE_SECURITY_FAIL_CLOSED=true DEMO_MODE=false WORKSPACE_BOOTSTRAP_ENABLED=false pnpm check:production-config
 
       - name: Run complete test suite against PostgreSQL
         run: |

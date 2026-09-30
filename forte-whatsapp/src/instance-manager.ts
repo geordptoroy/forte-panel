@@ -145,6 +145,11 @@ export class InstanceManager {
     };
   }
 
+  rotateWebhookSecret(secret: string) {
+    this.webhookOutbox.setSecret(secret);
+    return this.getStatus();
+  }
+
   async getProfile(): Promise<InstanceProfile> {
     const user = this.socket?.user;
     const phoneNumber = user?.id?.split(":")[0] ?? this.snapshot.phone ?? null;

@@ -32,12 +32,112 @@ Auditoria documental de 2026-09-30 confirmou gaps adicionais além do resumo ope
 4. **O7.12 — Restore e operação:** primeira fatia concluída; restore verifica manifesto/hashes antes de mutar, rejeita a sessão ativa e o runbook mínimo foi documentado. Restore completo, off-host, blobs, RPO/RTO e rollback permanecem.
 5. **O7.13 — Restore rehearsal e compensação:** política local concluída; classifica chaves conhecidas, referências, objetos recentes e desconhecidos sem delete automático. Provider list/delete, retenção, métricas e restore real permanecem.
 6. **O7.14 — Provider de storage:** contrato concluído em dry-run; listagem paginada e delete condicionado por etag estão definidos, mas o adapter Forge real não expõe essas operações.
-7. **O7.15 — Métricas e ensaio do provider:** métricas agregadas, limite anti-loop e ausência de chaves no resultado concluídos localmente; provider real, auditoria persistida e restore permanecem.
-8. **O7.16 — Provider real e restore rehearsal:** próxima fatia; conectar API autorizada, alertas, retenção, execução controlada e ambiente limpo.
+7. **O7.15 — Métricas e ensaio do provider:** concluído localmente; métricas agregadas, limite anti-loop e ausência de chaves no resultado.
+8. **O7.16 — Auditoria persistida e restore rehearsal:** concluída como fatia de coding/documentação; o reconciliador aceita `onMetrics`, `persistStorageReconciliationAudit` grava somente contadores, `runId`, workspace e duração em `auditLogs`, e [`RESTORE-REHEARSAL-PLAN.md`](./RESTORE-REHEARSAL-PLAN.md) define o ensaio de PostgreSQL, mídia, Redis, sessão Baileys, chaves, RPO/RTO e rollback. Provider real, alertas e execução do ensaio permanecem como gates externos.
+9. **O7.17 — Anti-replay de webhook:** primeira fatia concluída em código e testes locais; timestamp, nonce, HMAC temporal, janela de 5 minutos e unicidade persistente por workspace/provider foram adicionados. CI PostgreSQL, corrida distribuída, revogação e staging permanecem.
+10. **O7.18 — Rate limiting distribuído:** primeira fatia concluída em código e migrations; login, cadastro e reset usam buckets PostgreSQL com hash de escopo e `FOR UPDATE`. CI PostgreSQL concorrente e política de falha quando o banco está ausente permanecem.
+11. **O7.19 — Segredo de webhook por instância:** concluído em código no Panel e gateway; o Panel persiste criptografado, atualiza o outbox em memória via endpoint autenticado e faz rollback em erro. Validação PostgreSQL/WhatsApp real permanece.
+12. **O7.20 — Revogação de sessões:** concluído em código; logout autenticado incrementa `users.sessionVersion`, invalidando cookies e Bearer tokens anteriores. PostgreSQL real e browser smoke permanecem.
+13. **O7.21 — Fail-closed de segurança:** concluído em código; produção ou `FORTE_SECURITY_FAIL_CLOSED=true` não usa fallback permissivo para autenticação, rate limit e revogação quando PostgreSQL está indisponível.
+14. **O7.22 — Retenção operacional:** concluído em código; worker possui sweep diário dry-run por padrão para webhooks, domain events e buckets de segurança, com limites e transação na aplicação destrutiva.
+15. **O7.23 — Reconciliação de mídia no worker:** runner concluído com provider abstrato, auditoria redigida, dry-run e limites; provider Forge real continua desativado porque list/delete ainda não estão disponíveis.
+16. **O7.24 — Quality gate final de CI:** concluído em código; validador fail-closed de produção adicionado aos workflows PostgreSQL e publicação, com zero skips obrigatório no job PostgreSQL.
+17. **O7.25 — Gate de restore rehearsal:** concluído em código; verificador offline exige banco, sessão Baileys e inventário de mídia com hashes, sem executar mutações.
+18. **O7.26 — Relatório de restore rehearsal:** concluído em código; gerador redigido calcula RPO/RTO e emite somente `approved`, `inconclusive` ou `blocked`, sem aprovação parcial.
+19. **O7.27 — Isolamento do restore rehearsal:** concluído em código; gate verifica CORE_ONLY_MODE, tráfego bloqueado, outbound desligado, endpoints não produtivos, sessão separada, rollback e readiness.
 5. **O7.13 — Qualidade e escala:** quality gate sem skips críticos, concorrência, paginação, métricas e coorte de dois/dez workspaces.
 6. **Produto público:** onboarding final, UX/a11y, IA avançada, billing, termos e cadastro público somente depois dos gates P0.
 
 Os itens que exigem a máquina do usuário ou ambiente externo ficam em uma fila separada para o encerramento: Docker com volume real, staging persistente, browser autenticado, restore limpo e WhatsApp físico.
+
+O plano operacional do restore está em [`RESTORE-REHEARSAL-PLAN.md`](./RESTORE-REHEARSAL-PLAN.md). Ele não foi executado no sandbox e não autoriza restore contra produção.
+
+### O7.16 — Contrato de auditoria persistida
+
+- `server/storage-reconciliation.ts` calcula o snapshot agregado e chama `onMetrics` quando configurado.
+- `server/storage-reconciliation-audit.ts` implementa a persistência em `auditLogs` com `actorUserId` e `contactId` nulos, apropriados para uma execução de worker.
+- O resumo é limitado a 500 caracteres e não inclui `referencedKeys`, nomes de arquivos, URLs, ETags ou payloads de provider.
+- Falha de banco retorna `{ persisted: false }` quando a conexão não está disponível; o adapter real e a política de retry/alerta serão definidos antes de habilitar deleção fora de dry-run.
+
+### O7.17 — Anti-replay de webhook
+
+- O gateway envia `X-Webhook-Timestamp`, `X-Webhook-Nonce` e assina `timestamp.nonce.raw_body`.
+- O Panel rejeita timestamp fora da janela, nonce inválido ou assinatura divergente antes de ingerir o evento.
+- O nonce é persistido em `webhookEvents` com índice único por workspace/provider; duplicatas não voltam ao pipeline.
+- Detalhes, limites de compatibilidade e evidências estão em [`O7.17-ENTREGA-ANTI-REPLAY-WEBHOOK.md`](./O7.17-ENTREGA-ANTI-REPLAY-WEBHOOK.md).
+
+### O7.18 — Rate limiting distribuído
+
+- Os fluxos de login, signup e recuperação de senha usam `securityRateLimitBuckets`.
+- IP e e-mail são combinados e armazenados somente como SHA-256; o valor sensível não vai para a tabela.
+- `INSERT ... ON CONFLICT DO NOTHING` com `SELECT ... FOR UPDATE` evita contagem divergente entre réplicas.
+- O fallback local permanece apenas para sandbox/desenvolvimento sem `DATABASE_URL`; staging deve comprovar a rota distribuída.
+- Detalhes estão em [`O7.18-ENTREGA-RATE-LIMIT-DISTRIBUIDO.md`](./O7.18-ENTREGA-RATE-LIMIT-DISTRIBUIDO.md).
+
+### O7.19 — Segredo de webhook por instância
+
+- `encryptedWebhookSecret` agora participa da validação do webhook Baileys.
+- Instância com segredo próprio não aceita o segredo global, segredo genérico ou API key como bypass.
+- `rotateBaileysWebhookSecret` gera e persiste um novo segredo criptografado, mas ainda não é exposto em mutação pública.
+- A mutação `rotateBaileysWebhookSecret` atualiza Panel e gateway sem reiniciar a sessão; em falha, restaura o segredo anterior ou remove o segredo próprio.
+- Detalhes estão em [`O7.19-ENTREGA-SEGREDO-WEBHOOK-INSTANCIA.md`](./O7.19-ENTREGA-SEGREDO-WEBHOOK-INSTANCIA.md).
+
+### O7.20 — Revogação de sessões
+
+- Logout autenticado agora chama `revokeUserSessions` antes de limpar o cookie.
+- `sdk.authenticateRequest` já rejeita tokens cuja `sessionVersion` não coincide com `users.sessionVersion`.
+- Troca de senha, reset por token e desativação de membro continuam usando o mesmo mecanismo.
+- Detalhes estão em [`O7.20-ENTREGA-REVOGACAO-SESSOES.md`](./O7.20-ENTREGA-REVOGACAO-SESSOES.md).
+
+### O7.21 — Fail-closed de segurança
+
+- Política central em `server/_core/security-mode.ts`.
+- Produção ativa o modo automaticamente; sandbox/testes continuam compatíveis sem a flag.
+- Autenticação, limiter distribuído e revogação deixam de confirmar sucesso quando o backend persistente não responde.
+- Detalhes estão em [`O7.21-ENTREGA-FAIL-CLOSED-SEGURANCA.md`](./O7.21-ENTREGA-FAIL-CLOSED-SEGURANCA.md).
+
+### O7.22 — Retenção operacional
+
+- Retém somente estados terminais; `pending`, `processing` e `received` ficam protegidos.
+- Dry-run é o default; execução destrutiva exige `FORTE_OPERATIONAL_RETENTION_DRY_RUN=false`.
+- Contagens por workspace vão para auditoria e os dados removidos são limitados por lote.
+- Detalhes estão em [`O7.22-ENTREGA-RETENCAO-OPERACIONAL.md`](./O7.22-ENTREGA-RETENCAO-OPERACIONAL.md).
+
+### O7.23 — Reconciliação de mídia no worker
+
+- `runStorageReconciliationSweep` reaproveita o contrato de paginação, proteção temporal e etag.
+- O worker chama o sweep diário, mas sem provider configurado o comportamento é no-op explícito e seguro.
+- Métricas são redigidas e persistidas no audit log quando o provider estiver disponível.
+- Detalhes estão em [`O7.23-ENTREGA-RECONCILIACAO-MIDIA-WORKER.md`](./O7.23-ENTREGA-RECONCILIACAO-MIDIA-WORKER.md).
+
+### O7.24 — Quality gate final de CI
+
+- `pnpm check:production-config` rejeita placeholders, banco ausente, fail-closed ausente e flags permissivas.
+- PostgreSQL integration mantém serviço efêmero e falha se testes condicionais forem pulados.
+- Publish image executa a mesma validação sintética antes dos builds.
+- `CORE_ONLY_MODE` permanece ativo.
+- Detalhes estão em [`O7.24-ENTREGA-QUALITY-GATE-CI.md`](./O7.24-ENTREGA-QUALITY-GATE-CI.md).
+
+### O7.25 — Gate de restore rehearsal
+
+- `pnpm verify:restore-rehearsal BACKUP_DIR` valida manifesto, hashes, `pg_restore --list`, tar de sessões e inventário de mídia.
+- Pacotes sem evidência de mídia falham como inconclusivos.
+- Nenhum restore, delete, cópia de sessão ou banco real é executado no Sandbox.
+- Detalhes estão em [`O7.25-ENTREGA-RESTORE-REHEARSAL-GATE.md`](./O7.25-ENTREGA-RESTORE-REHEARSAL-GATE.md).
+
+### O7.26 — Relatório de restore rehearsal
+
+- `pnpm report:restore-rehearsal EVIDENCE.json REPORT.json` gera evidência privada e redigida.
+- Falha de componente ou tráfego de produção resulta em `blocked`; ausência de evidência resulta em `inconclusive`.
+- RPO/RTO, digests e contagens são registrados sem conteúdo sensível.
+- Detalhes estão em [`O7.26-ENTREGA-RELATORIO-RESTORE-REHEARSAL.md`](./O7.26-ENTREGA-RELATORIO-RESTORE-REHEARSAL.md).
+
+### O7.27 — Isolamento do restore rehearsal
+
+- `pnpm check:restore-rehearsal-isolation EVIDENCE.json` roda antes de qualquer mutação.
+- Endpoint produtivo, outbound, sessão reutilizada ou rollback ausente bloqueiam o ensaio.
+- O script é somente avaliador; não faz rede nem altera serviços.
+- Detalhes estão em [`O7.27-ENTREGA-ISOLAMENTO-RESTORE-REHEARSAL.md`](./O7.27-ENTREGA-ISOLAMENTO-RESTORE-REHEARSAL.md).
 
 ## Fila de coding
 

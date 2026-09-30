@@ -55,6 +55,7 @@ import {
   quotePayments,
   quoteReceipts,
   services,
+  securityRateLimitBuckets,
   users,
   webhookEvents,
   workerHeartbeats,
@@ -131,6 +132,10 @@ import {
 import { persistInboundMedia, resolvePrivateMediaUrl } from "./media-storage";
 import { onboardingFollowUpFieldKeys } from "./onboarding-followups";
 import { fingerprintOnboardingProfile } from "./onboarding-review";
+import {
+  SecurityBackendUnavailableError,
+  securityFailClosed,
+} from "./_core/security-mode";
 
 const DOMAIN_EVENT_WORKER_ID =
   process.env.WORKER_ID?.trim() || `worker-${crypto.randomUUID()}`;
@@ -637,7 +642,10 @@ export async function resetPasswordWithToken(tokenInput: string, password: strin
 
 export async function revokeUserSessions(userId: number) {
   const db = await getDb();
-  if (!db) throw new Error("Database unavailable");
+  if (!db) {
+    if (securityFailClosed()) throw new SecurityBackendUnavailableError();
+    return;
+  }
   await db
     .update(users)
     .set({
@@ -1892,6 +1900,91 @@ export async function findBaileysInstanceOwner(instanceId: string) {
     workspaceId: instance.workspaceId,
     active: instance.active === 1 && Boolean(workspace),
   };
+}
+
+export async function getBaileysWebhookSecret(instanceId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const rows = await db
+    .select({ encryptedWebhookSecret: whatsappInstances.encryptedWebhookSecret })
+    .from(whatsappInstances)
+    .where(
+      and(
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
+      )
+    )
+    .limit(1);
+  const encrypted = rows[0]?.encryptedWebhookSecret;
+  const secret = encrypted ? decryptProviderSecret(encrypted) : "";
+  return secret.trim() || undefined;
+}
+
+export async function rotateBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const secret = crypto.randomBytes(32).toString("base64url");
+  await setBaileysWebhookSecret(workspaceId, instanceId, secret, db);
+  return { instanceId, secret };
+}
+
+async function setBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string,
+  secret: string,
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>
+) {
+  const rows = await db
+    .update(whatsappInstances)
+    .set({
+      encryptedWebhookSecret: encryptProviderSecret(secret),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(whatsappInstances.workspaceId, workspaceId),
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
+      )
+    )
+    .returning({ id: whatsappInstances.id });
+  if (!rows[0]) throw new Error("Instância Baileys não encontrada neste workspace");
+}
+
+export async function replaceBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string,
+  secret: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  await setBaileysWebhookSecret(workspaceId, instanceId, secret, db);
+}
+
+export async function clearBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const rows = await db
+    .update(whatsappInstances)
+    .set({ encryptedWebhookSecret: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(whatsappInstances.workspaceId, workspaceId),
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
+      )
+    )
+    .returning({ id: whatsappInstances.id });
+  if (!rows[0]) throw new Error("Instância Baileys não encontrada neste workspace");
 }
 
 export type OnboardingProfile = {
@@ -4198,6 +4291,90 @@ export async function cleanupWorkspaceUsageBuckets(
     skipped: false,
     retentionDays: days,
   };
+}
+
+export type OperationalRetentionCleanupResult = {
+  skipped: boolean;
+  dryRun: boolean;
+  limit: number;
+  retentionDays: number;
+  webhookEvents: number;
+  domainEvents: number;
+  securityRateLimitBuckets: number;
+  workspaces: Record<string, { webhookEvents: number; domainEvents: number }>;
+};
+
+export async function cleanupOperationalRetention(options: {
+  dryRun?: boolean;
+  limit?: number;
+  retentionDays?: number;
+  now?: Date;
+} = {}): Promise<OperationalRetentionCleanupResult> {
+  const db = await getDb();
+  const dryRun = options.dryRun !== false;
+  const limit = Number.isFinite(options.limit)
+    ? Math.max(1, Math.min(Math.floor(options.limit as number), 10_000))
+    : 1_000;
+  const retentionDays = Number.isFinite(options.retentionDays)
+    ? Math.max(7, Math.min(Math.floor(options.retentionDays as number), 730))
+    : Math.max(7, Number(process.env.FORTE_OPERATIONAL_RETENTION_DAYS ?? 90));
+  const result = {
+    skipped: !db,
+    dryRun,
+    limit,
+    retentionDays,
+    webhookEvents: 0,
+    domainEvents: 0,
+    securityRateLimitBuckets: 0,
+    workspaces: {} as Record<string, { webhookEvents: number; domainEvents: number }>,
+  };
+  if (!db) return result;
+
+  const now = options.now ?? new Date();
+  const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+  const [webhookRows, domainRows, bucketRows] = await Promise.all([
+    db
+      .select({ id: webhookEvents.id, workspaceId: webhookEvents.workspaceId })
+      .from(webhookEvents)
+      .where(and(lt(webhookEvents.createdAt, cutoff), ne(webhookEvents.status, "received")))
+      .orderBy(asc(webhookEvents.id))
+      .limit(limit),
+    db
+      .select({ id: domainEvents.id, workspaceId: domainEvents.workspaceId })
+      .from(domainEvents)
+      .where(and(lt(domainEvents.createdAt, cutoff), ne(domainEvents.status, "pending"), ne(domainEvents.status, "processing")))
+      .orderBy(asc(domainEvents.id))
+      .limit(limit),
+    db
+      .select({ id: securityRateLimitBuckets.id })
+      .from(securityRateLimitBuckets)
+      .where(lt(securityRateLimitBuckets.updatedAt, cutoff))
+      .orderBy(asc(securityRateLimitBuckets.id))
+      .limit(limit),
+  ]);
+
+  const addWorkspace = (workspaceId: number, kind: "webhookEvents" | "domainEvents") => {
+    const key = String(workspaceId);
+    result.workspaces[key] ??= { webhookEvents: 0, domainEvents: 0 };
+    result.workspaces[key][kind] += 1;
+  };
+  webhookRows.forEach(row => addWorkspace(row.workspaceId, "webhookEvents"));
+  domainRows.forEach(row => addWorkspace(row.workspaceId, "domainEvents"));
+  result.webhookEvents = webhookRows.length;
+  result.domainEvents = domainRows.length;
+  result.securityRateLimitBuckets = bucketRows.length;
+
+  if (!dryRun) {
+    await db.transaction(async tx => {
+      if (webhookRows.length)
+        await tx.delete(webhookEvents).where(inArray(webhookEvents.id, webhookRows.map(row => row.id)));
+      if (domainRows.length)
+        await tx.delete(domainEvents).where(inArray(domainEvents.id, domainRows.map(row => row.id)));
+      if (bucketRows.length)
+        await tx.delete(securityRateLimitBuckets).where(inArray(securityRateLimitBuckets.id, bucketRows.map(row => row.id)));
+    });
+  }
+  return result;
 }
 
 export type OnboardingAudioRetentionCleanupResult = {
@@ -6771,6 +6948,9 @@ export async function registerWebhookEvent(input: {
   provider: string;
   payload: unknown;
   workspaceId: number;
+  instanceId?: string;
+  webhookNonce?: string;
+  webhookTimestamp?: Date;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -6783,15 +6963,16 @@ export async function registerWebhookEvent(input: {
     .values({
       eventId: input.eventId,
       provider: input.provider,
+      instanceId: input.instanceId,
+      webhookNonce: input.webhookNonce,
+      webhookTimestamp: input.webhookTimestamp,
       payload,
       workspaceId: input.workspaceId,
       status: "received",
       leaseToken,
       leaseUntil,
     })
-    .onConflictDoNothing({
-      target: [webhookEvents.workspaceId, webhookEvents.eventId],
-    })
+    .onConflictDoNothing()
     .returning();
   if (inserted[0])
     return { duplicate: false, conflict: false, event: inserted[0], leaseToken };
@@ -6805,6 +6986,20 @@ export async function registerWebhookEvent(input: {
       )
     )
     .limit(1);
+  if (!existing[0] && input.webhookNonce) {
+    const replay = await db
+      .select()
+      .from(webhookEvents)
+      .where(
+        and(
+          eq(webhookEvents.workspaceId, input.workspaceId),
+          eq(webhookEvents.provider, input.provider),
+          eq(webhookEvents.webhookNonce, input.webhookNonce)
+        )
+      )
+      .limit(1);
+    if (replay[0]) return { duplicate: true, conflict: false, replay: true, event: replay[0] };
+  }
   if (existing[0]) {
     if (existing[0].payload !== payload)
       return { duplicate: true, conflict: true, event: existing[0] };
@@ -6817,6 +7012,9 @@ export async function registerWebhookEvent(input: {
         .set({
           status: "received",
           payload,
+          instanceId: input.instanceId,
+          webhookNonce: input.webhookNonce,
+          webhookTimestamp: input.webhookTimestamp,
           processedAt: null,
           leaseToken,
           leaseUntil,

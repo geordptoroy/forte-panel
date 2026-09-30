@@ -16,6 +16,15 @@ import {
   recordPasswordResetAttempt,
   recordSignupAttempt,
 } from "./_core/request-security";
+import {
+  assertLoginAllowedDistributed,
+  assertPasswordResetAllowedDistributed,
+  assertSignupAllowedDistributed,
+  clearLoginDistributed,
+  recordLoginFailureDistributed,
+  recordPasswordResetAttemptDistributed,
+  recordSignupAttemptDistributed,
+} from "./distributed-rate-limit";
 import { ScheduleError } from "./schedule";
 import {
   InboxInstanceFilterError,
@@ -49,6 +58,10 @@ import {
   ensureBaileysChannel,
   listBaileysInstances,
   getBaileysInstance,
+  getBaileysWebhookSecret,
+  rotateBaileysWebhookSecret,
+  replaceBaileysWebhookSecret,
+  clearBaileysWebhookSecret,
   createBaileysInstance as createBaileysInstanceRecord,
   updateBaileysInstanceName as updateBaileysInstanceRecordName,
   archiveBaileysInstance,
@@ -192,6 +205,7 @@ import {
   getBaileysStatus,
   updateBaileysInstanceName,
   updateBaileysInstanceSettings,
+  updateBaileysWebhookSecret,
 } from "./baileys-gateway";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
@@ -521,7 +535,8 @@ export const appRouter = router({
           });
         }
         const email = input.email.trim().toLowerCase();
-        assertLoginAllowed(ctx.req, email);
+        if (!(await assertLoginAllowedDistributed(ctx.req, email)))
+          assertLoginAllowed(ctx.req, email);
         let account = await getUserByEmail(email);
         const configuredPlatformAccount = ENV.localPlatformAdminAccounts.find(
           candidate =>
@@ -541,7 +556,8 @@ export const appRouter = router({
           !account ||
           !verifyLocalPassword(input.password, account.passwordHash)
         ) {
-          recordLoginFailure(ctx.req, email);
+          if (!(await recordLoginFailureDistributed(ctx.req, email)))
+            recordLoginFailure(ctx.req, email);
           throw new TRPCError({
             code: "UNAUTHORIZED",
             message: "E-mail ou senha inválidos",
@@ -552,7 +568,8 @@ export const appRouter = router({
             code: "INTERNAL_SERVER_ERROR",
             message: "Conta local não pôde ser carregada",
           });
-        recordLoginSuccess(ctx.req, email);
+        if (!(await clearLoginDistributed(ctx.req, email)))
+          recordLoginSuccess(ctx.req, email);
         const membership = await getWorkspaceMembershipContext(account.id);
         const platformAdmin = await getPlatformAdminAccess(account.id);
         if (platformAdmin) {
@@ -632,8 +649,10 @@ export const appRouter = router({
           });
         }
         const email = input.email.trim().toLowerCase();
-        assertSignupAllowed(ctx.req, email);
-        recordSignupAttempt(ctx.req, email);
+        if (!(await assertSignupAllowedDistributed(ctx.req, email)))
+          assertSignupAllowed(ctx.req, email);
+        if (!(await recordSignupAttemptDistributed(ctx.req, email)))
+          recordSignupAttempt(ctx.req, email);
         try {
           const result = await createPublicSignup({
             name: input.name,
@@ -675,8 +694,10 @@ export const appRouter = router({
           });
         }
         const email = input.email.trim().toLowerCase();
-        assertPasswordResetAllowed(ctx.req, email);
-        recordPasswordResetAttempt(ctx.req, email);
+        if (!(await assertPasswordResetAllowedDistributed(ctx.req, email)))
+          assertPasswordResetAllowed(ctx.req, email);
+        if (!(await recordPasswordResetAttemptDistributed(ctx.req, email)))
+          recordPasswordResetAttempt(ctx.req, email);
         // The configured transactional provider consumes the internal token;
         // the public response intentionally never reveals whether the email exists.
         const issued = await issuePasswordResetToken(email);
@@ -757,7 +778,8 @@ export const appRouter = router({
           });
         }
       }),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      if (ctx.user) await revokeUserSessions(ctx.user.id);
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, cookieOptions);
       return { success: true } as const;
@@ -1399,6 +1421,39 @@ export const appRouter = router({
           });
         await updateBaileysInstanceSettings(input.instanceId, input.settings);
         return getBaileysStatus(input.instanceId);
+      }),
+    rotateBaileysWebhookSecret: requireManager
+      .input(z.object({ instanceId: z.string().trim().min(1).max(160) }))
+      .mutation(async ({ input, ctx }) => {
+        const workspaceId = ctx.workspace.workspaceId;
+        const current = await getBaileysInstance(workspaceId, input.instanceId);
+        if (!current)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        const previous = await getBaileysWebhookSecret(input.instanceId);
+        const rotated = await rotateBaileysWebhookSecret(
+          workspaceId,
+          input.instanceId
+        );
+        try {
+          await updateBaileysWebhookSecret(input.instanceId, rotated.secret);
+        } catch (error) {
+          if (previous)
+            await replaceBaileysWebhookSecret(
+              workspaceId,
+              input.instanceId,
+              previous
+            ).catch(() => undefined);
+          else
+            await clearBaileysWebhookSecret(
+              workspaceId,
+              input.instanceId
+            ).catch(() => undefined);
+          throw error;
+        }
+        return { success: true, instanceId: input.instanceId } as const;
       }),
     deleteBaileysInstance: requireManager
       .input(

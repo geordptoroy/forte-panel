@@ -7,6 +7,10 @@ import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
 import { ENV } from "./env";
+import {
+  SecurityBackendUnavailableError,
+  securityFailClosed,
+} from "./security-mode";
 import type {
   ExchangeTokenRequest,
   ExchangeTokenResponse,
@@ -290,6 +294,9 @@ class SDKServer {
       }
       return buildCronUser(userInfo);
     }
+
+    if (!await db.getDb() && securityFailClosed())
+      throw new SecurityBackendUnavailableError();
 
     const sessionUserId = session.openId;
     const signedInAt = new Date();

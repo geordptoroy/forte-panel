@@ -135,3 +135,50 @@ Pendente honesto: o gateway mostrou `webhookOutboxPending: 5` e `webhookLastErro
 ### Atualização operacional — reconexão confirmada
 
 O gateway `forte-whatsapp` foi reiniciado isoladamente, sem remover volumes. Após 15 segundos, a mesma sessão voltou como `connected`, sem novo QR Code, e o usuário confirmou novo ciclo inbound/outbound funcionando. A outbox continua com 5 arquivos pendentes e `webhookLastError: webhook_http_400`; a reconexão não limpou os eventos históricos. Portanto, marcar reconexão e continuidade WhatsApp como aprovadas, mas manter o webhook histórico pendente até investigar os 400.
+
+
+## Atualização 2026-09-30 — O7.16 até O7.27
+
+A execução avançou na branch atual `feat/o7.15-storage-reconciliation-observability`, sem merge automático e mantendo `CORE_ONLY_MODE` ativo.
+
+### Fatias concluídas em código
+
+- **O7.16:** métricas de reconciliação de storage redigidas e persistidas em `auditLogs`.
+- **Restore rehearsal:** `RESTORE-REHEARSAL-PLAN.md` criado e runbook O7.12 atualizado.
+- **O7.17:** anti-replay de webhooks com timestamp, nonce, janela, deduplicação persistente e migration PostgreSQL `0055_webhook_anti_replay.sql`.
+- **O7.18:** rate limiting distribuído PostgreSQL com migration `0056_security_rate_limit_buckets.sql`; fallback local não é usado em fail-closed.
+- **O7.19:** segredo de webhook por instância, rotação criptografada e atualização dinâmica no gateway.
+- **O7.20:** revogação de sessões no logout e validação por `sessionVersion`.
+- **O7.21:** política fail-closed para autenticação, rate limit e revogação.
+- **O7.22:** retenção operacional diária de webhooks, domain events e buckets de segurança; dry-run default, estados não terminais protegidos e remoção destrutiva transacional.
+- **O7.23:** runner de reconciliação de mídia no worker, provider abstrato, métricas redigidas e no-op seguro sem provider real.
+- **O7.24:** `pnpm check:production-config`, verificação fail-closed de produção adicionada ao CI PostgreSQL e publicação; zero skips obrigatório no job PostgreSQL.
+- **O7.25:** `pnpm verify:restore-rehearsal BACKUP_DIR`, validação offline de dump PostgreSQL, sessão Baileys e inventário de mídia hashado.
+- **O7.26:** `pnpm report:restore-rehearsal EVIDENCE.json REPORT.json`, relatório redigido com RPO/RTO e decisões `approved`, `inconclusive` ou `blocked`; não existe aprovação parcial.
+- **O7.27:** `pnpm check:restore-rehearsal-isolation EVIDENCE.json`, gate de `CORE_ONLY_MODE`, tráfego bloqueado, outbound desligado, endpoints não produtivos, sessão separada, rollback e readiness.
+
+### Arquivos principais novos
+
+- `scripts/validate-production-config.ts`
+- `scripts/verify-restore-rehearsal.ts`
+- `scripts/build-restore-rehearsal-report.ts`
+- `scripts/validate-restore-rehearsal-isolation.ts`
+- `server/webhook-anti-replay.ts`
+- `server/distributed-rate-limit.ts`
+- `server/storage-reconciliation-runner.ts`
+- `server/storage-reconciliation-audit.ts`
+- `server/_core/security-mode.ts`
+- `drizzle-pg/0055_webhook_anti_replay.sql`
+- `drizzle-pg/0056_security_rate_limit_buckets.sql`
+
+### Validação desta pilha
+
+Typecheck, testes focados, Prettier e `git diff --check` passaram nas fatias. O Sandbox não possui `DATABASE_URL`; os testes PostgreSQL permanecem dependentes do workflow `PostgreSQL integration`. Nenhum restore destrutivo, provider real de mídia, endpoint real ou segredo real foi usado.
+
+O workflow PostgreSQL falha se reportar skips; o workflow de publicação executa `check:production-config` com valores sintéticos. A cadeia real de CI deve ser reexecutada após este commit.
+
+### Próximo passo recomendado
+
+Integrar os comandos O7.25–O7.27 em um orquestrador único de preflight do rehearsal, na ordem: verificar pacote, validar isolamento, preparar/validar evidências, gerar relatório e bloquear fail-closed antes de qualquer restore. Depois executar os gates externos na máquina do usuário: PostgreSQL/Docker, provider de mídia, Redis isolado, sessão Baileys separada, browser smoke e WhatsApp físico.
+
+Não declarar MVP SaaS público nem desligar `CORE_ONLY_MODE`. Não mesclar PRs automaticamente. Para continuar, primeiro revalidar branch, status, remoto e o hash do commit deste handoff.

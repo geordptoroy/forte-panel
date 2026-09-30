@@ -1,6 +1,7 @@
-import { cleanupOnboardingAudioRetention, cleanupWorkspaceUsageBuckets, processDailySummaryNotificationsOnce, processDomainEventsOnce, processQueuedMessagesOnce, processWorkspaceQuotaAlertsOnce, recoverProcessingDomainEvents, recoverProcessingMessages } from "./db";
+import { cleanupOnboardingAudioRetention, cleanupOperationalRetention, cleanupWorkspaceUsageBuckets, processDailySummaryNotificationsOnce, processDomainEventsOnce, processQueuedMessagesOnce, processWorkspaceQuotaAlertsOnce, recoverProcessingDomainEvents, recoverProcessingMessages } from "./db";
 import { recordWorkerHeartbeat } from "./platform-admin";
 import { logWorkspaceAction } from "./workspace";
+import { runStorageReconciliationSweep } from "./storage-reconciliation-runner";
 
 const intervalMs = Number(process.env.WORKER_INTERVAL_MS ?? 1500);
 const batchSize = Number(process.env.WORKER_BATCH_SIZE ?? 10);
@@ -13,6 +14,8 @@ let nextDailySummarySweepAt = 0;
 let nextQuotaAlertSweepAt = 0;
 let nextUsageCleanupAt = 0;
 let nextOnboardingAudioCleanupAt = 0;
+let nextOperationalRetentionAt = 0;
+let nextMediaReconciliationAt = 0;
 let nextHeartbeatAt = 0;
 let tickCount = 0;
 let lastError: string | null = null;
@@ -65,6 +68,47 @@ async function tick() {
       }
       if (cleanup.assetsExpired > 0 || cleanup.transcriptionsExpired > 0) {
         console.log(`[forte-worker] onboardingAudioRetencao=${cleanup.dryRun ? "dry-run" : "aplicada"} assets=${cleanup.assetsExpired} transcricoes=${cleanup.transcriptionsExpired}`);
+      }
+    }
+    if (Date.now() >= nextOperationalRetentionAt) {
+      const sweepIntervalMs = Math.max(
+        60_000,
+        Number(process.env.FORTE_OPERATIONAL_RETENTION_SWEEP_MS ?? 24 * 60 * 60_000)
+      );
+      nextOperationalRetentionAt = Date.now() + sweepIntervalMs;
+      const cleanup = await cleanupOperationalRetention({
+        dryRun: process.env.FORTE_OPERATIONAL_RETENTION_DRY_RUN !== "false",
+        limit: Number(process.env.FORTE_OPERATIONAL_RETENTION_BATCH ?? 1_000),
+      });
+      for (const [workspaceId, counts] of Object.entries(cleanup.workspaces)) {
+        if (counts.webhookEvents === 0 && counts.domainEvents === 0) continue;
+        await logWorkspaceAction({
+          workspaceId: Number(workspaceId),
+          action: cleanup.dryRun
+            ? "operational_retention_dry_run"
+            : "operational_retention_cleanup",
+          summary: `${cleanup.dryRun ? "Dry-run" : "Limpeza"} operacional: ${counts.webhookEvents} webhooks e ${counts.domainEvents} eventos de domínio`,
+        });
+      }
+      if (cleanup.webhookEvents || cleanup.domainEvents || cleanup.securityRateLimitBuckets) {
+        console.log(`[forte-worker] retencaoOperacional=${cleanup.dryRun ? "dry-run" : "aplicada"} webhooks=${cleanup.webhookEvents} eventos=${cleanup.domainEvents} buckets=${cleanup.securityRateLimitBuckets}`);
+      }
+    }
+    if (Date.now() >= nextMediaReconciliationAt) {
+      const sweepIntervalMs = Math.max(
+        60_000,
+        Number(process.env.FORTE_MEDIA_RECONCILIATION_SWEEP_MS ?? 24 * 60 * 60_000)
+      );
+      nextMediaReconciliationAt = Date.now() + sweepIntervalMs;
+      const reconciliation = await runStorageReconciliationSweep({
+        // A provider real só será injetada quando o storage oferecer list/delete
+        // paginado; ausência explícita mantém a operação em no-op seguro.
+        dryRun: process.env.FORTE_MEDIA_RECONCILIATION_DRY_RUN !== "false",
+        workspaceLimit: Number(process.env.FORTE_MEDIA_RECONCILIATION_WORKSPACE_LIMIT ?? 100),
+        maxPages: Number(process.env.FORTE_MEDIA_RECONCILIATION_MAX_PAGES ?? 1000),
+      });
+      if (!reconciliation.skipped && (reconciliation.candidates || reconciliation.deleted || reconciliation.failures)) {
+        console.log(`[forte-worker] mediaReconcilacao=${reconciliation.dryRun ? "dry-run" : "aplicada"} workspaces=${reconciliation.workspaces} candidates=${reconciliation.candidates} deleted=${reconciliation.deleted} failures=${reconciliation.failures}`);
       }
     }
     if (Date.now() >= nextHeartbeatAt) {

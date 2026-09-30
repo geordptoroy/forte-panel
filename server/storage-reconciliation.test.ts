@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { reconcileWorkspaceMedia, type WorkspaceMediaStore } from "./storage-reconciliation";
+import { buildStorageReconciliationAuditSummary } from "./storage-reconciliation-audit";
 
 describe("storage reconciliation provider contract", () => {
   it("paginates and stays dry-run by default", async () => {
@@ -58,6 +59,25 @@ describe("storage reconciliation provider contract", () => {
     expect(result.deleted).toEqual(["workspaces/12/whatsapp/old.png"]);
     expect(result.skippedWithoutEtag).toEqual(["workspaces/12/whatsapp/no-etag.png"]);
     expect(result.metrics).toMatchObject({ dryRun: false, deleted: 1, skippedWithoutEtag: 1 });
+  });
+
+  it("emits redacted metrics to the audit sink", async () => {
+    const store: WorkspaceMediaStore = {
+      list: vi.fn().mockResolvedValue({ objects: [] }),
+      delete: vi.fn(),
+    };
+    const onMetrics = vi.fn().mockResolvedValue(undefined);
+    const result = await reconcileWorkspaceMedia({
+      store,
+      workspaceId: 12,
+      referencedKeys: new Set(["workspaces/12/whatsapp/private-name.png"]),
+      onMetrics,
+    });
+
+    expect(onMetrics).toHaveBeenCalledWith(result.metrics);
+    const summary = buildStorageReconciliationAuditSummary(result.metrics);
+    expect(summary).toContain("run=");
+    expect(summary).not.toContain("private-name.png");
   });
 
   it("fails closed when a provider cursor exceeds the page limit", async () => {

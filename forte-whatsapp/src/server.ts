@@ -68,6 +68,14 @@ export function createServer(registry: InstanceRegistry) {
       }
       if (action === "profile" && req.method === "GET")
         return json(res, 200, await registry.profile(instanceId));
+      if (action === "webhook-secret" && req.method === "PATCH") {
+        const body = await readJson(req);
+        const secret = typeof body.secret === "string" ? body.secret.trim() : "";
+        if (secret.length < 32 || secret.length > 256)
+          return json(res, 400, { error: "webhook_secret_length_invalid" });
+        const status = registry.rotateWebhookSecret(instanceId, secret);
+        return json(res, 200, { success: true, instanceId, status });
+      }
       if (action === "settings" && req.method === "PATCH") {
         const body = await readJson(req);
         let settings;

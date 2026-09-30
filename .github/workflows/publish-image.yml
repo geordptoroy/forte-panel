@@ -33,6 +33,8 @@ jobs:
         run: npm ci
       - name: Typecheck
         run: pnpm check
+      - name: Validate production configuration contract
+        run: NODE_ENV=production DATABASE_URL=postgresql://synthetic.invalid/forte JWT_SECRET=synthetic-jwt-secret-with-at-least-32-characters FORTE_SECURITY_FAIL_CLOSED=true DEMO_MODE=false WORKSPACE_BOOTSTRAP_ENABLED=false pnpm check:production-config
       - name: Tests
         run: pnpm test
       - name: Production build

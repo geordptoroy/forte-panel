@@ -32,6 +32,7 @@ export async function reconcileWorkspaceMedia(input: {
   now?: Date;
   protectionWindowMs?: number;
   maxPages?: number;
+  onMetrics?: (metrics: StorageReconciliationMetrics) => Promise<void>;
 }): Promise<ReconcileStorageResult> {
   const startedAt = Date.now();
   const maxPages = Math.max(1, Math.min(Math.floor(input.maxPages ?? 1000), 10_000));
@@ -71,14 +72,16 @@ export async function reconcileWorkspaceMedia(input: {
   }
 
   const result = { ...classified, deleted, skippedWithoutEtag };
+  const metrics = summarizeStorageReconciliation({
+    workspaceId: input.workspaceId,
+    dryRun: input.dryRun !== false,
+    pages,
+    durationMs: Date.now() - startedAt,
+    result,
+  });
+  if (input.onMetrics) await input.onMetrics(metrics);
   return {
     ...result,
-    metrics: summarizeStorageReconciliation({
-      workspaceId: input.workspaceId,
-      dryRun: input.dryRun !== false,
-      pages,
-      durationMs: Date.now() - startedAt,
-      result,
-    }),
+    metrics,
   };
 }

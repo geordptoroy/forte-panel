@@ -42,7 +42,7 @@ const isEnvelope = (value: unknown): value is OutboxEnvelope => {
 export class WebhookOutbox {
   private readonly directory: string;
   private readonly url: string;
-  private readonly secret: string;
+  private secret: string;
   private readonly maxAttempts: number;
   private readonly initialBackoffMs: number;
   private readonly maxBackoffMs: number;
@@ -71,6 +71,13 @@ export class WebhookOutbox {
       deadLetter: this.deadLetter,
       lastError: this.lastError,
     };
+  }
+
+  setSecret(secret: string) {
+    const normalized = secret.trim();
+    if (normalized.length < 32 || normalized.length > 256)
+      throw new Error("webhook_secret_length_invalid");
+    this.secret = normalized;
   }
 
   async start() {
@@ -179,9 +186,11 @@ export class WebhookOutbox {
       for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
         try {
           const body = JSON.stringify(envelope.payload);
+          const timestamp = String(Math.floor(Date.now() / 1000));
+          const nonce = crypto.randomBytes(18).toString("base64url");
           const signature = `sha256=${crypto
             .createHmac("sha256", this.secret)
-            .update(body)
+            .update(`${timestamp}.${nonce}.${body}`)
             .digest("hex")}`;
           const response = await this.fetchImpl(this.url, {
             method: "POST",
@@ -189,6 +198,8 @@ export class WebhookOutbox {
               "content-type": "application/json",
               "x-webhook-secret": this.secret,
               "x-webhook-signature": signature,
+              "x-webhook-timestamp": timestamp,
+              "x-webhook-nonce": nonce,
             },
             body,
           });
