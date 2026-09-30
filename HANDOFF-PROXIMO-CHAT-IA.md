@@ -109,3 +109,7 @@ O CI PostgreSQL da O5.4 passou no run `36735977815`. A branch `feat/o6.1-tenancy
 ## O6.2 em revisão — backup, restore e retenção
 
 O CI PostgreSQL da O6.1 passou no run `36736288990`, incluindo as provas negativas de tenancy e papéis. A branch `feat/o6.2-backup-restore-retention-proof` adiciona `scripts/backup-restore.test.ts` e inclui `scripts/**/*.test.ts` no Vitest. A suíte executa o script real em diretórios temporários, valida manifesto/hash/pg_restore/tar, rejeita dump adulterado e bloqueia restore sem `CONFIRM_RESTORE=YES`. Localmente 3 testes passaram; retenção PostgreSQL foi pulada sem DATABASE_URL. `pnpm check`, `pnpm build` e `git diff --check` passaram. Não criar backup real nem executar restore destrutivo nesta fatia.
+
+## O6.3 em revisão — browser desktop/mobile e acessibilidade
+
+O CI PostgreSQL da O6.2 passou no run `36736764694`. A branch `feat/o6.3-browser-accessibility-proof` adiciona `client/src/browser-accessibility.contract.test.ts`, cobrindo CORE_ONLY_MODE, redirecionamento de rotas beta, landmarks/labels, dialogs/alerts/progressbar, foco visível e media queries; botões de navegação do Console recebem `type="button"`. Localmente passaram 15 testes frontend; `pnpm check`, `pnpm build` e `git diff --check` passaram. Não declarar smoke browser real/Lighthouse como concluído: staging autenticado desktop/mobile continua pendente e CORE_ONLY_MODE permanece ativo.
