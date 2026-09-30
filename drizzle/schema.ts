@@ -1159,6 +1159,7 @@ export const opportunities = pgTable(
       .notNull()
       .references(() => leads.id, { onDelete: "cascade" }),
     stage: varchar("stage", { length: 80 }).default("Novo contato").notNull(),
+    assignedMemberId: integer("assignedMemberId"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
@@ -1166,6 +1167,11 @@ export const opportunities = pgTable(
     uniqueIndex("opportunities_workspace_lead_unique_idx").on(
       table.workspaceId,
       table.leadId
+    ),
+    index("opportunities_workspace_assignee_updated_idx").on(
+      table.workspaceId,
+      table.assignedMemberId,
+      table.updatedAt
     ),
     index("opportunities_workspace_stage_updated_idx").on(
       table.workspaceId,
@@ -1196,6 +1202,40 @@ export const conversations = pgTable(
     uniqueIndex("conversations_opportunity_unique_idx")
       .on(table.opportunityId)
       .where(sql`${table.opportunityId} IS NOT NULL`),
+  ]
+);
+
+export const opportunityFollowUps = pgTable(
+  "opportunityFollowUps",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    opportunityId: integer("opportunityId").notNull(),
+    title: varchar("title", { length: 180 }).notNull(),
+    dueAt: timestamp("dueAt").notNull(),
+    status: varchar("status", { length: 16 }).default("open").notNull(),
+    createdByUserId: integer("createdByUserId").notNull(),
+    completedByUserId: integer("completedByUserId"),
+    completedAt: timestamp("completedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("opportunity_follow_ups_one_open_unique_idx")
+      .on(table.workspaceId, table.opportunityId)
+      .where(sql`${table.status} = 'open'`),
+    index("opportunity_follow_ups_open_due_idx")
+      .on(table.workspaceId, table.dueAt, table.opportunityId)
+      .where(sql`${table.status} = 'open'`),
+    index("opportunity_follow_ups_history_idx").on(
+      table.workspaceId,
+      table.opportunityId,
+      table.createdAt
+    ),
+    check(
+      "opportunity_follow_ups_status_check",
+      sql`${table.status} in ('open', 'completed')`
+    ),
   ]
 );
 

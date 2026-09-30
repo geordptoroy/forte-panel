@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   auditLogs,
   availability,
+  opportunities,
   professionals,
   professionalServices,
   services,
@@ -321,8 +322,17 @@ export async function setMemberProfile(workspaceId: number, memberId: number, in
     await db.update(users).set({ operationalRole: input.operationalRole, updatedAt: new Date() }).where(eq(users.id, member.userId));
   }
   if (input.active === false) {
-    await db.update(users).set({ sessionVersion: sql`${users.sessionVersion} + 1`, updatedAt: new Date() }).where(eq(users.id, member.userId));
-  }
+      await db.update(users).set({ sessionVersion: sql`${users.sessionVersion} + 1`, updatedAt: new Date() }).where(eq(users.id, member.userId));
+      await db
+        .update(opportunities)
+        .set({ assignedMemberId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(opportunities.workspaceId, workspaceId),
+            eq(opportunities.assignedMemberId, memberId)
+          )
+        );
+    }
   return updated[0];
 }
 

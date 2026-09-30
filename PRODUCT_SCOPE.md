@@ -50,6 +50,10 @@ Baileys é uma biblioteca independente sobre WhatsApp Web/Linked Devices, não a
 
 Uma mensagem individual aceita e recebida ao vivo pode criar/atualizar Lead e Opportunity. Mensagens próprias (`fromMe`), grupos, histórico/backfill, eventos ignorados ou payloads inválidos não devem ser promovidos como novo lead comercial. A migration aditiva faz backfill de contatos individuais existentes sem mover dados entre workspaces.
 
+### Assignment e próxima ação no Inbox
+
+O dono de uma negociação é uma membership ativa do mesmo workspace, armazenada na Opportunity; somente owner, admin ou manager pode atribuir/reatribuir. Um agente não vê opções de outros workspaces nem memberships inativas. Cada Opportunity mantém no máximo uma próxima ação aberta com texto e prazo futuros; membros ativos com acesso ao Inbox podem criar/reagendar/concluir, e cada mudança é auditada. A UI mostra dono, prazo e atraso. Concluir a próxima ação não envia mensagem, não agenda automação e não muda o estágio automaticamente; o operador decide o próximo passo.
+
 ## Módulos de produto
 
 | Módulo | O que resolve | Prioridade |

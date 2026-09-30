@@ -71,6 +71,7 @@ import {
   getContactById,
   getConversationByContact,
   listInboxContacts,
+  listInboxAssignableMembers,
   listProfessionals,
   listMessagesForContact,
   listQuotes,
@@ -82,6 +83,9 @@ import {
   markInAppNotificationRead,
   markWorkspaceInviteSent,
   moveContactStage,
+  assignInboxOpportunity,
+  setOpportunityNextAction,
+  completeOpportunityNextAction,
   renameContact as renameInboxContact,
   PUBLIC_PRIVACY_VERSION,
   PUBLIC_TERMS_VERSION,
@@ -220,6 +224,9 @@ type MappableContact = Omit<
   | "leadId"
   | "opportunityId"
   | "opportunityStage"
+  | "assignedMemberId"
+  | "assignedMemberName"
+  | "nextAction"
 > & {
   awaitingResponse?: boolean;
   needsOperatorResponse?: boolean;
@@ -232,6 +239,9 @@ type MappableContact = Omit<
   leadId?: number | null;
   opportunityId?: number | null;
   opportunityStage?: string | null;
+  assignedMemberId?: number | null;
+  assignedMemberName?: string | null;
+  nextAction?: ContactRow["nextAction"];
 };
 
 const mapContact = (contact: MappableContact) => ({
@@ -254,6 +264,16 @@ const mapContact = (contact: MappableContact) => ({
   service: contact.serviceRequested ?? "Não informado",
   urgency: contact.urgency,
   stage: contact.opportunityStage ?? contact.stage,
+  assignedMemberId:
+    contact.assignedMemberId == null ? null : String(contact.assignedMemberId),
+  assignedMemberName: contact.assignedMemberName ?? null,
+  nextAction: contact.nextAction
+    ? {
+        id: String(contact.nextAction.id),
+        title: contact.nextAction.title,
+        dueAt: contact.nextAction.dueAt.toISOString(),
+      }
+    : null,
   aiEnabled: contact.aiEnabled === 1,
   unread: contact.unreadCount,
   awaitingResponse: contact.awaitingResponse ?? false,
@@ -2878,6 +2898,111 @@ export const appRouter = router({
           input?.includeGroups === true
         );
         return items.map(mapContact);
+      }),
+    assignmentOptions: requireInbox.query(async ({ ctx }) => {
+      const canAssign = ctx.access.canManageCatalog;
+      const members = canAssign
+        ? await listInboxAssignableMembers(ctx.workspace.workspaceId)
+        : [];
+      return {
+        canAssign,
+        members: members.map(member => ({
+          id: String(member.id),
+          name: member.name?.trim() || "Membro sem nome",
+          role: member.role,
+        })),
+      };
+    }),
+    assignOpportunity: requireManager
+      .input(
+        contactIdInput.extend({
+          assignedMemberId: z.number().int().positive().nullable(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const result = await assignInboxOpportunity(
+            ctx.workspace.workspaceId,
+            input.contactId,
+            input.assignedMemberId,
+            ctx.user.id
+          );
+          if (!result)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Opportunity não encontrada neste workspace",
+            });
+          return result;
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          if (error instanceof Error && error.message === "MEMBER_NOT_ASSIGNABLE")
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Escolha um membro ativo deste workspace",
+            });
+          throw error;
+        }
+      }),
+    setNextAction: requireInbox
+      .input(
+        contactIdInput.extend({
+          title: z.string().trim().min(3).max(180),
+          dueAt: z.string().datetime({ offset: true }),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const result = await setOpportunityNextAction(
+            ctx.workspace.workspaceId,
+            input.contactId,
+            { title: input.title, dueAt: new Date(input.dueAt) },
+            ctx.user.id
+          );
+          if (!result)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Opportunity não encontrada neste workspace",
+            });
+          return {
+            id: String(result.id),
+            title: result.title,
+            dueAt: result.dueAt.toISOString(),
+          };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          if (
+            error instanceof Error &&
+            error.message === "INVALID_NEXT_ACTION_DUE_AT"
+          )
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Escolha uma data e hora futuras para a próxima ação",
+            });
+          if (
+            error instanceof Error &&
+            error.message === "INVALID_NEXT_ACTION_TITLE"
+          )
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Descreva a próxima ação com 3 a 180 caracteres",
+            });
+          throw error;
+        }
+      }),
+    completeNextAction: requireInbox
+      .input(contactIdInput)
+      .mutation(async ({ input, ctx }) => {
+        const result = await completeOpportunityNextAction(
+          ctx.workspace.workspaceId,
+          input.contactId,
+          ctx.user.id
+        );
+        if (!result)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Opportunity não encontrada neste workspace",
+          });
+        return result;
       }),
     renameContact: requireInbox
       .input(contactIdInput.extend({ name: z.string().trim().min(2).max(160) }))

@@ -8,9 +8,12 @@ import {
   leads,
   messages,
   opportunities,
+  opportunityFollowUps,
+  users,
   whatsappGroupParticipants,
   whatsappGroups,
   whatsappInstances,
+  workspaceMembers,
   workspaces,
 } from "../drizzle/schema";
 import {
@@ -18,13 +21,18 @@ import {
   getConversationByContact,
   ingestInboundWhatsApp,
   listInboxContacts,
+  listInboxAssignableMembers,
   listMessagesForContact,
+  assignInboxOpportunity,
+  completeOpportunityNextAction,
+  setOpportunityNextAction,
   moveContactStage,
   queueOutboundMessage,
   renameContact,
   sendManualMessage,
   upsertApiContact,
 } from "./db";
+import { setMemberProfile } from "./workspace";
 
 const hasDatabase = Boolean(
   process.env.DATABASE_URL && /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL)
@@ -57,6 +65,7 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
   const groupContactIds: number[] = [];
   const groupConversationIds: number[] = [];
   const messageIds: number[] = [];
+  const testMemberUserIds: number[] = [];
 
   beforeAll(async () => {
     const db = await getDb();
@@ -256,6 +265,12 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
       await db
         .delete(opportunities)
         .where(inArray(opportunities.workspaceId, workspaceIds));
+    if (workspaceIds.length)
+      await db
+        .delete(workspaceMembers)
+        .where(inArray(workspaceMembers.workspaceId, workspaceIds));
+    if (testMemberUserIds.length)
+      await db.delete(users).where(inArray(users.id, testMemberUserIds));
     if (workspaceIds.length)
       await db.delete(leads).where(inArray(leads.workspaceId, workspaceIds));
     if (contactIds.length)
@@ -1004,5 +1019,253 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
       apiContact.id
     );
     expect(apiConversation?.opportunityId).toBe(apiOpportunity.id);
+  });
+
+  it("assigns an active member and persists one workspace-scoped next action", async () => {
+    const db = await getDb();
+    if (!db) throw new Error("database unavailable");
+    const insertedUsers = await db
+      .insert(users)
+      .values([
+        { openId: `o32-a-${suffix}`, name: "Agente O3.2 A", loginMethod: "test" },
+        { openId: `o32-b-${suffix}`, name: "Agente O3.2 B", loginMethod: "test" },
+        { openId: `o32-inactive-${suffix}`, name: "Agente inativo", loginMethod: "test" },
+      ])
+      .returning({ id: users.id });
+    testMemberUserIds.push(...insertedUsers.map(user => user.id));
+    const insertedMembers = await db
+      .insert(workspaceMembers)
+      .values([
+        {
+          workspaceId: workspaceAId,
+          userId: insertedUsers[0]!.id,
+          role: "manager",
+          active: 1,
+        },
+        {
+          workspaceId: workspaceBId,
+          userId: insertedUsers[1]!.id,
+          role: "manager",
+          active: 1,
+        },
+        {
+          workspaceId: workspaceAId,
+          userId: insertedUsers[2]!.id,
+          role: "agent",
+          active: 0,
+        },
+      ])
+      .returning({ id: workspaceMembers.id });
+    const memberAId = insertedMembers[0]!.id;
+    const memberBId = insertedMembers[1]!.id;
+    const inactiveMemberAId = insertedMembers[2]!.id;
+    const phone = `551225${suffix.slice(-8)}`;
+    const inbound = {
+      phone,
+      name: "Lead O3.2",
+      content: "Preciso de um orçamento",
+      messageType: "text" as const,
+      receivedAt: new Date(),
+    };
+    await ingestInboundWhatsApp(workspaceAId, {
+      ...inbound,
+      eventId: `o32-workspace-a-${suffix}`,
+      metadata: {
+        provider: "baileys",
+        instanceId: instanceA1,
+        jid: `${phone}@s.whatsapp.net`,
+        upsertType: "notify",
+      },
+    });
+    await ingestInboundWhatsApp(workspaceBId, {
+      ...inbound,
+      eventId: `o32-workspace-b-${suffix}`,
+      metadata: {
+        provider: "baileys",
+        instanceId: instanceB1,
+        jid: `${phone}@s.whatsapp.net`,
+        upsertType: "notify",
+      },
+    });
+    const contactA = (
+      await db
+        .select()
+        .from(contacts)
+        .where(
+          and(
+            eq(contacts.workspaceId, workspaceAId),
+            eq(contacts.externalPhone, phone)
+          )
+        )
+        .limit(1)
+    )[0]!;
+    const contactB = (
+      await db
+        .select()
+        .from(contacts)
+        .where(
+          and(
+            eq(contacts.workspaceId, workspaceBId),
+            eq(contacts.externalPhone, phone)
+          )
+        )
+        .limit(1)
+    )[0]!;
+
+    const availableA = await listInboxAssignableMembers(workspaceAId);
+    expect(availableA.map(member => member.id)).toContain(memberAId);
+    expect(availableA.map(member => member.id)).not.toContain(memberBId);
+    expect(availableA.map(member => member.id)).not.toContain(inactiveMemberAId);
+    await expect(
+      assignInboxOpportunity(
+        workspaceAId,
+        contactA.id,
+        memberBId,
+        insertedUsers[0]!.id
+      )
+    ).rejects.toThrow("MEMBER_NOT_ASSIGNABLE");
+    await expect(
+      assignInboxOpportunity(
+        workspaceAId,
+        contactA.id,
+        inactiveMemberAId,
+        insertedUsers[0]!.id
+      )
+    ).rejects.toThrow("MEMBER_NOT_ASSIGNABLE");
+    expect(
+      await assignInboxOpportunity(
+        workspaceAId,
+        contactB.id,
+        memberAId,
+        insertedUsers[0]!.id
+      )
+    ).toBeUndefined();
+
+    const firstDueAt = new Date(Date.now() + 30 * 60_000);
+    const firstAction = await setOpportunityNextAction(
+      workspaceAId,
+      contactA.id,
+      { title: "Retornar com orçamento", dueAt: firstDueAt },
+      insertedUsers[0]!.id
+    );
+    if (!firstAction) throw new Error("O3.2 next action was not saved");
+    const nextDueAt = new Date(Date.now() + 45 * 60_000);
+    const rescheduledAction = await setOpportunityNextAction(
+      workspaceAId,
+      contactA.id,
+      { title: "Confirmar o orçamento", dueAt: nextDueAt },
+      insertedUsers[0]!.id
+    );
+    expect(rescheduledAction?.id).toBe(firstAction.id);
+    expect(rescheduledAction?.title).toBe("Confirmar o orçamento");
+    await expect(
+      setOpportunityNextAction(
+        workspaceAId,
+        contactA.id,
+        { title: "Prazo no passado", dueAt: new Date(Date.now() - 60_000) },
+        insertedUsers[0]!.id
+      )
+    ).rejects.toThrow("INVALID_NEXT_ACTION_DUE_AT");
+    await expect(
+      setOpportunityNextAction(
+        workspaceAId,
+        contactB.id,
+        { title: "Ação indevida", dueAt: nextDueAt },
+        insertedUsers[0]!.id
+      )
+    ).resolves.toBeUndefined();
+
+    const projectedA = (await listInboxContacts(workspaceAId)).find(
+      row => row.id === contactA.id
+    );
+    expect(projectedA).toMatchObject({
+      assignedMemberId: memberAId,
+      assignedMemberName: "Agente O3.2 A",
+      nextAction: {
+        id: firstAction.id,
+        title: "Confirmar o orçamento",
+      },
+    });
+    expect(projectedA?.nextAction?.dueAt.getTime()).toBe(nextDueAt.getTime());
+    const projectedB = (await listInboxContacts(workspaceBId)).find(
+      row => row.id === contactB.id
+    );
+    expect(projectedB).toMatchObject({
+      assignedMemberId: null,
+      assignedMemberName: null,
+      nextAction: null,
+    });
+    expect(
+      await db
+        .select()
+        .from(opportunityFollowUps)
+        .where(eq(opportunityFollowUps.workspaceId, workspaceBId))
+    ).toHaveLength(0);
+
+    expect(
+      await completeOpportunityNextAction(
+        workspaceAId,
+        contactA.id,
+        insertedUsers[0]!.id
+      )
+    ).toMatchObject({ completed: true, followUpId: firstAction.id });
+    expect(
+      await completeOpportunityNextAction(
+        workspaceAId,
+        contactA.id,
+        insertedUsers[0]!.id
+      )
+    ).toEqual({ completed: false });
+    const completedRows = await db
+      .select()
+      .from(opportunityFollowUps)
+      .where(
+        and(
+          eq(opportunityFollowUps.workspaceId, workspaceAId),
+          eq(opportunityFollowUps.opportunityId, firstAction.opportunityId)
+        )
+      );
+    expect(completedRows).toHaveLength(1);
+    expect(completedRows[0]).toMatchObject({
+      id: firstAction.id,
+      status: "completed",
+      completedByUserId: insertedUsers[0]!.id,
+    });
+    expect(
+      (await listInboxContacts(workspaceAId)).find(row => row.id === contactA.id)
+        ?.nextAction
+    ).toBeNull();
+    const auditRows = await db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(
+          eq(auditLogs.workspaceId, workspaceAId),
+          eq(auditLogs.contactId, contactA.id)
+        )
+      );
+    const auditActions = auditRows.map(row => row.action);
+    expect(auditActions).toHaveLength(4);
+    expect(auditActions).toEqual(
+      expect.arrayContaining([
+        "opportunity_assigned",
+        "opportunity_next_action_created",
+        "opportunity_next_action_rescheduled",
+        "opportunity_next_action_completed",
+      ])
+    );
+    const disabledMember = await setMemberProfile(workspaceAId, memberAId, {
+      active: false,
+    });
+    expect(disabledMember?.active).toBe(0);
+    const opportunityAfterDisable = (
+      await db
+        .select()
+        .from(opportunities)
+        .where(eq(opportunities.id, firstAction.opportunityId))
+        .limit(1)
+    )[0]!;
+    expect(opportunityAfterDisable.assignedMemberId).toBeNull();
+    expect(opportunityAfterDisable.workspaceId).toBe(workspaceAId);
   });
 });
