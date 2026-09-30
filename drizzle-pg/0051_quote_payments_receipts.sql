@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS "quotePayments" (
 
 CREATE INDEX IF NOT EXISTS "quote_payments_workspace_quote_idx"
   ON "quotePayments" ("workspaceId", "quoteId", "receivedAt", "id");
+CREATE UNIQUE INDEX IF NOT EXISTS "quote_payments_workspace_id_unique_idx"
+  ON "quotePayments" ("workspaceId", "id");
 
 CREATE TABLE IF NOT EXISTS "quoteReceipts" (
   "id" serial PRIMARY KEY,

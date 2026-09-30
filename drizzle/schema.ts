@@ -1526,6 +1526,10 @@ export const quotePayments = pgTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => [
+    uniqueIndex("quote_payments_workspace_id_unique_idx").on(
+      table.workspaceId,
+      table.id
+    ),
     index("quote_payments_workspace_quote_idx").on(
       table.workspaceId,
       table.quoteId,
