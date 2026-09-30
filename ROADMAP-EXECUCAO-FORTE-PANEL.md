@@ -106,8 +106,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O6.2 | Confiabilidade | Backup, restore e retenção | **CONCLUÍDA (código + CI PostgreSQL)** | PR #23 aberta; run `36736764694` passou; restore persistente em ambiente limpo continua pendente |
 | O6.3 | Confiabilidade | Browser desktop/mobile e acessibilidade | **CONCLUÍDA (código + CI PostgreSQL)** | PR #24 aberta; run `36737154671` passou; smoke autenticado de staging continua pendente |
 | O7.1 | Monetização | Plano, quota e cobrança SaaS separados | **CONCLUÍDA (código + CI PostgreSQL)** | PR #25 aberta; run `36737881060` passou; checkout/billing real continuam desativados |
-| O7.2 | Monetização | Trial, upgrade, downgrade, cancelamento e retenção | **EM REVISÃO (código local)** | Branch `feat/o7.2-saas-subscription-lifecycle`; máquina de estados auditável e catálogo read-only; provider de billing ainda não configurado |
-| O7.3 | Escala | Observabilidade, incidentes e release público | PENDENTE | Abertura controlada sem dependência manual |
+| O7.2 | Monetização | Trial, upgrade, downgrade, cancelamento e retenção | **CONCLUÍDA (código + CI PostgreSQL)** | PR #26 aberta; run `36738425579` passou; provider de billing ainda não configurado |
+| O7.3 | Escala | Observabilidade, incidentes e release público | **EM REVISÃO (código + Docker local parcial)** | PR #27; CI `36738759085` passou; Docker local validou health/readiness, migrations, pareamento, inbound e outbound; 5 eventos históricos na outbox ainda reportam `webhook_http_400`; staging/release público permanecem bloqueados |
 | A1 | Adiado | TTS, múltiplos canais e automações genéricas | ADIADA | Só após o núcleo gerar valor recorrente |
 
 ---
