@@ -66,6 +66,7 @@ import {
   type AgentProviderSettings,
 } from "./llm-providers";
 import { validateInteractiveMessage } from "./interactive-messages";
+import { buildSaaSBillingBoundary } from "./saas-billing";
 
 export type PlatformPermission =
   | "platform_admin"
@@ -1809,7 +1810,7 @@ export async function getPlatformWorkspaceGovernance(workspaceId: number) {
     workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug, plan: workspace.plan, status: workspace.status, active: workspace.active === 1 },
     quotas: { plan: usage.plan, bucketStart: usage.bucketStart.toISOString(), resetsAt: usage.resetsAt.toISOString(), workspace: usage.workspace, users: usage.users },
     retention: { usageDays: usageRetentionDays, onboarding: onboarding.retention, policyVersion: onboarding.policyVersion },
-    billing: { managedSeparately: true, status: "not_configured" as const },
+    billing: buildSaaSBillingBoundary(workspace.plan, usage.workspace),
   };
 }
 export async function setPlatformWorkspaceRetention(input: { platformAdminId: number; workspaceId: number; supportSessionId: number; rawArtifactDays: number; derivedDataDays: number; reason: string }) {

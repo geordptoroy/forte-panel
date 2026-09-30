@@ -113,3 +113,7 @@ O CI PostgreSQL da O6.1 passou no run `36736288990`, incluindo as provas negativ
 ## O6.3 em revisão — browser desktop/mobile e acessibilidade
 
 O CI PostgreSQL da O6.2 passou no run `36736764694`. A branch `feat/o6.3-browser-accessibility-proof` adiciona `client/src/browser-accessibility.contract.test.ts`, cobrindo CORE_ONLY_MODE, redirecionamento de rotas beta, landmarks/labels, dialogs/alerts/progressbar, foco visível e media queries; botões de navegação do Console recebem `type="button"`. Localmente passaram 15 testes frontend; `pnpm check`, `pnpm build` e `git diff --check` passaram. Não declarar smoke browser real/Lighthouse como concluído: staging autenticado desktop/mobile continua pendente e CORE_ONLY_MODE permanece ativo.
+
+## O7.1 em revisão — fronteira de billing SaaS
+
+O CI PostgreSQL da O6.3 passou no run `36737154671`. A branch `feat/o7.1-saas-billing-boundary` adiciona `server/saas-billing.ts`, testes de contrato e a rota read-only `platform.saasBillingBoundary`; `workspaceGovernance.billing` agora usa a mesma fronteira. Plano técnico/quota, custo de provider (`agent_outcome_metrics`), receita operacional (quotes/payments) e cobrança SaaS ficam separados. Billing SaaS permanece `not_configured`, sem preço, moeda ou checkout. 15 testes focados, `pnpm check`, `pnpm build` e `git diff --check` passaram. Não integrar pagamento nesta fatia.

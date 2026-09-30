@@ -104,8 +104,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O5.4 | Admin | Quotas, planos, retenção e lifecycle | **CONCLUÍDA (código + CI PostgreSQL)** | PR #21 aberta; run `36735977815` passou; staging e revisão final continuam pendentes |
 | O6.1 | Confiabilidade | Testes negativos de tenancy e papéis | **CONCLUÍDA (código + CI PostgreSQL)** | PR #22 aberta; run `36736288990` passou; staging e revisão final continuam pendentes |
 | O6.2 | Confiabilidade | Backup, restore e retenção | **CONCLUÍDA (código + CI PostgreSQL)** | PR #23 aberta; run `36736764694` passou; restore persistente em ambiente limpo continua pendente |
-| O6.3 | Confiabilidade | Browser desktop/mobile e acessibilidade | **EM REVISÃO (código local)** | Branch `feat/o6.3-browser-accessibility-proof`; contratos core, teclado, semântica e responsividade; smoke staging ainda pendente |
-| O7.1 | Monetização | Plano, quota e cobrança SaaS separados | PENDENTE | Limite técnico não é billing |
+| O6.3 | Confiabilidade | Browser desktop/mobile e acessibilidade | **CONCLUÍDA (código + CI PostgreSQL)** | PR #24 aberta; run `36737154671` passou; smoke autenticado de staging continua pendente |
+| O7.1 | Monetização | Plano, quota e cobrança SaaS separados | **EM REVISÃO (código local)** | Branch `feat/o7.1-saas-billing-boundary`; catálogo read-only e separação de custos; checkout/billing real continuam desativados |
 | O7.2 | Monetização | Trial, upgrade, downgrade, cancelamento e retenção | PENDENTE | Ciclo comercial do próprio Forte Panel |
 | O7.3 | Escala | Observabilidade, incidentes e release público | PENDENTE | Abertura controlada sem dependência manual |
 | A1 | Adiado | TTS, múltiplos canais e automações genéricas | ADIADA | Só após o núcleo gerar valor recorrente |
