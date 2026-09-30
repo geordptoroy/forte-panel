@@ -81,3 +81,11 @@ A branch `feat/o7.4-webhook-history-reconciliation` deve ser criada sobre `feat/
 Validação no Sandbox: `pnpm exec vitest run server/baileys-webhook-policy.test.ts` passou com 4 testes; `pnpm check`, `pnpm build` e `git diff --check` passaram. A suíte ampla passou 230 testes e ignorou 73, mas falhou em 7 arquivos do subprojeto `forte-whatsapp` por dependências ausentes (`baileys`, `pino`, `qrcode`) e pelo patch pinned. A confirmação dos cinco arquivos históricos reais precisa ser feita no Docker do usuário, preservando volumes; não apagar sessão nem usar secrets.
 
 Entrega: `O7.4-ENTREGA-RECONCILIACAO-HISTORICO-WEBHOOK.md`.
+
+## 38. O7.5 — Dead-letter para falhas permanentes do webhook — 2026-09-30
+
+A branch `feat/o7.5-webhook-dead-letter` será criada sobre `feat/o7.4-webhook-history-reconciliation`, sem merge automático. A `WebhookOutbox` mantém retries para 5xx, timeout, rede, 408 e 429; outros 4xx são classificados como permanentes e movidos para `outbox/dead-letter/` com envelope, tentativas, erro, timestamp e motivo. O diretório não é reprocessado como fila ativa e nenhum dado é apagado de forma destrutiva.
+
+Validação: `npm exec vitest run src/webhook-outbox.test.ts` passou com 3 testes; `npm run check` e `npm run build` do gateway passaram; `pnpm check` do Panel e `git diff --check` passaram. `npm ci` aplicou o patch Baileys fixado e reportou vulnerabilidades existentes; não foi executado `npm audit fix --force`. Docker/staging e sessão real não foram alterados.
+
+Entrega: `O7.5-ENTREGA-DLQ-WEBHOOK.md`.

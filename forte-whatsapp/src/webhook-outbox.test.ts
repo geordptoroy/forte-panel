@@ -86,4 +86,38 @@ describe("durable webhook outbox", () => {
 
     expect((await fs.readdir(directory)).filter(file => file.endsWith(".json"))).toHaveLength(0);
   });
+
+  it("moves a permanent HTTP 4xx failure to dead letter without retrying", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "forte-outbox-"));
+    directories.push(directory);
+    const fetchImpl = vi.fn(async () => new Response("invalid", { status: 400 }));
+    const outbox = new WebhookOutbox({
+      directory,
+      url: "https://panel.example/webhook",
+      secret: "secret",
+      maxAttempts: 8,
+      initialBackoffMs: 20,
+      maxBackoffMs: 20,
+      fetchImpl,
+      logger,
+    });
+
+    await outbox.start();
+    await outbox.enqueue({ eventId: "event-permanent-4xx", content: "invalid" });
+    await waitFor(() => fetchImpl.mock.calls.length === 1);
+    await waitFor(async () => {
+      const deadLetter = path.join(directory, "dead-letter");
+      return (await fs.readdir(deadLetter).catch(() => [])).length === 1;
+    });
+    await outbox.stop();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect((await fs.readdir(directory)).filter(file => file.endsWith(".json"))).toHaveLength(0);
+    const deadLetter = path.join(directory, "dead-letter");
+    const [file] = await fs.readdir(deadLetter);
+    await expect(fs.readFile(path.join(deadLetter, file), "utf8")).resolves.toContain(
+      '"quarantineReason":"permanent_webhook_failure"'
+    );
+    expect(outbox.getStatus().pending).toBe(0);
+  });
 });

@@ -191,6 +191,14 @@ export class WebhookOutbox {
             ).toISOString(),
           };
           this.lastError = message;
+          if (isPermanentWebhookError(message)) {
+            await this.quarantine(file, "permanent_webhook_failure", envelope);
+            this.logger.warn(
+              { file, attempts: envelope.attempts, error: message },
+              "inbound webhook moved to dead letter"
+            );
+            return;
+          }
           if (attempt < this.maxAttempts) {
             await sleep(Math.min(this.maxBackoffMs, this.initialBackoffMs * 2 ** (attempt - 1)));
             continue;
@@ -214,7 +222,26 @@ export class WebhookOutbox {
     }
   }
 
-  private async quarantine(file: string, reason: string) {
+  private async quarantine(
+    file: string,
+    reason: string,
+    envelope?: OutboxEnvelope
+  ) {
+    if (envelope) {
+      const directory = path.join(this.directory, "dead-letter");
+      await fs.mkdir(directory, { recursive: true });
+      const target = path.join(
+        directory,
+        `${path.basename(file, ".json")}.${reason}.json`
+      );
+      await writeJsonAtomically(target, {
+        ...envelope,
+        quarantinedAt: new Date().toISOString(),
+        quarantineReason: reason,
+      });
+      await fs.unlink(file).catch(() => undefined);
+      return;
+    }
     const target = `${file}.${reason}.${Date.now()}`;
     await fs.rename(file, target).catch(() => undefined);
     this.logger.error({ file, reason }, "invalid inbound webhook outbox item quarantined");
@@ -229,4 +256,11 @@ async function writeJsonAtomically(file: string, value: unknown) {
 
 function sleep(ms: number) {
   return new Promise<void>(resolve => setTimeout(resolve, ms));
+}
+
+function isPermanentWebhookError(message: string) {
+  const match = /^webhook_http_(\d{3})$/.exec(message);
+  if (!match) return false;
+  const status = Number(match[1]);
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
