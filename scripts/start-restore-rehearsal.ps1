@@ -36,22 +36,12 @@ Set-Content -Path $baseComposeFile -Value $baseCompose -Encoding utf8
 
 $override = @"
 services:
-  postgres_panel:
-    container_name: null
-  redis_panel:
-    container_name: null
-  forte-panel-migrations:
-    container_name: null
   forte-panel:
-    container_name: null
     ports:
       - "127.0.0.1:$PanelPort`:3000"
     environment:
       FORTE_PUBLIC_API_ENABLED: "false"
-  forte-panel-worker:
-    container_name: null
   forte-whatsapp:
-    container_name: null
     ports:
       - "127.0.0.1:$BaileysPort`:3010"
 
