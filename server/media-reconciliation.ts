@@ -7,6 +7,7 @@ const WORKSPACE_MEDIA_PREFIXES = [
 export type StorageObjectCandidate = {
   key: string;
   lastModifiedAt: Date;
+  etag?: string;
 };
 
 export type MediaReconciliationResult = {
