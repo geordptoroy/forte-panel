@@ -7,6 +7,9 @@ type FakeStatus = {
   instanceName: string;
   status: string;
   qr: string | null;
+  webhookOutboxPending?: number;
+  webhookOutboxDeadLetter?: number;
+  webhookLastError?: string;
   settings: {
     rejectCalls: boolean;
     rejectGroups: boolean;
@@ -64,6 +67,9 @@ function saveStatus(instanceId: string, instanceName = `WhatsApp · ${instanceId
       logCalls: true,
       ignoreStatusUpdates: true,
     },
+    webhookOutboxPending: 2,
+    webhookOutboxDeadLetter: 5,
+    webhookLastError: "webhook_http_400",
   };
   statusById.set(instanceId, status);
   managerById.set(instanceId, { getStatus: () => statusById.get(instanceId)! });
@@ -143,7 +149,14 @@ describe("Baileys gateway HTTP contract", () => {
 
     const ready = await fetch(`${baseUrl}/ready`);
     expect(ready.status).toBe(200);
-    await expect(ready.json()).resolves.toMatchObject({ status: "ready" });
+    await expect(ready.json()).resolves.toMatchObject({
+      status: "ready",
+      instance: {
+        webhookOutboxPending: 2,
+        webhookOutboxDeadLetter: 5,
+        webhookLastError: "webhook_http_400",
+      },
+    });
   });
 
   it("protects operational routes with the gateway API key", async () => {

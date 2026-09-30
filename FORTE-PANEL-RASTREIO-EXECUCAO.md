@@ -40,19 +40,23 @@ Validação: 5 testes da outbox passaram; `npm run check`, `pnpm check` e `git d
 
 ### C2 — Auditoria de contratos e superfícies de operação
 
-**Estado:** pendente.
+**Estado:** concluído nesta rodada.
 
 Revisar contratos de `/ready`, snapshot de instância, outbox, documentação Docker, logs seguros e comandos de operação. Corrigir inconsistências somente quando houver teste ou evidência concreta.
 
+Resultado: foi adicionada regressão HTTP garantindo que `/ready` preserve `webhookOutboxPending`, `webhookOutboxDeadLetter` e `webhookLastError`.
+
 ### C3 — Cobertura de falhas de restart e recuperação
 
-**Estado:** pendente.
+**Estado:** concluído nesta rodada.
 
 Adicionar testes determinísticos para restart com fila ativa, dead-letter existente e diretório ausente, sem alterar o volume real do usuário.
 
+Validação: 6 testes da outbox e 16 testes HTTP do gateway passaram; typechecks do gateway e Panel passaram.
+
 ### C4 — Revisão final de integração
 
-**Estado:** pendente.
+**Estado:** em execução.
 
 Rodar a suíte completa, CI PostgreSQL, testes do gateway, build das imagens e smoke Docker. Consolidar falhas em uma lista única antes de refatorar.
 

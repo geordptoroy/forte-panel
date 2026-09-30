@@ -157,4 +157,46 @@ describe("durable webhook outbox", () => {
     expect(outbox.getStatus().deadLetter).toBe(0);
     expect(await fs.readdir(path.join(directory, "dead-letter")).catch(() => [])).toHaveLength(0);
   });
+
+  it("recovers a pending file while preserving an existing dead letter", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "forte-outbox-"));
+    directories.push(directory);
+    const deadLetter = path.join(directory, "dead-letter");
+    await fs.mkdir(deadLetter, { recursive: true });
+    await fs.writeFile(
+      path.join(deadLetter, "previous.permanent_webhook_failure.json"),
+      JSON.stringify({ quarantineReason: "permanent_webhook_failure" })
+    );
+    await fs.writeFile(
+      path.join(directory, "pending.json"),
+      JSON.stringify({
+        payload: { eventId: "event-recovered", content: "recover" },
+        attempts: 0,
+        nextAttemptAt: new Date(0).toISOString(),
+        createdAt: new Date().toISOString(),
+      })
+    );
+    const fetchImpl = vi.fn(async () => new Response("ok", { status: 202 }));
+    const outbox = new WebhookOutbox({
+      directory,
+      url: "https://panel.example/webhook",
+      secret: "secret",
+      fetchImpl,
+      logger,
+    });
+
+    await outbox.start();
+    await waitFor(() => fetchImpl.mock.calls.length === 1);
+    await waitFor(
+      async () =>
+        (await fs.readdir(directory)).filter(file => file.endsWith(".json")).length === 0
+    );
+    await outbox.stop();
+
+    expect(outbox.getStatus().pending).toBe(0);
+    expect(outbox.getStatus().deadLetter).toBe(1);
+    expect(await fs.readdir(deadLetter)).toEqual([
+      "previous.permanent_webhook_failure.json",
+    ]);
+  });
 });
