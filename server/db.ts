@@ -56,6 +56,7 @@ import {
   services,
   users,
   webhookEvents,
+  workerHeartbeats,
   whatsappChannels,
   whatsappGroupParticipants,
   whatsappGroups,
@@ -6137,6 +6138,8 @@ export async function getDashboardSnapshot(workspaceId: number) {
       appointmentsToday: 0,
       receivedMonthCents: 0,
       pendingCents: 0,
+      decisions: [],
+      channelHealth: { status: "not_configured", activeChannels: 0, worker: "unknown" },
       recentEvents: [],
       upcomingAppointments: [],
     };
@@ -6165,8 +6168,17 @@ export async function getDashboardSnapshot(workspaceId: number) {
           .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
           .limit(8);
   const now = new Date();
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
+  const dayBounds = getLocalDayBounds(now, workspace.timezone);
+  const startOfToday = dayBounds.start;
+  const endOfToday = dayBounds.end;
+  const monthStart = new Date(startOfToday);
+  monthStart.setUTCDate(1);
+  const [channelRows, workerRows, receiptRows, pendingApprovalRows] = await Promise.all([
+    db.select({ active: whatsappChannels.active }).from(whatsappChannels).where(eq(whatsappChannels.workspaceId, workspaceId)),
+    db.select({ status: workerHeartbeats.status, observedAt: workerHeartbeats.observedAt, intervalMs: workerHeartbeats.intervalMs }).from(workerHeartbeats).where(eq(workerHeartbeats.service, "forte-panel-worker")).limit(1),
+    db.select({ amountCents: quotePayments.amountCents }).from(quotePayments).where(and(eq(quotePayments.workspaceId, workspaceId), gte(quotePayments.receivedAt, monthStart), lt(quotePayments.receivedAt, now))),
+    db.select({ id: quotes.id }).from(quotes).where(and(eq(quotes.workspaceId, workspaceId), eq(quotes.approvalStatus, "pending"))),
+  ]);
   const activeAppointments = workspaceAppointments.filter(
     appointment => appointment.status !== "cancelled"
   );
@@ -6193,10 +6205,21 @@ export async function getDashboardSnapshot(workspaceId: number) {
       appointment =>
         appointment.startsAt >= startOfToday &&
         appointment.startsAt <
-          new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000)
+          endOfToday
     ).length,
-    receivedMonthCents: 0,
+    receivedMonthCents: receiptRows.reduce((total, row) => total + row.amountCents, 0),
     pendingCents,
+    decisions: [
+      { key: "awaiting_response", label: "Responder contatos", count: workspaceContacts.filter(contact => contact.awaitingResponse).length, href: "/inbox", tone: "amber" },
+      { key: "urgent", label: "Tratar urgências", count: workspaceContacts.filter(contact => (contact.urgency === "Alta" || contact.urgency === "Crítica") && (contact.opportunityStage ?? contact.stage) !== "Concluído").length, href: "/kanban", tone: "red" },
+      { key: "quote_approval", label: "Aprovar orçamentos", count: pendingApprovalRows.length, href: "/billing", tone: "blue" },
+      { key: "today_appointments", label: "Operar agenda de hoje", count: activeAppointments.filter(appointment => appointment.startsAt >= startOfToday && appointment.startsAt < endOfToday && appointment.status === "requested").length, href: "/agenda", tone: "green" },
+    ],
+    channelHealth: {
+      status: channelRows.length === 0 ? "not_configured" : channelRows.some(channel => channel.active === 1) ? "ready" : "attention",
+      activeChannels: channelRows.filter(channel => channel.active === 1).length,
+      worker: workerRows[0] ? (Date.now() - workerRows[0].observedAt.getTime() > Math.max(workerRows[0].intervalMs * 3, 180000) ? "stale" : workerRows[0].status) : "unknown",
+    },
     recentEvents,
     upcomingAppointments: activeAppointments
       .filter(appointment => appointment.startsAt >= now)

@@ -237,7 +237,7 @@ export function DashboardPage() {
     <PanelLayout
       eyebrow="Operação / Overview"
       title="Dashboard"
-      description="Acompanhe o atendimento do Gabriel em um único lugar."
+      description="Veja o que precisa de atenção hoje, a receita realizada e a saúde do canal."
     >
       <div className="stat-grid">
         <PageLink href="/contacts">
@@ -313,6 +313,29 @@ export function DashboardPage() {
           />
         </PageLink>
       </div>
+      <section className="surface" style={{ padding: 18, marginTop: 20 }}>
+        <SectionTitle eyebrow="Prioridade operacional" title="Decisões do dia" />
+        <div className="dashboard-decision-grid">
+          {(snapshot?.decisions ?? []).map(decision => (
+            <PageLink href={decision.href} className="dashboard-decision" key={decision.key}>
+              <div>
+                <strong>{decision.label}</strong>
+                <small>{decision.count === 0 ? "Nenhuma pendência" : `${decision.count} pendência(s)`}</small>
+              </div>
+              <StatusBadge tone={decision.count === 0 ? "green" : decision.tone as "amber" | "red" | "blue" | "green"}>{String(decision.count).padStart(2, "0")}</StatusBadge>
+            </PageLink>
+          ))}
+          <div className="dashboard-decision">
+            <div>
+              <strong>Saúde do canal</strong>
+              <small>{snapshot?.channelHealth?.activeChannels ?? 0} canal(is) ativo(s) · worker {snapshot?.channelHealth?.worker ?? "unknown"}</small>
+            </div>
+            <StatusBadge tone={snapshot?.channelHealth?.status === "ready" ? "green" : "amber"}>
+              {snapshot?.channelHealth?.status === "ready" ? "Operando" : snapshot?.channelHealth?.status === "attention" ? "Atenção" : "Configurar"}
+            </StatusBadge>
+          </div>
+        </div>
+      </section>
       {onboardingSession && onboardingSession.status !== "completed" && (
         <section
           className="surface"
