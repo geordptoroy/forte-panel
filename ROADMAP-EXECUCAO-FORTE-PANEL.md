@@ -299,7 +299,7 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 | Base auditada | `cad2b8a` |
 | Próxima fatia | `P0.1` |
 | Última fatia concluída por este roadmap | nenhuma |
-| Último commit deste roadmap | será registrado após publicação |
+| Último commit deste roadmap | `19b6ccd` — `docs: establish executable public product roadmap` |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.
