@@ -21,6 +21,7 @@ import { useLocation } from "wouter";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 import { formatServicePrice, type ServicePriceType } from "../../../shared/service-price";
+import { onboardingReviewExamples, type OnboardingSimulationResult } from "../../../shared/onboarding-simulation";
 
 type Profile = {
   businessName: string;
@@ -143,6 +144,8 @@ export default function OnboardingPage() {
   const metricsQuery = trpc.onboarding.metrics.useQuery({ windowDays: 30 });
   const versionsQuery = trpc.onboarding.versions.useQuery();
   const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [simulationResult, setSimulationResult] = useState<OnboardingSimulationResult | null>(null);
+  const [simulationMessage, setSimulationMessage] = useState("");
   const [serviceName, setServiceName] = useState("");
   const [serviceDescription, setServiceDescription] = useState("");
   const [serviceDuration, setServiceDuration] = useState("60");
@@ -168,6 +171,10 @@ export default function OnboardingPage() {
     onError: () => setAutosaveState("error"),
   });
   const confirmStep = trpc.onboarding.confirmStep.useMutation({
+    onSuccess: () => void utils.onboarding.profile.invalidate(),
+  });
+  const simulateExamplesMutation = trpc.onboarding.simulateExamples.useMutation();
+  const reviewExamplesMutation = trpc.onboarding.reviewExamples.useMutation({
     onSuccess: () => void utils.onboarding.profile.invalidate(),
   });
   const resolveConflict = trpc.onboarding.resolveConflict.useMutation({
@@ -517,12 +524,24 @@ export default function OnboardingPage() {
       .filter(answer => answer.status === "confirmed")
       .map(answer => answer.stepKey)
   );
+  const exampleReviewIsCurrent = profileQuery.data?.exampleReview.isCurrent === true;
+  const requiredBlocksConfirmed = requiredStepKeys.every(stepKey => confirmedStepKeys.has(stepKey));
   const readyForHumanApprovedPublish =
+    !dirty && autosaveState !== "error" &&
     profileQuery.data?.checklist.readyToPublish === true &&
-    requiredStepKeys.every(stepKey => confirmedStepKeys.has(stepKey));
+    requiredBlocksConfirmed &&
+    exampleReviewIsCurrent;
   const confirmedRequiredCount = requiredStepKeys.filter(stepKey => confirmedStepKeys.has(stepKey)).length;
+  const simulationMatchesDraft = Boolean(
+    simulationResult &&
+    !dirty &&
+    simulationResult.profileFingerprint === profileQuery.data?.publishCandidateFingerprint
+  );
   const transcriptionConsentGranted = governanceQuery.data?.consents.some(
     consent => consent.source === "transcription" && consent.status === "granted"
+  ) === true;
+  const llmConsentGranted = governanceQuery.data?.consents.some(
+    consent => consent.source === "llm" && consent.status === "granted"
   ) === true;
   const field = (
     key: keyof Profile,
@@ -552,6 +571,58 @@ export default function OnboardingPage() {
       )}
     </div>
   );
+
+  const simulateRuleExamples = async () => {
+    if (!llmConsentGranted) {
+      setSimulationMessage("Conceda o consentimento para processamento por IA ou revise os exemplos seguros sem IA.");
+      return;
+    }
+    setSimulationMessage("");
+    try {
+      await autosave.mutateAsync({ profile });
+      await profileQuery.refetch();
+      const result = await simulateExamplesMutation.mutateAsync();
+      setSimulationResult(result);
+      setSimulationMessage("Prévia gerada para revisão. Nada foi confirmado ou publicado.");
+    } catch (error) {
+      setSimulationMessage(error instanceof Error ? error.message : "Não foi possível simular as respostas agora.");
+    }
+  };
+
+  const markExamplesReviewed = async (mode: "safe" | "ai") => {
+    if (dirty || autosaveState === "waiting" || autosaveState === "saving" || autosaveState === "error") {
+      setSimulationMessage("Aguarde o salvamento do rascunho ou corrija o erro de autosave antes de confirmar a revisão.");
+      return;
+    }
+    if (mode === "ai" && (!simulationResult || !simulationMatchesDraft)) {
+      setSimulationMessage("Esta simulação não corresponde mais ao rascunho atual. Gere outra antes de confirmá-la.");
+      return;
+    }
+    setSimulationMessage("");
+    try {
+      await reviewExamplesMutation.mutateAsync(mode === "ai"
+        ? { mode, profileFingerprint: simulationResult!.profileFingerprint }
+        : { mode });
+      setSimulationMessage("Revisão humana registrada para este rascunho. A publicação ainda exige confirmar os blocos obrigatórios.");
+    } catch (error) {
+      setSimulationMessage(error instanceof Error ? error.message : "Não foi possível registrar a revisão.");
+    }
+  };
+
+  const addSimulationExampleToFaq = (example: OnboardingSimulationResult["examples"][number]) => {
+    if (!simulationMatchesDraft) {
+      setSimulationMessage("A simulação está desatualizada; gere uma nova antes de reutilizar uma resposta.");
+      return;
+    }
+    const entry = `Pergunta: ${example.customerMessage}\nResposta sugerida: ${example.suggestedReply}`;
+    if (profile.faq.includes(entry)) {
+      setSimulationMessage("Esse exemplo já está no FAQ do rascunho.");
+    } else {
+      update("faq", [profile.faq.trim(), entry].filter(Boolean).join("\n\n"));
+      setSimulationMessage("Adicionado ao FAQ como rascunho. Revise a resposta no passo Atendimento e confirme o bloco manualmente.");
+    }
+    setCurrentStep(3);
+  };
 
   return (
     <PanelLayout
@@ -809,6 +880,70 @@ export default function OnboardingPage() {
           {rollbackMutation.error && <div className="demo-banner" style={{ marginTop: 10, fontSize: 10 }}><Info size={13} /> {rollbackMutation.error.message}</div>}
         </section>
       )}
+      <section className="surface" aria-label="Revisão de exemplos de atendimento" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
+        <SectionTitle
+          eyebrow="Simulação antes de ativar"
+          title="Confira como as regras devem se comportar"
+          action={<span className={exampleReviewIsCurrent ? "green" : "muted"} style={{ fontSize: 10 }}>{exampleReviewIsCurrent ? "Revisão humana registrada" : "Revisão necessária para publicar"}</span>}
+        />
+        <p className="muted" style={{ margin: "-5px 0 12px", fontSize: 10, lineHeight: 1.55 }}>
+          Os casos seguros abaixo não usam IA. A simulação opcional gera respostas para o rascunho atual, mas não consulta agenda/catálogo em tempo real, não salva as respostas e nunca confirma nem publica regras. A revisão humana fica vinculada ao conteúdo exato que será publicado.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
+          {onboardingReviewExamples.map(example => (
+            <div key={example.key} style={{ padding: 11, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.012)" }}>
+              <strong style={{ display: "block", color: "#ddd", fontSize: 10 }}>{example.title}</strong>
+              <small className="muted" style={{ display: "block", marginTop: 6 }}>Cliente: “{example.customerMessage}”</small>
+              <small style={{ display: "block", marginTop: 7, color: "#b9e4c7", lineHeight: 1.45 }}>Esperado: {example.expectedBehavior}</small>
+              <small className="muted" style={{ display: "block", marginTop: 5 }}>
+                {example.requiresHuman ? "Encaminhar à equipe quando necessário" : "Sem transferência automática"}
+                {example.requiresLiveAgenda ? " · consultar agenda real" : ""}
+              </small>
+            </div>
+          ))}
+        </div>
+        <div className="form-actions" style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!llmConsentGranted || simulateExamplesMutation.isPending || autosave.isPending}
+            title={!llmConsentGranted ? "Conceda o consentimento para processamento por IA na seção Governança" : undefined}
+            onClick={() => void simulateRuleExamples()}
+          >
+            {simulateExamplesMutation.isPending || autosave.isPending ? <><Loader2 size={13} className="animate-spin" /> Simulando...</> : <><Sparkles size={13} /> Simular respostas com IA</>}
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={reviewExamplesMutation.isPending || dirty || autosaveState === "waiting" || autosaveState === "saving" || autosaveState === "error" || !profileQuery.data?.publishCandidateFingerprint || (exampleReviewIsCurrent && !simulationMatchesDraft)}
+            onClick={() => void markExamplesReviewed(simulationMatchesDraft ? "ai" : "safe")}
+          >
+            <CheckCircle2 size={13} /> {reviewExamplesMutation.isPending ? "Registrando revisão..." : simulationMatchesDraft ? "Confirmar revisão da simulação" : exampleReviewIsCurrent ? "Exemplos revisados" : "Confirmar revisão dos exemplos seguros"}
+          </button>
+          {exampleReviewIsCurrent && profileQuery.data?.exampleReview.reviewedAt && (
+            <small className="green" style={{ alignSelf: "center", fontSize: 9 }}>
+              Revisado em {new Date(profileQuery.data.exampleReview.reviewedAt).toLocaleString("pt-BR")} ({profileQuery.data.exampleReview.mode === "ai" ? "simulação IA" : profileQuery.data.exampleReview.mode === "rollback" ? "versão restaurada" : "casos seguros"})
+            </small>
+          )}
+        </div>
+        {!llmConsentGranted && <p className="muted" style={{ margin: "8px 0 0", fontSize: 9 }}>A prévia por IA exige consentimento explícito para processamento por IA. Você ainda pode revisar os casos seguros sem enviar dados.</p>}
+        {simulationMessage && <div className="demo-banner" role="status" style={{ margin: "10px 0 0", fontSize: 10 }}><Info size={13} /> {simulationMessage}</div>}
+        {simulationResult && (
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {!simulationMatchesDraft && <div className="demo-banner" role="alert" style={{ margin: 0, fontSize: 10 }}><Info size={13} /> O rascunho mudou desde esta simulação. Gere outra para revisar ou reutilizar as respostas; você ainda pode confirmar os casos seguros acima.</div>}
+            {simulationResult.examples.map(example => (
+              <div key={example.key} style={{ padding: 11, border: "1px solid rgba(86,214,138,.16)" }}>
+                <strong style={{ display: "block", color: "#ddd", fontSize: 10 }}>{example.title} · resposta sugerida (rascunho)</strong>
+                <p style={{ margin: "6px 0", color: "#c8c8c8", fontSize: 10, lineHeight: 1.5 }}>{example.suggestedReply}</p>
+                <small className="muted" style={{ display: "block", lineHeight: 1.45 }}>Base da sugestão: {example.basisNote}</small>
+                <button type="button" className="btn-secondary" style={{ marginTop: 8, padding: "5px 8px", fontSize: 9 }} disabled={!simulationMatchesDraft} onClick={() => addSimulationExampleToFaq(example)}>
+                  Usar no FAQ como rascunho
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
       {(profileQuery.data?.stepAnswers ?? []).length > 0 && (
         <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
           <SectionTitle
@@ -1033,7 +1168,7 @@ export default function OnboardingPage() {
             className="btn-primary"
             disabled={saveMutation.isPending || !readyForHumanApprovedPublish}
             onClick={() => saveMutation.mutate({ profile, publish: true })}
-            title={!readyForHumanApprovedPublish ? "Revise e confirme os quatro blocos obrigatórios antes de publicar" : undefined}
+            title={!readyForHumanApprovedPublish ? exampleReviewIsCurrent ? "Revise e confirme os quatro blocos obrigatórios antes de publicar" : "Revise e confirme os exemplos de atendimento antes de publicar" : undefined}
           >
             <Sparkles size={13} /> {saveMutation.isPending ? "Publicando..." : "Publicar configuração"}
           </button>
@@ -1042,7 +1177,7 @@ export default function OnboardingPage() {
           </button>
           {published && <span className="green" style={{ fontSize: 11 }}><CheckCircle2 size={13} /> Configuração v{savedVersion} publicada</span>}
         </div>
-        {!readyForHumanApprovedPublish && <p className="muted" style={{ margin: "12px 0 0", fontSize: 10 }}>Ainda faltam blocos obrigatórios confirmados. Volte à Revisão para ver exatamente o que falta.</p>}
+        {!readyForHumanApprovedPublish && <p className="muted" style={{ margin: "12px 0 0", fontSize: 10 }}>{!exampleReviewIsCurrent ? "Revise os exemplos de atendimento no passo Revisão; qualquer alteração posterior exige revisar novamente." : "Ainda faltam blocos obrigatórios confirmados. Volte à Revisão para ver exatamente o que falta."}</p>}
         {saveMutation.error && <div className="demo-banner" style={{ marginTop: 14, marginBottom: 0 }}><Info size={14} /> {saveMutation.error.message}</div>}
       </section>
       <section className="surface" style={{ padding: 22, marginTop: 18, display: currentStepId === "guardrails" ? undefined : "none" }}>
@@ -1107,10 +1242,10 @@ export default function OnboardingPage() {
             className="btn-primary"
             disabled={saveMutation.isPending || !readyForHumanApprovedPublish}
             onClick={() => saveMutation.mutate({ profile, publish: true })}
-            title={!readyForHumanApprovedPublish ? "Salve o rascunho e confirme os blocos obrigatórios antes de publicar" : undefined}
+            title={!readyForHumanApprovedPublish ? exampleReviewIsCurrent ? "Salve o rascunho e confirme os blocos obrigatórios antes de publicar" : "Revise os exemplos no passo Revisão antes de publicar" : undefined}
           >
             <Sparkles size={13} />{" "}
-            {saveMutation.isPending ? "Gerando..." : readyForHumanApprovedPublish ? "Gerar e publicar prompt" : "Confirme os blocos obrigatórios"}
+            {saveMutation.isPending ? "Gerando..." : readyForHumanApprovedPublish ? "Gerar e publicar prompt" : !exampleReviewIsCurrent ? "Revise os exemplos antes de ativar" : "Confirme os blocos obrigatórios"}
           </button>
           <small className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             {autosaveState === "waiting" && "Alterações pendentes..."}

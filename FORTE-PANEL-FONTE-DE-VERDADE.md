@@ -617,7 +617,8 @@ Todo componente assíncrono deve ter:
 - Serviços, preços, duração e disponibilidade devem usar o catálogo operacional persistido; os modos de preço são fixo, “a partir de” e “sob consulta”. Horário semanal descreve jornada, não uma vaga específica.
 - Autosave, retomada e “decidir depois”.
 - Preview curto por bloco.
-- Confirmação humana e rollback.
+- Exemplos seguros para serviço/preço ausente, horário específico e transferência humana; simulação por IA é opcional e só ocorre com consentimento `llm`, sem consultar catálogo/agenda nem executar ações.
+- O responsável revisa os exemplos antes de publicar; a revisão fica vinculada ao perfil-candidato exato e qualquer mudança exige nova revisão. Confirmação humana por bloco e rollback continuam obrigatórios.
 - Estados confirmed/draft/missing/conflict.
 - Linguagem de negócio em toda a área do cliente.
 
