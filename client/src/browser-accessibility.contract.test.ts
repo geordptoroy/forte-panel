@@ -20,7 +20,7 @@ describe("O6.3 browser and accessibility contracts", () => {
     expect(isCoreAllowedRoute("/whatsapp-connection")).toBe(true);
     expect(isCoreAllowedRoute("/inbox")).toBe(true);
     expect(isCoreAllowedRoute(CORE_USAGE_ROUTE)).toBe(false);
-    expect(isCoreAllowedRoute("/dashboard")).toBe(false);
+    expect(isCoreAllowedRoute("/dashboard")).toBe(true);
     expect(app).toContain("!isCoreAllowedRoute(location)");
     expect(app).toContain("<Redirect to={CORE_ROUTE} />");
     expect(app).toContain('CORE_ONLY_MODE ? CORE_ROUTE : "/dashboard"');

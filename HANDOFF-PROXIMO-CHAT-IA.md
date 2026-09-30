@@ -201,3 +201,17 @@ Foi criado `scripts/start-restore-rehearsal.ps1`, que valida a presença do paco
 ### Decisão de continuidade — depois do rehearsal
 
 Oracle/OCI, deploy público e a preparação ARM64 ficam **adiados**. O próximo trabalho deve voltar ao MVP visível: executar e fechar o fluxo autenticado de onboarding → conexão WhatsApp → Inbox → inbound/outbound → estado comercial, corrigindo somente as falhas observadas no Docker/browser do usuário. O `ROADMAP-EXECUCAO-FORTE-PANEL.md` é a fonte canônica; as seções históricas deste handoff não devem reabrir O3.4/O5.1.
+
+
+### Atualização posterior — MVP.1: estabilização de sidebar, sessão e Inbox
+
+Implementada a primeira correção da aceitação MVP, mantendo `CORE_ONLY_MODE = true`:
+
+- rotas já expostas na sidebar operacional (`dashboard`, `kanban`, `agenda`, `contacts`, `billing`, `integrations`, `team`, `services`, `professionals`, `my-work` e `settings`) agora passam pelo catálogo core; planos/consumo e governança técnica de IA continuam bloqueados;
+- a sidebar usa o catálogo operacional inteiro, sem liberar automaticamente Console Admin ou rotas internas;
+- erro transitório de `auth.me` (por exemplo, PostgreSQL saturado durante sincronização) não é mais interpretado como sessão encerrada: o usuário recebe retry, sem redirecionamento indevido para login;
+- webhooks `historySync` do Baileys passaram a ter no máximo dois imports concorrentes por processo, e o segredo por instância tem cache curto de 5 segundos para evitar uma consulta PostgreSQL por evento histórico;
+- testes novos cobrem o admission concorrente; contratos de core/acessibilidade, typecheck, Prettier e `git diff --check` passaram;
+- a suíte completa local ainda falha somente na camada já conhecida de dependências ausentes do subprojeto `forte-whatsapp` (`baileys`, `pino`, `qrcode`) e no teste do patch pinned; 73 arquivos passaram, 18 foram pulados e 1 teste do patch falhou por arquivo ausente.
+
+Próximo passo na máquina Windows: atualizar a branch, iniciar com `scripts/start-docker.ps1`, criar uma conta via `/signup` (não usar a conta de console admin), confirmar que login permanece na sessão, percorrer a sidebar e repetir inbound/outbound com a instância pareada. Se a Inbox ainda vier vazia, coletar somente status/logs sanitizados e contagens tenant-scoped; não apagar volumes nem parear um número real adicional sem instrução.

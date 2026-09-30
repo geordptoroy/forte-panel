@@ -87,41 +87,41 @@ const routeCatalog: Record<string, ReleaseSurface> = {
     title: "Funil de atendimento",
     reason:
       "Precisa consolidar estágios, lead e próxima ação com o núcleo comercial.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
   "/dashboard": {
     state: "not_ready",
     title: "Dashboard",
     reason:
       "KPIs de operação e receita ainda precisam ser fechados com dados reais.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
   "/agenda": {
     state: "not_ready",
     title: "Agenda",
     reason:
       "Disponibilidade, conflitos, confirmação, conclusão e no-show ainda estão em fechamento.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
   "/contacts": {
     state: "not_ready",
     title: "Clientes e contatos",
     reason:
       "O ciclo comercial do lead ainda precisa ser consolidado nesta superfície.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
   "/billing": {
     state: "not_ready",
     title: "Orçamentos e pagamentos",
     reason:
       "Itens, condições, recibo e conciliação ainda precisam ser fechados.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
   "/integrations": {
     state: "not_ready",
     title: "Integrações",
     reason: "A superfície de integrações do cliente ainda está em fechamento.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
   "/onboarding": {
     state: "not_ready",
@@ -135,35 +135,35 @@ const routeCatalog: Record<string, ReleaseSurface> = {
     title: "Equipe",
     reason:
       "Papéis, revogação e onboarding da equipe ainda precisam de validação completa.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
   "/services": {
     state: "not_ready",
     title: "Serviços",
     reason:
       "Catálogo, preço, duração e disponibilidade ainda precisam fechar o núcleo comercial.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
   "/professionals": {
     state: "not_ready",
     title: "Profissionais",
     reason:
       "Capacidade, serviços e agenda do executor ainda precisam de validação completa.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
   "/my-work": {
     state: "not_ready",
     title: "Minha agenda",
     reason:
       "O isolamento do profissional e a atualização de status ainda precisam ser provados.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
   "/settings": {
     state: "not_ready",
     title: "Preferências",
     reason:
       "Configurações do cliente ainda precisam ser separadas da governança interna.",
-    enabledInCore: false,
+    enabledInCore: true,
   },
 };
 

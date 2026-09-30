@@ -35,6 +35,7 @@ import { professionalCanExecuteService } from "./agenda";
 import { ScheduleError } from "./schedule";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { historicalBaileysIgnoreReason } from "./baileys-webhook-policy";
+import { HistoricalWebhookAdmission } from "./historical-webhook-admission";
 import { OPERATIONAL_WHATSAPP_PROVIDER } from "./integrations/baileys-policy";
 import { messageDeliveryStatuses } from "../shared/message-delivery";
 import {
@@ -43,6 +44,24 @@ import {
 } from "./webhook-anti-replay";
 
 const api = express.Router();
+const historicalWebhookAdmission = new HistoricalWebhookAdmission(2);
+const webhookSecretCache = new Map<
+  string,
+  { secret: string; expiresAt: number }
+>();
+const WEBHOOK_SECRET_CACHE_MS = 5_000;
+
+async function getCachedBaileysWebhookSecret(instanceId: string) {
+  const cached = webhookSecretCache.get(instanceId);
+  if (cached && cached.expiresAt > Date.now()) return cached.secret;
+  const secret = await getBaileysWebhookSecret(instanceId);
+  if (secret)
+    webhookSecretCache.set(instanceId, {
+      secret,
+      expiresAt: Date.now() + WEBHOOK_SECRET_CACHE_MS,
+    });
+  return secret;
+}
 const internalApiPaths = new Set([
   "/health",
   "/ready",
@@ -306,7 +325,10 @@ async function requireApiWorkspaceId(
   return workspaceId;
 }
 
-function webhookReplayFor(req: Request, secret: string): WebhookReplayValidation {
+function webhookReplayFor(
+  req: Request,
+  secret: string
+): WebhookReplayValidation {
   return validateWebhookReplay({
     secret,
     body: JSON.stringify(req.body ?? {}),
@@ -1142,7 +1164,10 @@ api.post("/appointments/:id/reschedule", async (req, res) => {
 });
 
 api.post("/webhooks/inbound/whatsapp", async (req, res) => {
-  const replay = webhookReplayFor(req, process.env.WEBHOOK_SIGNING_SECRET?.trim() ?? "");
+  const replay = webhookReplayFor(
+    req,
+    process.env.WEBHOOK_SIGNING_SECRET?.trim() ?? ""
+  );
   if (!replay.ok && !requireApiKey(req, res)) return;
   const parsed = webhookSchema.safeParse(req.body);
   if (!parsed.success)
@@ -1195,7 +1220,12 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
     eventLeaseToken = registered.leaseToken;
     if (!eventLeaseToken) throw new Error("Webhook lease token unavailable");
     const result = await ingestInboundWhatsApp(workspaceId, parsed.data);
-    await markWebhookEvent(workspaceId, parsed.data.eventId, "processed", eventLeaseToken);
+    await markWebhookEvent(
+      workspaceId,
+      parsed.data.eventId,
+      "processed",
+      eventLeaseToken
+    );
     return res.status(202).json({
       accepted: true,
       duplicate: "duplicate" in result && result.duplicate === true,
@@ -1205,7 +1235,12 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
     });
   } catch (error) {
     if (eventLeaseToken)
-      await markWebhookEvent(workspaceId, parsed.data.eventId, "failed", eventLeaseToken);
+      await markWebhookEvent(
+        workspaceId,
+        parsed.data.eventId,
+        "failed",
+        eventLeaseToken
+      );
     return fail(
       res,
       500,
@@ -1231,14 +1266,24 @@ async function handleBaileysDeliveryStatusWebhook(
 ) {
   const parsed = baileysDeliveryEventSchema.safeParse(req.body);
   if (!parsed.success)
-    return fail(res, 400, "Atualização de entrega Baileys inválida", "invalid_delivery_status");
+    return fail(
+      res,
+      400,
+      "Atualização de entrega Baileys inválida",
+      "invalid_delivery_status"
+    );
 
   let leaseToken: string | undefined;
   let workspaceId: number | undefined;
   try {
     const owner = await findBaileysInstanceOwner(parsed.data.instanceId);
     if (!owner?.active)
-      return fail(res, 404, "Instância Baileys não registrada ou inativa", "unknown_baileys_instance");
+      return fail(
+        res,
+        404,
+        "Instância Baileys não registrada ou inativa",
+        "unknown_baileys_instance"
+      );
     workspaceId = owner.workspaceId;
     const registered = await registerWebhookEvent({
       eventId: parsed.data.eventId,
@@ -1251,9 +1296,20 @@ async function handleBaileysDeliveryStatusWebhook(
         : {}),
     });
     if (registered.conflict)
-      return fail(res, 409, "O evento Baileys já foi usado com outro payload", "idempotency_conflict");
+      return fail(
+        res,
+        409,
+        "O evento Baileys já foi usado com outro payload",
+        "idempotency_conflict"
+      );
     if (registered.duplicate)
-      return res.status(200).json({ accepted: true, duplicate: true, eventId: parsed.data.eventId });
+      return res
+        .status(200)
+        .json({
+          accepted: true,
+          duplicate: true,
+          eventId: parsed.data.eventId,
+        });
     leaseToken = registered.leaseToken;
     if (!leaseToken) throw new Error("Webhook lease token unavailable");
 
@@ -1264,19 +1320,43 @@ async function handleBaileysDeliveryStatusWebhook(
       status: parsed.data.status,
     });
     if (!matched) {
-      await markWebhookEvent(workspaceId, parsed.data.eventId, "failed", leaseToken);
+      await markWebhookEvent(
+        workspaceId,
+        parsed.data.eventId,
+        "failed",
+        leaseToken
+      );
       leaseToken = undefined;
-      return fail(res, 503, "Mensagem enviada ainda não encontrada; o callback será repetido", "outbound_message_not_ready");
+      return fail(
+        res,
+        503,
+        "Mensagem enviada ainda não encontrada; o callback será repetido",
+        "outbound_message_not_ready"
+      );
     }
-    await markWebhookEvent(workspaceId, parsed.data.eventId, "processed", leaseToken);
-    return res.status(202).json({ accepted: true, eventId: parsed.data.eventId });
+    await markWebhookEvent(
+      workspaceId,
+      parsed.data.eventId,
+      "processed",
+      leaseToken
+    );
+    return res
+      .status(202)
+      .json({ accepted: true, eventId: parsed.data.eventId });
   } catch (error) {
     if (workspaceId && leaseToken)
-      await markWebhookEvent(workspaceId, parsed.data.eventId, "failed", leaseToken);
+      await markWebhookEvent(
+        workspaceId,
+        parsed.data.eventId,
+        "failed",
+        leaseToken
+      );
     return fail(
       res,
       500,
-      error instanceof Error ? error.message : "Falha ao reconciliar status Baileys",
+      error instanceof Error
+        ? error.message
+        : "Falha ao reconciliar status Baileys",
       "internal_error"
     );
   }
@@ -1286,7 +1366,7 @@ async function handleBaileysWebhook(req: Request, res: Response) {
   const instanceHint =
     typeof req.body?.instanceId === "string" ? req.body.instanceId.trim() : "";
   const instanceSecret = instanceHint
-    ? await getBaileysWebhookSecret(instanceHint).catch(() => undefined)
+    ? await getCachedBaileysWebhookSecret(instanceHint).catch(() => undefined)
     : undefined;
   // Once an instance has a rotated secret, the process-wide secret is no
   // longer accepted for that instance. Instances without a stored secret keep
@@ -1296,7 +1376,7 @@ async function handleBaileysWebhook(req: Request, res: Response) {
   const replay = webhookReplayFor(req, configuredSecret);
   const genericReplay = webhookReplayFor(
     req,
-    instanceSecret ? "" : process.env.WEBHOOK_SIGNING_SECRET?.trim() ?? ""
+    instanceSecret ? "" : (process.env.WEBHOOK_SIGNING_SECRET?.trim() ?? "")
   );
   const secretAccepted = replay.ok;
   if (!secretAccepted && !genericReplay.ok) {
@@ -1318,6 +1398,18 @@ async function handleBaileysWebhook(req: Request, res: Response) {
   try {
     const normalized = getWhatsappAdapter("baileys").normalizeInbound(req.body);
     eventId = normalized.eventId;
+    const isHistorical = normalized.metadata?.historySync === true;
+    if (isHistorical) {
+      const release = await historicalWebhookAdmission.acquire();
+      let released = false;
+      const releaseOnce = () => {
+        if (released) return;
+        released = true;
+        release();
+      };
+      res.once("finish", releaseOnce);
+      res.once("close", releaseOnce);
+    }
     const instanceId =
       typeof normalized.metadata?.instanceId === "string"
         ? normalized.metadata.instanceId
@@ -1355,7 +1447,6 @@ async function handleBaileysWebhook(req: Request, res: Response) {
         instanceId ? "unknown_baileys_instance" : "instance_id_required"
       );
     const isGroup = normalized.metadata?.isGroup === true;
-    const isHistorical = normalized.metadata?.historySync === true;
     const groupJid =
       typeof normalized.metadata?.groupJid === "string"
         ? normalized.metadata.groupJid
