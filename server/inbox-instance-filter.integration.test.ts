@@ -1135,6 +1135,14 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
     expect(
       await assignInboxOpportunity(
         workspaceAId,
+        contactA.id,
+        memberAId,
+        insertedUsers[0]!.id
+      )
+    ).toMatchObject({ assignedMemberId: memberAId, changed: true });
+    expect(
+      await assignInboxOpportunity(
+        workspaceAId,
         contactB.id,
         memberAId,
         insertedUsers[0]!.id
