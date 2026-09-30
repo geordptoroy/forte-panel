@@ -224,7 +224,7 @@ O código já possui Kanban de ciclo de vida de workspaces, testes locais do age
 - zero skips críticos no gate de release;
 - pipeline completa de histórico/backfill sem disparar IA;
 - prova persistente de upload privado, entrega por URL assinada e política de limpeza de objetos órfãos;
-- prova persistente/staging das migrations 0047–0049, deduplicação e isolamento de Lead/Opportunity, ownership por membership ativa, histórico canônico de estágio e ciclo auditado da próxima ação; migrations 0047/0048 passaram no PostgreSQL efêmero do CI, 0049 aguarda CI;
+- prova persistente/staging das migrations 0047–0049, deduplicação e isolamento de Lead/Opportunity, ownership por membership ativa, histórico canônico de estágio e ciclo auditado da próxima ação; migrations 0047–0049 passaram no PostgreSQL efêmero do CI (O3.3: run `36710769990`, 72 arquivos/285 testes, zero skips);
 - fallback explícito entre modelos/capabilities;
 - custo/token por provider e workspace;
 - hardening completo de SSRF, CSRF, replay, revogação de sessão e headers;

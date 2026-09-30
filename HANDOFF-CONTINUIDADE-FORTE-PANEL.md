@@ -70,6 +70,6 @@ A branch `feat/o3.3-canonical-opportunity-stage` implementa `Opportunity.stage` 
 
 Validação no Sandbox: `pnpm check`, `pnpm test` (54 arquivos passaram/18 ignorados; 232 testes passaram/53 ignorados), `pnpm build` e `git diff --check` passaram. Integrações que requerem PostgreSQL, incluindo O3.3, ficaram ignoradas localmente por ausência de `DATABASE_URL`. O build preserva o aviso existente de bundle frontend acima de 500 kB.
 
-A [PR #9](https://github.com/geordptoroy/forte-panel/pull/9) foi aberta após o push da branch, empilhada sobre PR #8. A migration 0049 e testes de integração dependem do CI PostgreSQL; não declarar concluídos antes do run verde. Não houve prova em staging persistente, smoke mobile/desktop, restore ou WhatsApp físico; `CORE_ONLY_MODE` permanece ativo e nenhum secret real foi usado. Detalhes: `O3.3-ENTREGA-FUNIL-CANONICO.md`.
+A [PR #9](https://github.com/geordptoroy/forte-panel/pull/9) foi aberta empilhada sobre PR #8. O CI PostgreSQL run [`36710769990`](https://github.com/geordptoroy/forte-panel/actions/runs/36710769990), no commit `7dc0efc`, passou: aplicou 0049 e executou 72 arquivos/285 testes sem skips. O resultado é efêmero; não houve prova em staging persistente, restore, smoke mobile/desktop ou WhatsApp físico. `CORE_ONLY_MODE` permanece ativo e nenhum secret real foi usado. Detalhes: `O3.3-ENTREGA-FUNIL-CANONICO.md`.
 
-**Próxima fatia após CI PostgreSQL verde:** O3.4 — orçamento com itens, validade e aprovação humana, sem cobrança real/Stripe. Preservar a pilha aberta sem merge automático.
+**Próxima fatia:** O3.4 — orçamento com itens, validade e aprovação humana, sem cobrança real/Stripe. Preservar a pilha aberta sem merge automático.
