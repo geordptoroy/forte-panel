@@ -90,8 +90,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | **CONCLUÍDA (código)** | Migration 0047 e 7 integrações passaram no PostgreSQL CI; PRs #6/#7 abertos e CI verde; smoke persistente/staging e WhatsApp real pendentes |
 | O3.2 | Comercial | Inbox operacional com assignment e follow-up | **CONCLUÍDA (código)** | PR #8 aberto sobre O3.1; migration 0048 aplicada no CI; run `36708180817` passou 285 testes/72 arquivos sem skips; staging e WhatsApp real continuam pendentes |
 | O3.3 | Comercial | Funil canônico sem duplicação de estado | **CONCLUÍDA (código + CI PostgreSQL)** | PR #9 aberta; run `36710769990` aplicou 0049 e passou 72 arquivos/285 testes sem skips; staging e WhatsApp real continuam pendentes |
-| O3.4 | Comercial | Orçamento com itens, validade e aprovação | **EM REVISÃO (código local)** | Branch `feat/o3.4-quote-approval`; CI PostgreSQL e PR ainda pendentes |
-| O3.5 | Comercial | Agenda com conflito, profissional e status | PENDENTE | Orçamento aprovado pode virar agendamento real |
+| O3.4 | Comercial | Orçamento com itens, validade e aprovação | **CONCLUÍDA (código + CI PostgreSQL)** | PR #10 aberta; run `36720148370` passou com migration 0050; staging e revisão final continuam pendentes |
+| O3.5 | Comercial | Agenda com conflito, profissional e status | **EM REVISÃO (código local)** | Branch `feat/o3.5-agenda-conflicts-status`; reagendamento exposto; CI PostgreSQL e PR pendentes |
 | O3.6 | Comercial | Recebimento, ledger operacional e recibo | PENDENTE | Serviço concluído fecha ciclo de receita |
 | O3.7 | Comercial | Dashboard de decisões do dia | PENDENTE | Usuário vê pendências, receita e saúde do canal |
 | O4.1 | IA | Contexto comercial seguro para o agente | PENDENTE | IA consulta dados reais sem atravessar tenant |

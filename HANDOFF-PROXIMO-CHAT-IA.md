@@ -1,6 +1,6 @@
 # Handoff — Forte Panel
 
-**Atualizado:** 2026-09-30 — O3.4 em revisão local
+**Atualizado:** 2026-09-30 — O3.5 em revisão local
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
@@ -34,10 +34,16 @@ Entrega detalhada: `O3.3-ENTREGA-FUNIL-CANONICO.md`.
 
 ## O3.4 — implementação local em revisão
 
-A branch `feat/o3.4-quote-approval` foi criada sobre `89d7cff` / PR #9, sem tocar `main` ou mesclar a pilha. A entrega está registrada em `O3.4-ENTREGA-ORCAMENTOS-APROVACAO.md`. O código adiciona migration 0050, itens imutáveis, validade, estados separados de aprovação/recebimento, histórico append-only, projeção válida no Inbox/dashboard e recebimento monotônico.
+A branch `feat/o3.4-quote-approval` foi criada sobre `89d7cff` / PR #9, sem tocar `main` ou mesclar a pilha. A entrega está registrada em `O3.4-ENTREGA-ORCAMENTOS-APROVACAO.md`. O código adiciona migration 0050, itens imutáveis, validade, estados separados de aprovação/recebimento, histórico append-only, projeção válida no Inbox/dashboard e recebimento monotônico. A PR #10 está aberta e o run PostgreSQL `36720148370` passou com a migration 0050.
 
-Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 13 testes focados passaram. A suíte completa ainda encontra dependências ausentes no subprojeto `forte-whatsapp`; CI PostgreSQL e revisão da PR ainda precisam ser executados.
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 13 testes focados passaram. A suíte completa ainda encontra dependências ausentes no subprojeto `forte-whatsapp`. O CI PostgreSQL da PR #10 passou; staging persistente, smoke visual e revisão final continuam pendentes.
+
+## O3.5 — implementação local em revisão
+
+A branch `feat/o3.5-agenda-conflicts-status` foi criada sobre a O3.4 validada (`d8bbf52`). A entrega está registrada em `O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md`. A agenda já tinha conflitos transacionais, profissionais, disponibilidade e status; esta fatia expôs o reagendamento via `agenda.reschedule`, restringiu a operação ao profissional autorizado e adicionou a ação na agenda diária. O reagendamento revalida jornada e conflito e volta para `requested`, exigindo nova confirmação.
+
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 10 testes focados passaram; 3 testes de isolamento foram ignorados por dependerem de PostgreSQL. PR e CI PostgreSQL ainda pendentes.
 
 ## Próxima fatia
 
-**O3.5 — Agenda com conflito, profissional e status**, somente depois de publicar e validar o PR da O3.4. Preservar a pilha aberta, sem merge automático, e manter `CORE_ONLY_MODE` ativo.
+**O3.6 — Recebimento, ledger operacional e recibo**, somente depois de publicar e validar o PR da O3.5. Preservar a pilha aberta, sem merge automático, e manter `CORE_ONLY_MODE` ativo.
