@@ -23,6 +23,9 @@ describe("backup/restore contract", () => {
     expect(source).toContain('pg_restore "$DATABASE_URL" --clean --if-exists');
     expect(source).toContain('chmod 600');
     expect(source).toContain('pg_restore --list');
+    expect(source).toContain('verify "$dir" >/dev/null');
+    expect(source).toContain('RESTORE_SESSION_DIR não pode ser a sessão ativa');
+    expect(source).toContain('tar -czf "$session_archive" -T /dev/null');
   });
 
   it("verifies a manifest and rejects a tampered PostgreSQL artifact", () => {
