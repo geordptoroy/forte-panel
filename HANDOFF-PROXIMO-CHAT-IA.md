@@ -121,3 +121,7 @@ O CI PostgreSQL da O6.3 passou no run `36737154671`. A branch `feat/o7.1-saas-bi
 ## O7.2 em revisão — lifecycle da assinatura SaaS
 
 O CI PostgreSQL da O7.1 passou no run `36737881060`. A branch `feat/o7.2-saas-subscription-lifecycle` adiciona a máquina de estados pura `server/saas-subscription-lifecycle.ts` e seus contratos: trial de 14 dias, ativação, upgrade, downgrade, past_due, cancelamento no fim do período, retenção, cancelamento imediato e restart explícito. Cada transição exige motivo e retorna before/after; execução fica `not_configured` e exige provider. A rota read-only `platform.saasSubscriptionLifecycle` publica o catálogo. 17 testes focados, `pnpm check`, `pnpm build` e `git diff --check` passaram. Não persistir assinatura nem ligar checkout nesta fatia sem provider aprovado.
+
+## O7.3 em revisão — release público controlado
+
+O CI PostgreSQL da O7.2 passou no run `36738425579`. A branch `feat/o7.3-controlled-public-release` adiciona `server/controlled-release.ts`, contratos fail-closed e a rota read-only `platform.controlledReleasePolicy`. Readiness, integração PostgreSQL, isolamento negativo, backup/restore, E2E WhatsApp, observabilidade externa, revisão legal, billing SaaS e desligamento deliberado do CORE_ONLY_MODE são gates explícitos; qualquer evidência ausente bloqueia cadastro público. 21 testes passaram e 1 teste de heartbeat foi pulado localmente por falta de DATABASE_URL; `pnpm check`, `pnpm build` e `git diff --check` passaram. Não declarar release público, não executar staging e não desligar CORE_ONLY_MODE nesta fatia.
