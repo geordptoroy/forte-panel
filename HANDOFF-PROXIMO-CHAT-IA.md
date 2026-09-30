@@ -1,6 +1,6 @@
 # Handoff — Forte Panel
 
-**Atualizado:** 2026-09-30 — O4.3 validada no CI; O4.4 em andamento
+**Atualizado:** 2026-09-30 — O4.4 validada no CI; O5.1 em andamento
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
@@ -82,4 +82,10 @@ Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 15 testes 
 
 A branch `feat/o4.4-agent-outcome-metrics` foi criada sobre a O4.3 validada (`cce35a3`). A entrega está registrada em `O4.4-ENTREGA-METRICAS-AGENTE.md`. A migration 0052 cria `agentRuns`; o endpoint `agent.metrics` mede desfecho, transferência, confirmação pendente, falha, tokens e latência. Recebimentos são exibidos como total do workspace não atribuído ao agente, sem misturar quota técnica, custo de provider e cobrança SaaS.
 
-Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 7 testes focados passaram. CI PostgreSQL e PR ainda pendentes.
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 7 testes focados passaram. A PR #17 está aberta e o CI PostgreSQL `36733294007` passou; staging persistente e revisão final continuam pendentes.
+
+## O5.1 — implementação local em revisão
+
+A branch `feat/o5.1-workspace-accounts-lifecycle` foi criada sobre a O4.4 validada (`9fa98fd`). A entrega está registrada em `O5.1-ENTREGA-CONTAS-PRODUCAO.md`. O lifecycle e health existentes foram preservados; a migration 0053 adiciona incidentes administrativos, e `setWorkspacePlan`, `incidents`, `openIncident` e `resolveIncident` tornam plano e incidentes auditáveis no control-plane.
+
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes focados passaram. CI PostgreSQL e PR ainda pendentes.

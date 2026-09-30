@@ -17,6 +17,7 @@ import {
   ensurePlatformSupportWorkspace,
   getPlatformAgentSnapshot,
   getPlatformWorkspaceDetail,
+  listPlatformIncidents,
   recordPlatformAudit,
   isExternalProviderCallAllowedForSimulation,
   listPlatformAuditLogs,
@@ -26,14 +27,17 @@ import {
   listPlatformWorkspaces,
   listPlatformWorkspaceNotes,
   publishPlatformAgentDraft,
+  openPlatformIncident,
   revokeSupportSession,
   resetPlatformWorkspace,
+  resolvePlatformIncident,
   rollbackPlatformAgentVersion,
   savePlatformAgentDraft,
   savePlatformGlobalAiPolicy,
   savePlatformInstancePromptBinding,
   simulatePlatformInstanceAgent,
   setPlatformWorkspaceAi,
+  setPlatformWorkspacePlan,
   setPlatformWorkspaceStatus,
   simulatePlatformAgent,
   testPlatformAiConnection,
@@ -417,6 +421,22 @@ export const platformRouter = router({
         platformAdminId: ctx.platformAdmin.id,
       })
     ),
+
+  setWorkspacePlan: requirePlatformOperator
+    .input(z.object({ workspaceId: workspaceIdInput, plan: z.enum(["starter", "pro", "business"]), reason: reasonInput }))
+    .mutation(({ input, ctx }) => setPlatformWorkspacePlan({ ...input, platformAdminId: ctx.platformAdmin.id })),
+
+  incidents: requirePlatform
+    .input(z.object({ workspaceId: workspaceIdInput.optional() }).optional())
+    .query(({ input }) => listPlatformIncidents(input?.workspaceId)),
+
+  openIncident: requirePlatformOperator
+    .input(z.object({ workspaceId: workspaceIdInput, severity: z.enum(["low", "medium", "high", "critical"]), title: z.string().trim().min(3).max(180), details: z.string().trim().min(3).max(10_000) }))
+    .mutation(({ input, ctx }) => openPlatformIncident({ ...input, platformAdminId: ctx.platformAdmin.id })),
+
+  resolveIncident: requirePlatformOperator
+    .input(z.object({ incidentId: z.number().int().positive(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => resolvePlatformIncident({ ...input, platformAdminId: ctx.platformAdmin.id })),
 
   workspaceDetail: requirePlatform
     .input(supportSessionInput)

@@ -11,6 +11,7 @@ import {
   platformAdmins,
   platformAiConnections,
   platformAuditLogs,
+  platformIncidents,
   platformWorkspaceNotes,
   supportSessions,
   users,
@@ -1826,6 +1827,45 @@ export async function setPlatformWorkspaceAi(input: {
   return { enabled: updated.enabled };
 }
 
+export async function setPlatformWorkspacePlan(input: {
+  platformAdminId: number;
+  workspaceId: number;
+  plan: "starter" | "pro" | "business";
+  reason: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const workspace = (await db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).limit(1))[0];
+  if (!workspace) throw new Error("Workspace não encontrado");
+  const updated = (await db.update(workspaces).set({ plan: input.plan, updatedAt: new Date() }).where(eq(workspaces.id, input.workspaceId)).returning())[0];
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, action: "workspace_plan_changed", reason: input.reason, summary: `Plano alterado de ${workspace.plan} para ${input.plan}`, before: { plan: workspace.plan }, after: { plan: updated.plan } });
+  return { id: updated.id, plan: updated.plan };
+}
+
+export async function listPlatformIncidents(workspaceId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(platformIncidents).where(workspaceId ? eq(platformIncidents.workspaceId, workspaceId) : undefined).orderBy(desc(platformIncidents.createdAt), desc(platformIncidents.id)).limit(100);
+}
+
+export async function openPlatformIncident(input: { platformAdminId: number; workspaceId: number; severity: "low" | "medium" | "high" | "critical"; title: string; details: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const incident = (await db.insert(platformIncidents).values({ workspaceId: input.workspaceId, severity: input.severity, title: input.title, details: input.details, openedByPlatformAdminId: input.platformAdminId }).returning())[0];
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, action: "workspace_incident_opened", reason: input.title, summary: `${input.severity}: ${input.title}`, after: { incidentId: incident.id, status: incident.status } });
+  return incident;
+}
+
+export async function resolvePlatformIncident(input: { platformAdminId: number; incidentId: number; reason: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const current = (await db.select().from(platformIncidents).where(eq(platformIncidents.id, input.incidentId)).limit(1))[0];
+  if (!current) throw new Error("Incidente não encontrado");
+  const incident = (await db.update(platformIncidents).set({ status: "resolved", resolvedByPlatformAdminId: input.platformAdminId, resolvedAt: new Date(), updatedAt: new Date() }).where(eq(platformIncidents.id, input.incidentId)).returning())[0];
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, action: "workspace_incident_resolved", reason: input.reason, summary: `Incidente #${current.id} resolvido`, before: { status: current.status }, after: { status: incident.status } });
+  return incident;
+}
+
 export async function getPlatformWorkspaceDetail(workspaceId: number) {
   const db = await getDb();
   const workspace = (
@@ -1844,6 +1884,7 @@ export async function getPlatformWorkspaceDetail(workspaceId: number) {
     platformAudit,
     workspaceAudit,
     agent,
+    incidents,
   ] = await Promise.all([
     workspaceListItem(workspace),
     getWorkspaceMembersForPlatform(workspaceId),
@@ -1852,6 +1893,7 @@ export async function getPlatformWorkspaceDetail(workspaceId: number) {
     listPlatformAuditLogs(workspaceId),
     listWorkspaceAuditSafe(workspaceId),
     getPlatformAgentSnapshot(workspaceId),
+    listPlatformIncidents(workspaceId),
   ]);
   const channels = (
     await db
@@ -1880,6 +1922,7 @@ export async function getPlatformWorkspaceDetail(workspaceId: number) {
     platformAudit,
     workspaceAudit,
     agent,
+    incidents,
   };
 }
 

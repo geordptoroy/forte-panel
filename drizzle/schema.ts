@@ -523,6 +523,26 @@ export const workspaces = pgTable("workspaces", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
+export const platformIncidents = pgTable(
+  "platformIncidents",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    severity: varchar("severity", { length: 20 }).default("medium").notNull(),
+    status: varchar("status", { length: 20 }).default("open").notNull(),
+    title: varchar("title", { length: 180 }).notNull(),
+    details: text("details").notNull(),
+    openedByPlatformAdminId: integer("openedByPlatformAdminId").notNull(),
+    resolvedByPlatformAdminId: integer("resolvedByPlatformAdminId"),
+    resolvedAt: timestamp("resolvedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    index("platform_incidents_workspace_status_idx").on(table.workspaceId, table.status, table.createdAt),
+  ]
+);
+
 /** Platform operators are intentionally separate from workspace roles. */
 export const platformAdmins = pgTable(
   "platformAdmins",
