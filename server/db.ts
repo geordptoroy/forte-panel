@@ -32,6 +32,7 @@ import {
   messages,
   notifications,
   opportunities,
+  opportunityStageHistory,
   opportunityFollowUps,
   onboardingAudioAssets,
   onboardingSessions,
@@ -5765,71 +5766,216 @@ export async function sendManualMessage(
   return result[0];
 }
 
+export type OpportunityStageChangeSource = "inbox" | "api" | "lead_memory";
+
 export async function moveContactStage(
   workspaceId: number,
   contactId: number,
   stage: string,
-  actorUserId?: number
+  actorUserId?: number,
+  source: OpportunityStageChangeSource = "inbox"
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const contact = await getContactById(workspaceId, contactId);
   if (!contact) throw new Error("Contact not found");
-  const conversation = await getConversationByContact(workspaceId, contactId);
-  const link =
-    contact.groupId === null
-      ? await ensureLeadOpportunityForContact(workspaceId, contact, {
-          source: "crm",
-          conversationId: conversation?.id,
-        })
-      : undefined;
   const normalizedStage = initialOpportunityStage(stage);
-  const updatedAt = new Date();
-  await db.transaction(async tx => {
-    const updated = await tx
-      .update(contacts)
-      .set({ stage: normalizedStage, updatedAt })
-      .where(
-        and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
-      )
-      .returning({ id: contacts.id });
-    if (!updated[0]) throw new Error("Contact not found");
-    if (link) {
+
+  // Group records are not commercial Leads/Opportunities. Preserve their legacy
+  // contact-only behavior, but keep it outside the Opportunity history stream.
+  if (contact.groupId !== null) {
+    const previousStage = contact.stage;
+    if (previousStage === normalizedStage)
+      return {
+        contactId,
+        leadId: null,
+        opportunityId: null,
+        previousStage,
+        stage: normalizedStage,
+        changed: false,
+      };
+    const changedAt = new Date();
+    await db.transaction(async tx => {
+      const updated = await tx
+        .update(contacts)
+        .set({ stage: normalizedStage, updatedAt: changedAt })
+        .where(
+          and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
+        )
+        .returning({ id: contacts.id });
+      if (!updated[0]) throw new Error("Contact not found");
+      await tx.insert(auditLogs).values({
+        workspaceId,
+        actorUserId,
+        contactId,
+        action: "group_stage_changed",
+        summary: `Etapa legada do grupo alterada: ${previousStage} → ${normalizedStage}`,
+      });
+      await tx
+        .insert(domainEvents)
+        .values({
+          workspaceId,
+          eventKey: `stage.changed:group:${contactId}:${crypto.randomUUID()}`,
+          eventType: "stage.changed",
+          aggregateType: "contact",
+          aggregateId: contactId,
+          payload: JSON.stringify({
+            contactId,
+            previousStage,
+            stage: normalizedStage,
+            actorUserId: actorUserId ?? null,
+            source,
+            changedAt,
+          }),
+          createdAt: changedAt,
+          updatedAt: changedAt,
+        })
+        .onConflictDoNothing({
+          target: [domainEvents.workspaceId, domainEvents.eventKey],
+        });
+    });
+    return {
+      contactId,
+      leadId: null,
+      opportunityId: null,
+      previousStage,
+      stage: normalizedStage,
+      changed: true,
+    };
+  }
+
+  const conversation = await getConversationByContact(workspaceId, contactId);
+  const link = await ensureLeadOpportunityForContact(workspaceId, contact, {
+    source: "crm",
+    conversationId: conversation?.id,
+  });
+  if (!link) throw new Error("Opportunity could not be loaded");
+
+  return db.transaction(async tx => {
+    const currentOpportunity = (
+      await tx
+        .select({ stage: opportunities.stage })
+        .from(opportunities)
+        .where(
+          and(
+            eq(opportunities.id, link.opportunityId),
+            eq(opportunities.workspaceId, workspaceId),
+            eq(opportunities.leadId, link.leadId)
+          )
+        )
+        .for("update")
+        .limit(1)
+    )[0];
+    if (!currentOpportunity) throw new Error("Opportunity not found");
+
+    const currentContact = (
+      await tx
+        .select({ stage: contacts.stage })
+        .from(contacts)
+        .where(
+          and(
+            eq(contacts.id, contactId),
+            eq(contacts.workspaceId, workspaceId),
+            isNull(contacts.groupId)
+          )
+        )
+        .for("update")
+        .limit(1)
+    )[0];
+    if (!currentContact) throw new Error("Contact not found");
+
+    const previousStage = currentOpportunity.stage;
+    const changed = previousStage !== normalizedStage;
+    const mirrorNeedsRepair = currentContact.stage !== normalizedStage;
+    if (!changed && !mirrorNeedsRepair)
+      return {
+        contactId,
+        leadId: link.leadId,
+        opportunityId: link.opportunityId,
+        previousStage,
+        stage: normalizedStage,
+        changed: false,
+      };
+
+    const changedAt = new Date();
+    if (changed) {
       await tx
         .update(opportunities)
-        .set({ stage: normalizedStage, updatedAt })
+        .set({ stage: normalizedStage, updatedAt: changedAt })
         .where(
           and(
             eq(opportunities.id, link.opportunityId),
             eq(opportunities.workspaceId, workspaceId)
           )
         );
-    }
-  });
-  await db.insert(auditLogs).values({
-    workspaceId,
-    actorUserId,
-    contactId,
-    action: "stage_changed",
-    summary: `Lead movido para ${normalizedStage}`,
-  });
-  if (contact.workspaceId) {
-    await enqueueDomainEvent({
-      workspaceId: contact.workspaceId,
-      event: "stage.changed",
-      aggregateType: "contact",
-      aggregateId: contactId,
-      eventKey: `stage.changed:${contactId}:${updatedAt.toISOString()}`,
-      payload: {
-        contactId,
-        leadId: link?.leadId ?? null,
-        opportunityId: link?.opportunityId ?? null,
-        stage: normalizedStage,
+      await tx.insert(opportunityStageHistory).values({
+        workspaceId,
+        opportunityId: link.opportunityId,
+        fromStage: previousStage,
+        toStage: normalizedStage,
+        source,
+        actorUserId: actorUserId ?? null,
+        createdAt: changedAt,
+      });
+      await tx.insert(auditLogs).values({
+        workspaceId,
         actorUserId,
-        changedAt: updatedAt,
-      },
-    });
-  }
+        contactId,
+        action: "stage_changed",
+        summary: `Etapa da oportunidade alterada: ${previousStage} → ${normalizedStage}`,
+      });
+      await tx
+        .insert(domainEvents)
+        .values({
+          workspaceId,
+          eventKey: `stage.changed:${link.opportunityId}:${crypto.randomUUID()}`,
+          eventType: "stage.changed",
+          aggregateType: "opportunity",
+          aggregateId: link.opportunityId,
+          payload: JSON.stringify({
+            contactId,
+            leadId: link.leadId,
+            opportunityId: link.opportunityId,
+            previousStage,
+            stage: normalizedStage,
+            actorUserId: actorUserId ?? null,
+            source,
+            changedAt,
+          }),
+          createdAt: changedAt,
+          updatedAt: changedAt,
+        })
+        .onConflictDoNothing({
+          target: [domainEvents.workspaceId, domainEvents.eventKey],
+        });
+    }
+
+    if (mirrorNeedsRepair) {
+      await tx
+        .update(contacts)
+        .set({ stage: normalizedStage, updatedAt: changedAt })
+        .where(
+          and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
+        );
+      if (!changed)
+        await tx.insert(auditLogs).values({
+          workspaceId,
+          actorUserId,
+          contactId,
+          action: "stage_mirror_repaired",
+          summary: `Espelho da etapa do contato corrigido para ${normalizedStage}`,
+        });
+    }
+
+    return {
+      contactId,
+      leadId: link.leadId,
+      opportunityId: link.opportunityId,
+      previousStage,
+      stage: normalizedStage,
+      changed,
+    };
+  });
 }
 
 export async function getContactById(workspaceId: number, contactId: number) {
@@ -5843,6 +5989,44 @@ export async function getContactById(workspaceId: number, contactId: number) {
     )
     .limit(1);
   return result[0];
+}
+
+export async function getCanonicalContactStage(
+  workspaceId: number,
+  contactId: number
+) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const row = (
+    await db
+      .select({
+        contactStage: contacts.stage,
+        opportunityStage: opportunities.stage,
+      })
+      .from(contacts)
+      .leftJoin(
+        leads,
+        and(
+          eq(leads.contactId, contacts.id),
+          eq(leads.workspaceId, workspaceId)
+        )
+      )
+      .leftJoin(
+        opportunities,
+        and(
+          eq(opportunities.leadId, leads.id),
+          eq(opportunities.workspaceId, workspaceId)
+        )
+      )
+      .where(
+        and(
+          eq(contacts.id, contactId),
+          eq(contacts.workspaceId, workspaceId)
+        )
+      )
+      .limit(1)
+  )[0];
+  return row?.opportunityStage ?? row?.contactStage;
 }
 
 export async function listContactNotes(workspaceId: number, contactId: number) {
@@ -5989,7 +6173,7 @@ export async function getDashboardSnapshot(workspaceId: number) {
     urgentOpen: workspaceContacts.filter(
       contact =>
         (contact.urgency === "Alta" || contact.urgency === "Crítica") &&
-        contact.stage !== "Concluído"
+        (contact.opportunityStage ?? contact.stage) !== "Concluído"
     ).length,
     quotesPendingCents: pendingCents,
     appointmentsToday: activeAppointments.filter(
@@ -7648,7 +7832,16 @@ export async function leadMemoryOperation(
       )
       .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
       .limit(20);
-    return { exists: true, lead: contact, notes, audit };
+    const canonicalStage = await getCanonicalContactStage(
+      workspace.id,
+      contact.id
+    );
+    return {
+      exists: true,
+      lead: { ...contact, stage: canonicalStage ?? contact.stage },
+      notes,
+      audit,
+    };
   }
 
   if (input.action === "atualizar_lead" && !contact)
@@ -7665,7 +7858,13 @@ export async function leadMemoryOperation(
     });
     if (!contact) throw new Error("Contact could not be created");
     if (fields.stage !== undefined)
-      await moveContactStage(workspace.id, contact.id, fields.stage);
+      await moveContactStage(
+        workspace.id,
+        contact.id,
+        fields.stage,
+        undefined,
+        "lead_memory"
+      );
     const hasNonStageUpdates =
       Boolean(fields.urgency) ||
       fields.quoteCents !== undefined ||
@@ -7706,10 +7905,15 @@ export async function leadMemoryOperation(
           .limit(1)
       )[0];
     }
+    if (!contact) throw new Error("Contact could not be loaded");
+    const canonicalStage = await getCanonicalContactStage(
+      workspace.id,
+      contact.id
+    );
     return {
       exists: true,
       updated: input.action === "atualizar_lead",
-      lead: contact,
+      lead: { ...contact, stage: canonicalStage ?? contact.stage },
     };
   }
 
@@ -7739,7 +7943,16 @@ export async function leadMemoryOperation(
     )
     .orderBy(desc(contactNotes.id))
     .limit(1);
-  return { exists: true, noteCreated: true, lead: contact, note: created[0] };
+  const canonicalStage = await getCanonicalContactStage(
+    workspace.id,
+    contact.id
+  );
+  return {
+    exists: true,
+    noteCreated: true,
+    lead: { ...contact, stage: canonicalStage ?? contact.stage },
+    note: created[0],
+  };
 }
 
 export async function recoverProcessingDomainEvents() {
@@ -8171,97 +8384,123 @@ async function ensureLeadOpportunityForContact(
         updatedAt: sql`GREATEST(${leads.updatedAt}, ${options.activityAt})`,
       }
     : { updatedAt: now };
-  const leadRows = await db
-    .insert(leads)
-    .values({
-      workspaceId,
-      contactId: contact.id,
-      source: options.source,
-      lastActivityAt: options.activityAt ?? null,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [leads.workspaceId, leads.contactId],
-      set: {
-        ...activityUpdate,
-        ...(options.source === "whatsapp"
-          ? {
-              source: sql`CASE WHEN ${leads.source} = 'migration' THEN 'whatsapp' ELSE ${leads.source} END`,
-            }
-          : {}),
-      },
-    })
-    .returning({ id: leads.id });
-  const leadId = leadRows[0]?.id;
-  if (!leadId) throw new Error("Lead could not be created or loaded");
-
-  await db
-    .insert(opportunities)
-    .values({
-      workspaceId,
-      leadId,
-      stage: initialOpportunityStage(contact.stage),
-      createdAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoNothing({
-      target: [opportunities.workspaceId, opportunities.leadId],
-    });
-  const opportunity = (
-    await db
-      .select({ id: opportunities.id, stage: opportunities.stage })
-      .from(opportunities)
-      .where(
-        and(
-          eq(opportunities.workspaceId, workspaceId),
-          eq(opportunities.leadId, leadId)
-        )
-      )
-      .limit(1)
-  )[0];
-  if (!opportunity)
-    throw new Error("Opportunity could not be created or loaded");
-
-  if (options.activityAt) {
-    await db
-      .update(opportunities)
-      .set({
-        updatedAt: sql`GREATEST(${opportunities.updatedAt}, ${options.activityAt})`,
+  return db.transaction(async tx => {
+    const leadRows = await tx
+      .insert(leads)
+      .values({
+        workspaceId,
+        contactId: contact.id,
+        source: options.source,
+        lastActivityAt: options.activityAt ?? null,
+        createdAt: now,
+        updatedAt: now,
       })
-      .where(
-        and(
-          eq(opportunities.id, opportunity.id),
-          eq(opportunities.workspaceId, workspaceId)
-        )
-      );
-  }
+      .onConflictDoUpdate({
+        target: [leads.workspaceId, leads.contactId],
+        set: {
+          ...activityUpdate,
+          ...(options.source === "whatsapp"
+            ? {
+                source: sql`CASE WHEN ${leads.source} = 'migration' THEN 'whatsapp' ELSE ${leads.source} END`,
+              }
+            : {}),
+        },
+      })
+      .returning({ id: leads.id });
+    const leadId = leadRows[0]?.id;
+    if (!leadId) throw new Error("Lead could not be created or loaded");
 
-  if (options.conversationId) {
-    const linked = await db
-      .update(conversations)
-      .set({
+    await tx
+      .insert(opportunities)
+      .values({
+        workspaceId,
+        leadId,
+        stage: initialOpportunityStage(contact.stage),
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing({
+        target: [opportunities.workspaceId, opportunities.leadId],
+      });
+    const opportunity = (
+      await tx
+        .select({ id: opportunities.id, stage: opportunities.stage })
+        .from(opportunities)
+        .where(
+          and(
+            eq(opportunities.workspaceId, workspaceId),
+            eq(opportunities.leadId, leadId)
+          )
+        )
+        .for("update")
+        .limit(1)
+    )[0];
+    if (!opportunity)
+      throw new Error("Opportunity could not be created or loaded");
+
+    const baseline = (
+      await tx
+        .select({ id: opportunityStageHistory.id })
+        .from(opportunityStageHistory)
+        .where(
+          and(
+            eq(opportunityStageHistory.workspaceId, workspaceId),
+            eq(opportunityStageHistory.opportunityId, opportunity.id),
+            isNull(opportunityStageHistory.fromStage)
+          )
+        )
+        .limit(1)
+    )[0];
+    if (!baseline)
+      await tx.insert(opportunityStageHistory).values({
+        workspaceId,
         opportunityId: opportunity.id,
-        updatedAt: options.activityAt
-          ? sql`GREATEST(${conversations.updatedAt}, ${options.activityAt})`
-          : now,
-      })
-      .where(
-        and(
-          eq(conversations.id, options.conversationId),
-          eq(conversations.contactId, contact.id)
-        )
-      )
-      .returning({ id: conversations.id });
-    if (!linked[0])
-      throw new Error("Conversation could not be linked to the Opportunity");
-  }
+        fromStage: null,
+        toStage: opportunity.stage,
+        source: options.source,
+        createdAt: now,
+      });
 
-  return {
-    leadId,
-    opportunityId: opportunity.id,
-    opportunityStage: opportunity.stage,
-  };
+    if (options.activityAt) {
+      await tx
+        .update(opportunities)
+        .set({
+          updatedAt: sql`GREATEST(${opportunities.updatedAt}, ${options.activityAt})`,
+        })
+        .where(
+          and(
+            eq(opportunities.id, opportunity.id),
+            eq(opportunities.workspaceId, workspaceId)
+          )
+        );
+    }
+
+    if (options.conversationId) {
+      const linked = await tx
+        .update(conversations)
+        .set({
+          opportunityId: opportunity.id,
+          updatedAt: options.activityAt
+            ? sql`GREATEST(${conversations.updatedAt}, ${options.activityAt})`
+            : now,
+        })
+        .where(
+          and(
+            eq(conversations.id, options.conversationId),
+            eq(conversations.contactId, contact.id)
+          )
+        )
+        .returning({ id: conversations.id });
+      if (!linked[0])
+        throw new Error("Conversation could not be linked to the Opportunity");
+    }
+
+    return {
+      leadId,
+      opportunityId: opportunity.id,
+      opportunityStage: opportunity.stage,
+    };
+  });
 }
 
 async function linkExistingOpportunityToConversation(

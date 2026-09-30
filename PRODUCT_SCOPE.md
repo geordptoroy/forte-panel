@@ -101,3 +101,4 @@ A interface REST interna do futuro gateway WhatsApp deve ficar separada da API p
 7. **Depois:** avaliar source/license e prototipar fork PAPI ou gateway Baileys; múltiplos canais entram após validação de produto.
 
 Detalhamento, testes de aceite e fontes estão em `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`. As tarefas vigentes estão em `todo.md`; recomendações antigas para iniciar pelo ledger/fencing não substituem a nova prioridade de tenancy e login master.
+Cada transição passa pelo mesmo serviço tenant-scoped e grava estágio anterior/novo, origem e ator em histórico imutável, com audit log e evento de domínio na mesma transação. Repetir a etapa atual é no-op; leituras de Inbox, CRM, Agenda, REST e agente preferem `Opportunity.stage`, usando `contacts.stage` só como fallback legado/espelho.

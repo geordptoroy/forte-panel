@@ -687,3 +687,14 @@ A validação local passou: check, 228 testes (52 ignorados), build e diff check
 A Opportunity passa a ter responsável opcional validado contra membership ativa do mesmo workspace; somente owner/admin/manager atribui. O Inbox mantém no máximo uma próxima ação aberta por Opportunity, com título e prazo, reprogramável/concluível e auditada. Desativar membro limpa assignments. A próxima ação é um lembrete operacional interno, sem worker, scheduler, mensagem ou mudança automática de stage. Migration aditiva 0048 registra `assignedMemberId` e `opportunityFollowUps`; procedimentos tRPC, projeções da lista/perfil e testes de tenancy foram acrescentados.
 
 Validação: check, teste local (232 pass/53 skips condicionais a banco), build e diff-check passaram. O primeiro run do PR #8 falhou por um fixture de atribuição cruzado; fix no commit `d1b5ca8`. O run PostgreSQL `36708180817` passou as 72 suítes/285 testes sem skips e aplicou migration 0048. PR [#8](https://github.com/geordptoroy/forte-panel/pull/8) está aberto sobre O3.1 e sem merge. PostgreSQL efêmero não é staging/produção; `CORE_ONLY_MODE` continua ligado. Próxima fatia: O3.3 — estágio canônico e eliminação de estado duplicado.
+
+
+---
+
+## Execução comercial — O3.3 — 2026-09-30
+
+A fonte canônica do funil agora é `Opportunity.stage`; `contacts.stage` é espelho de compatibilidade. A migration aditiva 0049 cria histórico imutável e baseline para oportunidades existentes. Toda mudança Inbox/REST/CRM/agente passa por serviço tenant-scoped que, na mesma transação, bloqueia e atualiza a Opportunity, sincroniza o espelho, registra histórico e auditoria e escreve `stage.changed` na outbox. No-op não cria evento; reparo de espelho não inventa transição. Projeções do Inbox, CRM/Kanban, Agenda e suporte priorizam o estado canônico.
+
+`pnpm check`, `pnpm test` (232 pass/53 ignorados), `pnpm build` e `git diff --check` passaram no Sandbox. Sem `DATABASE_URL`, testes PostgreSQL e aplicação real da 0049 dependem do CI da PR #9; o build segue com aviso conhecido de bundle >500 kB. Branch `feat/o3.3-canonical-opportunity-stage`, empilhada sobre O3.2/PR #8. Não mesclar automaticamente e manter `CORE_ONLY_MODE` até prova persistente.
+
+**Próximo:** aguardar CI PostgreSQL da PR #9; em seguida, O3.4 — orçamento com itens, validade e aprovação humana, sem billing/Stripe.

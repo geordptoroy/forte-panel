@@ -3182,17 +3182,25 @@ export const appRouter = router({
             message: "Contato não encontrado neste workspace",
           });
         }
-        await moveContactStage(
+        const transition = await moveContactStage(
           ctx.workspace.workspaceId,
           input.contactId,
           input.stage,
-          ctx.user.id
+          ctx.user.id,
+          "inbox"
         );
         const contact = await getContactById(
           ctx.workspace.workspaceId,
           input.contactId
         );
-        return contact ? mapContact(contact) : null;
+        return contact
+          ? mapContact({
+              ...contact,
+              leadId: transition.leadId,
+              opportunityId: transition.opportunityId,
+              opportunityStage: transition.stage,
+            })
+          : null;
       }),
     markRead: requireInbox
       .input(contactIdInput)

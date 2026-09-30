@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   auditLogs,
   contacts,
@@ -9,6 +9,7 @@ import {
   messages,
   opportunities,
   opportunityFollowUps,
+  opportunityStageHistory,
   users,
   whatsappGroupParticipants,
   whatsappGroups,
@@ -19,6 +20,7 @@ import {
 import {
   getDb,
   getConversationByContact,
+  getCanonicalContactStage,
   ingestInboundWhatsApp,
   listInboxContacts,
   listInboxAssignableMembers,
@@ -935,6 +937,123 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
       "Em atendimento"
     );
 
+    const historyFilter = and(
+      eq(opportunityStageHistory.workspaceId, workspaceAId),
+      eq(opportunityStageHistory.opportunityId, opportunityId)
+    );
+    const initialHistory = await db
+      .select()
+      .from(opportunityStageHistory)
+      .where(historyFilter)
+      .orderBy(asc(opportunityStageHistory.createdAt), asc(opportunityStageHistory.id));
+    expect(initialHistory).toHaveLength(2);
+    expect(initialHistory[0]).toMatchObject({
+      fromStage: null,
+      toStage: "Novo contato",
+      source: "whatsapp",
+    });
+    expect(initialHistory[1]).toMatchObject({
+      fromStage: "Novo contato",
+      toStage: "Em atendimento",
+      source: "inbox",
+    });
+
+    const repeatedTransition = await moveContactStage(
+      workspaceAId,
+      contact.id,
+      "Em atendimento"
+    );
+    expect(repeatedTransition).toMatchObject({
+      previousStage: "Em atendimento",
+      stage: "Em atendimento",
+      changed: false,
+    });
+    expect(
+      await db.select().from(opportunityStageHistory).where(historyFilter)
+    ).toHaveLength(2);
+
+    await db
+      .update(contacts)
+      .set({ stage: "Sem retorno" })
+      .where(
+        and(eq(contacts.id, contact.id), eq(contacts.workspaceId, workspaceAId))
+      );
+    expect(await getCanonicalContactStage(workspaceAId, contact.id)).toBe(
+      "Em atendimento"
+    );
+    const repairedMirror = await moveContactStage(
+      workspaceAId,
+      contact.id,
+      "Em atendimento"
+    );
+    expect(repairedMirror.changed).toBe(false);
+    const repairedContact = (
+      await db
+        .select({ stage: contacts.stage })
+        .from(contacts)
+        .where(
+          and(eq(contacts.id, contact.id), eq(contacts.workspaceId, workspaceAId))
+        )
+        .limit(1)
+    )[0];
+    expect(repairedContact?.stage).toBe("Em atendimento");
+    expect(
+      await db.select().from(opportunityStageHistory).where(historyFilter)
+    ).toHaveLength(2);
+
+    const apiTransition = await moveContactStage(
+      workspaceAId,
+      contact.id,
+      "Orçamento enviado",
+      undefined,
+      "api"
+    );
+    expect(apiTransition).toMatchObject({
+      previousStage: "Em atendimento",
+      stage: "Orçamento enviado",
+      changed: true,
+    });
+    const finalHistory = await db
+      .select()
+      .from(opportunityStageHistory)
+      .where(historyFilter)
+      .orderBy(asc(opportunityStageHistory.createdAt), asc(opportunityStageHistory.id));
+    expect(finalHistory).toHaveLength(3);
+    expect(finalHistory[2]).toMatchObject({
+      fromStage: "Em atendimento",
+      toStage: "Orçamento enviado",
+      source: "api",
+    });
+    const stageEvents = await db
+      .select()
+      .from(domainEvents)
+      .where(
+        and(
+          eq(domainEvents.workspaceId, workspaceAId),
+          eq(domainEvents.eventType, "stage.changed"),
+          eq(domainEvents.aggregateType, "opportunity"),
+          eq(domainEvents.aggregateId, opportunityId)
+        )
+      )
+      .orderBy(asc(domainEvents.createdAt), asc(domainEvents.id));
+    expect(stageEvents).toHaveLength(2);
+    expect(JSON.parse(stageEvents[0]!.payload)).toMatchObject({
+      opportunityId,
+      previousStage: "Novo contato",
+      stage: "Em atendimento",
+    });
+    const stageAudits = await db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(
+          eq(auditLogs.workspaceId, workspaceAId),
+          eq(auditLogs.contactId, contact.id),
+          eq(auditLogs.action, "stage_changed")
+        )
+      );
+    expect(stageAudits).toHaveLength(2);
+
     const otherWorkspace = await ingestInboundWhatsApp(workspaceBId, {
       ...firstInput,
       eventId: `lead-live-other-workspace-${suffix}`,
@@ -977,6 +1096,21 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
           )
         )
     ).toHaveLength(1);
+    const otherWorkspaceBaseline = await db
+      .select()
+      .from(opportunityStageHistory)
+      .where(
+        and(
+          eq(opportunityStageHistory.workspaceId, workspaceBId),
+          eq(opportunityStageHistory.opportunityId, otherWorkspace.opportunityId),
+          eq(opportunityStageHistory.source, "whatsapp")
+        )
+      );
+    expect(otherWorkspaceBaseline).toHaveLength(1);
+    expect(otherWorkspaceBaseline[0]).toMatchObject({
+      fromStage: null,
+      toStage: "Novo contato",
+    });
     const apiContact = await upsertApiContact(workspaceAId, {
       phone: phoneApiLead,
       name: "Lead de integração API",
@@ -1007,6 +1141,21 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
         .limit(1)
     )[0]!;
     expect(apiLead.source).toBe("api");
+    const apiOpportunityBaseline = await db
+      .select()
+      .from(opportunityStageHistory)
+      .where(
+        and(
+          eq(opportunityStageHistory.workspaceId, workspaceAId),
+          eq(opportunityStageHistory.opportunityId, apiOpportunity.id),
+          eq(opportunityStageHistory.source, "api")
+        )
+      );
+    expect(apiOpportunityBaseline).toHaveLength(1);
+    expect(apiOpportunityBaseline[0]).toMatchObject({
+      fromStage: null,
+      toStage: "Novo contato",
+    });
     await queueOutboundMessage(
       workspaceAId,
       apiContact.id,

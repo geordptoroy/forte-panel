@@ -89,7 +89,7 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O2.4 | Canal | Mídia privada e capacidades do composer | **CONCLUÍDA (código)** | Upload privado autenticado até 8 MB e envio por URL HTTPS assinada; prova real pendente |
 | O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | **CONCLUÍDA (código)** | Migration 0047 e 7 integrações passaram no PostgreSQL CI; PRs #6/#7 abertos e CI verde; smoke persistente/staging e WhatsApp real pendentes |
 | O3.2 | Comercial | Inbox operacional com assignment e follow-up | **CONCLUÍDA (código)** | PR #8 aberto sobre O3.1; migration 0048 aplicada no CI; run `36708180817` passou 285 testes/72 arquivos sem skips; staging e WhatsApp real continuam pendentes |
-| O3.3 | Comercial | Funil canônico sem duplicação de estado | PENDENTE | Lead atravessa estágios com auditoria |
+| O3.3 | Comercial | Funil canônico sem duplicação de estado | **IMPLEMENTADA (código; PR #9/CI PostgreSQL pendentes)** | Opportunity.stage canônico, histórico imutável, auditoria/outbox atômicos; migration 0049 aguarda CI |
 | O3.4 | Comercial | Orçamento com itens, validade e aprovação | PENDENTE | Conversa pode gerar proposta rastreável |
 | O3.5 | Comercial | Agenda com conflito, profissional e status | PENDENTE | Orçamento aprovado pode virar agendamento real |
 | O3.6 | Comercial | Recebimento, ledger operacional e recibo | PENDENTE | Serviço concluído fecha ciclo de receita |
