@@ -213,6 +213,14 @@ Para atualizar e iniciar a stack usando `.env`, execute:
 ./scripts/start-docker.sh
 ```
 
+No Windows, também é possível executar diretamente pelo PowerShell, sem depender do Bash/WSL:
+
+```powershell
+.\scripts\start-docker.ps1
+```
+
+Esse comando faz pull das imagens `dev` e recria somente os serviços da stack, sem remover volumes.
+
 O script faz pull das imagens publicadas e recria `postgres_panel`, `redis_panel`, `forte-panel`, `forte-panel-worker` e `forte-whatsapp`; não remove volumes. O painel comum agora possui **Sair** no topo e a tela `Integrações` permite iniciar a conexão, acompanhar o estado e ler o QR Code do WhatsApp dentro da própria interface.
 
 
