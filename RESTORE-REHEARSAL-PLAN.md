@@ -119,6 +119,26 @@ O destino deve ser diferente do diretório ativo. O gateway do ensaio deve ser i
 
 Não escanear QR, não conectar um telefone real e não reabrir outbound nesta primeira rodada. O objetivo inicial é provar leitura, readiness e isolamento.
 
+### 4.3a Stack Docker local isolada
+
+No Windows/PowerShell, a segunda stack pode ser criada sem tocar na stack ativa usando:
+
+```powershell
+.\scripts\start-restore-rehearsal.ps1 `
+  -BackupDir "C:\Users\<usuario>\Desktop\restore-rehearsal\rr-local-01"
+```
+
+O script exige o pacote já verificado (`manifest-*.txt`, dump, sessão e `media.json`), valida o Compose e sobe o projeto `forte-rehearsal` com volumes, containers, redes e portas separados (`3102`/`3110` por padrão). As redes são internas, a API pública fica desligada e o script não executa restore nem remove volumes. O QR não deve ser escaneado nesse ambiente.
+
+Para descartar somente o ambiente de ensaio, depois de registrar as evidências:
+
+```powershell
+docker compose --project-name forte-rehearsal --env-file .env `
+  --file docker-compose.local.yml `
+  --file "$env:TEMP\forte-restore-rehearsal-forte-rehearsal.override.yml" `
+  down --volumes --remove-orphans
+```
+
 ### 4.4 Restore de mídia/blob
 
 O provider deve fornecer uma operação equivalente a:
