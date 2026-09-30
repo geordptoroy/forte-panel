@@ -1,8 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { ensureDemoWorkspace, getDb, rescheduleAgendaAppointment } from "./db";
-import { appointmentsTable, availability, professionals, professionalServices, services, users, workspaceMembers } from "../drizzle/schema";
+import { getDb, rescheduleAgendaAppointment } from "./db";
+import {
+  appointmentsTable,
+  auditLogs,
+  availability,
+  professionals,
+  professionalServices,
+  services,
+  users,
+  workspaceMembers,
+  workspaces,
+} from "../drizzle/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { ScheduleError } from "./schedule";
 
@@ -37,7 +47,13 @@ describe.skipIf(!hasDatabase)("professional agenda isolation", () => {
   beforeAll(async () => {
     const db = await getDb();
     if (!db) throw new Error("database unavailable");
-    const workspace = await ensureDemoWorkspace();
+    const [workspace] = await db
+      .insert(workspaces)
+      .values({
+        name: `Professional isolation ${suffix}`,
+        slug: `professional-isolation-${suffix}`,
+      })
+      .returning({ id: workspaces.id });
     if (!workspace) throw new Error("workspace unavailable");
     workspaceId = workspace.id;
 
@@ -93,8 +109,10 @@ describe.skipIf(!hasDatabase)("professional agenda isolation", () => {
     await db.delete(professionalServices).where(inArray(professionalServices.professionalId, [professionalAId, professionalBId].filter(Boolean)));
     await db.delete(services).where(inArray(services.id, serviceId ? [serviceId] : []));
     await db.delete(workspaceMembers).where(inArray(workspaceMembers.userId, [adminUserId, professionalAUserId, professionalBUserId].filter(Boolean)));
+    if (workspaceId) await db.delete(auditLogs).where(eq(auditLogs.workspaceId, workspaceId));
     await db.delete(professionals).where(inArray(professionals.id, [professionalAId, professionalBId].filter(Boolean)));
     await db.delete(users).where(inArray(users.id, [adminUserId, professionalAUserId, professionalBUserId].filter(Boolean)));
+    if (workspaceId) await db.delete(workspaces).where(eq(workspaces.id, workspaceId));
   });
 
   const callerFor = (userId: number, operationalRole: "professional" | "human_attendant" | null = null, role: "user" | "admin" = "user") =>
