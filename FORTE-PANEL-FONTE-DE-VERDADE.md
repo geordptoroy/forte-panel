@@ -224,6 +224,7 @@ O código já possui Kanban de ciclo de vida de workspaces, testes locais do age
 - zero skips críticos no gate de release;
 - pipeline completa de histórico/backfill sem disparar IA;
 - prova persistente de upload privado, entrega por URL assinada e política de limpeza de objetos órfãos;
+- aplicação e prova PostgreSQL da migration aditiva 0047, deduplicação de Lead/Opportunity, sincronização de estágio e isolamento entre workspaces;
 - fallback explícito entre modelos/capabilities;
 - custo/token por provider e workspace;
 - hardening completo de SSRF, CSRF, replay, revogação de sessão e headers;
@@ -244,9 +245,10 @@ WhatsApp
   → forte-whatsapp / Baileys
   → webhook assinado + eventId
   → validação de instanceId/workspace
-  → ingestão transacional
-  → contato/conversa/mensagem
-  → Inbox, Funil, Dashboard e eventos
+  → ingestão idempotente de Contact, Conversation e mensagem
+  → Lead tenant-scoped associado ao Contact
+  → Opportunity ligada à Conversation; stage da Opportunity é canônico
+  → Inbox, Funil, Dashboard e eventos com projeção comercial unificada
   → agente humano ou IA
   → outbound com instanceId explícito
   → gateway

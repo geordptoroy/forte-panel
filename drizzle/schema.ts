@@ -1121,11 +1121,69 @@ export const contactNotes = pgTable("contactNotes", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const leads = pgTable(
+  "leads",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    contactId: integer("contactId")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    source: varchar("source", { length: 32 }).default("whatsapp").notNull(),
+    lastActivityAt: timestamp("lastActivityAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("leads_workspace_contact_unique_idx").on(
+      table.workspaceId,
+      table.contactId
+    ),
+    index("leads_workspace_updated_idx").on(
+      table.workspaceId,
+      table.updatedAt
+    ),
+  ]
+);
+
+export const opportunities = pgTable(
+  "opportunities",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    leadId: integer("leadId")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    stage: varchar("stage", { length: 80 }).default("Novo contato").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("opportunities_workspace_lead_unique_idx").on(
+      table.workspaceId,
+      table.leadId
+    ),
+    index("opportunities_workspace_stage_updated_idx").on(
+      table.workspaceId,
+      table.stage,
+      table.updatedAt
+    ),
+  ]
+);
+
 export const conversations = pgTable(
   "conversations",
   {
     id: serial("id").primaryKey(),
     contactId: integer("contactId").notNull(),
+    opportunityId: integer("opportunityId").references(
+      () => opportunities.id,
+      { onDelete: "set null" }
+    ),
     status: conversationStatusEnum("status").default("open").notNull(),
     humanControlled: integer("humanControlled").default(0).notNull(),
     lastMessageAt: timestamp("lastMessageAt"),
@@ -1133,7 +1191,12 @@ export const conversations = pgTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("conversations_contact_unique_idx").on(table.contactId)]
+  table => [
+    uniqueIndex("conversations_contact_unique_idx").on(table.contactId),
+    uniqueIndex("conversations_opportunity_unique_idx")
+      .on(table.opportunityId)
+      .where(sql`${table.opportunityId} IS NOT NULL`),
+  ]
 );
 
 /** Per-operator read cursor; the shared unread counters remain legacy data. */

@@ -28,8 +28,10 @@ import {
   conversations,
   conversationReads,
   domainEvents,
+  leads,
   messages,
   notifications,
+  opportunities,
   onboardingAudioAssets,
   onboardingSessions,
   onboardingConflictResolutions,
@@ -61,6 +63,10 @@ import {
   type InsertUser,
 } from "../drizzle/schema";
 import { messageDeliveryRank, type MessageDeliveryStatus } from "../shared/message-delivery";
+import {
+  initialOpportunityStage,
+  shouldUpsertLeadFromInbound,
+} from "../shared/lead-opportunity";
 import {
   isSupportedInboxMimeType,
   isWorkspaceInboxMediaKey,
@@ -5165,6 +5171,35 @@ export async function listInboxContacts(
       )
     )
     .orderBy(desc(contacts.lastMessageAt), desc(contacts.id));
+  const leadRows = await db
+    .select({
+      contactId: contacts.id,
+      leadId: leads.id,
+      opportunityId: opportunities.id,
+      opportunityStage: opportunities.stage,
+    })
+    .from(contacts)
+    .leftJoin(
+      leads,
+      and(
+        eq(leads.contactId, contacts.id),
+        eq(leads.workspaceId, workspaceId)
+      )
+    )
+    .leftJoin(
+      opportunities,
+      and(
+        eq(opportunities.leadId, leads.id),
+        eq(opportunities.workspaceId, workspaceId)
+      )
+    )
+    .where(
+      and(
+        eq(contacts.workspaceId, workspaceId),
+        ...(includeGroups ? [] : [isNull(contacts.groupId)])
+      )
+    );
+  const leadByContactId = new Map(leadRows.map(row => [row.contactId, row]));
   const groupIds = contactRows
     .map(contact => contact.groupId)
     .filter((id): id is number => id !== null);
@@ -5301,8 +5336,12 @@ export async function listInboxContacts(
         ? lastMessageByContact.get(contact.id)
         : undefined;
       const group = contact.groupId ? groupById.get(contact.groupId) : undefined;
+      const lead = leadByContactId.get(contact.id);
       return {
         ...contact,
+        leadId: lead?.leadId ?? null,
+        opportunityId: lead?.opportunityId ?? null,
+        opportunityStage: lead?.opportunityStage ?? null,
         isGroup: Boolean(contact.groupId),
         groupJid: group?.jid ?? null,
         groupSubject: group?.subject ?? null,
@@ -5394,9 +5433,20 @@ export async function getConversationByContact(
   const db = await getDb();
   if (!db) return undefined;
   const result = await db
-    .select()
+    .select({
+      conversation: conversations,
+      opportunityId: opportunities.id,
+      opportunityStage: opportunities.stage,
+    })
     .from(conversations)
     .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+    .leftJoin(
+      opportunities,
+      and(
+        eq(opportunities.id, conversations.opportunityId),
+        eq(opportunities.workspaceId, workspaceId)
+      )
+    )
     .where(
       and(
         eq(conversations.contactId, contactId),
@@ -5404,7 +5454,14 @@ export async function getConversationByContact(
       )
     )
     .limit(1);
-  return result[0]?.conversations;
+  const row = result[0];
+  return row
+    ? {
+        ...row.conversation,
+        opportunityId: row.opportunityId ?? null,
+        opportunityStage: row.opportunityStage ?? null,
+      }
+    : undefined;
 }
 
 export async function listMessagesForContact(
@@ -5650,31 +5707,61 @@ export async function moveContactStage(
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  const contact = await getContactById(workspaceId, contactId);
+  if (!contact) throw new Error("Contact not found");
+  const conversation = await getConversationByContact(workspaceId, contactId);
+  const link =
+    contact.groupId === null
+      ? await ensureLeadOpportunityForContact(workspaceId, contact, {
+          source: "crm",
+          conversationId: conversation?.id,
+        })
+      : undefined;
+  const normalizedStage = initialOpportunityStage(stage);
   const updatedAt = new Date();
-  const updated = await db
-    .update(contacts)
-    .set({ stage, updatedAt })
-    .where(
-      and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
-    )
-    .returning({ id: contacts.id });
-  if (!updated[0]) throw new Error("Contact not found");
+  await db.transaction(async tx => {
+    const updated = await tx
+      .update(contacts)
+      .set({ stage: normalizedStage, updatedAt })
+      .where(
+        and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
+      )
+      .returning({ id: contacts.id });
+    if (!updated[0]) throw new Error("Contact not found");
+    if (link) {
+      await tx
+        .update(opportunities)
+        .set({ stage: normalizedStage, updatedAt })
+        .where(
+          and(
+            eq(opportunities.id, link.opportunityId),
+            eq(opportunities.workspaceId, workspaceId)
+          )
+        );
+    }
+  });
   await db.insert(auditLogs).values({
     workspaceId,
     actorUserId,
     contactId,
     action: "stage_changed",
-    summary: `Lead movido para ${stage}`,
+    summary: `Lead movido para ${normalizedStage}`,
   });
-  const contact = await getContactById(workspaceId, contactId);
-  if (contact?.workspaceId) {
+  if (contact.workspaceId) {
     await enqueueDomainEvent({
       workspaceId: contact.workspaceId,
       event: "stage.changed",
       aggregateType: "contact",
       aggregateId: contactId,
       eventKey: `stage.changed:${contactId}:${updatedAt.toISOString()}`,
-      payload: { contactId, stage, actorUserId, changedAt: updatedAt },
+      payload: {
+        contactId,
+        leadId: link?.leadId ?? null,
+        opportunityId: link?.opportunityId ?? null,
+        stage: normalizedStage,
+        actorUserId,
+        changedAt: updatedAt,
+      },
     });
   }
 }
@@ -6755,6 +6842,18 @@ export async function ingestInboundWhatsApp(
     )[0];
   }
   if (!conversation) throw new Error("Conversation could not be created");
+  const leadLink = shouldUpsertLeadFromInbound({
+    isGroup: groupId !== undefined,
+    fromMe,
+    historySync: isHistorical,
+    ignored: false,
+  })
+    ? await ensureLeadOpportunityForContact(workspace.id, contact, {
+        source: "whatsapp",
+        activityAt: receivedAt,
+        conversationId: conversation.id,
+      })
+    : undefined;
   const created = await db
     .insert(messages)
     .values({
@@ -6785,6 +6884,9 @@ export async function ingestInboundWhatsApp(
         messageId: created[0].id,
         contactId: contact.id,
         conversationId: conversation.id,
+        leadId: leadLink?.leadId ?? null,
+        opportunityId: leadLink?.opportunityId ?? null,
+        opportunityStage: leadLink?.opportunityStage ?? null,
         phone: contact.externalPhone,
         content: input.content,
         messageType: input.messageType ?? "text",
@@ -6811,6 +6913,13 @@ export async function ingestInboundWhatsApp(
     contactId: contact.id,
     conversationId: conversation.id,
     messageId: created[0]?.id,
+    ...(leadLink
+      ? {
+          leadId: leadLink.leadId,
+          opportunityId: leadLink.opportunityId,
+          opportunityStage: leadLink.opportunityStage,
+        }
+      : {}),
     duplicate: false,
   };
 }
@@ -6857,13 +6966,21 @@ export async function upsertApiContact(
         updatedAt: new Date(),
       })
       .where(eq(contacts.id, existing.id));
-    return (
+    const updated = (
       await db
         .select()
         .from(contacts)
         .where(eq(contacts.id, existing.id))
         .limit(1)
     )[0];
+    if (updated) {
+      const conversation = await getConversationByContact(workspace.id, updated.id);
+      await ensureLeadOpportunityForContact(workspace.id, updated, {
+        source: "api",
+        conversationId: conversation?.id,
+      });
+    }
+    return updated;
   }
   await db
     .insert(contacts)
@@ -6894,6 +7011,11 @@ export async function upsertApiContact(
       .limit(1)
   )[0];
   if (created) {
+    const conversation = await getConversationByContact(workspace.id, created.id);
+    const link = await ensureLeadOpportunityForContact(workspace.id, created, {
+      source: "api",
+      conversationId: conversation?.id,
+    });
     await enqueueDomainEvent({
       workspaceId: workspace.id,
       event: "contact.created",
@@ -6905,6 +7027,8 @@ export async function upsertApiContact(
         phone: created.externalPhone,
         name: created.name,
         stage: created.stage,
+        leadId: link?.leadId ?? null,
+        opportunityId: link?.opportunityId ?? null,
       },
     });
   }
@@ -6981,6 +7105,11 @@ export async function queueOutboundMessage(
     conversation = await getConversationByContact(workspaceId, contactId);
   }
   if (!conversation) throw new Error("Conversation not found");
+  await linkExistingOpportunityToConversation(
+    workspaceId,
+    contactId,
+    conversation.id
+  );
   const createdAt = new Date();
   const latestInbound = await db
     .select({ metadata: messages.metadata })
@@ -7469,17 +7598,17 @@ export async function leadMemoryOperation(
       serviceRequested: fields.serviceRequested ?? input.serviceRequested,
     });
     if (!contact) throw new Error("Contact could not be created");
-    if (
-      fields.urgency ||
-      fields.stage ||
+    if (fields.stage !== undefined)
+      await moveContactStage(workspace.id, contact.id, fields.stage);
+    const hasNonStageUpdates =
+      Boolean(fields.urgency) ||
       fields.quoteCents !== undefined ||
-      fields.aiEnabled !== undefined
-    ) {
+      fields.aiEnabled !== undefined;
+    if (hasNonStageUpdates) {
       await db
         .update(contacts)
         .set({
           urgency: fields.urgency,
-          stage: fields.stage,
           quoteCents: fields.quoteCents,
           aiEnabled:
             fields.aiEnabled === undefined
@@ -7489,12 +7618,25 @@ export async function leadMemoryOperation(
                 : 0,
           updatedAt: new Date(),
         })
-        .where(eq(contacts.id, contact.id));
+        .where(
+          and(
+            eq(contacts.id, contact.id),
+            eq(contacts.workspaceId, workspace.id),
+            isNull(contacts.groupId)
+          )
+        );
+    }
+    if (fields.stage !== undefined || hasNonStageUpdates) {
       contact = (
         await db
           .select()
           .from(contacts)
-          .where(eq(contacts.id, contact.id))
+          .where(
+            and(
+              eq(contacts.id, contact.id),
+              eq(contacts.workspaceId, workspace.id)
+            )
+          )
           .limit(1)
       )[0];
     }
@@ -7936,4 +8078,183 @@ export async function renameContact(
     summary: `Nome alterado de “${contact.name}” para “${name}”`,
   });
   return getContactById(workspaceId, contactId);
+}
+
+
+type LeadOpportunitySource = "whatsapp" | "api" | "crm";
+
+async function ensureLeadOpportunityForContact(
+  workspaceId: number,
+  contact: typeof contacts.$inferSelect,
+  options: {
+    source: LeadOpportunitySource;
+    activityAt?: Date;
+    conversationId?: number;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  if (contact.workspaceId !== workspaceId)
+    throw new Error("Lead contact does not belong to this workspace");
+  if (contact.groupId !== null) return undefined;
+
+  const now = options.activityAt ?? new Date();
+  const activityUpdate = options.activityAt
+    ? {
+        lastActivityAt: sql`GREATEST(COALESCE(${leads.lastActivityAt}, ${options.activityAt}), ${options.activityAt})`,
+        updatedAt: sql`GREATEST(${leads.updatedAt}, ${options.activityAt})`,
+      }
+    : { updatedAt: now };
+  const leadRows = await db
+    .insert(leads)
+    .values({
+      workspaceId,
+      contactId: contact.id,
+      source: options.source,
+      lastActivityAt: options.activityAt ?? null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [leads.workspaceId, leads.contactId],
+      set: {
+        ...activityUpdate,
+        ...(options.source === "whatsapp"
+          ? {
+              source: sql`CASE WHEN ${leads.source} = 'migration' THEN 'whatsapp' ELSE ${leads.source} END`,
+            }
+          : {}),
+      },
+    })
+    .returning({ id: leads.id });
+  const leadId = leadRows[0]?.id;
+  if (!leadId) throw new Error("Lead could not be created or loaded");
+
+  await db
+    .insert(opportunities)
+    .values({
+      workspaceId,
+      leadId,
+      stage: initialOpportunityStage(contact.stage),
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoNothing({
+      target: [opportunities.workspaceId, opportunities.leadId],
+    });
+  const opportunity = (
+    await db
+      .select({ id: opportunities.id, stage: opportunities.stage })
+      .from(opportunities)
+      .where(
+        and(
+          eq(opportunities.workspaceId, workspaceId),
+          eq(opportunities.leadId, leadId)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!opportunity)
+    throw new Error("Opportunity could not be created or loaded");
+
+  if (options.activityAt) {
+    await db
+      .update(opportunities)
+      .set({
+        updatedAt: sql`GREATEST(${opportunities.updatedAt}, ${options.activityAt})`,
+      })
+      .where(
+        and(
+          eq(opportunities.id, opportunity.id),
+          eq(opportunities.workspaceId, workspaceId)
+        )
+      );
+  }
+
+  if (options.conversationId) {
+    const linked = await db
+      .update(conversations)
+      .set({
+        opportunityId: opportunity.id,
+        updatedAt: options.activityAt
+          ? sql`GREATEST(${conversations.updatedAt}, ${options.activityAt})`
+          : now,
+      })
+      .where(
+        and(
+          eq(conversations.id, options.conversationId),
+          eq(conversations.contactId, contact.id)
+        )
+      )
+      .returning({ id: conversations.id });
+    if (!linked[0])
+      throw new Error("Conversation could not be linked to the Opportunity");
+  }
+
+  return {
+    leadId,
+    opportunityId: opportunity.id,
+    opportunityStage: opportunity.stage,
+  };
+}
+
+async function linkExistingOpportunityToConversation(
+  workspaceId: number,
+  contactId: number,
+  conversationId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const contact = (
+    await db
+      .select({ id: contacts.id, groupId: contacts.groupId })
+      .from(contacts)
+      .where(
+        and(
+          eq(contacts.id, contactId),
+          eq(contacts.workspaceId, workspaceId)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!contact) throw new Error("Contact not found");
+  if (contact.groupId !== null) return undefined;
+
+  const opportunity = (
+    await db
+      .select({ id: opportunities.id })
+      .from(leads)
+      .innerJoin(
+        opportunities,
+        and(
+          eq(opportunities.leadId, leads.id),
+          eq(opportunities.workspaceId, workspaceId)
+        )
+      )
+      .where(
+        and(
+          eq(leads.workspaceId, workspaceId),
+          eq(leads.contactId, contactId)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!opportunity) return undefined;
+
+  const linked = await db
+    .update(conversations)
+    .set({
+      opportunityId: opportunity.id,
+      updatedAt: sql`GREATEST(${conversations.updatedAt}, now())`,
+    })
+    .where(
+      and(
+        eq(conversations.id, conversationId),
+        eq(conversations.contactId, contactId)
+      )
+    )
+    .returning({ id: conversations.id });
+  if (!linked[0])
+    throw new Error("Conversation could not be linked to the Opportunity");
+  return opportunity.id;
 }

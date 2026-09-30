@@ -1,9 +1,9 @@
 # Forte Panel — Roadmap executável de produto público
 
 **Status:** ativo e canônico para execução por fatias
-**Data:** 2026-09-29
+**Data:** 2026-09-30
 **Base:** `FORTE-PANEL-FONTE-DE-VERDADE.md` + auditoria do código e documentação
-**Regra de continuidade:** cada mensagem `próximo` executa a próxima fatia pendente, atualiza este arquivo e publica um commit no Git.
+**Regra de continuidade:** cada mensagem `próximo` executa uma fatia por vez, registra commit em branch empilhada e abre PR para revisão; nunca mesclar automaticamente.
 
 > Este documento transforma a estratégia de reposicionamento em trabalho executável. Não é uma lista de ideias: cada fatia tem escopo, saída verificável e critério de conclusão.
 
@@ -87,7 +87,7 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O2.2 | Canal | Inbound idempotente e histórico sem efeitos colaterais | **CONCLUÍDA (código)** | Lease recuperável com fencing e filtros do histórico; migration 0046 exige prova PostgreSQL |
 | O2.3 | Canal | Outbound com `instanceId`, fila e reconciliação | **CONCLUÍDA (código)** | Fila e recibos sent/delivered/read tenant/instância-scoped e monotônicos |
 | O2.4 | Canal | Mídia privada e capacidades do composer | **CONCLUÍDA (código)** | Upload privado autenticado até 8 MB e envio por URL HTTPS assinada; prova real pendente |
-| O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | **PRÓXIMA** | WhatsApp cria/atualiza lead real |
+| O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | **CONCLUÍDA (código)** | Migration 0047, upsert idempotente e stage canônico; PR de revisão e prova PostgreSQL pendentes |
 | O3.2 | Comercial | Inbox operacional com assignment e follow-up | PENDENTE | Nenhum lead importante fica sem próxima ação |
 | O3.3 | Comercial | Funil canônico sem duplicação de estado | PENDENTE | Lead atravessa estágios com auditoria |
 | O3.4 | Comercial | Orçamento com itens, validade e aprovação | PENDENTE | Conversa pode gerar proposta rastreável |
