@@ -17,6 +17,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $envFile = Join-Path $repoRoot ".env"
 $composeFile = Join-Path $repoRoot "docker-compose.local.yml"
 $backupPath = (Resolve-Path $BackupDir -ErrorAction Stop).Path
+$baseComposeFile = Join-Path $env:TEMP "forte-restore-rehearsal-$ProjectName.base.yml"
 $overrideFile = Join-Path $env:TEMP "forte-restore-rehearsal-$ProjectName.override.yml"
 
 if (-not (Test-Path $envFile)) { Fail ".env não encontrado: $envFile" }
@@ -28,6 +29,10 @@ if (-not (Get-ChildItem $backupPath -Filter "whatsapp-sessions-*.tar.gz" -File))
 if ($PanelPort -lt 1024 -or $PanelPort -gt 65535) { Fail "PanelPort inválida" }
 if ($BaileysPort -lt 1024 -or $BaileysPort -gt 65535) { Fail "BaileysPort inválida" }
 if ($PanelPort -eq $BaileysPort) { Fail "PanelPort e BaileysPort não podem ser iguais" }
+
+$baseCompose = Get-Content -Path $composeFile -Raw
+$baseCompose = [regex]::Replace($baseCompose, '(?m)^\s*container_name:\s*.*(?:\r?\n|$)', '')
+Set-Content -Path $baseComposeFile -Value $baseCompose -Encoding utf8
 
 $override = @"
 services:
@@ -63,7 +68,7 @@ Set-Content -Path $overrideFile -Value $override -Encoding utf8
 $composeArgs = @(
     "--project-name", $ProjectName,
     "--env-file", $envFile,
-    "--file", $composeFile,
+    "--file", $baseComposeFile,
     "--file", $overrideFile
 )
 
@@ -86,4 +91,5 @@ Write-Host ""
 Write-Host "Panel do rehearsal: http://localhost:$PanelPort"
 Write-Host "Gateway do rehearsal: http://localhost:$BaileysPort"
 Write-Host "Próximo passo manual: validar o preflight e somente depois restaurar no destino isolado."
+Write-Host "Compose base temporário: $baseComposeFile"
 Write-Host "Para descartar SOMENTE esta stack depois do ensaio: docker compose $($composeArgs -join ' ') down --volumes --remove-orphans"
