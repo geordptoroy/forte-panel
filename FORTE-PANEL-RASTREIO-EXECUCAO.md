@@ -56,9 +56,11 @@ Validação: 6 testes da outbox e 16 testes HTTP do gateway passaram; typechecks
 
 ### C4 — Revisão final de integração
 
-**Estado:** em execução.
+**Estado:** concluído nesta rodada.
 
 Rodar a suíte completa, CI PostgreSQL, testes do gateway, build das imagens e smoke Docker. Consolidar falhas em uma lista única antes de refatorar.
+
+Resultado: Panel `268 passed / 55 skipped`; gateway `76 passed`; typechecks e builds passaram; PR #32 tem CI PostgreSQL verde. Avisos observados: `OAUTH_SERVER_URL` ausente nos testes que apenas inicializam o adapter, testes persistentes explicitamente skipped e warning de bundle frontend acima de 500 kB.
 
 ## Fase final — Refatoração orientada por falhas
 
@@ -72,6 +74,8 @@ Executar somente depois de C1–C4:
 - repetir todos os gates após cada correção.
 
 **Não refatorar por preferência estética enquanto os gates ainda estiverem sendo descobertos.**
+
+**Resultado desta rodada:** nenhuma falha funcional, race ou contrato contraditório foi encontrado; nenhuma refatoração corretiva foi aplicada. O warning de bundle e a configuração ausente de OAuth ficam registrados como itens operacionais separados, não como regressões desta fila.
 
 ## Gates de release que não são substituídos por coding
 
