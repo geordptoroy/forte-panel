@@ -300,6 +300,7 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 | Última fatia concluída | `P0.3` — seeds e bootstrap isolados por ambiente |
 | Última fatia concluída por este roadmap | `O1.2` — catálogo operacional conectado ao onboarding |
 | Último commit de implementação deste roadmap | `6bd2442` — `feat: connect onboarding to operational service catalog` |
+| Pull request | [#4](https://github.com/geordptoroy/forte-panel/pull/4) — aberto, não mesclado |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.

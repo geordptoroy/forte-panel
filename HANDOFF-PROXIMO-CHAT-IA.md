@@ -62,3 +62,4 @@ Começar revalidando ambiente, branch, `git status`, remote e serviços disponí
 
 **Commit da implementação O1.2:** `6bd2442` — `feat: connect onboarding to operational service catalog`.
 **Branch de trabalho:** `feat/o1.2-operational-service-catalog`.
+**PR aberto:** [#4](https://github.com/geordptoroy/forte-panel/pull/4), ainda não mesclado.

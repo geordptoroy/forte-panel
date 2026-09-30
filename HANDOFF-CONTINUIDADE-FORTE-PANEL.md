@@ -25,3 +25,4 @@ Validação no Sandbox: `pnpm check`, `pnpm build` e `git diff --check` passaram
 **Próxima fatia:** O1.3 — regras de atendimento e revisão de exemplos. Preservar publicação humana, estados de revisão e o gate de produto; não desativar `CORE_ONLY_MODE` nesta etapa.
 
 **Commit de implementação:** `6bd2442` — `feat: connect onboarding to operational service catalog` (branch `feat/o1.2-operational-service-catalog`).
+**PR:** [#4](https://github.com/geordptoroy/forte-panel/pull/4), aberto contra `main`, não mesclado.
