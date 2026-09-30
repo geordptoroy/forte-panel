@@ -65,6 +65,7 @@ export type InstanceSnapshot = {
   lastError?: string;
   settings: BaileysInstanceSettings;
   webhookOutboxPending?: number;
+  webhookOutboxDeadLetter?: number;
   webhookLastError?: string;
   updatedAt: string;
 };
@@ -134,6 +135,7 @@ export class InstanceManager {
     return {
       ...this.snapshot,
       webhookOutboxPending: outbox.pending,
+      webhookOutboxDeadLetter: outbox.deadLetter,
       webhookLastError: outbox.lastError,
     };
   }
