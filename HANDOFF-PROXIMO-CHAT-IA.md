@@ -39,20 +39,22 @@ O onboarding já possui contratos persistidos e procedures para sessão, autosav
 
 O onboarding continua classificado como `not_ready` no release catalog enquanto não houver prova completa com banco persistente, navegador, microfone, canal WhatsApp e publicação real. Não liberar `/onboarding` no gate apenas porque a UI foi reorganizada.
 
+## O1.2 concluída — catálogo operacional
+
+A etapa de Serviços do onboarding agora consulta e grava `services` com nome, preço, duração e ativo/pausado. A etapa de Operação consulta `professionalsDetailed`, permite cadastrar profissional, marcar dias de atendimento e vincular serviços. O texto livre foi preservado para regras variáveis e observações que ainda não foram detalhadas. A entrega está documentada em `O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`.
+
 ## Próxima ação recomendada
 
-A próxima fatia é **O1.2 — Serviços, preços, duração e disponibilidade**. O trabalho deve começar auditando os contratos reais de `workspace.services`, `workspace.professionalsDetailed`, agenda e quotes. A meta é separar o texto livre de serviços do perfil de onboarding e conectar o primeiro serviço a uma entidade operacional persistida, com preço/duração/ativo e vínculo ao profissional quando aplicável.
+A próxima fatia é **O1.3 — Regras de atendimento e revisão de exemplos**. O trabalho deve auditar os contratos atuais de perfil, exemplos/simulação, prompt publicado e confirmação humana, garantindo que preço, prazo, disponibilidade e políticas só sejam apresentados como fonte aprovada.
 
 A sequência recomendada para O1.2 é:
 
-1. Ler schema, db helpers, routers e telas existentes de serviços/profissionais/agenda.
-2. Confirmar o modelo canônico e evitar criar uma segunda tabela ou outro formato paralelo.
-3. Definir a experiência de catálogo: adicionar serviço, preço fixo ou “a partir de”, duração, disponibilidade e responsável.
-4. Conectar o onboarding ao catálogo real sem bloquear negócios que ainda não querem cadastrar tudo; permitir “decidir depois” com fallback seguro.
-5. Atualizar o prompt para consultar catálogo/agenda, nunca prometer valores ou horários fora das fontes reais.
-6. Atualizar documentação, roadmap e este handoff.
-7. Executar `pnpm check`, `pnpm build` e `git diff --check`; pular testes completos somente se essa instrução continuar vigente.
-8. Commitar e fazer push para `origin/main`.
+1. Ler o contrato real de regras, exemplos e simulação no backend e no onboarding.
+2. Confirmar quais exemplos são apenas simulação e quais podem entrar na publicação.
+3. Conectar a revisão a dados do catálogo e agenda, sem deixar a IA inventar preço ou horário.
+4. Atualizar testes, documentação, roadmap e este handoff.
+5. Executar `pnpm check`, `pnpm build` e `git diff --check`; pular testes completos somente se essa instrução continuar vigente.
+6. Commitar e fazer push para `origin/main`.
 
 ## Regras de produto que não podem ser quebradas
 
@@ -72,5 +74,5 @@ Começar dizendo que vai verificar o checkout, ler `ROADMAP-EXECUCAO-FORTE-PANEL
 
 Depois executar O1.2 de ponta a ponta, mantendo mudanças atômicas, atualizando o roadmap a cada fatia e publicando o commit. O usuário quer continuidade direta e costuma responder somente “Próximo”.
 
-**Commit da fatia:** `fda674f` — `feat: add public onboarding wizard`
+**Commit da fatia:** `commit da fatia atual` — `feat: connect onboarding to operational catalog`
 **Branch esperada:** `main` sincronizada com `origin/main`.

@@ -31,7 +31,8 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 3. [`HANDOFF-CONTINUIDADE-FORTE-PANEL.md`](./HANDOFF-CONTINUIDADE-FORTE-PANEL.md) — histórico de execução, decisões e próximo passo.
 4. [`HANDOFF-PROXIMO-CHAT-IA.md`](./HANDOFF-PROXIMO-CHAT-IA.md) — contexto operacional para o próximo chat continuar O1.2.
 5. [`O1.1-ENTREGA-ONBOARDING-WIZARD.md`](./O1.1-ENTREGA-ONBOARDING-WIZARD.md) — decisões e critérios da entrega do wizard de seis passos.
-6. [`todo.md`](./todo.md) — checklist vivo da implementação.
+6. [`O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`](./O1.2-ENTREGA-CATALOGO-OPERACIONAL.md) — catálogo persistido de serviços, profissionais e disponibilidade no onboarding.
+7. [`todo.md`](./todo.md) — checklist vivo da implementação.
 7. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
 8. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual histórico de operação, migrations, quotas e segurança.
 9. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão histórica do que funciona e pendências.

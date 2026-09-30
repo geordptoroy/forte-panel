@@ -80,8 +80,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | P0.4 | Fundação pública | Limpar linguagem beta do Console Admin | **CONCLUÍDA** | Console com linguagem de produção |
 | P0.5 | Fundação pública | Catálogo de estados e release gate por rota | **CONCLUÍDA** | `release-catalog.ts` governa estados e exposição incremental |
 | O1.1 | Onboarding | Wizard público de 6 passos | **CONCLUÍDA** | Owner configura negócio sem conhecer IA técnica |
-| O1.2 | Onboarding | Serviços, preços, duração e disponibilidade | **PRÓXIMA** | Catálogo operacional real para o núcleo comercial |
-| O1.3 | Onboarding | Regras de atendimento e revisão de exemplos | PENDENTE | Publicação humana de configuração segura |
+| O1.2 | Onboarding | Serviços, preços, duração e disponibilidade | **CONCLUÍDA** | Catálogo operacional real para o núcleo comercial |
+| O1.3 | Onboarding | Regras de atendimento e revisão de exemplos | **PRÓXIMA** | Publicação humana de configuração segura |
 | O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | PENDENTE | Onboarding tolerante a interrupções |
 | O2.1 | Canal | Saúde do WhatsApp e ciclo de conexão | PENDENTE | QR, pairing, reconexão e erros acionáveis |
 | O2.2 | Canal | Inbound idempotente e histórico sem efeitos colaterais | PENDENTE | Mensagem recebida uma vez, com status observável |
@@ -298,8 +298,8 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 | Branch | `main` |
 | Base auditada | `cad2b8a` |
 | Última fatia concluída | `P0.3` — seeds e bootstrap isolados por ambiente |
-| Última fatia concluída por este roadmap | `O1.1` — wizard público de onboarding em seis passos |
-| Último commit deste roadmap | `fda674f` — `feat: add public onboarding wizard` |
+| Última fatia concluída por este roadmap | `O1.2` — catálogo operacional de serviços e disponibilidade |
+| Último commit deste roadmap | `commit da fatia atual` — `feat: connect onboarding to operational catalog` |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.
