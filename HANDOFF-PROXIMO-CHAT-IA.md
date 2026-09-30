@@ -97,3 +97,7 @@ A branch `feat/o5.2-support-tickets-audited-sessions` adiciona a migration `0054
 ## O5.3 em revisão — health operacional
 
 O CI PostgreSQL da O5.2 passou no run `36735198506`. A branch `feat/o5.3-operational-health-snapshot` adiciona `platform.health`, snapshot somente leitura com gateway, worker, filas, storage e providers. O retorno é sanitizado: não expõe payloads, URLs privadas, chaves ou erros brutos. `pnpm check`, `pnpm build` e `git diff --check` passaram; o build mantém o aviso conhecido de chunk frontend acima de 500 kB. Não ligar `CORE_ONLY_MODE` nem executar chamadas externas de health nesta fatia.
+
+## O5.4 em revisão — quotas, retenção e lifecycle
+
+O CI PostgreSQL da O5.3 passou no run `36735603600`. A branch `feat/o5.4-quotas-retention-lifecycle` adiciona `platform.workspaceGovernance` e `platform.setWorkspaceRetention`. A governança reúne lifecycle, plano técnico, quotas atuais por workspace/usuário, retenção de uso e onboarding, explicitando billing separado. A alteração exige sessão operator, valida limites e audita before/after. `pnpm check`, `pnpm build`, `git diff --check` e 16 testes focados passaram. Não adicionar cobrança, exclusão destrutiva ou downgrade automático nesta fatia.
