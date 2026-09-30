@@ -101,3 +101,7 @@ O CI PostgreSQL da O5.2 passou no run `36735198506`. A branch `feat/o5.3-operati
 ## O5.4 em revisão — quotas, retenção e lifecycle
 
 O CI PostgreSQL da O5.3 passou no run `36735603600`. A branch `feat/o5.4-quotas-retention-lifecycle` adiciona `platform.workspaceGovernance` e `platform.setWorkspaceRetention`. A governança reúne lifecycle, plano técnico, quotas atuais por workspace/usuário, retenção de uso e onboarding, explicitando billing separado. A alteração exige sessão operator, valida limites e audita before/after. `pnpm check`, `pnpm build`, `git diff --check` e 16 testes focados passaram. Não adicionar cobrança, exclusão destrutiva ou downgrade automático nesta fatia.
+
+## O6.1 em revisão — provas negativas de tenancy e papéis
+
+O CI PostgreSQL da O5.4 passou no run `36735977815`. A branch `feat/o6.1-tenancy-role-negative-proofs` adiciona `server/o6-tenancy-roles-negative.test.ts`: matriz de permissões, sessão sem travessia de workspace/identidade e uso sem vazamento entre buckets. Localmente passaram 6 testes; 5 testes de integração foram pulados por ausência de DATABASE_URL. `pnpm check` e `git diff --check` passaram. O CI da PR precisa executar os cenários PostgreSQL.

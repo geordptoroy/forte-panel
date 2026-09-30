@@ -101,8 +101,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O5.1 | Admin | Workspaces como contas de produção | **CONCLUÍDA (código + CI PostgreSQL)** | PR #18 aberta; run `36734540609` passou; staging e revisão final continuam pendentes |
 | O5.2 | Admin | Suporte, tickets e sessões auditadas | **CONCLUÍDA (código + CI PostgreSQL)** | PR #19 aberta; run `36735198506` passou; staging e revisão final continuam pendentes |
 | O5.3 | Admin | Health de gateway, filas, storage e providers | **CONCLUÍDA (código + CI PostgreSQL)** | PR #20 aberta; run `36735603600` passou; staging e revisão final continuam pendentes |
-| O5.4 | Admin | Quotas, planos, retenção e lifecycle | **EM REVISÃO (código local)** | Branch `feat/o5.4-quotas-retention-lifecycle`; governança unificada e retenção operator-scoped; CI/PR pendentes |
-| O6.1 | Confiabilidade | Testes negativos de tenancy e papéis | PENDENTE | Isolamento comprovado entre workspaces |
+| O5.4 | Admin | Quotas, planos, retenção e lifecycle | **CONCLUÍDA (código + CI PostgreSQL)** | PR #21 aberta; run `36735977815` passou; staging e revisão final continuam pendentes |
+| O6.1 | Confiabilidade | Testes negativos de tenancy e papéis | **EM REVISÃO (código local)** | Branch `feat/o6.1-tenancy-role-negative-proofs`; provas negativas de sessões, permissões e quotas; CI/PR pendentes |
 | O6.2 | Confiabilidade | Backup, restore e retenção | PENDENTE | Recuperação comprovada de banco, mídia e sessão |
 | O6.3 | Confiabilidade | Browser desktop/mobile e acessibilidade | PENDENTE | Jornadas críticas operáveis por cliente real |
 | O7.1 | Monetização | Plano, quota e cobrança SaaS separados | PENDENTE | Limite técnico não é billing |
