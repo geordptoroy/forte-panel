@@ -105,3 +105,7 @@ O CI PostgreSQL da O5.3 passou no run `36735603600`. A branch `feat/o5.4-quotas-
 ## O6.1 em revisão — provas negativas de tenancy e papéis
 
 O CI PostgreSQL da O5.4 passou no run `36735977815`. A branch `feat/o6.1-tenancy-role-negative-proofs` adiciona `server/o6-tenancy-roles-negative.test.ts`: matriz de permissões, sessão sem travessia de workspace/identidade e uso sem vazamento entre buckets. Localmente passaram 6 testes; 5 testes de integração foram pulados por ausência de DATABASE_URL. `pnpm check` e `git diff --check` passaram. O CI da PR precisa executar os cenários PostgreSQL.
+
+## O6.2 em revisão — backup, restore e retenção
+
+O CI PostgreSQL da O6.1 passou no run `36736288990`, incluindo as provas negativas de tenancy e papéis. A branch `feat/o6.2-backup-restore-retention-proof` adiciona `scripts/backup-restore.test.ts` e inclui `scripts/**/*.test.ts` no Vitest. A suíte executa o script real em diretórios temporários, valida manifesto/hash/pg_restore/tar, rejeita dump adulterado e bloqueia restore sem `CONFIRM_RESTORE=YES`. Localmente 3 testes passaram; retenção PostgreSQL foi pulada sem DATABASE_URL. `pnpm check`, `pnpm build` e `git diff --check` passaram. Não criar backup real nem executar restore destrutivo nesta fatia.
