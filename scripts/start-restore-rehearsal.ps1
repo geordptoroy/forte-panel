@@ -32,9 +32,9 @@ if ($BaileysPort -lt 1024 -or $BaileysPort -gt 65535) { Fail "BaileysPort invál
 if ($PanelPort -eq $BaileysPort) { Fail "PanelPort e BaileysPort não podem ser iguais" }
 
 $baseCompose = Get-Content -Path $composeFile -Raw
-$baseCompose = [regex]::Replace($baseCompose, '(?m)^\s*container_name:\s*.*(?:\r?\n|$)', '')
-$baseCompose = [regex]::Replace($baseCompose, '(?ms)^\s{4}ports:\s*\r?\n(?:^\s{6}-.*(?:\r?\n|$))+', '')
-$baseCompose = [regex]::Replace($baseCompose, '(?m)^\s{4}ports:\s*\[.*\]\s*(?:\r?\n|$)', '')
+$baseCompose = [regex]::Replace($baseCompose, '(?m)^[ \t]*container_name:[ \t]*.*(?:\r?\n|$)', '')
+$baseCompose = [regex]::Replace($baseCompose, '(?m)^[ \t]{4}ports:[ \t]*\r?\n(?:(?:^[ \t]{6}-.*(?:\r?\n|$))+)', '')
+$baseCompose = [regex]::Replace($baseCompose, '(?m)^[ \t]{4}ports:[ \t]*\[.*\][ \t]*(?:\r?\n|$)', '')
 Set-Content -Path $baseComposeFile -Value $baseCompose -Encoding utf8
 
 $override = @"
