@@ -36,6 +36,8 @@ import {
   getBaileysInstance,
   resetWorkspaceDevelopmentData,
   getWorkspaceUsageSnapshot,
+  getOnboardingGovernance,
+  saveOnboardingRetentionPolicy,
   listBaileysInstances,
   listInboxContacts,
   getContactById,
@@ -1795,6 +1797,29 @@ export async function listPlatformWorkspaceNotes(workspaceId: number) {
   return rows.map(row => ({ ...row, createdAt: row.createdAt.toISOString() }));
 }
 
+export async function getPlatformWorkspaceGovernance(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const workspace = (await db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1))[0];
+  if (!workspace) return null;
+  const [usage, onboarding] = await Promise.all([getWorkspaceUsageSnapshot(workspaceId), getOnboardingGovernance(workspaceId)]);
+  const usageRetentionRaw = Number(process.env.FORTE_USAGE_RETENTION_DAYS ?? 30);
+  const usageRetentionDays = Number.isFinite(usageRetentionRaw) ? Math.max(1, Math.min(Math.floor(usageRetentionRaw), 365)) : 30;
+  return {
+    workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug, plan: workspace.plan, status: workspace.status, active: workspace.active === 1 },
+    quotas: { plan: usage.plan, bucketStart: usage.bucketStart.toISOString(), resetsAt: usage.resetsAt.toISOString(), workspace: usage.workspace, users: usage.users },
+    retention: { usageDays: usageRetentionDays, onboarding: onboarding.retention, policyVersion: onboarding.policyVersion },
+    billing: { managedSeparately: true, status: "not_configured" as const },
+  };
+}
+export async function setPlatformWorkspaceRetention(input: { platformAdminId: number; workspaceId: number; supportSessionId: number; rawArtifactDays: number; derivedDataDays: number; reason: string }) {
+  const session = await getActiveSupportSession({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, sessionId: input.supportSessionId, requireOperator: true });
+  if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
+  const before = await getOnboardingGovernance(input.workspaceId);
+  const after = await saveOnboardingRetentionPolicy(input.workspaceId, input.platformAdminId, { rawArtifactDays: input.rawArtifactDays, derivedDataDays: input.derivedDataDays });
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, supportSessionId: input.supportSessionId, action: "workspace_retention_policy_changed", reason: input.reason, summary: "Política de retenção do onboarding atualizada", before: { retention: before.retention }, after: { retention: after.retention } });
+  return after;
+}
 export async function setPlatformWorkspaceStatus(input: {
   platformAdminId: number;
   workspaceId: number;

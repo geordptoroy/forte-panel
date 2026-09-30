@@ -18,6 +18,7 @@ import {
   ensurePlatformSupportWorkspace,
   getPlatformAgentSnapshot,
   getPlatformWorkspaceDetail,
+  getPlatformWorkspaceGovernance,
   listPlatformIncidents,
   listPlatformSupportTickets,
   openPlatformSupportTicket,
@@ -42,6 +43,7 @@ import {
   simulatePlatformInstanceAgent,
   setPlatformWorkspaceAi,
   setPlatformWorkspacePlan,
+  setPlatformWorkspaceRetention,
   setPlatformWorkspaceStatus,
   simulatePlatformAgent,
   testPlatformAiConnection,
@@ -452,6 +454,12 @@ export const platformRouter = router({
   closeSupportTicket: requirePlatformOperator
     .input(z.object({ ticketId: z.number().int().positive(), supportSessionId: z.number().int().positive(), resolution: z.string().trim().min(3).max(10_000), reason: reasonInput }))
     .mutation(({ input, ctx }) => closePlatformSupportTicket({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  workspaceGovernance: requirePlatform
+    .input(supportSessionInput)
+    .query(async ({ input, ctx }) => { await requireSession(input, ctx.platformAdmin.id); const governance = await getPlatformWorkspaceGovernance(input.workspaceId); if (!governance) throw new TRPCError({ code: "NOT_FOUND", message: "Workspace não encontrado" }); return governance; }),
+  setWorkspaceRetention: requirePlatformOperator
+    .input(supportSessionInput.extend({ rawArtifactDays: z.number().int().min(1).max(90), derivedDataDays: z.number().int().min(30).max(3650), reason: reasonInput }))
+    .mutation(({ input, ctx }) => setPlatformWorkspaceRetention({ ...input, supportSessionId: input.sessionId, platformAdminId: ctx.platformAdmin.id })),
   workspaceDetail: requirePlatform
     .input(supportSessionInput)
     .query(async ({ input, ctx }) => {
