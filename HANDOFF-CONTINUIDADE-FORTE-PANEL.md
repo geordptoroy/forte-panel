@@ -1,9 +1,9 @@
 
 
-## 43. O7.12 — Restore seguro e runbook operacional — 2026-09-30
+## 44. O7.13 — Reconciliação segura de mídia — 2026-09-30
 
-O script `scripts/backup-restore.sh` passou a verificar manifesto, dump PostgreSQL, tar de sessão e hashes antes de executar qualquer ação destrutiva. O restore rejeita o diretório de sessão ativo, exige destino separado e confirmação explícita. Backup sem diretório de sessão agora gera tar gzip vazio válido. O runbook mínimo de backup, verify, restore, readiness, tenant, mídia, DLQ e rollback foi documentado.
+Foi criada uma política pura de reconciliação que classifica objetos por workspace, referência no banco, idade e prefixo conhecido. Objetos referenciados ou recentes ficam protegidos; objetos de outro workspace ou prefixo desconhecido nunca viram candidatos de remoção. Nenhum delete automático foi criado porque o adaptador atual de storage não oferece contrato de listagem/remoção.
 
-Validação local: `scripts/backup-restore.test.ts` passou com 3 testes; `bash -n scripts/backup-restore.sh` passou; `git diff --check` passou. Restore real, backup off-host, mídia/Redis/sessão em ambiente limpo, RPO/RTO e rollback por digest continuam gates externos.
+Validação local: reconciliação 2 testes, storage privado 2 testes e upload Inbox 3 testes passaram; `pnpm check` e `git diff --check` passaram. O provider paginado, delete condicionado, métricas e restore real continuam pendentes.
 
-**Próximo passo:** O7.13 — restore rehearsal e compensação de blobs órfãos.
+**Próximo passo:** O7.14 — provider de storage com listagem/remoção condicionada.
