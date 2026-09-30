@@ -73,3 +73,11 @@ Validação no Sandbox: `pnpm check`, `pnpm test` (54 arquivos passaram/18 ignor
 A [PR #9](https://github.com/geordptoroy/forte-panel/pull/9) foi aberta empilhada sobre PR #8. O CI PostgreSQL run [`36710769990`](https://github.com/geordptoroy/forte-panel/actions/runs/36710769990), no commit `7dc0efc`, passou: aplicou 0049 e executou 72 arquivos/285 testes sem skips. O resultado é efêmero; não houve prova em staging persistente, restore, smoke mobile/desktop ou WhatsApp físico. `CORE_ONLY_MODE` permanece ativo e nenhum secret real foi usado. Detalhes: `O3.3-ENTREGA-FUNIL-CANONICO.md`.
 
 **Próxima fatia:** O3.4 — orçamento com itens, validade e aprovação humana, sem cobrança real/Stripe. Preservar a pilha aberta sem merge automático.
+
+## 37. O7.4 — Reconciliação de histórico Baileys não importável — 2026-09-30
+
+A branch `feat/o7.4-webhook-history-reconciliation` deve ser criada sobre `feat/o7.3-controlled-public-release`, sem merge automático. O callback Baileys agora classifica histórico sem conteúdo, com telefone curto ou grupo sem JID/instância verificável como `202 accepted` + `ignored: true`, depois de resolver workspace e ownership da instância. Isso encerra o envelope da outbox sem criar entidade comercial. Eventos históricos importáveis e eventos live preservam os fluxos anteriores.
+
+Validação no Sandbox: `pnpm exec vitest run server/baileys-webhook-policy.test.ts` passou com 4 testes; `pnpm check`, `pnpm build` e `git diff --check` passaram. A suíte ampla passou 230 testes e ignorou 73, mas falhou em 7 arquivos do subprojeto `forte-whatsapp` por dependências ausentes (`baileys`, `pino`, `qrcode`) e pelo patch pinned. A confirmação dos cinco arquivos históricos reais precisa ser feita no Docker do usuário, preservando volumes; não apagar sessão nem usar secrets.
+
+Entrega: `O7.4-ENTREGA-RECONCILIACAO-HISTORICO-WEBHOOK.md`.
