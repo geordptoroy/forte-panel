@@ -299,7 +299,7 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 | Base auditada | `cad2b8a` |
 | Última fatia concluída | `P0.3` — seeds e bootstrap isolados por ambiente |
 | Última fatia concluída por este roadmap | `P0.4` — linguagem de operação de produção no Console Admin |
-| Último commit deste roadmap | `2ebfa75` — `fix: isolate demo seeds from public runtime` |
+| Último commit deste roadmap | `1e36a7b` — `refactor: use production language in platform console` |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.
