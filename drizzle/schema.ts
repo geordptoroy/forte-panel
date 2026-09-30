@@ -12,6 +12,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { servicePriceTypes } from "../shared/service-price";
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 export const operationalRoleEnum = pgEnum("operational_role", [
   "human_attendant",
@@ -165,6 +166,7 @@ export const quoteStatusEnum = pgEnum("quote_status", [
   "pago",
   "cancelado",
 ]);
+export const servicePriceTypeEnum = pgEnum("service_price_type", servicePriceTypes);
 
 export const users = pgTable(
   "users",
@@ -1196,6 +1198,7 @@ export const services = pgTable(
     description: text("description"),
     durationMinutes: integer("durationMinutes").default(60).notNull(),
     priceCents: integer("priceCents").default(0).notNull(),
+    priceType: servicePriceTypeEnum("priceType").default("fixed").notNull(),
     active: integer("active").default(1).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),

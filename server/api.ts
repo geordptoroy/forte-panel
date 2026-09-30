@@ -722,6 +722,7 @@ api.get("/availability", async (req, res) => {
         description: service.description,
         durationMinutes: service.durationMinutes,
         priceCents: service.priceCents,
+        priceType: service.priceType,
         professionalIds: snapshot.serviceLinks
           .filter(link => link.serviceId === service.id && link.active === 1)
           .map(link => link.professionalId),

@@ -316,6 +316,13 @@
       "when": 1790690000000,
       "tag": "0044_carousel_message_type",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1790734100128,
+      "tag": "0045_service_price_mode",
+      "breakpoints": true
     }
   ]
 }

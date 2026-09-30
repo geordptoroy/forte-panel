@@ -3,6 +3,7 @@ import { Clock3, DollarSign, Plus, ScissorsIcon, Sparkles, UserCog, Users } from
 import PanelLayout, { EmptyState, SectionTitle, StatusBadge } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { formatServicePrice, type ServicePriceType } from "../../../shared/service-price";
 
 const weekdays = [
   { value: 0, label: "Domingo", short: "DOM" },
@@ -22,15 +23,15 @@ const timeToMinute = (value: string) => {
   if (Number.isNaN(hours) || Number.isNaN(minutes)) return 0;
   return hours * 60 + minutes;
 };
-const formatCurrency = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
 /** Administrative catalog screen: services, professionals, links and weekly availability. */
 export function ServicesPage() {
   const [showForm, setShowForm] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [duration, setDuration] = useState("60");
   const [price, setPrice] = useState("0");
+  const [priceType, setPriceType] = useState<ServicePriceType>("fixed");
   const [linkDraft, setLinkDraft] = useState<Record<number, number[]>>({});
   const servicesQuery = trpc.workspace.services.useQuery();
   const professionalsQuery = trpc.workspace.professionalsDetailed.useQuery();
@@ -51,7 +52,7 @@ export function ServicesPage() {
 
   const createService = trpc.workspace.createService.useMutation({
     onSuccess: async () => {
-      setName(""); setDescription(""); setDuration("60"); setPrice("0"); setShowForm(false);
+      setName(""); setDescription(""); setDuration("60"); setPrice("0"); setPriceType("fixed"); setEditingServiceId(null); setShowForm(false);
       await utils.workspace.services.invalidate();
       toast.success("Serviço cadastrado");
     },
@@ -75,7 +76,21 @@ export function ServicesPage() {
   const submit = () => {
     const durationMinutes = Number(duration);
     const priceCents = Math.round(Number(price.replace(",", ".")) * 100);
-    createService.mutate({ name, description: description || undefined, durationMinutes: Number.isFinite(durationMinutes) && durationMinutes >= 5 ? durationMinutes : 60, priceCents: Number.isFinite(priceCents) && priceCents >= 0 ? priceCents : 0 });
+    const payload = { name, description: description || undefined, durationMinutes: Number.isFinite(durationMinutes) && durationMinutes >= 5 ? durationMinutes : 60, priceCents: priceType === "quote" ? 0 : Number.isFinite(priceCents) && priceCents >= 0 ? priceCents : 0, priceType };
+    if (editingServiceId) updateService.mutate({ serviceId: editingServiceId, ...payload }, { onSuccess: () => cancelForm() });
+    else createService.mutate(payload);
+  };
+  const startEdit = (service: (typeof services)[number]) => {
+    setEditingServiceId(service.id);
+    setName(service.name);
+    setDescription(service.description ?? "");
+    setDuration(String(service.durationMinutes));
+    setPrice((service.priceCents / 100).toFixed(2).replace(".", ","));
+    setPriceType(service.priceType);
+    setShowForm(true);
+  };
+  const cancelForm = () => {
+    setShowForm(false); setEditingServiceId(null); setName(""); setDescription(""); setDuration("60"); setPrice("0"); setPriceType("fixed");
   };
 
   return <PanelLayout
@@ -91,16 +106,17 @@ export function ServicesPage() {
     </div>
 
     {showForm && <section className="surface team-invite-panel">
-      <SectionTitle eyebrow="Novo serviço" title="Cadastrar serviço" />
+      <SectionTitle eyebrow={editingServiceId ? "Editar serviço" : "Novo serviço"} title={editingServiceId ? "Atualizar serviço" : "Cadastrar serviço"} />
       <div className="form-grid">
         <div className="form-field"><label>Nome</label><input className="input-control" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Instalação de chuveiro" /></div>
         <div className="form-field"><label>Duração (min)</label><input className="input-control" type="number" min={5} step={5} value={duration} onChange={(event) => setDuration(event.target.value)} /></div>
         <div className="form-field full"><label>Descrição</label><input className="input-control" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="O que está incluído no serviço" /></div>
-        <div className="form-field"><label>Preço (R$)</label><input className="input-control" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0,00" /></div>
+        <div className="form-field"><label>Como informar o preço</label><select className="select-control" value={priceType} onChange={(event) => setPriceType(event.target.value as ServicePriceType)}><option value="fixed">Preço fixo</option><option value="starting_at">A partir de</option><option value="quote">Sob consulta</option></select></div>
+        {priceType !== "quote" && <div className="form-field"><label>{priceType === "starting_at" ? "Preço inicial (R$)" : "Preço fixo (R$)"}</label><input className="input-control" type="number" min={0} step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0,00" /></div>}
       </div>
       <div className="form-actions">
-        <button className="btn-primary" disabled={createService.isPending || name.trim().length < 2} onClick={submit}>{createService.isPending ? "Salvando..." : "Salvar serviço"}</button>
-        <button className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
+        <button className="btn-primary" disabled={createService.isPending || updateService.isPending || name.trim().length < 2} onClick={submit}>{createService.isPending || updateService.isPending ? "Salvando..." : editingServiceId ? "Salvar alterações" : "Salvar serviço"}</button>
+        <button className="btn-secondary" onClick={cancelForm}>Cancelar</button>
       </div>
     </section>}
 
@@ -116,7 +132,7 @@ export function ServicesPage() {
               <small>{service.description ?? "Sem descrição"}</small>
               <small style={{ display: "flex", gap: 10, marginTop: 6 }}>
                 <span><Clock3 size={11} style={{ verticalAlign: "middle", marginRight: 4 }} />{service.durationMinutes} min</span>
-                <span><DollarSign size={11} style={{ verticalAlign: "middle", marginRight: 4 }} />{service.priceCents === 0 ? "Sem preço" : formatCurrency(service.priceCents)}</span>
+                <span><DollarSign size={11} style={{ verticalAlign: "middle", marginRight: 4 }} />{formatServicePrice(service.priceType, service.priceCents)}</span>
               </small>
             </div>
             <div className="row-copy" style={{ minWidth: 220 }}>
@@ -142,6 +158,7 @@ export function ServicesPage() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
               <StatusBadge tone={service.active ? "green" : "neutral"}>{service.active ? "Ativo" : "Inativo"}</StatusBadge>
+              {canManage && <button className="btn-ghost" onClick={() => startEdit(service)}>Editar serviço</button>}
               {canManage && <button className="btn-ghost" disabled={updateService.isPending} onClick={() => updateService.mutate({ serviceId: service.id, active: !service.active })}>{service.active ? "Desativar" : "Reativar"}</button>}
             </div>
           </div>;

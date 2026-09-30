@@ -26,7 +26,7 @@ describe.skipIf(!hasDatabase)("agenda workspace isolation", () => {
     workspaceAId = workspaceA.id;
     workspaceBId = workspaceB.id;
 
-    const [serviceA] = await db.insert(services).values({ workspaceId: workspaceAId, name: `Service A ${suffix}` }).returning();
+    const [serviceA] = await db.insert(services).values({ workspaceId: workspaceAId, name: `Service A ${suffix}`, durationMinutes: 30, priceCents: 5000, priceType: "starting_at" }).returning();
     const [serviceB] = await db.insert(services).values({ workspaceId: workspaceBId, name: `Service B ${suffix}` }).returning();
     serviceAId = serviceA.id;
     serviceBId = serviceB.id;
@@ -74,6 +74,7 @@ describe.skipIf(!hasDatabase)("agenda workspace isolation", () => {
   it("lists agenda, services, professionals, and portal data only for the selected workspace", async () => {
     const snapshotA = await getAgendaSnapshot(workspaceAId, undefined, true);
     expect(snapshotA.services.map((row) => row.id)).toContain(serviceAId);
+    expect(snapshotA.services.find((row) => row.id === serviceAId)).toMatchObject({ priceType: "starting_at", priceCents: 5000, durationMinutes: 30 });
     expect(snapshotA.services.map((row) => row.id)).not.toContain(serviceBId);
     expect(snapshotA.professionals.map((row) => row.id)).toContain(professionalAId);
     expect(snapshotA.professionals.map((row) => row.id)).not.toContain(professionalBId);

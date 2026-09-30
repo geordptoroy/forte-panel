@@ -1,7 +1,7 @@
 # Forte Panel — acompanhamento do produto público
 
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
-**Fase de código atual:** O1.1 concluída — wizard público de onboarding em seis passos; o core continua contido até a prova real do caminho WhatsApp → Inbox → lead.
+**Fase de código atual:** O1.2 concluída — catálogo operacional de serviços, preços, duração e disponibilidade integrado ao onboarding; O1.3 é a próxima fatia. O core continua contido até a prova real do caminho WhatsApp → Inbox → lead.
 **Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
 
 ## Direção registrada — 2026-09-27: core antes do restante
@@ -11,7 +11,8 @@
 - [x] Criar wizard visual de seis passos em `client/src/pages/OnboardingPage.tsx`, preservando autosave, sessão, consentimento, confirmação humana, publicação versionada e rollback.
 - [x] Separar identidade, serviços, operação, atendimento, revisão e ativação em cartões de linguagem de negócio.
 - [x] Criar `O1.1-ENTREGA-ONBOARDING-WIZARD.md` e `HANDOFF-PROXIMO-CHAT-IA.md` para continuidade entre chats.
-- [ ] Executar O1.2: conectar serviços, preços, duração e disponibilidade ao catálogo operacional persistido.
+- [x] Executar O1.2: conectar serviços, preços, duração e disponibilidade ao catálogo operacional persistido; entrega em `O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`.
+- [ ] Executar O1.3: regras de atendimento e revisão de exemplos, mantendo publicação humana.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.

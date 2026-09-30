@@ -614,6 +614,7 @@ Todo componente assíncrono deve ter:
 
 - Wizard público de seis etapas, agrupando os dez blocos internos em cartões curtos de negócio.
 - Texto e áudio equivalentes.
+- Serviços, preços, duração e disponibilidade devem usar o catálogo operacional persistido; os modos de preço são fixo, “a partir de” e “sob consulta”. Horário semanal descreve jornada, não uma vaga específica.
 - Autosave, retomada e “decidir depois”.
 - Preview curto por bloco.
 - Confirmação humana e rollback.

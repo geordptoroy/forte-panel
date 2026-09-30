@@ -651,3 +651,12 @@ Validação desta etapa: `pnpm check` ✅; teste PostgreSQL condicional de gate/
 Foi preparado um caminho local para o próximo gate: `LOCAL-DOCKER-TESTE.md` documenta o Compose, o `.env` gerado, o start, logs, migrations e os testes de publicação. O PostgreSQL é publicado apenas em localhost; Redis, painel, worker e gateway continuam na rede Docker.
 
 O reset global é separado e protegido por token explícito para reduzir acidentes. Ele pode remover volumes, imagens, redes e cache de outros projetos Docker da máquina, portanto não é executado automaticamente pelo agente. A execução real do teste PostgreSQL fica para a máquina do usuário, onde Docker e o espaço local estão disponíveis.
+
+---
+## Etapa seguinte — catálogo operacional de onboarding — 2026-09-29
+
+O passo Serviços do onboarding agora usa o catálogo persistido existente: nome, descrição, duração, modo de preço (`fixed`, `starting_at`, `quote`) e vínculo opcional a profissionais ativos. A migration `0045_service_price_mode.sql` adiciona o enum, mantendo registros existentes como preço fixo e limpando valor numérico quando o modo é “sob consulta”. O passo Operação cadastra profissionais e grava disponibilidade semanal por dia. O campo livre do onboarding ficou explicitamente complementar; o responsável pode optar por usar o catálogo ou “decidir depois”.
+
+A tela administrativa de Serviços passou a exibir/editar os modos de preço; a projeção REST `/api/v1/availability` e o snapshot usado pela ferramenta `consultar_agenda` também retornam `priceType`. O prompt publicado exige consultar o catálogo/agenda atual, não tratar jornada semanal como vaga e não prometer um agendamento antes do sucesso da ferramenta. Vínculos com profissionais continuam tenant-scoped e agora recusam IDs estrangeiros antes de substituir a associação.
+
+Validação no Sandbox: `pnpm check` passou; `pnpm test` passou com 212 testes aprovados e 48 ignorados por dependências condicionais a PostgreSQL; `pnpm build` passou. O PostgreSQL não está disponível, portanto migrations e testes de isolamento persistidos não foram executados. `drizzle-kit generate` continua bloqueado por colisão histórica entre snapshots 0041/0043; a migration 0045 foi adicionada manualmente sem reescrever snapshots fora de escopo. O onboarding permanece `not_ready` até prova manual completa. Próxima fatia: O1.3 — regras de atendimento e revisão de exemplos.

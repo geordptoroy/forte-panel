@@ -1,20 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  CalendarClock,
   CheckCircle2,
+  Clock3,
+  DollarSign,
   Info,
   ListChecks,
   Loader2,
   Mic,
+  Plus,
   RotateCcw,
   Save,
   Sparkles,
   Square,
   UploadCloud,
+  UserPlus,
   Volume2,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
+import { formatServicePrice, type ServicePriceType } from "../../../shared/service-price";
 
 type Profile = {
   businessName: string;
@@ -71,6 +77,24 @@ const fieldTitles: Record<string, string> = {
 
 const voiceStepKeys = ["identity", "offering", "operations", "guardrails", "voice"] as const;
 type VoiceStepKey = (typeof voiceStepKeys)[number];
+type AvailabilityEntry = { weekday: number; startMinute: number; endMinute: number };
+const weekdays = [
+  { value: 0, label: "Domingo", short: "DOM" },
+  { value: 1, label: "Segunda", short: "SEG" },
+  { value: 2, label: "Terça", short: "TER" },
+  { value: 3, label: "Quarta", short: "QUA" },
+  { value: 4, label: "Quinta", short: "QUI" },
+  { value: 5, label: "Sexta", short: "SEX" },
+  { value: 6, label: "Sábado", short: "SÁB" },
+];
+const minuteToTime = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+const timeToMinute = (value: string) => {
+  const [hours, minutes] = value.split(":").map(Number);
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : 0;
+};
+const catalogGuidance = "Use somente os serviços ativos do catálogo operacional para informar serviço, preço e duração. Se um dado não estiver no catálogo, confirme com a equipe. Consulte a agenda para cada horário; jornada semanal não confirma uma vaga.";
+const deferredCatalogGuidance = "Cadastro de serviços adiado pelo responsável. Não informe preço, duração ou disponibilidade sem consultar a equipe e as fontes operacionais reais.";
+const deferredHoursGuidance = "Horários ainda não cadastrados. Confirme com a equipe e consulte a agenda real antes de sugerir ou confirmar qualquer horário.";
 
 function formatRecordingDuration(durationMs: number) {
   const seconds = Math.floor(durationMs / 1000);
@@ -114,9 +138,22 @@ export default function OnboardingPage() {
     onSuccess: () => setLocation("/dashboard"),
   });
   const profileQuery = trpc.onboarding.profile.useQuery();
+  const catalogQuery = trpc.workspace.services.useQuery();
+  const professionalsQuery = trpc.workspace.professionalsDetailed.useQuery();
   const metricsQuery = trpc.onboarding.metrics.useQuery({ windowDays: 30 });
   const versionsQuery = trpc.onboarding.versions.useQuery();
   const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [serviceName, setServiceName] = useState("");
+  const [serviceDescription, setServiceDescription] = useState("");
+  const [serviceDuration, setServiceDuration] = useState("60");
+  const [servicePrice, setServicePrice] = useState("");
+  const [servicePriceType, setServicePriceType] = useState<ServicePriceType>("quote");
+  const [serviceProfessionalIds, setServiceProfessionalIds] = useState<number[]>([]);
+  const [catalogMessage, setCatalogMessage] = useState("");
+  const [professionalName, setProfessionalName] = useState("");
+  const [professionalSpecialty, setProfessionalSpecialty] = useState("");
+  const [availabilityProfessionalId, setAvailabilityProfessionalId] = useState<number | null>(null);
+  const [availabilityDraft, setAvailabilityDraft] = useState<AvailabilityEntry[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
   const [published, setPublished] = useState(false);
   const [savedVersion, setSavedVersion] = useState(0);
@@ -152,6 +189,31 @@ export default function OnboardingPage() {
       void utils.onboarding.versions.invalidate();
     },
   });
+  const createCatalogService = trpc.workspace.createService.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.services.invalidate();
+    },
+  });
+  const linkCatalogService = trpc.workspace.setServiceProfessionals.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.services.invalidate();
+      await utils.workspace.professionalsDetailed.invalidate();
+    },
+  });
+  const createCatalogProfessional = trpc.workspace.createProfessional.useMutation({
+    onSuccess: async professional => {
+      setAvailabilityProfessionalId(professional.id);
+      setProfessionalName("");
+      setProfessionalSpecialty("");
+      await utils.workspace.professionalsDetailed.invalidate();
+    },
+  });
+  const saveProfessionalAvailability = trpc.workspace.setProfessionalAvailability.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.professionalsDetailed.invalidate();
+      setCatalogMessage("Disponibilidade semanal salva no catálogo operacional.");
+    },
+  });
   const rollbackMutation = trpc.onboarding.rollback.useMutation({
     onSuccess: result => {
       setPublished(true);
@@ -171,6 +233,10 @@ export default function OnboardingPage() {
   const [voiceCorrectionMode, setVoiceCorrectionMode] = useState(false);
   const [proposalMessage, setProposalMessage] = useState("");
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
+  const catalogServices = catalogQuery.data ?? [];
+  const professionals = professionalsQuery.data ?? [];
+  const activeProfessionals = professionals.filter(professional => professional.active);
+  const selectedAvailabilityProfessional = professionals.find(professional => professional.id === availabilityProfessionalId) ?? activeProfessionals[0];
   const onboardingSteps = [
     { id: "identity", title: "Negócio", description: "Identidade e posicionamento" },
     { id: "offering", title: "Serviços", description: "Oferta, preços e duração" },
@@ -228,6 +294,16 @@ export default function OnboardingPage() {
       setAutosaveState("idle");
     }
   }, [profileQuery.data]);
+
+  useEffect(() => {
+    if (!activeProfessionals.length) return;
+    if (!activeProfessionals.some(professional => professional.id === availabilityProfessionalId))
+      setAvailabilityProfessionalId(activeProfessionals[0]!.id);
+  }, [activeProfessionals, availabilityProfessionalId]);
+
+  useEffect(() => {
+    setAvailabilityDraft(selectedAvailabilityProfessional?.availability.map(entry => ({ ...entry })) ?? []);
+  }, [selectedAvailabilityProfessional?.id, selectedAvailabilityProfessional?.availability]);
 
   useEffect(() => {
     if (governanceQuery.data?.retention) {
@@ -380,6 +456,61 @@ export default function OnboardingPage() {
   const update = (key: keyof Profile, value: string) => {
     setDirty(true);
     setProfile(current => ({ ...current, [key]: value }));
+  };
+  const updateIfBlank = (key: keyof Profile, value: string) => {
+    if (profile[key].trim()) return;
+    setDirty(true);
+    setProfile(current => current[key].trim() ? current : { ...current, [key]: value });
+  };
+  const addOperationalService = async () => {
+    setCatalogMessage("");
+    const durationMinutes = Number(serviceDuration);
+    const parsedPrice = Number(servicePrice.replace(",", "."));
+    try {
+      const created = await createCatalogService.mutateAsync({
+        name: serviceName,
+        description: serviceDescription || undefined,
+        durationMinutes: Number.isInteger(durationMinutes) && durationMinutes >= 5 ? durationMinutes : 60,
+        priceCents: servicePriceType === "quote" ? 0 : Number.isFinite(parsedPrice) && parsedPrice >= 0 ? Math.round(parsedPrice * 100) : 0,
+        priceType: servicePriceType,
+      });
+      if (serviceProfessionalIds.length)
+        await linkCatalogService.mutateAsync({ serviceId: created.id, professionalIds: serviceProfessionalIds });
+      setServiceName("");
+      setServiceDescription("");
+      setServiceDuration("60");
+      setServicePrice("");
+      setServicePriceType("quote");
+      setServiceProfessionalIds([]);
+      updateIfBlank("services", catalogGuidance);
+      setCatalogMessage("Serviço salvo no catálogo operacional. Revise e confirme este bloco antes de publicar.");
+      await catalogQuery.refetch();
+    } catch (error) {
+      setCatalogMessage(error instanceof Error ? error.message : "Não foi possível salvar o serviço.");
+      await catalogQuery.refetch();
+    }
+  };
+  const addOperationalProfessional = async () => {
+    setCatalogMessage("");
+    try {
+      await createCatalogProfessional.mutateAsync({ name: professionalName, specialty: professionalSpecialty || undefined });
+      setCatalogMessage("Profissional cadastrado. Defina os dias e horários de trabalho abaixo.");
+    } catch (error) {
+      setCatalogMessage(error instanceof Error ? error.message : "Não foi possível cadastrar o profissional.");
+    }
+  };
+  const saveAvailability = async () => {
+    if (!selectedAvailabilityProfessional) return;
+    setCatalogMessage("");
+    try {
+      await saveProfessionalAvailability.mutateAsync({
+        professionalId: selectedAvailabilityProfessional.id,
+        entries: [...availabilityDraft].sort((a, b) => a.weekday - b.weekday),
+      });
+      updateIfBlank("businessHours", "Use a disponibilidade semanal registrada para a equipe como jornada de trabalho. Ela não confirma uma vaga; verifique a agenda real antes de sugerir horários.");
+    } catch (error) {
+      setCatalogMessage(error instanceof Error ? error.message : "Não foi possível salvar os horários.");
+    }
   };
   const confirmedStepKeys = new Set(
     (profileQuery.data?.stepAnswers ?? [])
@@ -810,20 +941,86 @@ export default function OnboardingPage() {
       <section className="surface" style={{ padding: 22, display: currentStepId === "offering" ? undefined : "none" }}>
         <SectionTitle eyebrow="Oferta" title="Serviços que sua empresa oferece" />
         <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11 }}>
-          Informe o que pode ser apresentado ao cliente. Se o preço variar, explique quando a equipe deve confirmar antes de prometer.
+          Os serviços, preços e durações são salvos no catálogo operacional. Você pode cadastrar só o primeiro agora e completar o restante depois.
         </p>
-        <div className="form-grid">
-          {field("services", "Serviços, preços e duração", "Um serviço por linha. Inclua preço fixo, a partir de, duração ou regra de orçamento.", true)}
+        <div className="team-table" style={{ marginBottom: 18 }}>
+          {catalogQuery.isLoading ? <p className="muted">Carregando catálogo...</p> : catalogServices.length === 0 ? (
+            <p className="muted">Nenhum serviço operacional cadastrado. Se ainda não quiser definir a oferta, use “Decidir depois” abaixo; a orientação ficará sem preço ou prazo inventado.</p>
+          ) : catalogServices.map(service => (
+            <div className="team-row" key={service.id} style={{ flexWrap: "wrap" }}>
+              <div className="row-copy" style={{ minWidth: 220 }}>
+                <strong>{service.name}{service.active ? "" : " · inativo"}</strong>
+                <small>{service.description || "Sem descrição"}</small>
+                <small style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 5 }}>
+                  <span><Clock3 size={11} style={{ verticalAlign: "middle", marginRight: 4 }} />{service.durationMinutes} min</span>
+                  <span><DollarSign size={11} style={{ verticalAlign: "middle", marginRight: 4 }} />{formatServicePrice(service.priceType, service.priceCents)}</span>
+                </small>
+              </div>
+              <small className="muted">{service.professionalIds.length ? service.professionalIds.map(id => professionals.find(person => person.id === id)?.name).filter(Boolean).join(", ") : "Sem profissional vinculado"}</small>
+            </div>
+          ))}
         </div>
+        <SectionTitle eyebrow="Catálogo persistido" title="Adicionar serviço" />
+        <div className="form-grid">
+          <div className="form-field"><label htmlFor="onboarding-service-name">Nome do serviço</label><input id="onboarding-service-name" className="input-control" value={serviceName} onChange={event => setServiceName(event.target.value)} placeholder="Ex.: Consulta inicial" /></div>
+          <div className="form-field"><label htmlFor="onboarding-service-duration">Duração (minutos)</label><input id="onboarding-service-duration" className="input-control" type="number" min={5} max={1440} value={serviceDuration} onChange={event => setServiceDuration(event.target.value)} /></div>
+          <div className="form-field"><label htmlFor="onboarding-service-price-type">Como informar o preço</label><select id="onboarding-service-price-type" className="select-control" value={servicePriceType} onChange={event => setServicePriceType(event.target.value as ServicePriceType)}><option value="fixed">Preço fixo</option><option value="starting_at">A partir de</option><option value="quote">Sob consulta</option></select></div>
+          {servicePriceType !== "quote" && <div className="form-field"><label htmlFor="onboarding-service-price">{servicePriceType === "starting_at" ? "Preço inicial (R$)" : "Preço fixo (R$)"}</label><input id="onboarding-service-price" className="input-control" type="number" min={0} step="0.01" value={servicePrice} onChange={event => setServicePrice(event.target.value)} placeholder="0,00" /></div>}
+          <div className="form-field full"><label htmlFor="onboarding-service-description">Descrição (opcional)</label><input id="onboarding-service-description" className="input-control" value={serviceDescription} onChange={event => setServiceDescription(event.target.value)} placeholder="O que está incluído" /></div>
+          <div className="form-field full"><label>Profissionais que executam (opcional)</label>
+            {activeProfessionals.length === 0 ? <small className="muted">Você pode cadastrar um profissional no passo Operação e vincular depois.</small> : <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {activeProfessionals.map(person => <label key={person.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11 }}><input type="checkbox" checked={serviceProfessionalIds.includes(person.id)} onChange={event => setServiceProfessionalIds(current => event.target.checked ? [...current, person.id] : current.filter(id => id !== person.id))} />{person.name}</label>)}
+            </div>}
+          </div>
+        </div>
+        <div className="form-actions">
+          <button className="btn-primary" disabled={createCatalogService.isPending || linkCatalogService.isPending || serviceName.trim().length < 2} onClick={() => void addOperationalService()}><Plus size={13} />{createCatalogService.isPending || linkCatalogService.isPending ? "Salvando..." : "Salvar no catálogo"}</button>
+        </div>
+        <div style={{ marginTop: 20 }}>
+          <SectionTitle eyebrow="Orientação aprovada" title="Como o atendimento deve tratar a oferta" />
+          <p className="muted" style={{ margin: "-5px 0 10px", fontSize: 10 }}>O campo livre abaixo é complementar; não substitui o catálogo nem autoriza prometer preço, duração ou vaga.</p>
+          {field("services", "Observações complementares (opcional)", "Não repita preços como fonte oficial. Use para contexto que não cabe no catálogo.", true)}
+          <div className="form-actions">
+            <button type="button" className="btn-secondary" onClick={() => update("services", catalogGuidance)}>Usar o catálogo como fonte oficial</button>
+            <button type="button" className="btn-secondary" onClick={() => update("services", deferredCatalogGuidance)}>Decidir depois</button>
+          </div>
+        </div>
+        {catalogMessage && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} />{catalogMessage}</div>}
       </section>
       <section className="surface" style={{ padding: 22, display: currentStepId === "operations" ? undefined : "none" }}>
         <SectionTitle eyebrow="Funcionamento" title="Onde e quando sua equipe atende" />
         <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11 }}>
-          Essas informações ajudam o atendimento a orientar o cliente sem inventar disponibilidade.
+          Configure a jornada semanal real por profissional. Ela não garante uma vaga: horários específicos precisam ser consultados na agenda.
         </p>
         <div className="form-grid">
           {field("serviceArea", "Cidade e área de atendimento", "Cidades, bairros, deslocamento e limites", true)}
-          {field("businessHours", "Horários e profissionais", "Dias, horários, intervalos e quem atende", true)}
+          {field("businessHours", "Orientação sobre horários (complementar)", "Explique exceções ou use a disponibilidade semanal salva abaixo", true)}
+        </div>
+        <div style={{ marginTop: 18 }}>
+          <SectionTitle eyebrow="Equipe executora" title="Profissionais e disponibilidade semanal" />
+          {activeProfessionals.length > 0 && <div className="form-grid" style={{ marginBottom: 14 }}>
+            <div className="form-field"><label htmlFor="onboarding-availability-professional">Profissional</label><select id="onboarding-availability-professional" className="select-control" value={selectedAvailabilityProfessional?.id ?? ""} onChange={event => setAvailabilityProfessionalId(Number(event.target.value))}>{activeProfessionals.map(person => <option key={person.id} value={person.id}>{person.name}{person.specialty ? ` · ${person.specialty}` : ""}</option>)}</select></div>
+            <div className="form-field"><label>Serviços vinculados</label><small className="muted">{selectedAvailabilityProfessional?.serviceIds.length ? selectedAvailabilityProfessional.serviceIds.map(id => catalogServices.find(service => service.id === id)?.name).filter(Boolean).join(", ") : "Nenhum serviço vinculado ainda"}</small></div>
+          </div>}
+          {selectedAvailabilityProfessional ? <div className="team-table">{weekdays.map(day => {
+            const entry = availabilityDraft.find(item => item.weekday === day.value);
+            return <div className="team-row" key={day.value} style={{ flexWrap: "wrap" }}>
+              <strong style={{ width: 48, fontSize: 10 }}>{day.short}</strong>
+              <div className="row-copy" style={{ flex: 1, minWidth: 190 }}><small>{day.label}</small>{entry ? <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}><input aria-label={`${day.label} início`} className="input-control" style={{ maxWidth: 120 }} type="time" value={minuteToTime(entry.startMinute)} onChange={event => setAvailabilityDraft(current => current.map(item => item.weekday === day.value ? { ...item, startMinute: timeToMinute(event.target.value) } : item))} /><span className="muted">até</span><input aria-label={`${day.label} fim`} className="input-control" style={{ maxWidth: 120 }} type="time" value={minuteToTime(entry.endMinute)} onChange={event => setAvailabilityDraft(current => current.map(item => item.weekday === day.value ? { ...item, endMinute: timeToMinute(event.target.value) } : item))} /></div> : <small className="muted" style={{ display: "block", marginTop: 4 }}>Não trabalha neste dia</small>}</div>
+              <button type="button" className="btn-ghost" onClick={() => setAvailabilityDraft(current => entry ? current.filter(item => item.weekday !== day.value) : [...current, { weekday: day.value, startMinute: 9 * 60, endMinute: 18 * 60 }])}>{entry ? "Remover" : "Adicionar"}</button>
+            </div>;
+          })}</div> : <p className="muted">Ainda não há profissionais ativos. Você pode cadastrar alguém agora ou deixar a capacidade para depois.</p>}
+          {selectedAvailabilityProfessional && <button type="button" className="btn-primary" style={{ marginTop: 12 }} disabled={saveProfessionalAvailability.isPending} onClick={() => void saveAvailability()}><CalendarClock size={13} />{saveProfessionalAvailability.isPending ? "Salvando..." : "Salvar disponibilidade"}</button>}
+          <div className="surface" style={{ padding: 14, marginTop: 16 }}>
+            <SectionTitle eyebrow="Novo executor" title="Cadastrar profissional" />
+            <div className="form-grid"><div className="form-field"><label htmlFor="onboarding-professional-name">Nome</label><input id="onboarding-professional-name" className="input-control" value={professionalName} onChange={event => setProfessionalName(event.target.value)} placeholder="Ex.: Ana Souza" /></div><div className="form-field"><label htmlFor="onboarding-professional-specialty">Especialidade (opcional)</label><input id="onboarding-professional-specialty" className="input-control" value={professionalSpecialty} onChange={event => setProfessionalSpecialty(event.target.value)} placeholder="Ex.: Consultoria" /></div></div>
+            <button type="button" className="btn-secondary" disabled={createCatalogProfessional.isPending || professionalName.trim().length < 2} onClick={() => void addOperationalProfessional()}><UserPlus size={13} />{createCatalogProfessional.isPending ? "Salvando..." : "Cadastrar profissional"}</button>
+          </div>
+          <div className="form-actions">
+            <button type="button" className="btn-secondary" onClick={() => update("businessHours", "Use a jornada semanal registrada por profissional apenas como referência. Consulte a agenda real para confirmar horários específicos.")}>Usar jornadas salvas como referência</button>
+            <button type="button" className="btn-secondary" onClick={() => update("businessHours", deferredHoursGuidance)}>Ainda não sei: decidir depois</button>
+          </div>
+          {catalogMessage && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} />{catalogMessage}</div>}
         </div>
       </section>
       <section className="surface" style={{ padding: 22, display: currentStepId === "activation" ? undefined : "none" }}>

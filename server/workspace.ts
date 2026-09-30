@@ -12,6 +12,7 @@ import {
 } from "../drizzle/schema";
 import { getDb, type WorkspaceMembershipContext } from "./db";
 import { defaultNotificationPreferences, parseNotificationPreferences, type NotificationPreferences } from "./notification-contract";
+import type { ServicePriceType } from "../shared/service-price";
 
 export type WorkspaceMemberRole = "owner" | "admin" | "manager" | "agent";
 export type OperationalRole = "human_attendant" | "ai_attendant" | "professional";
@@ -131,7 +132,7 @@ export async function listServices(workspaceId: number, options: { includeInacti
   }));
 }
 
-export async function createService(workspaceId: number, input: { name: string; description?: string; durationMinutes?: number; priceCents?: number }) {
+export async function createService(workspaceId: number, input: { name: string; description?: string; durationMinutes?: number; priceCents?: number; priceType?: ServicePriceType }) {
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const created = await db.insert(services).values({
@@ -139,21 +140,24 @@ export async function createService(workspaceId: number, input: { name: string; 
     name: input.name.trim(),
     description: input.description?.trim() || null,
     durationMinutes: input.durationMinutes ?? 60,
-    priceCents: input.priceCents ?? 0,
+    priceCents: input.priceType === "quote" ? 0 : input.priceCents ?? 0,
+    priceType: input.priceType ?? "fixed",
   }).returning();
   return created[0];
 }
 
-export async function updateService(workspaceId: number, id: number, input: { name?: string; description?: string | null; durationMinutes?: number; priceCents?: number; active?: boolean }) {
+export async function updateService(workspaceId: number, id: number, input: { name?: string; description?: string | null; durationMinutes?: number; priceCents?: number; priceType?: ServicePriceType; active?: boolean }) {
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const existing = (await db.select().from(services).where(and(eq(services.id, id), eq(services.workspaceId, workspaceId))).limit(1))[0];
   if (!existing) return undefined;
+  const priceType = input.priceType ?? existing.priceType;
   const updated = await db.update(services).set({
     name: input.name?.trim() ?? existing.name,
     description: input.description === undefined ? existing.description : (input.description?.trim() || null),
     durationMinutes: input.durationMinutes ?? existing.durationMinutes,
-    priceCents: input.priceCents ?? existing.priceCents,
+    priceCents: priceType === "quote" ? 0 : input.priceCents ?? existing.priceCents,
+    priceType,
     active: input.active === undefined ? existing.active : input.active ? 1 : 0,
     updatedAt: new Date(),
   }).where(and(eq(services.id, id), eq(services.workspaceId, workspaceId))).returning();
@@ -165,8 +169,10 @@ export async function setServiceProfessionals(workspaceId: number, serviceId: nu
   if (!db) throw new Error("Workspace indisponível");
   const service = (await db.select().from(services).where(and(eq(services.id, serviceId), eq(services.workspaceId, workspaceId))).limit(1))[0];
   if (!service) throw new Error("Serviço não encontrado neste workspace");
-  const validProfessionals = professionalIds.length === 0 ? [] : await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.workspaceId, workspaceId), inArray(professionals.id, professionalIds)));
+  const requestedIds = Array.from(new Set(professionalIds));
+  const validProfessionals = requestedIds.length === 0 ? [] : await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.workspaceId, workspaceId), inArray(professionals.id, requestedIds)));
   const validIds = validProfessionals.map((row) => row.id);
+  if (validIds.length !== requestedIds.length) throw new Error("Um ou mais profissionais não pertencem a este workspace");
   await db.delete(professionalServices).where(and(eq(professionalServices.workspaceId, workspaceId), eq(professionalServices.serviceId, serviceId)));
   if (validIds.length > 0) {
     await db.insert(professionalServices).values(validIds.map((professionalId) => ({ workspaceId: workspaceId, professionalId, serviceId, active: 1 })));

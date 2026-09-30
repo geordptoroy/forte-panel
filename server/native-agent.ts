@@ -108,7 +108,7 @@ const tools: Tool[] = [
     function: {
       name: "consultar_agenda",
       description:
-        "Consulta serviços, profissionais, disponibilidade e próximos agendamentos do Forte Panel.",
+        "Consulta serviços ativos do catálogo operacional, preço fixo/a partir de/sob consulta, duração, profissionais vinculados, jornada semanal e próximos agendamentos do Forte Panel. A jornada não garante uma vaga; verifique os agendamentos do horário exato.",
       parameters: {
         type: "object",
         properties: {},

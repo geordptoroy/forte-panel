@@ -1110,6 +1110,7 @@ export const appRouter = router({
         description: service.description,
         durationMinutes: service.durationMinutes,
         priceCents: service.priceCents,
+        priceType: service.priceType,
         active: service.active === 1,
         professionalIds: service.professionalIds,
       }))
@@ -1121,6 +1122,7 @@ export const appRouter = router({
           description: z.string().max(4000).optional(),
           durationMinutes: z.number().int().min(5).max(1440).default(60),
           priceCents: z.number().int().min(0).max(100_000_000).default(0),
+          priceType: z.enum(["fixed", "starting_at", "quote"]).default("fixed"),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1150,6 +1152,7 @@ export const appRouter = router({
           description: z.string().max(4000).nullable().optional(),
           durationMinutes: z.number().int().min(5).max(1440).optional(),
           priceCents: z.number().int().min(0).max(100_000_000).optional(),
+          priceType: z.enum(["fixed", "starting_at", "quote"]).optional(),
           active: z.boolean().optional(),
         })
       )
