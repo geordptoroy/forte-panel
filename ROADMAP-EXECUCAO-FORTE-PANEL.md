@@ -94,8 +94,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O3.5 | Comercial | Agenda com conflito, profissional e status | **CONCLUÍDA (código + CI PostgreSQL)** | PR #11 aberta; run `36723304885` passou; staging e revisão final continuam pendentes |
 | O3.6 | Comercial | Recebimento, ledger operacional e recibo | **CONCLUÍDA (código + CI PostgreSQL)** | PR #12 aberta; run `36729522644` passou após correção da FK composta; staging e revisão final continuam pendentes |
 | O3.7 | Comercial | Dashboard de decisões do dia | **CONCLUÍDA (código + CI PostgreSQL)** | PR #13 aberta; run `36730266465` passou; staging e revisão final continuam pendentes |
-| O4.1 | IA | Contexto comercial seguro para o agente | **EM REVISÃO (código local)** | Branch `feat/o4.1-agent-commercial-context`; ferramenta somente leitura tenant-scoped; CI PostgreSQL e PR pendentes |
-| O4.2 | IA | Ferramentas somente leitura e confirmação mutável | PENDENTE | IA sugere; humano/backend autoriza efeitos |
+| O4.1 | IA | Contexto comercial seguro para o agente | **CONCLUÍDA (código + CI PostgreSQL)** | PR #14 aberta; run `36730874541` passou; staging e revisão final continuam pendentes |
+| O4.2 | IA | Ferramentas somente leitura e confirmação mutável | **EM REVISÃO (código local)** | Branch `feat/o4.2-agent-confirmation-gate`; propostas pendentes e confirmação manager/owner; CI PostgreSQL e PR pendentes |
 | O4.3 | IA | Transferência para humano e kill switch | PENDENTE | Falha segura e controle operacional |
 | O4.4 | IA | Métricas de resolução, custo, latência e receita | PENDENTE | IA medida por resultado, não por prompt |
 | O5.1 | Admin | Workspaces como contas de produção | PENDENTE | Lifecycle, saúde, plano e incidente reais |

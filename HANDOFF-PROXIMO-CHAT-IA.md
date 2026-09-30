@@ -1,6 +1,6 @@
 # Handoff — Forte Panel
 
-**Atualizado:** 2026-09-30 — O3.7 validada no CI; O4.1 em revisão local
+**Atualizado:** 2026-09-30 — O4.1 validada no CI; O4.2 em revisão local
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
@@ -60,8 +60,12 @@ Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 15 testes 
 
 A branch `feat/o4.1-agent-commercial-context` foi criada sobre a O3.7 validada (`cc09653`). A entrega está registrada em `O4.1-ENTREGA-CONTEXTO-COMERCIAL-AGENTE.md`. O agente ganhou `consultar_contexto_comercial`, uma ferramenta somente leitura que deriva o contato e o workspace do evento, consulta etapa canônica, dados comerciais, orçamento aprovado ativo e notas recentes, sem aceitar identificadores de tenancy do modelo.
 
-Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes focados passaram. CI PostgreSQL e PR ainda pendentes.
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes focados passaram. A PR #14 está aberta e o CI PostgreSQL `36730874541` passou; staging persistente e revisão final continuam pendentes.
 
 ## Próxima fatia
 
-**O4.1 — Contexto comercial seguro para o agente**, somente depois de publicar e validar a PR da O3.7. Preservar a pilha aberta, sem merge automático, e manter `CORE_ONLY_MODE` ativo.
+**O4.2 — Ferramentas somente leitura e confirmação mutável**, preservando a pilha aberta, sem merge automático, e mantendo `CORE_ONLY_MODE` ativo.
+
+A branch `feat/o4.2-agent-confirmation-gate` foi criada sobre a O4.1 validada (`699ad1b`). A entrega está registrada em `O4.2-ENTREGA-CONFIRMACAO-MUTAVEL-AGENTE.md`. Mutações do agente agora viram propostas `pending_confirmation`; manager/owner pode listar, confirmar ou rejeitar com motivo, e a execução confirmada mantém tenancy e idempotência.
+
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes focados passaram. CI PostgreSQL e PR ainda pendentes.

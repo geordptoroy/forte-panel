@@ -117,7 +117,11 @@ import {
   updateQuotePayment,
   registerQuotePayment,
   changeQuoteApproval,
+  claimAgentEffectProposal,
+  listPendingAgentEffectProposals,
+  rejectAgentEffectProposal,
 } from "./db";
+import { confirmNativeAgentEffect } from "./native-agent";
 import { sendInviteEmail, sendPasswordResetEmail } from "./_core/email";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import {
@@ -2249,6 +2253,31 @@ export const appRouter = router({
   }),
 
   agent: router({
+    pendingConfirmations: requireManager.query(async ({ ctx }) => {
+      const rows = await listPendingAgentEffectProposals(ctx.workspace.workspaceId);
+      return rows.map(row => ({
+        id: row.id,
+        eventId: row.eventId,
+        toolCallId: row.toolCallId,
+        toolName: row.toolName,
+        proposal: row.result ? JSON.parse(row.result) : null,
+        createdAt: row.createdAt,
+      }));
+    }),
+    confirm: requireManager
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        const effect = await claimAgentEffectProposal(ctx.workspace.workspaceId, input.id);
+        if (!effect) throw new TRPCError({ code: "CONFLICT", message: "A proposta já foi confirmada, rejeitada ou não existe." });
+        return confirmNativeAgentEffect({ workspaceId: ctx.workspace.workspaceId, effect, actorUserId: ctx.user.id });
+      }),
+    reject: requireManager
+      .input(z.object({ id: z.number().int().positive(), reason: z.string().trim().min(1).max(500) }))
+      .mutation(async ({ input, ctx }) => {
+        const effect = await rejectAgentEffectProposal(ctx.workspace.workspaceId, input.id, input.reason);
+        if (!effect) throw new TRPCError({ code: "CONFLICT", message: "A proposta já foi confirmada, rejeitada ou não existe." });
+        return { rejected: true, id: effect.id };
+      }),
     config: requirePlatformAdministrator.query(async ({ ctx }) => {
       const config = await getNativeAgentConfig(ctx.workspace.workspaceId);
       return {

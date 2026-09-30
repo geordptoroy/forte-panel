@@ -6556,6 +6556,71 @@ export async function claimAgentEffect(input: {
   return { claimed: false, inProgress: true, record: existing };
 }
 
+export async function createAgentEffectProposal(input: {
+  workspaceId: number;
+  eventId: string;
+  toolCallId: string;
+  toolName: string;
+  fingerprint: string;
+  proposal: unknown;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const inserted = await db
+    .insert(agentEffects)
+    .values({
+      workspaceId: input.workspaceId,
+      eventId: input.eventId,
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+      fingerprint: input.fingerprint,
+      status: "pending_confirmation",
+      result: JSON.stringify(input.proposal),
+      updatedAt: new Date(),
+    })
+    .onConflictDoNothing({
+      target: [agentEffects.workspaceId, agentEffects.eventId, agentEffects.toolCallId],
+    })
+    .returning();
+  if (inserted[0]) return inserted[0];
+  return (await db.select().from(agentEffects).where(and(
+    eq(agentEffects.workspaceId, input.workspaceId),
+    eq(agentEffects.eventId, input.eventId),
+    eq(agentEffects.toolCallId, input.toolCallId),
+    eq(agentEffects.fingerprint, input.fingerprint),
+    eq(agentEffects.toolName, input.toolName),
+  )).limit(1))[0];
+}
+
+export async function listPendingAgentEffectProposals(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(agentEffects).where(and(
+    eq(agentEffects.workspaceId, workspaceId),
+    eq(agentEffects.status, "pending_confirmation"),
+  )).orderBy(desc(agentEffects.createdAt));
+}
+
+export async function claimAgentEffectProposal(workspaceId: number, id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return (await db.update(agentEffects).set({ status: "processing", updatedAt: new Date() }).where(and(
+    eq(agentEffects.id, id),
+    eq(agentEffects.workspaceId, workspaceId),
+    eq(agentEffects.status, "pending_confirmation"),
+  )).returning())[0];
+}
+
+export async function rejectAgentEffectProposal(workspaceId: number, id: number, reason: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return (await db.update(agentEffects).set({ status: "rejected", result: JSON.stringify({ rejected: true, reason }), updatedAt: new Date() }).where(and(
+    eq(agentEffects.id, id),
+    eq(agentEffects.workspaceId, workspaceId),
+    eq(agentEffects.status, "pending_confirmation"),
+  )).returning())[0];
+}
+
 export async function completeAgentEffect(input: {
   workspaceId: number;
   eventId: string;
