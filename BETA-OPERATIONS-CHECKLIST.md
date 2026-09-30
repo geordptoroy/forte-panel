@@ -51,7 +51,7 @@ As chaves compostas de deduplicação usam workspace:
 5. A resposta da IA é enfileirada como mensagem outbound.
 6. Antes de chamar o gateway Baileys, o worker consome `outboundMessages` do workspace.
 7. Se a cota estiver cheia, a mensagem continua `queued`, sem incrementar tentativas, e será tentada na próxima janela.
-8. O gateway Baileys recebe uma chave de idempotência baseada no ID da mensagem; o ledger de efeito externo ainda é um bloqueador de release.
+8. O gateway Baileys recebe uma chave de idempotência baseada no ID da mensagem e persiste um ledger por instância; replay concluído reaproveita o `externalId` e resultado inconclusivo falha fechado. A prova de restart/timeout em staging ainda é gate de release.
 
 Mensagens manuais do Inbox também consomem a cota individual do operador no momento do envio e a cota do workspace no worker.
 

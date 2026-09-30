@@ -201,22 +201,25 @@ export class InstanceRegistry {
     phone: string,
     messageType: string,
     content: string,
-    metadata: Record<string, unknown> = {}
+    metadata: Record<string, unknown> = {},
+    idempotencyKey?: string
   ) {
     return this.requireEntry(instanceId).manager.sendMessage(
       phone,
       messageType,
       content,
-      metadata
+      metadata,
+      idempotencyKey
     );
   }
 
   async sendPayload(
     instanceId: string,
     phone: string,
-    payload: Parameters<InstanceManager["sendPayload"]>[1]
+    payload: Parameters<InstanceManager["sendPayload"]>[1],
+    idempotencyKey?: string
   ) {
-    return this.requireEntry(instanceId).manager.sendPayload(phone, payload);
+    return this.requireEntry(instanceId).manager.sendPayload(phone, payload, idempotencyKey);
   }
 
   async stopAll() {

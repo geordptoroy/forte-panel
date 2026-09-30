@@ -24,6 +24,17 @@ Atualizado em: 2026-09-30
 
 Auditoria documental de 2026-09-30 confirmou gaps adicionais além do resumo operacional: idempotência de efeito externo no gateway, transação inbound, hardening de sessão/webhook/headers, runbook, observabilidade externa, coorte de até 10 workspaces, fallback/custo da IA, UX pública e billing continuam abertos. Detalhamento em [`AUDITORIA-GAPS-MVP-2026-09-30.md`](./AUDITORIA-GAPS-MVP-2026-09-30.md).
 
+## Fila unificada após a auditoria documental
+
+1. **O7.9 — Idempotência outbound fim a fim:** concluída em código e testes locais; ledger durável e fail-closed para timeout/restart. Staging/timeout físico permanecem no fechamento externo.
+2. **O7.10 — Inbound transacional:** próxima fatia; transação de domínio, retry sem duplicação e compensação segura de mídia.
+3. **O7.11 — Hardening de sessão/webhook/headers:** revogação, anti-replay, CSRF, rate limit distribuído e secrets obrigatórios.
+4. **O7.12 — Restore e operação:** backup off-host, restore de DB/mídia/sessão, runbook, alertas e rollback.
+5. **O7.13 — Qualidade e escala:** quality gate sem skips críticos, concorrência, paginação, métricas e coorte de dois/dez workspaces.
+6. **Produto público:** onboarding final, UX/a11y, IA avançada, billing, termos e cadastro público somente depois dos gates P0.
+
+Os itens que exigem a máquina do usuário ou ambiente externo ficam em uma fila separada para o encerramento: Docker com volume real, staging persistente, browser autenticado, restore limpo e WhatsApp físico.
+
 ## Fila de coding
 
 ### C1 — Regressão de classificação HTTP da outbox
