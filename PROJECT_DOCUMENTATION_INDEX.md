@@ -6,6 +6,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 
 > **Fila de execução ativa:** consulte [`ROADMAP-EXECUCAO-FORTE-PANEL.md`](./ROADMAP-EXECUCAO-FORTE-PANEL.md). Cada mensagem `próximo` executa a primeira fatia pendente, atualiza o estado, registra validações e publica um commit no Git.
 > Para cada fatia concluída, preservar branch/PR de revisão; não mesclar automaticamente.
+> **Rastreio de execução e refatoração final:** consulte [`FORTE-PANEL-RASTREIO-EXECUCAO.md`](./FORTE-PANEL-RASTREIO-EXECUCAO.md). Ele separa coding, gates externos e a rodada final de refatoração orientada por falhas evidenciadas.
 
 > **Auditoria e proteção de ingestão WhatsApp/IA (2026-09-28):** consulte [`docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`](./docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md). A primeira fatia de proteção agora filtra `append`/backfill e texto-placeholder e verifica ownership da instância antes de salvar mídia; a importação histórica e o Console unificado de IA continuam pendentes.
 >
