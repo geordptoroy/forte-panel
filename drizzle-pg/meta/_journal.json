@@ -351,6 +351,13 @@
       "when": 1790767867837,
       "tag": "0049_opportunity_stage_history",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1790769000000,
+      "tag": "0050_quote_items_approval",
+      "breakpoints": true
     }
   ]
 }

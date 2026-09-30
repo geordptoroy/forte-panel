@@ -114,6 +114,7 @@ import {
   upsertUser,
   verifyLocalPassword,
   updateQuotePayment,
+  changeQuoteApproval,
 } from "./db";
 import { sendInviteEmail, sendPasswordResetEmail } from "./_core/email";
 import { storageGetSignedUrl, storagePut } from "./storage";
@@ -226,6 +227,9 @@ type MappableContact = Omit<
   | "opportunityStage"
   | "assignedMemberId"
   | "assignedMemberName"
+  | "quoteReceivedCents"
+  | "quotePendingCents"
+  | "activeQuoteId"
   | "nextAction"
 > & {
   awaitingResponse?: boolean;
@@ -241,6 +245,9 @@ type MappableContact = Omit<
   opportunityStage?: string | null;
   assignedMemberId?: number | null;
   assignedMemberName?: string | null;
+  quoteReceivedCents?: number;
+  quotePendingCents?: number;
+  activeQuoteId?: number | null;
   nextAction?: ContactRow["nextAction"];
 };
 
@@ -282,7 +289,7 @@ const mapContact = (contact: MappableContact) => ({
   lastMessageAt:
     contact.lastMessageAt?.toISOString() ?? contact.updatedAt.toISOString(),
   quote: contact.quoteCents / 100,
-  pending: contact.quoteCents / 100,
+  pending: (contact.quotePendingCents ?? contact.quoteCents) / 100,
   daysNoReply: 0,
   initials: contact.name
     .split(" ")
@@ -2463,21 +2470,22 @@ export const appRouter = router({
       .input(
         z.object({
           contactId: z.number().int().positive(),
+          opportunityId: z.number().int().positive().optional(),
           serviceName: z.string().trim().min(1).max(160),
           description: z.string().max(4000).optional(),
           quotedCents: z.number().int().nonnegative(),
-          receivedCents: z.number().int().nonnegative().default(0),
-          status: z
-            .enum([
-              "orcamento",
-              "aguardando_aprovacao",
-              "aprovado",
-              "sinal_pendente",
-              "parcialmente_pago",
-              "pago",
-              "cancelado",
-            ])
-            .default("orcamento"),
+          items: z
+            .array(
+              z.object({
+                serviceName: z.string().trim().min(1).max(160),
+                description: z.string().max(4000).optional(),
+                quantity: z.number().int().positive(),
+                unitPriceCents: z.number().int().nonnegative(),
+              })
+            )
+            .min(1)
+            .optional(),
+          validUntil: z.coerce.date().optional(),
           dueDate: z.coerce.date().optional(),
           notes: z.string().max(1000).optional(),
         })
@@ -2490,26 +2498,25 @@ export const appRouter = router({
         z.object({
           id: z.number().int().positive(),
           receivedCents: z.number().int().nonnegative(),
-          status: z.enum([
-            "orcamento",
-            "aguardando_aprovacao",
-            "aprovado",
-            "sinal_pendente",
-            "parcialmente_pago",
-            "pago",
-            "cancelado",
-          ]),
         })
       )
       .mutation(({ input, ctx }) =>
         updateQuotePayment(
           input.id,
           input.receivedCents,
-          input.status,
           ctx.workspace.workspaceId,
           ctx.user.id
         )
       ),
+    requestApproval: requireManager
+      .input(z.object({ id: z.number().int().positive(), note: z.string().max(1000).optional() }))
+      .mutation(({ input, ctx }) => changeQuoteApproval(input.id, "pending", ctx.workspace.workspaceId, ctx.user.id, input.note)),
+    approve: requireManager
+      .input(z.object({ id: z.number().int().positive(), note: z.string().max(1000).optional() }))
+      .mutation(({ input, ctx }) => changeQuoteApproval(input.id, "approved", ctx.workspace.workspaceId, ctx.user.id, input.note)),
+    reject: requireManager
+      .input(z.object({ id: z.number().int().positive(), note: z.string().max(1000).optional() }))
+      .mutation(({ input, ctx }) => changeQuoteApproval(input.id, "rejected", ctx.workspace.workspaceId, ctx.user.id, input.note)),
   }),
 
   agenda: router({

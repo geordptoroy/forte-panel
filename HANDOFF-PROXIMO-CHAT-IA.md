@@ -1,6 +1,6 @@
 # Handoff — Forte Panel
 
-**Atualizado:** 2026-09-30
+**Atualizado:** 2026-09-30 — O3.4 em revisão local
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
@@ -32,6 +32,12 @@ Entrega detalhada: `O3.3-ENTREGA-FUNIL-CANONICO.md`.
 - CI PostgreSQL: run #36710769990 aplicou as migrations e executou a suíte completa; 72/72 arquivos, 285/285 testes, sem skips.
 - O resultado do CI é efêmero; não substitui banco persistente/staging, restore, smoke visual desktop/mobile ou prova física inbound/outbound Baileys. Uma atualização documental após o commit validado pode gerar outro run; confira o estado mais recente da PR antes da próxima execução.
 
+## O3.4 — implementação local em revisão
+
+A branch `feat/o3.4-quote-approval` foi criada sobre `89d7cff` / PR #9, sem tocar `main` ou mesclar a pilha. A entrega está registrada em `O3.4-ENTREGA-ORCAMENTOS-APROVACAO.md`. O código adiciona migration 0050, itens imutáveis, validade, estados separados de aprovação/recebimento, histórico append-only, projeção válida no Inbox/dashboard e recebimento monotônico.
+
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 13 testes focados passaram. A suíte completa ainda encontra dependências ausentes no subprojeto `forte-whatsapp`; CI PostgreSQL e revisão da PR ainda precisam ser executados.
+
 ## Próxima fatia
 
-**O3.4 — Orçamento com itens, validade e aprovação humana.** Manter uma fatia isolada, oportunidade tenant-scoped, proposta rastreável, aprovação humana e auditoria. Não introduzir Stripe/cobrança real nesta etapa. Preservar a pilha aberta, sem merge automático, e manter `CORE_ONLY_MODE` ativo.
+**O3.5 — Agenda com conflito, profissional e status**, somente depois de publicar e validar o PR da O3.4. Preservar a pilha aberta, sem merge automático, e manter `CORE_ONLY_MODE` ativo.
