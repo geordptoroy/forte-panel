@@ -115,6 +115,7 @@ import {
   upsertUser,
   verifyLocalPassword,
   updateQuotePayment,
+  registerQuotePayment,
   changeQuoteApproval,
 } from "./db";
 import { sendInviteEmail, sendPasswordResetEmail } from "./_core/email";
@@ -2508,6 +2509,19 @@ export const appRouter = router({
           ctx.workspace.workspaceId,
           ctx.user.id
         )
+      ),
+    registerPayment: requireFinancial
+      .input(
+        z.object({
+          quoteId: z.number().int().positive(),
+          amountCents: z.number().int().positive(),
+          method: z.enum(["pix", "cash", "card", "transfer", "other"]),
+          receivedAt: z.coerce.date().optional(),
+          notes: z.string().max(500).optional(),
+        })
+      )
+      .mutation(({ input, ctx }) =>
+        registerQuotePayment(input, ctx.workspace.workspaceId, ctx.user.id)
       ),
     requestApproval: requireManager
       .input(z.object({ id: z.number().int().positive(), note: z.string().max(1000).optional() }))

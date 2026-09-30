@@ -358,6 +358,13 @@
       "when": 1790769000000,
       "tag": "0050_quote_items_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790770000000,
+      "tag": "0051_quote_payments_receipts",
+      "breakpoints": true
     }
   ]
 }
