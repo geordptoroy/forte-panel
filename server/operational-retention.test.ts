@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { cleanupOperationalRetention } from "./db";
 
+const hasDatabase = Boolean(
+  process.env.DATABASE_URL &&
+    /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL)
+);
+
 describe("operational retention contract", () => {
-  it("defaults to dry-run and clamps unsafe retention parameters", async () => {
+  it("defaults to dry-run, clamps unsafe retention parameters, and only skips without PostgreSQL", async () => {
     const result = await cleanupOperationalRetention({
       limit: 0,
       retentionDays: 1,
@@ -10,7 +15,7 @@ describe("operational retention contract", () => {
     });
 
     expect(result).toMatchObject({
-      skipped: true,
+      skipped: !hasDatabase,
       dryRun: true,
       limit: 1,
       retentionDays: 7,
