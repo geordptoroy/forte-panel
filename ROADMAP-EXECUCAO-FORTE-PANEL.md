@@ -20,8 +20,8 @@ A execução seguirá uma fatia por vez. Para cada fatia, o agente deve:
 5. executar os gates disponíveis e registrar limitações;
 6. atualizar o estado da fatia neste documento e no handoff;
 7. fazer commit com mensagem específica;
-8. publicar no `origin/main`;
-9. responder com o commit, o que mudou, os gates executados e a próxima fatia.
+8. publicar uma branch e abrir/atualizar PR para revisão; nunca mesclar automaticamente;
+9. responder com o commit, o PR, o que mudou, os gates executados e a próxima fatia.
 
 **Não fazer:** reset destrutivo, apagar migrations aplicadas, declarar staging real sem executar staging, ligar `CORE_ONLY_MODE` de uma vez, misturar demo com produção ou implementar uma tela isolada sem fechar seu contrato de dados.
 
@@ -278,13 +278,13 @@ Quando o usuário disser **próximo**, executar exatamente a primeira fatia `PEN
 4. validar o que for possível;
 5. se houver bloqueio externo, parar nessa fatia e registrar o bloqueio, sem pular silenciosamente;
 6. atualizar estado e evidências;
-7. commitar e publicar;
+7. commitar, publicar uma branch e abrir/atualizar PR para revisão; nunca mesclar automaticamente;
 8. responder com:
    - fatia executada;
    - arquivos alterados;
    - comportamento antes/depois;
    - validações executadas e não executadas;
-   - commit publicado;
+   - commit e PR publicados;
    - próxima fatia.
 
 Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de implementar. Não abrir uma nova frente só porque uma tela parece mais fácil.

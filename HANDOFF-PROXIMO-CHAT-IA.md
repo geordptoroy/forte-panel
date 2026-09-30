@@ -1,31 +1,47 @@
 # Handoff — Forte Panel
 
-## Contexto do produto
+**Atualizado:** 2026-09-30
+**Repositório:** `geordptoroy/forte-panel`
+**Caminho observado:** `/home/ubuntu/forte-panel` — revalidar ambiente, branch, HEAD, status, remote, ferramentas e `DATABASE_URL` antes de reutilizar o workspace.
 
-O Forte Panel está sendo transformado de superfícies beta/demo em um SaaS público de operação comercial para negócios atendidos por WhatsApp. A sequência atual é saneamento público → onboarding → WhatsApp confiável → lead/Inbox → orçamento → agenda/recebimento → IA supervisionada → Admin de produção → planos e cobrança.
+## Contexto e regras do usuário
 
-O repositório é `geordptoroy/forte-panel`, no caminho `/home/ubuntu/forte-panel`. A branch é `feat/o1.3-attendance-rule-simulation`; o commit de implementação O1.3 é `6f5a812`. Revalidar ambiente, branch, HEAD, status, remote e disponibilidade do PostgreSQL antes de reutilizar qualquer estado.
+O objetivo é transformar o Forte Panel de beta/demo em SaaS público multiempresa para negócios que operam por WhatsApp. Executar uma fatia por vez; documentar cada fatia; manter branches/PRs para revisão; **nunca mesclar automaticamente**; manter `CORE_ONLY_MODE` até prova de produção; não usar nem pedir secrets reais. Stripe/subscription está adiado para O7.1/O7.2.
 
-## Estado de GitHub
+## Estado de GitHub verificado
 
-- O PR [#4](https://github.com/geordptoroy/forte-panel/pull/4) contém O1.2 e segue aberto contra `main`; o último estado observado reportou `mergeStateStatus=UNSTABLE`.
-- O PR [#5](https://github.com/geordptoroy/forte-panel/pull/5) contém O1.3 e foi aberto contra a branch `feat/o1.2-operational-service-catalog`, portanto está **empilhado** sobre #4. Não mesclar #5 isoladamente para `main` nem fazer merge automático.
-- O1.3 está publicada na branch remota; commits posteriores de atualização de handoff podem estar no topo quando esta nota for lida.
+- PR [#4](https://github.com/geordptoroy/forte-panel/pull/4): O1.2 → `main`, aberto.
+- PR [#5](https://github.com/geordptoroy/forte-panel/pull/5): O1.3 → `feat/o1.2-operational-service-catalog`, aberto.
+- PR [#6](https://github.com/geordptoroy/forte-panel/pull/6): O1.4–O2.4 → `feat/o1.3-attendance-rule-simulation`, aberto e empilhado. Commit de implementação `c1cd9d6` (`feat: harden onboarding and WhatsApp operations`). Nenhum desses PRs foi mesclado.
+- Não mesclar um PR filho diretamente em `main` enquanto os pais permanecerem abertos. Para O3.1, partir da branch O1.4–O2.4 e abrir outro PR empilhado sobre ela.
 
-## Última fatia: O1.3 — regras e revisão de exemplos
+## Último bloco fechado — O1.4 a O2.4
 
-A etapa Revisão do onboarding mostra três casos seguros fixos: serviço/preço fora do catálogo, pedido de horário específico e reclamação/pedido de pessoa. Se houver consentimento `llm`, o responsável pode gerar uma prévia estruturada com o perfil-candidato atual. Essa chamada não acessa catálogo/agenda real, não executa ferramentas, não confirma blocos, não publica e não persiste as respostas; uma resposta só pode ser reutilizada no FAQ como rascunho editável.
+Entrega detalhada: `O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`.
 
-A revisão humana fica registrada em `workspace_settings` com fingerprint do candidato de publicação, modo, data e responsável. O hash fica obsoleto após alteração do candidato, e `publishOnboardingDraft` o verifica novamente no servidor. Identidade, oferta, operação e limites continuam exigindo confirmação humana por bloco, checklist completo e ausência de conflitos. Rollback continua imutável/versionado e registra a revisão da versão restaurada.
+- O1.4: etapa de onboarding retomável, autosave serializado e estados seguros de loading/erro.
+- O2.1: backoff exponencial limitado; logout manual é final.
+- O2.2: lease de webhook recuperável e token fencing; migration aditiva manual `0046` registrada no journal.
+- O2.3: recibos outbound monotônicos e limitados por workspace/instância/externalId.
+- O2.4: upload autenticado privado até 8 MiB; o worker cria URL assinada HTTPS curta somente no envio.
 
-Arquivos de entrega: `O1.3-ENTREGA-REGRAS-E-REVISAO-EXEMPLOS.md`, `server/onboarding-simulation.ts`, `server/onboarding-review.ts` e os tipos/testes em `shared/`.
+Validação no Sandbox: `pnpm check`; `pnpm test` — 225 aprovados, 51 ignorados em 70 arquivos; `pnpm build` com aviso existente de bundle frontend >500 kB; `npm --prefix forte-whatsapp run check`; `npm --prefix forte-whatsapp test` — 72 aprovados; `npm --prefix forte-whatsapp run build`; `git diff --check`.
 
-## Validação e limites
+**Ainda não provado:** testes PostgreSQL condicionais (sem `DATABASE_URL`), aplicação/rollback das migrations 0045/0046, reconexão/QR/inbound/outbound em número real de teste, entrega física de mídias/recibos, restore e browser desktop/mobile. Não declarar staging/produção pronta. O release permanece `not_ready`/`CORE_ONLY_MODE`.
 
-No Sandbox: `pnpm check` passou; `pnpm test` passou com **214 testes aprovados e 48 ignorados em 65 arquivos**; `pnpm build` passou com aviso de bundle frontend acima de 500 kB; `git diff --check` passou. O teste PostgreSQL de publicação/revisão/obsolescência/rollback foi adicionado, mas ficou ignorado por ausência de `DATABASE_URL`/PostgreSQL.
+## Próxima fatia — O3.1: Lead unificado entre contato, conversa e oportunidade
 
-Nenhuma migration nova foi criada. O onboarding continua como `not_ready` no release catalog; `/onboarding` não foi liberado, `CORE_ONLY_MODE` permanece, e ainda falta prova manual persistente/browser. Esta fatia não inicia Stripe, WhatsApp nem cobrança SaaS. A integração comercial própria do Forte Panel continua no roadmap O7.1/O7.2, posterior ao núcleo operacional e aos gates do produto.
+Fontes a consultar novamente: `FORTE-PANEL-FONTE-DE-VERDADE.md`, `PRODUCT_SCOPE.md`, `ROADMAP-EXECUCAO-FORTE-PANEL.md`, `PROJECT_DOCUMENTATION_INDEX.md` e este handoff. A Fonte de Verdade prevalece se houver material histórico divergente.
 
-## Próximo passo
+Auditoria feita: `contacts` hoje contém `stage` e funciona como lead implícito; não existem tabelas explícitas `leads` nem `opportunities`. `conversations` tem vínculo único por contato. A ingestão Baileys valida ownership da instância, deduplica pelo `eventId`, cria/atualiza contato, conversa e mensagem; histórico/backfill, grupos, `fromMe` e placeholders não devem virar novo inbound comercial.
 
-A próxima fatia é **O1.4 — retomada, autosave, missing/conflict e estados vazios**. Antes de começar, revisar `PROJECT_DOCUMENTATION_INDEX.md`, `ROADMAP-EXECUCAO-FORTE-PANEL.md`, `FORTE-PANEL-FONTE-DE-VERDADE.md`, o handoff e a entrega O1.3; confirmar o estado dos PRs #4 e #5. Trabalhar em branch separada empilhada sobre O1.3, se os PRs continuarem pendentes. Executar `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check`; registrar testes PostgreSQL como pendentes se o banco não estiver disponível. Não ampliar para billing, release gate ou integração real do WhatsApp sem o corte correspondente no roadmap.
+Implementar nesta fatia:
+
+1. Modelo explícito e tenant-scoped para Lead relacionado ao Contact existente e a uma Opportunity com stage; preservar os registros atuais via migration aditiva e backfill sem editar migrations históricas.
+2. Inbound Baileys deve criar ou atualizar Lead/Opportunity de forma idempotente, em retry e corrida concorrente, usando a identidade de contato do workspace; não criar duplicatas por evento.
+3. Conectar a Conversation à Opportunity (ou ao Lead que a possui) e expor a relação/stage nas consultas usadas pelo Inbox/CRM; manter compatibilidade do stage legado sem duas fontes divergentes.
+4. Não converter grupos, histórico/backfill, `fromMe`, evento ignorado ou payload inválido em lead comercial.
+5. Testes para isolamento entre workspaces, deduplicação, reentrada, link Contact–Lead–Conversation–Opportunity e projeção/sincronização do stage. Se PostgreSQL continuar indisponível, deixar o teste de integração condicional e registrar explicitamente o bloqueio.
+6. Atualizar API/contratos, Fonte de Verdade, `PRODUCT_SCOPE.md` se necessário, roadmap, `todo.md`, índice e handoffs; criar migration `0047` aditiva se o schema exigir.
+
+Abrir branch `feat/o3.1-unified-leads` a partir de `feat/o1.4-o2.4-operational-core`; publicar PR empilhado sobre essa branch. Não mesclar PR #6 ou o novo PR automaticamente. Executar `pnpm check`, `pnpm test`, `pnpm build`, gates do gateway se tocados e `git diff --check` antes de publicar.

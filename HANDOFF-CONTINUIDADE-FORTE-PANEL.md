@@ -34,3 +34,15 @@ A confirmação de revisão é registrada em `workspace_settings` com hash do pe
 Validação no Sandbox: `pnpm check` passou; `pnpm test` passou com 214 testes aprovados e 48 ignorados (inclui testes condicionais a PostgreSQL); `pnpm build` passou, com o aviso do bundle frontend acima de 500 kB; `git diff --check` passou. Os testes persistidos de publicação/revisão não executaram por ausência de PostgreSQL/DATABASE_URL. Nenhuma migration foi criada. O release catalog continua `not_ready`; `/onboarding` não foi liberado.
 **Próxima fatia:** O1.4 — retomada, autosave, missing/conflict e estados vazios. Não ampliar para Stripe, WhatsApp ou release gate nesta etapa.
 **Entrega:** `O1.3-ENTREGA-REGRAS-E-REVISAO-EXEMPLOS.md`. Commit `6f5a812` na branch `feat/o1.3-attendance-rule-simulation`; PR [#5](https://github.com/geordptoroy/forte-panel/pull/5), empilhado sobre o PR [#4](https://github.com/geordptoroy/forte-panel/pull/4) da O1.2. Ambos permanecem sem merge.
+
+
+## 33. O1.4–O2.4 — Onboarding retomável e núcleo WhatsApp resiliente — 2026-09-30
+
+As cinco fatias O1.4, O2.1, O2.2, O2.3 e O2.4 foram fechadas em código: retomada/autosave com revisão serializada; backoff limitado e logout final; leases recuperáveis com fencing; reconciliação monotônica `sent → delivered → read`; upload privado autenticado até 8 MiB e URL HTTPS assinada no envio. A documentação detalhada está em `O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`. Também alinhei `PRODUCT_SCOPE.md` com a decisão canônica Baileys-only e corrigi o gate de mídia obsoleto na Fonte de Verdade.
+
+Validação no Sandbox: `pnpm check`; `pnpm test` — 225 aprovados, 51 ignorados em 70 arquivos; `pnpm build` (aviso existente de bundle frontend >500 kB); `npm --prefix forte-whatsapp run check`; `npm --prefix forte-whatsapp test` — 72 aprovados; `npm --prefix forte-whatsapp run build`; `git diff --check`. Os testes condicionais a PostgreSQL foram ignorados porque `DATABASE_URL` não está disponível. Migrations 0045/0046 aguardam aplicação em PostgreSQL persistente; nenhuma prova de QR, entrega física, restore ou upload real foi feita. `CORE_ONLY_MODE` permanece ativo.
+
+**Commit de implementação:** `c1cd9d6` — `feat: harden onboarding and WhatsApp operations`.
+**PR:** [#6](https://github.com/geordptoroy/forte-panel/pull/6), branch `feat/o1.4-o2.4-operational-core`, base `feat/o1.3-attendance-rule-simulation`; aberto, sem merge. #4 e #5 também continuam abertos; não mesclar automaticamente uma fatia empilhada.
+
+**Próxima fatia:** O3.1 — Lead unificado entre contato, conversa e oportunidade. O schema atual ainda representa o lead como `contacts.stage`, sem tabelas explícitas `leads`/`opportunities`; a ingestão cria contato/conversa/mensagem e ignora grupos para IA. Implementar relações tenant-scoped e idempotentes, sem promover histórico, `fromMe`, grupo ou evento ignorado a novo lead.
