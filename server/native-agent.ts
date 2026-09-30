@@ -3,10 +3,13 @@ import { type Message, type Tool } from "./_core/llm";
 import {
   createAgendaAppointment,
   getAgendaSnapshot,
+  getActiveQuoteSummaryByContact,
+  getCanonicalContactStage,
   getContactById,
   getOnboardingProfile,
   leadMemoryOperation,
   listMessagesForContact,
+  listContactNotes,
   queueOutboundMessage,
   claimAgentEffect,
   completeAgentEffect,
@@ -43,6 +46,19 @@ type AgentConfig = {
 const defaultModel = process.env.AGENT_MODEL ?? "gpt-5-mini";
 
 const tools: Tool[] = [
+  {
+    type: "function",
+    function: {
+      name: "consultar_contexto_comercial",
+      description:
+        "Consulta o contexto comercial real e aprovado do contato atual: etapa canônica, serviço solicitado, urgência, orçamento aprovado e notas internas recentes. Use antes de responder sobre preço, etapa ou próximos passos.",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -361,6 +377,42 @@ async function executeToolEffect(
   args: Record<string, unknown>,
   event: NativeAgentEvent
 ) {
+  if (name === "consultar_contexto_comercial") {
+    const currentContact = await getContactById(event.workspaceId, event.contactId);
+    if (!currentContact) throw new Error("Contato do evento não encontrado");
+    const [stage, quoteSummary, notes] = await Promise.all([
+      getCanonicalContactStage(event.workspaceId, event.contactId),
+      getActiveQuoteSummaryByContact(event.workspaceId, [event.contactId]),
+      listContactNotes(event.workspaceId, event.contactId),
+    ]);
+    const approvedQuote = quoteSummary.get(event.contactId);
+    return {
+      source: "workspace_commercial_context",
+      contact: {
+        id: currentContact.id,
+        name: currentContact.name,
+        city: currentContact.city,
+        neighborhood: currentContact.neighborhood,
+        serviceRequested: currentContact.serviceRequested,
+        urgency: currentContact.urgency,
+      },
+      opportunity: { stage: stage ?? null },
+      approvedQuote: approvedQuote
+        ? {
+            quoteId: approvedQuote.quoteId,
+            quotedCents: approvedQuote.quotedCents,
+            receivedCents: approvedQuote.receivedCents,
+            pendingCents: approvedQuote.pendingCents,
+          }
+        : null,
+      recentNotes: notes.slice(0, 5).map(note => ({
+        content: note.content,
+        createdAt: note.createdAt,
+      })),
+      guardrail:
+        "Dados somente leitura do workspace do contato; não trate observação livre como preço, disponibilidade ou confirmação.",
+    };
+  }
   if (name === "buscar_lead")
     return leadMemoryOperation(event.workspaceId, {
       action: "buscar_lead",

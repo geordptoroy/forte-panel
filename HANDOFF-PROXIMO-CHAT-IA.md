@@ -1,6 +1,6 @@
 # Handoff — Forte Panel
 
-**Atualizado:** 2026-09-30 — O3.7 em revisão local
+**Atualizado:** 2026-09-30 — O3.7 validada no CI; O4.1 em revisão local
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
@@ -54,7 +54,13 @@ Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes 
 
 A branch `feat/o3.7-daily-decisions-dashboard` foi criada sobre a O3.6 validada (`2887bac`). A entrega está registrada em `O3.7-ENTREGA-DASHBOARD-DECISOES-DIA.md`. O snapshot agora calcula decisões do dia, receita recebida no mês a partir do ledger, pendência de orçamentos e saúde tenant-scoped do canal/worker. A UI exibe links diretos para Inbox, Funil, Faturamento e Agenda sem executar efeitos externos.
 
-Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 15 testes focados passaram. PostgreSQL CI e PR ainda pendentes.
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 15 testes focados passaram. A PR #13 está aberta e o CI PostgreSQL `36730266465` passou; staging persistente e revisão final continuam pendentes.
+
+## O4.1 — implementação local em revisão
+
+A branch `feat/o4.1-agent-commercial-context` foi criada sobre a O3.7 validada (`cc09653`). A entrega está registrada em `O4.1-ENTREGA-CONTEXTO-COMERCIAL-AGENTE.md`. O agente ganhou `consultar_contexto_comercial`, uma ferramenta somente leitura que deriva o contato e o workspace do evento, consulta etapa canônica, dados comerciais, orçamento aprovado ativo e notas recentes, sem aceitar identificadores de tenancy do modelo.
+
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes focados passaram. CI PostgreSQL e PR ainda pendentes.
 
 ## Próxima fatia
 
