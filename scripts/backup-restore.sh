@@ -46,7 +46,7 @@ backup() {
     tar --exclude='.session.lock' -czf "$session_archive" -C "$session_dir" .
   else
     echo "Aviso: diretório de sessão não existe; backup de sessão não criado" >&2
-    : > "$session_archive"
+    tar -czf "$session_archive" -T /dev/null
   fi
   chmod 600 "$archive" "$session_archive"
   {
@@ -85,11 +85,15 @@ restore() {
   [[ "${CONFIRM_RESTORE:-}" == "YES" ]] || { echo "Restore exige CONFIRM_RESTORE=YES" >&2; exit 1; }
   require_command pg_restore
   require_command tar
+  require_command realpath
+  require_command mktemp
   require_database_url
   local dir=${1:-}
   local target=${RESTORE_SESSION_DIR:-}
   [[ -n "$dir" && -d "$dir" ]] || { echo "Informe um diretório de backup existente" >&2; exit 1; }
   [[ -n "$target" ]] || { echo "RESTORE_SESSION_DIR é obrigatória; nunca sobrescreva a sessão ativa" >&2; exit 1; }
+  [[ "$(realpath -m "$target")" != "$(realpath -m "$session_dir")" ]] || { echo "RESTORE_SESSION_DIR não pode ser a sessão ativa" >&2; exit 1; }
+  verify "$dir" >/dev/null
   local manifest postgres_file session_file staging
   manifest=$(find "$dir" -maxdepth 1 -name 'manifest-*.txt' -type f | sort | tail -n 1)
   postgres_file=$(sed -n 's/^postgres_file=//p' "$manifest")

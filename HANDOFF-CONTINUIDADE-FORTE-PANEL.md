@@ -1,9 +1,9 @@
 
 
-## 42. O7.11 — Hardening HTTP, sessão e webhook — 2026-09-30
+## 43. O7.12 — Restore seguro e runbook operacional — 2026-09-30
 
-A primeira fatia de hardening aplica headers globais de segurança no Express, HSTS somente sob HTTPS, comparação constant-time do bearer no gateway e cobertura explícita da política de origem/CSRF e rate limits existentes. Não foram declarados concluídos rotação/revogação de secrets, rate limit distribuído, browser smoke, staging ou revisão legal.
+O script `scripts/backup-restore.sh` passou a verificar manifesto, dump PostgreSQL, tar de sessão e hashes antes de executar qualquer ação destrutiva. O restore rejeita o diretório de sessão ativo, exige destino separado e confirmação explícita. Backup sem diretório de sessão agora gera tar gzip vazio válido. O runbook mínimo de backup, verify, restore, readiness, tenant, mídia, DLQ e rollback foi documentado.
 
-Validação local: headers 2 testes, request security 9 testes e contrato HTTP do gateway 16 testes passaram; typecheck do Panel e gateway passaram; `git diff --check` passou.
+Validação local: `scripts/backup-restore.test.ts` passou com 3 testes; `bash -n scripts/backup-restore.sh` passou; `git diff --check` passou. Restore real, backup off-host, mídia/Redis/sessão em ambiente limpo, RPO/RTO e rollback por digest continuam gates externos.
 
-**Próximo passo:** O7.12 — runbook, restore e compensação de storage.
+**Próximo passo:** O7.13 — restore rehearsal e compensação de blobs órfãos.

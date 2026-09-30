@@ -29,7 +29,8 @@ Auditoria documental de 2026-09-30 confirmou gaps adicionais além do resumo ope
 1. **O7.9 — Idempotência outbound fim a fim:** concluída em código e testes locais; ledger durável e fail-closed para timeout/restart. Staging/timeout físico permanecem no fechamento externo.
 2. **O7.10 — Inbound transacional:** concluída em código e testes locais; uma transação protege contato, conversa, lead/oportunidade, mensagem, unread e evento de domínio. Compensação de mídia e crash/restore persistente permanecem externos.
 3. **O7.11 — Hardening de sessão/webhook/headers:** primeira fatia concluída; headers globais, bearer constant-time, origem/CSRF e rate limits cobertos. Secrets, revogação, rate limit distribuído e staging permanecem.
-4. **O7.12 — Restore e operação:** próxima fatia; backup off-host, restore de DB/mídia/sessão, runbook, alertas e rollback.
+4. **O7.12 — Restore e operação:** primeira fatia concluída; restore verifica manifesto/hashes antes de mutar, rejeita a sessão ativa e o runbook mínimo foi documentado. Restore completo, off-host, blobs, RPO/RTO e rollback permanecem.
+5. **O7.13 — Restore rehearsal e compensação:** próxima fatia; ambiente limpo, limpeza de órfãos, retenção, alertas e rollback por digest.
 5. **O7.13 — Qualidade e escala:** quality gate sem skips críticos, concorrência, paginação, métricas e coorte de dois/dez workspaces.
 6. **Produto público:** onboarding final, UX/a11y, IA avançada, billing, termos e cadastro público somente depois dos gates P0.
 
