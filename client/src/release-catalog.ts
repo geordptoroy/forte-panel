@@ -46,19 +46,22 @@ const routeCatalog: Record<string, ReleaseSurface> = {
   "/whatsapp-connection": {
     state: "not_ready",
     title: "Conexão WhatsApp",
-    reason: "É o primeiro fluxo operacional; ainda depende de prova completa de conexão, reconexão e envio.",
+    reason:
+      "É o primeiro fluxo operacional; ainda depende de prova completa de conexão, reconexão e envio.",
     enabledInCore: true,
   },
   "/inbox": {
     state: "not_ready",
     title: "Inbox",
-    reason: "É o núcleo de atendimento; assignment, unread e prova de mensagem real ainda estão em fechamento.",
+    reason:
+      "É o núcleo de atendimento; assignment, unread e prova de mensagem real ainda estão em fechamento.",
     enabledInCore: true,
   },
   "/plans-usage": {
     state: "not_ready",
     title: "Planos e consumo",
-    reason: "A superfície de consumo ainda não está liberada durante a contenção do núcleo.",
+    reason:
+      "A superfície de consumo ainda não está liberada durante a contenção do núcleo.",
     enabledInCore: false,
   },
   "/platform-admin": {
@@ -82,31 +85,36 @@ const routeCatalog: Record<string, ReleaseSurface> = {
   "/kanban": {
     state: "not_ready",
     title: "Funil de atendimento",
-    reason: "Precisa consolidar estágios, lead e próxima ação com o núcleo comercial.",
+    reason:
+      "Precisa consolidar estágios, lead e próxima ação com o núcleo comercial.",
     enabledInCore: false,
   },
   "/dashboard": {
     state: "not_ready",
     title: "Dashboard",
-    reason: "KPIs de operação e receita ainda precisam ser fechados com dados reais.",
+    reason:
+      "KPIs de operação e receita ainda precisam ser fechados com dados reais.",
     enabledInCore: false,
   },
   "/agenda": {
     state: "not_ready",
     title: "Agenda",
-    reason: "Disponibilidade, conflitos, confirmação, conclusão e no-show ainda estão em fechamento.",
+    reason:
+      "Disponibilidade, conflitos, confirmação, conclusão e no-show ainda estão em fechamento.",
     enabledInCore: false,
   },
   "/contacts": {
     state: "not_ready",
     title: "Clientes e contatos",
-    reason: "O ciclo comercial do lead ainda precisa ser consolidado nesta superfície.",
+    reason:
+      "O ciclo comercial do lead ainda precisa ser consolidado nesta superfície.",
     enabledInCore: false,
   },
   "/billing": {
     state: "not_ready",
     title: "Orçamentos e pagamentos",
-    reason: "Itens, condições, recibo e conciliação ainda precisam ser fechados.",
+    reason:
+      "Itens, condições, recibo e conciliação ainda precisam ser fechados.",
     enabledInCore: false,
   },
   "/integrations": {
@@ -118,42 +126,52 @@ const routeCatalog: Record<string, ReleaseSurface> = {
   "/onboarding": {
     state: "not_ready",
     title: "Configuração da empresa",
-    reason: "O onboarding público ainda precisa ser simplificado para a jornada final.",
-    enabledInCore: false,
+    reason:
+      "O onboarding público ainda precisa ser simplificado para a jornada final.",
+    enabledInCore: true,
   },
   "/team": {
     state: "not_ready",
     title: "Equipe",
-    reason: "Papéis, revogação e onboarding da equipe ainda precisam de validação completa.",
+    reason:
+      "Papéis, revogação e onboarding da equipe ainda precisam de validação completa.",
     enabledInCore: false,
   },
   "/services": {
     state: "not_ready",
     title: "Serviços",
-    reason: "Catálogo, preço, duração e disponibilidade ainda precisam fechar o núcleo comercial.",
+    reason:
+      "Catálogo, preço, duração e disponibilidade ainda precisam fechar o núcleo comercial.",
     enabledInCore: false,
   },
   "/professionals": {
     state: "not_ready",
     title: "Profissionais",
-    reason: "Capacidade, serviços e agenda do executor ainda precisam de validação completa.",
+    reason:
+      "Capacidade, serviços e agenda do executor ainda precisam de validação completa.",
     enabledInCore: false,
   },
   "/my-work": {
     state: "not_ready",
     title: "Minha agenda",
-    reason: "O isolamento do profissional e a atualização de status ainda precisam ser provados.",
+    reason:
+      "O isolamento do profissional e a atualização de status ainda precisam ser provados.",
     enabledInCore: false,
   },
   "/settings": {
     state: "not_ready",
     title: "Preferências",
-    reason: "Configurações do cliente ainda precisam ser separadas da governança interna.",
+    reason:
+      "Configurações do cliente ainda precisam ser separadas da governança interna.",
     enabledInCore: false,
   },
 };
 
-export const CORE_NAV_ROUTES = ["/whatsapp-connection", "/inbox"] as const;
+export const CORE_NAV_ROUTES = [
+  "/onboarding",
+  "/whatsapp-connection",
+  "/inbox",
+] as const;
 
 function stripQuery(pathname: string) {
   return pathname.split("?", 1)[0]!.split("#", 1)[0]! || "/";
@@ -165,7 +183,8 @@ function matchesCatalogRoute(pathname: string, route: string) {
   if (route === "/invite/:token") return pathname.startsWith("/invite/");
   if (route === "/contacts")
     return pathname === route || pathname.startsWith(`${route}/`);
-  if (route === "/reset-password") return pathname === route || pathname.startsWith(`${route}/`);
+  if (route === "/reset-password")
+    return pathname === route || pathname.startsWith(`${route}/`);
   return pathname === route;
 }
 
@@ -186,12 +205,18 @@ export function getRouteRelease(pathname: string): ReleaseSurface {
 
 export function isCoreRoute(pathname: string) {
   const cleanPath = stripQuery(pathname);
-  return CORE_NAV_ROUTES.includes(cleanPath as (typeof CORE_NAV_ROUTES)[number]);
+  return CORE_NAV_ROUTES.includes(
+    cleanPath as (typeof CORE_NAV_ROUTES)[number]
+  );
 }
 
 export function isRouteEnabledInCore(pathname: string) {
   const cleanPath = stripQuery(pathname);
-  if (cleanPath === "/platform-admin" || cleanPath.startsWith("/platform-admin/")) return true;
+  if (
+    cleanPath === "/platform-admin" ||
+    cleanPath.startsWith("/platform-admin/")
+  )
+    return true;
   return getRouteRelease(cleanPath).enabledInCore;
 }
 

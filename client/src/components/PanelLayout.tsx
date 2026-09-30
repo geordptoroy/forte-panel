@@ -310,6 +310,7 @@ const workspaceUsageNav: NavGroup[] = [
 ];
 
 const coreOnlyNav: NavGroup[] = [
+  onboardingNav[0],
   {
     label: "Operação",
     items: managementNav[0].items.filter(item =>

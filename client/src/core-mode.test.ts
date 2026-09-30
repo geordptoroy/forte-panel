@@ -7,8 +7,11 @@ import {
 } from "./core-mode";
 
 describe("core-only routes", () => {
-  it("allows only the WhatsApp connection page", () => {
+  it("allows the onboarding-to-WhatsApp core journey", () => {
     expect(isCoreAllowedRoute(CORE_ROUTE)).toBe(true);
+    expect(isCoreAllowedRoute("/onboarding")).toBe(true);
+    expect(isCoreAllowedRoute("/whatsapp-connection")).toBe(true);
+    expect(isCoreAllowedRoute("/inbox")).toBe(true);
     expect(isCoreAllowedRoute(CORE_USAGE_ROUTE)).toBe(false);
   });
 
