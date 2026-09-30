@@ -7,7 +7,9 @@ type Manifest = Record<string, string>;
 
 function parseManifest(path: string): Manifest {
   const values: Manifest = {};
-  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
+  for (const line of readFileSync(path, "utf8")
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)) {
     if (!line.trim()) continue;
     const separator = line.indexOf("=");
     if (separator <= 0) throw new Error(`manifest_invalid_line:${line}`);
