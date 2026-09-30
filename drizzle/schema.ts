@@ -974,6 +974,8 @@ export const webhookEvents = pgTable(
     provider: varchar("provider", { length: 60 }).default("whatsapp").notNull(),
     payload: text("payload").notNull(),
     status: webhookStatusEnum("status").default("received").notNull(),
+    leaseToken: varchar("leaseToken", { length: 64 }),
+    leaseUntil: timestamp("leaseUntil"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     processedAt: timestamp("processedAt"),
   },
@@ -982,6 +984,7 @@ export const webhookEvents = pgTable(
       table.workspaceId,
       table.eventId
     ),
+    index("webhook_events_status_lease_idx").on(table.status, table.leaseUntil),
   ]
 );
 

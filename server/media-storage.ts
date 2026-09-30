@@ -2,7 +2,7 @@ import { storageGetSignedUrl, storagePut } from "./storage";
 
 type MediaMetadata = Record<string, unknown>;
 
-const DATA_URL_PATTERN = /^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/;
+const DATA_URL_PATTERN = /^data:([^;,]+)(?:;[^;,]*)*;base64,([A-Za-z0-9+/=]+)$/i;
 
 export function decodeMediaDataUrl(value: string) {
   const match = DATA_URL_PATTERN.exec(value);

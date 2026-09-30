@@ -82,12 +82,12 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O1.1 | Onboarding | Wizard público de 6 passos | **CONCLUÍDA** | Owner configura negócio sem conhecer IA técnica |
 | O1.2 | Onboarding | Serviços, preços, duração e disponibilidade | **CONCLUÍDA (código)** | Catálogo operacional persistido, modos de preço e jornada semanal; prova com PostgreSQL/UI real permanece pendente |
 | O1.3 | Onboarding | Regras de atendimento e revisão de exemplos | **CONCLUÍDA (código)** | Revisão humana vinculada ao candidato exato; prova persistida com PostgreSQL permanece pendente |
-| O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | **PRÓXIMA** | Onboarding tolerante a interrupções |
-| O2.1 | Canal | Saúde do WhatsApp e ciclo de conexão | PENDENTE | QR, pairing, reconexão e erros acionáveis |
-| O2.2 | Canal | Inbound idempotente e histórico sem efeitos colaterais | PENDENTE | Mensagem recebida uma vez, com status observável |
-| O2.3 | Canal | Outbound com `instanceId`, fila e reconciliação | PENDENTE | Envio rastreável até gateway e telefone |
-| O2.4 | Canal | Mídia privada e capacidades do composer | PENDENTE | Texto, imagem, áudio, vídeo e documento com limites claros |
-| O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | PENDENTE | WhatsApp cria/atualiza lead real |
+| O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | **CONCLUÍDA (código)** | Etapa retomável, autosave serializado e estados de loading/erro; prova persistente pendente |
+| O2.1 | Canal | Saúde do WhatsApp e ciclo de conexão | **CONCLUÍDA (código)** | Backoff exponencial limitado; logout explícito permanece final |
+| O2.2 | Canal | Inbound idempotente e histórico sem efeitos colaterais | **CONCLUÍDA (código)** | Lease recuperável com fencing e filtros do histórico; migration 0046 exige prova PostgreSQL |
+| O2.3 | Canal | Outbound com `instanceId`, fila e reconciliação | **CONCLUÍDA (código)** | Fila e recibos sent/delivered/read tenant/instância-scoped e monotônicos |
+| O2.4 | Canal | Mídia privada e capacidades do composer | **CONCLUÍDA (código)** | Upload privado autenticado até 8 MB e envio por URL HTTPS assinada; prova real pendente |
+| O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | **PRÓXIMA** | WhatsApp cria/atualiza lead real |
 | O3.2 | Comercial | Inbox operacional com assignment e follow-up | PENDENTE | Nenhum lead importante fica sem próxima ação |
 | O3.3 | Comercial | Funil canônico sem duplicação de estado | PENDENTE | Lead atravessa estágios com auditoria |
 | O3.4 | Comercial | Orçamento com itens, validade e aprovação | PENDENTE | Conversa pode gerar proposta rastreável |

@@ -181,6 +181,7 @@ type Message = {
   text: string;
   messageType?: string;
   metadata?: Record<string, unknown> | null;
+  status?: string;
 };
 
 function formatChatTime(value: string) {
@@ -508,8 +509,19 @@ function MessageBubble({ message }: { message: Message }) {
     ? new Date(message.time).toLocaleTimeString("pt-BR", {
         hour: "2-digit",
         minute: "2-digit",
-      })
+    })
     : message.time;
+  const deliveryStatus =
+    message.sender !== "lead" && message.sender !== "system"
+      ? metadata.deliveryStatus
+      : undefined;
+  const deliveryLabel = deliveryStatus === "read"
+    ? "Lida"
+    : deliveryStatus === "delivered"
+      ? "Entregue"
+      : deliveryStatus === "sent"
+        ? "Enviada"
+        : undefined;
   const mediaUrlValue =
     typeof metadata.mediaUrl === "string"
       ? metadata.mediaUrl
@@ -649,10 +661,13 @@ function MessageBubble({ message }: { message: Message }) {
         <div className="message-time">
           {time}{" "}
           {message.sender !== "system" && (
-            <Check
-              size={10}
-              style={{ display: "inline", verticalAlign: "middle" }}
-            />
+            <>
+              <Check
+                size={10}
+                style={{ display: "inline", verticalAlign: "middle" }}
+              />
+              {deliveryLabel && <span className="message-delivery-status" aria-label={`Status da mensagem: ${deliveryLabel}`}> · {deliveryLabel}</span>}
+            </>
           )}
         </div>
       </div>
@@ -910,6 +925,18 @@ function InboxChrome({
   );
 }
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("Não foi possível ler o anexo."));
+    reader.onerror = () => reject(new Error("Não foi possível ler o anexo."));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean } = {}) {
   const [selectedId, setSelectedId] = useState("");
   const [location] = useLocation();
@@ -927,11 +954,13 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingError, setRecordingError] = useState("");
   const [attachment, setAttachment] = useState<{
+    file: File;
     name: string;
     type: "image" | "audio" | "video" | "document";
     mimeType: string;
-    dataUrl: string;
     previewUrl?: string;
+    storageKey?: string;
+    sizeBytes?: number;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
@@ -966,6 +995,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     []
   );
   const inbox = (platformAdmin ? trpc.platform.supportInbox : trpc.inbox) as typeof trpc.inbox;
+  const uploadAttachmentMutation = inbox.uploadAttachment.useMutation();
   const instancesQuery = inbox.instances.useQuery();
   const contactsQuery = inbox.contacts.useQuery({
     instanceIds: selectedInstanceIds,
@@ -1042,6 +1072,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   );
   const threadQuery = inbox.thread.useQuery(threadInput, {
     enabled: selectedNumericId > 0,
+    refetchInterval: selectedNumericId > 0 ? 10_000 : false,
   });
   const latestMessageId =
     threadQuery.data?.messages?.[threadQuery.data.messages.length - 1]?.id ??
@@ -1124,7 +1155,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       enabled: !selected.aiEnabled,
     });
   };
-  const send = () => {
+  const send = async () => {
     if (!draft.trim() && !attachment) return;
     if (platformAdmin && !sendInstanceId) {
       setRecordingError("Selecione a instância que fará o envio.");
@@ -1132,6 +1163,60 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     }
     const outboundInstanceIds = platformAdmin ? [sendInstanceId] : selectedInstanceIds;
     const currentAttachment = attachment;
+    if (currentAttachment) {
+      const caption = draft.trim();
+      if (caption.length > 1024) {
+        setRecordingError("A legenda do anexo pode ter no máximo 1.024 caracteres.");
+        return;
+      }
+      setRecordingError("");
+      try {
+        const uploaded = currentAttachment.storageKey
+          ? {
+              storageKey: currentAttachment.storageKey,
+              fileName: currentAttachment.name,
+              mimeType: currentAttachment.mimeType,
+              sizeBytes: currentAttachment.sizeBytes ?? currentAttachment.file.size,
+            }
+          : await uploadAttachmentMutation.mutateAsync({
+              fileName: currentAttachment.name,
+              messageType: currentAttachment.type,
+              mimeType: currentAttachment.mimeType,
+              dataUrl: await readFileAsDataUrl(currentAttachment.file),
+            });
+        setAttachment(current =>
+          current?.file === currentAttachment.file
+            ? {
+                ...current,
+                name: uploaded.fileName,
+                mimeType: uploaded.mimeType,
+                storageKey: uploaded.storageKey,
+                sizeBytes: uploaded.sizeBytes,
+              }
+            : current
+        );
+        sendMutation.mutate({
+          contactId: selectedNumericId,
+          content: caption || uploaded.fileName,
+          messageType: currentAttachment.type,
+          metadata: {
+            mediaStorageKey: uploaded.storageKey,
+            mediaMimeType: uploaded.mimeType,
+            mediaSizeBytes: uploaded.sizeBytes,
+            fileName: uploaded.fileName,
+            ...(caption ? { caption } : {}),
+          },
+          instanceIds: outboundInstanceIds,
+        });
+      } catch (error) {
+        setRecordingError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível guardar o anexo com segurança."
+        );
+      }
+      return;
+    }
     const options = interactiveOptions
       .split("\n")
       .map(option => option.trim())
@@ -1172,16 +1257,9 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             : undefined;
     sendMutation.mutate({
       contactId: selectedNumericId,
-      content: currentAttachment?.dataUrl ?? draft.trim(),
-      messageType: currentAttachment?.type ?? interactiveType,
-      metadata: currentAttachment
-        ? {
-            mediaData: currentAttachment.dataUrl,
-            mediaMimeType: currentAttachment.mimeType,
-            fileName: currentAttachment.name,
-            ...(draft.trim() ? { caption: draft.trim() } : {}),
-          }
-        : interactiveMetadata,
+      content: draft.trim(),
+      messageType: interactiveType,
+      metadata: interactiveMetadata,
       instanceIds: outboundInstanceIds,
     });
   };
@@ -1203,24 +1281,14 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           : "document";
     const previewUrl = type === "audio" ? URL.createObjectURL(file) : undefined;
     attachmentPreviewUrlRef.current = previewUrl ?? "";
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string")
-        setAttachment({
-          name: file.name,
-          type,
-          mimeType: file.type || "application/octet-stream",
-          dataUrl: reader.result,
-          previewUrl,
-        });
-    };
-    reader.onerror = () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      attachmentPreviewUrlRef.current = "";
-      setRecordingError("Não foi possível ler o arquivo selecionado.");
-    };
+    setAttachment({
+      file,
+      name: file.name,
+      type,
+      mimeType: file.type || "application/octet-stream",
+      previewUrl,
+    });
     setRecordingError("");
-    reader.readAsDataURL(file);
   };
   const stopRecording = () => {
     if (mediaRecorderRef.current?.state === "recording")
@@ -1538,6 +1606,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               className="icon-button"
               type="button"
               aria-label="Anexar arquivo"
+              disabled={isRecording || sendMutation.isPending || uploadAttachmentMutation.isPending}
               onClick={() => fileInputRef.current?.click()}
             >
               <Paperclip size={16} />
@@ -1547,7 +1616,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               type="button"
               aria-label="Anexar arquivo de áudio"
               title="Anexar um áudio existente"
-              disabled={isRecording || sendMutation.isPending}
+              disabled={isRecording || sendMutation.isPending || uploadAttachmentMutation.isPending}
               onClick={() => audioFileInputRef.current?.click()}
             >
               <Headphones size={16} />
@@ -1558,7 +1627,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               aria-label={isRecording ? "Parar gravação" : "Gravar áudio"}
               aria-pressed={isRecording}
               title={isRecording ? "Parar gravação" : "Gravar áudio pelo microfone"}
-              disabled={sendMutation.isPending}
+              disabled={sendMutation.isPending || uploadAttachmentMutation.isPending}
               onClick={() => (isRecording ? stopRecording() : void startRecording())}
             >
               {isRecording ? <Square size={14} /> : <Mic size={16} />}
@@ -1568,7 +1637,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               type="button"
               aria-label="Mensagem interativa"
               title="Enviar botões, lista ou enquete"
-              disabled={isRecording || sendMutation.isPending || Boolean(attachment)}
+              disabled={isRecording || sendMutation.isPending || uploadAttachmentMutation.isPending || Boolean(attachment)}
               onClick={() => setInteractiveType(current => current === "text" ? "button" : "text")}
             >
               <ClipboardList size={16} />
@@ -1577,17 +1646,18 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               className="input-control"
               value={draft}
               onChange={event => setDraft(event.target.value)}
+              disabled={sendMutation.isPending || uploadAttachmentMutation.isPending || isRecording}
               onKeyDown={event => {
-                if (event.key === "Enter" && !event.shiftKey) send();
+                if (event.key === "Enter" && !event.shiftKey) void send();
               }}
               placeholder={selected.isGroup ? "Mensagem para o grupo..." : "Escrever resposta..."}
             />
             <button
               className="btn-primary"
-              onClick={send}
-              disabled={sendMutation.isPending || isRecording || (!draft.trim() && !attachment) || (platformAdmin && !sendInstanceId)}
-              aria-label="Enviar mensagem"
-              title={platformAdmin && !sendInstanceId ? "Selecione a instância de envio" : "Enviar mensagem"}
+              onClick={() => void send()}
+              disabled={sendMutation.isPending || uploadAttachmentMutation.isPending || isRecording || (!draft.trim() && !attachment) || (platformAdmin && !sendInstanceId)}
+              aria-label={uploadAttachmentMutation.isPending ? "Enviando anexo para armazenamento privado" : "Enviar mensagem"}
+              title={platformAdmin && !sendInstanceId ? "Selecione a instância de envio" : uploadAttachmentMutation.isPending ? "Guardando anexo com segurança…" : "Enviar mensagem"}
             >
               <Send size={14} />
             </button>

@@ -104,6 +104,7 @@ import {
   rollbackOnboardingPublishedVersion,
   saveOnboardingProfile,
   startOnboardingSession,
+  setOnboardingCurrentStep,
   setContactAi,
   upsertApiContact,
   upsertUser,
@@ -112,6 +113,10 @@ import {
 } from "./db";
 import { sendInviteEmail, sendPasswordResetEmail } from "./_core/email";
 import { storageGetSignedUrl, storagePut } from "./storage";
+import {
+  INBOX_MEDIA_MAX_DATA_URL_CHARS,
+  uploadPrivateInboxAttachment,
+} from "./inbox-media-upload";
 import {
   buildOnboardingAudioStorageKey,
   decodeOnboardingAudioBase64,
@@ -1517,6 +1522,26 @@ export const appRouter = router({
       });
       return session;
     }),
+    setCurrentStep: requireOnboardingEditor
+      .input(z.object({
+        stepKey: z.enum(["identity", "offering", "operations", "guardrails", "review", "activation"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          return await setOnboardingCurrentStep(
+            ctx.workspace.workspaceId,
+            ctx.user.id,
+            input.stepKey
+          );
+        } catch (error) {
+          if (error instanceof Error && error.message === "ONBOARDING_SESSION_NOT_FOUND")
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "A sessão de onboarding ainda não foi iniciada.",
+            });
+          throw error;
+        }
+      }),
     profile: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingProfile(ctx.workspace.workspaceId)
     ),
@@ -2795,6 +2820,33 @@ export const appRouter = router({
   }),
 
   inbox: router({
+    uploadAttachment: requireInboxMessaging
+      .input(
+        z.object({
+          fileName: z.string().trim().min(1).max(160),
+          messageType: z.enum(["image", "audio", "video", "document"]),
+          mimeType: z.string().trim().min(1).max(120),
+          dataUrl: z.string().min(1).max(INBOX_MEDIA_MAX_DATA_URL_CHARS),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        try {
+          return await uploadPrivateInboxAttachment({
+            workspaceId: ctx.workspace.workspaceId,
+            type: input.messageType,
+            fileName: input.fileName,
+            mimeType: input.mimeType,
+            dataUrl: input.dataUrl,
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "";
+          if (reason === "INBOX_MEDIA_INVALID")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Formato de anexo não suportado para este tipo de mensagem." });
+          if (reason === "INBOX_MEDIA_TOO_LARGE")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "O anexo está vazio ou excede o limite de 8 MB." });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível guardar o anexo com segurança. Tente novamente." });
+        }
+      }),
     instances: requireInbox.query(async ({ ctx }) => {
       await ensureLegacyBaileysInstance(ctx.workspace.workspaceId);
       return listBaileysInstances(ctx.workspace.workspaceId);

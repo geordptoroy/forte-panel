@@ -18,12 +18,15 @@ import {
   confirmOnboardingStep,
   createPublicSignup,
   getDb,
+  getOnboardingSession,
   getOnboardingProfile,
   getOnboardingPublishCandidate,
   listOnboardingPublishedVersions,
   publishOnboardingDraft,
+  pauseOnboardingSession,
   rollbackOnboardingPublishedVersion,
   saveOnboardingProfile,
+  setOnboardingCurrentStep,
   startOnboardingSession,
 } from "./db";
 import { fingerprintOnboardingProfile } from "./onboarding-review";
@@ -79,6 +82,22 @@ describe.skipIf(!hasDatabase)("onboarding published versions", () => {
     await db.delete(workspaceMembers).where(eqWorkspace(workspaceMembers.workspaceId, workspaceId));
     await db.delete(users).where(inArray(users.id, [userId]));
     await db.delete(workspaces).where(inArray(workspaces.id, [workspaceId]));
+  });
+
+  it("preserves the active wizard step through autosave and pause/resume", async () => {
+    await setOnboardingCurrentStep(workspaceId, userId, "guardrails");
+    await saveOnboardingProfile(workspaceId, profile, false, userId);
+    expect(await getOnboardingSession(workspaceId)).toMatchObject({
+      currentStep: "guardrails",
+      status: "active",
+    });
+
+    await pauseOnboardingSession(workspaceId);
+    const resumed = await startOnboardingSession(workspaceId, userId);
+    expect(resumed).toMatchObject({
+      currentStep: "guardrails",
+      status: "active",
+    });
   });
 
   it("blocks publication before required confirmations", async () => {

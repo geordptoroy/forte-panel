@@ -22,6 +22,7 @@ import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 import { formatServicePrice, type ServicePriceType } from "../../../shared/service-price";
 import { onboardingReviewExamples, type OnboardingSimulationResult } from "../../../shared/onboarding-simulation";
+import { getOnboardingStepIndex, isSameOnboardingDraft } from "../../../shared/onboarding-progress";
 
 type Profile = {
   businessName: string;
@@ -127,6 +128,11 @@ export default function OnboardingPage() {
   const startSession = trpc.onboarding.start.useMutation({
     onSuccess: () => void sessionQuery.refetch(),
   });
+  const saveCurrentStep = trpc.onboarding.setCurrentStep.useMutation({
+    onSuccess: session => {
+      utils.onboarding.session.setData(undefined, session);
+    },
+  });
   const governanceQuery = trpc.onboarding.governance.useQuery();
   const [retention, setRetention] = useState({ rawArtifactDays: 30, derivedDataDays: 180 });
   const setSourceConsent = trpc.onboarding.setSourceConsent.useMutation({
@@ -162,13 +168,35 @@ export default function OnboardingPage() {
   const [savedVersion, setSavedVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [autosaveState, setAutosaveState] = useState<"idle" | "waiting" | "saving" | "saved" | "error">("idle");
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const profileRevisionRef = useRef(0);
+  const autosaveRevisionRef = useRef(0);
+  const saveRevisionRef = useRef(0);
+  const markDraftDirty = () => {
+    profileRevisionRef.current += 1;
+    dirtyRef.current = true;
+    setDirty(true);
+  };
   const autosave = trpc.onboarding.autosave.useMutation({
-    onSuccess: () => {
-      setDirty(false);
-      setAutosaveState("saved");
+    onMutate: () => {
+      autosaveRevisionRef.current = profileRevisionRef.current;
+    },
+    onSuccess: (_result, variables) => {
+      const isCurrent = autosaveRevisionRef.current === profileRevisionRef.current &&
+        isSameOnboardingDraft(profileRef.current, variables.profile);
+      dirtyRef.current = !isCurrent;
+      setDirty(!isCurrent);
+      setAutosaveState(isCurrent ? "saved" : "waiting");
       void utils.onboarding.profile.invalidate();
     },
-    onError: () => setAutosaveState("error"),
+    onError: () => {
+      dirtyRef.current = true;
+      setDirty(true);
+      setAutosaveState("error");
+    },
   });
   const confirmStep = trpc.onboarding.confirmStep.useMutation({
     onSuccess: () => void utils.onboarding.profile.invalidate(),
@@ -187,11 +215,17 @@ export default function OnboardingPage() {
     onSuccess: () => void utils.onboarding.profile.invalidate(),
   });
   const saveMutation = trpc.onboarding.save.useMutation({
-    onSuccess: result => {
+    onMutate: () => {
+      saveRevisionRef.current = profileRevisionRef.current;
+    },
+    onSuccess: (result, variables) => {
       setPublished(result.published);
       setSavedVersion(result.version);
-      setDirty(false);
-      setAutosaveState("saved");
+      const isCurrent = saveRevisionRef.current === profileRevisionRef.current &&
+        isSameOnboardingDraft(profileRef.current, variables.profile);
+      dirtyRef.current = !isCurrent;
+      setDirty(!isCurrent);
+      setAutosaveState(isCurrent ? "saved" : "waiting");
       void utils.onboarding.profile.invalidate();
       void utils.onboarding.versions.invalidate();
     },
@@ -253,8 +287,15 @@ export default function OnboardingPage() {
     { id: "activation", title: "Ativação", description: "Publicar e conectar canal" },
   ] as const;
   const currentStepId = onboardingSteps[currentStep]?.id ?? "identity";
-  const goToNextStep = () => setCurrentStep(step => Math.min(onboardingSteps.length - 1, step + 1));
-  const goToPreviousStep = () => setCurrentStep(step => Math.max(0, step - 1));
+  const navigateToStep = (index: number) => {
+    const nextIndex = Math.min(onboardingSteps.length - 1, Math.max(0, index));
+    const step = onboardingSteps[nextIndex];
+    setCurrentStep(nextIndex);
+    if (step && sessionQuery.data?.id)
+      saveCurrentStep.mutate({ stepKey: step.id });
+  };
+  const goToNextStep = () => navigateToStep(currentStep + 1);
+  const goToPreviousStep = () => navigateToStep(currentStep - 1);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
@@ -293,14 +334,26 @@ export default function OnboardingPage() {
     setFollowUpDrafts(current => ({ ...current, [key]: value }));
 
   useEffect(() => {
-    if (profileQuery.data) {
+    if (
+      profileQuery.data &&
+      !dirtyRef.current &&
+      !autosave.isPending &&
+      !saveMutation.isPending
+    ) {
       setProfile(profileQuery.data.profile);
       setPublished(profileQuery.data.published);
       setSavedVersion(profileQuery.data.version);
+      profileRevisionRef.current = 0;
+      dirtyRef.current = false;
       setDirty(false);
       setAutosaveState("idle");
     }
-  }, [profileQuery.data]);
+  }, [autosave.isPending, profileQuery.data, saveMutation.isPending]);
+
+  useEffect(() => {
+    const resumedStep = getOnboardingStepIndex(sessionQuery.data?.currentStep);
+    if (resumedStep !== null) setCurrentStep(resumedStep);
+  }, [sessionQuery.data?.currentStep]);
 
   useEffect(() => {
     if (!activeProfessionals.length) return;
@@ -330,14 +383,19 @@ export default function OnboardingPage() {
   }, [sessionQuery.data, sessionQuery.isLoading, startSession.mutate]);
 
   useEffect(() => {
-    if (!dirty) return;
+    if (
+      !dirty ||
+      !profileQuery.data ||
+      autosave.isPending ||
+      saveMutation.isPending
+    ) return;
     setAutosaveState("waiting");
     const timeout = window.setTimeout(() => {
       setAutosaveState("saving");
       autosave.mutate({ profile });
     }, 1200);
     return () => window.clearTimeout(timeout);
-  }, [autosave.mutate, dirty, profile]);
+  }, [autosave.isPending, autosave.mutate, dirty, profile, profileQuery.data, saveMutation.isPending]);
 
   useEffect(() => () => {
     streamRef.current?.getTracks().forEach(track => track.stop());
@@ -453,7 +511,7 @@ export default function OnboardingPage() {
   const insertTranscriptIntoFaq = () => {
     if (!voiceTranscript.trim()) return;
     const prefix = profile.faq.trim() ? `${profile.faq.trim()}\n\n` : "";
-    setDirty(true);
+    markDraftDirty();
     setProfile(current => ({
       ...current,
       faq: `${prefix}Transcrição do onboarding (${stepTitles[voiceStepKey]}):\n${voiceTranscript.trim()}`,
@@ -461,12 +519,12 @@ export default function OnboardingPage() {
   };
 
   const update = (key: keyof Profile, value: string) => {
-    setDirty(true);
+    markDraftDirty();
     setProfile(current => ({ ...current, [key]: value }));
   };
   const updateIfBlank = (key: keyof Profile, value: string) => {
     if (profile[key].trim()) return;
-    setDirty(true);
+    markDraftDirty();
     setProfile(current => current[key].trim() ? current : { ...current, [key]: value });
   };
   const addOperationalService = async () => {
@@ -589,6 +647,27 @@ export default function OnboardingPage() {
     }
   };
 
+  const deferSafely = async () => {
+    try {
+      if (dirtyRef.current) {
+        const snapshot = profileRef.current;
+        const revision = profileRevisionRef.current;
+        setAutosaveState("saving");
+        await autosave.mutateAsync({ profile: snapshot });
+        if (
+          revision !== profileRevisionRef.current ||
+          !isSameOnboardingDraft(profileRef.current, snapshot)
+        ) {
+          setAutosaveState("waiting");
+          return;
+        }
+      }
+      await deferSession.mutateAsync();
+    } catch {
+      // The relevant mutation exposes its own error; leave the persisted draft state intact.
+    }
+  };
+
   const markExamplesReviewed = async (mode: "safe" | "ai") => {
     if (dirty || autosaveState === "waiting" || autosaveState === "saving" || autosaveState === "error") {
       setSimulationMessage("Aguarde o salvamento do rascunho ou corrija o erro de autosave antes de confirmar a revisão.");
@@ -621,8 +700,38 @@ export default function OnboardingPage() {
       update("faq", [profile.faq.trim(), entry].filter(Boolean).join("\n\n"));
       setSimulationMessage("Adicionado ao FAQ como rascunho. Revise a resposta no passo Atendimento e confirme o bloco manualmente.");
     }
-    setCurrentStep(3);
+    navigateToStep(3);
   };
+
+  if (profileQuery.isLoading || sessionQuery.isLoading)
+    return (
+      <PanelLayout eyebrow="Sistema / Configuração" title="Configuração da empresa" description="Carregando seu rascunho salvo.">
+        <section className="surface" style={{ padding: 22 }} role="status">
+          <Loader2 size={18} className="animate-spin" /> Buscando o rascunho e a etapa da última sessão…
+        </section>
+      </PanelLayout>
+    );
+
+  if (profileQuery.isError || sessionQuery.isError || startSession.isError)
+    return (
+      <PanelLayout eyebrow="Sistema / Configuração" title="Configuração da empresa" description="Não foi possível recuperar a configuração salva com segurança.">
+        <section className="surface" style={{ padding: 22 }} role="alert">
+          <h2 style={{ marginTop: 0 }}>Rascunho indisponível</h2>
+          <p className="muted">Nenhum formulário vazio foi carregado por cima dos seus dados. Confira a conexão e tente buscar novamente.</p>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              sessionStarted.current = false;
+              startSession.reset();
+              void Promise.all([sessionQuery.refetch(), profileQuery.refetch()]);
+            }}
+          >
+            <RotateCcw size={13} /> Tentar novamente
+          </button>
+        </section>
+      </PanelLayout>
+    );
 
   return (
     <PanelLayout
@@ -646,7 +755,8 @@ export default function OnboardingPage() {
               type="button"
               className={index === currentStep ? "btn-primary" : index < currentStep ? "btn-secondary" : "btn-ghost"}
               style={{ minWidth: 0, padding: "8px 5px", fontSize: 9 }}
-              onClick={() => setCurrentStep(index)}
+              onClick={() => navigateToStep(index)}
+              disabled={!sessionQuery.data?.id || saveCurrentStep.isPending}
               aria-current={index === currentStep ? "step" : undefined}
             >{index + 1}. {step.title}</button>
           ))}
@@ -654,10 +764,11 @@ export default function OnboardingPage() {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
           <span className="muted" style={{ fontSize: 10 }}>O rascunho é salvo automaticamente.</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn-secondary" onClick={goToPreviousStep} disabled={currentStep === 0}>Voltar</button>
-            <button type="button" className="btn-primary" onClick={goToNextStep} disabled={currentStep === onboardingSteps.length - 1}>Próximo</button>
+            <button type="button" className="btn-secondary" onClick={goToPreviousStep} disabled={currentStep === 0 || !sessionQuery.data?.id || saveCurrentStep.isPending}>Voltar</button>
+            <button type="button" className="btn-primary" onClick={goToNextStep} disabled={currentStep === onboardingSteps.length - 1 || !sessionQuery.data?.id || saveCurrentStep.isPending}>Próximo</button>
           </div>
         </div>
+        {saveCurrentStep.error && <div className="form-error" role="alert"><Info size={13} /> Não foi possível salvar a etapa para continuar depois: {saveCurrentStep.error.message}</div>}
       </section>
       <div className="surface" style={{ padding: 18, marginBottom: 18 }}>
         <div className="demo-banner" style={{ margin: 0 }}>
@@ -1233,7 +1344,7 @@ export default function OnboardingPage() {
         >
           <button
             className="btn-secondary"
-            disabled={saveMutation.isPending}
+            disabled={saveMutation.isPending || autosave.isPending || autosaveState === "waiting" || autosaveState === "saving"}
             onClick={() => saveMutation.mutate({ profile, publish: false })}
           >
             <Save size={13} /> Salvar rascunho
@@ -1255,11 +1366,12 @@ export default function OnboardingPage() {
           </small>
           <button
             className="btn-secondary"
-            disabled={deferSession.isPending || saveMutation.isPending}
-            onClick={() => deferSession.mutate()}
+            disabled={deferSession.isPending || saveMutation.isPending || autosave.isPending || autosaveState === "waiting" || autosaveState === "saving"}
+            onClick={() => void deferSafely()}
           >
             Fazer depois
           </button>
+          {deferSession.error && <span className="form-error" role="alert">Não foi possível pausar a sessão: {deferSession.error.message}</span>}
           {published && (
             <span
               className="green"

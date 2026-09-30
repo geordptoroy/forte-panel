@@ -38,15 +38,11 @@ O sistema deve provar isso com testes PostgreSQL reais envolvendo no mínimo doi
 
 Easy!Appointments e Clientverse não são a fonte de verdade do produto. O Forte Panel mantém contatos, conversas, mensagens, funil, agenda, serviços, profissionais, tarefas, notas, tags, métricas e auditoria.
 
-WhatsApp deve ser acessado por adapters desacoplados:
+O canal WhatsApp operacional do core é Baileys nativo, por meio do gateway interno `forte-whatsapp`. A UI não oferece seleção de provider e o Panel resolve a propriedade da instância/workspace; o gateway não decide tenancy.
 
-1. **PAPI atual:** provider de transição para desenvolvimento/beta, já integrado ao adapter.
-2. **Meta WhatsApp Cloud API:** opção oficial que pode ser mantida como alternativa.
-3. **PAPI própria baseada em fork ou Baileys:** objetivo futuro, não parte do primeiro marco público.
+PAPI, Meta e valores legados permanecem somente para compatibilidade/migração segura; não são selecionáveis nem configurados no Compose oficial. Não iniciar novo adapter ou fork sem revisão separada de produto, origem, licença e política do WhatsApp.
 
-A hipótese de que `intrategica/papi-free` já usa Baileys foi levantada pelo usuário. A imagem é usada pelos Compose deste projeto na tag `1.5.2`; a tag `1.5.1` também existe. A listagem pública do Docker Hub não informa um código-fonte associado ou licença da imagem. Antes de derivar código, confirmar com o mantenedor a origem, licença e permissões de uso/fork/distribuição. O MIT declarado para o projeto Baileys não concede direitos sobre a PAPI ou sua imagem.
-
-Baileys é uma biblioteca independente sobre WhatsApp Web/Linked Devices, não a API oficial WhatsApp Business. Qualquer implementação será opcional, transparente ao cliente e sujeita a revisão dos termos/políticas e riscos de desconexão, banimento, mudanças de protocolo, privacidade e suporte. Não usar spam, envio indiscriminado ou automação abusiva.
+Baileys é uma biblioteca independente sobre WhatsApp Web/Linked Devices, não a API oficial WhatsApp Business. A implementação ativa precisa informar os riscos de sessão, desconexão, mudanças de protocolo, políticas do WhatsApp, privacidade e suporte. Não usar spam, envio indiscriminado ou automação abusiva.
 
 ## Módulos de produto
 
