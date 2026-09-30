@@ -11,6 +11,7 @@ import {
   getPlatformGlobalAgentSnapshot,
   getPlatformAdminAccess,
   getPlatformSupportSnapshot,
+  getPlatformOperationalHealth,
   listPlatformSupportContacts,
   getPlatformSupportThread,
   sendPlatformSupportMessage,
@@ -330,6 +331,7 @@ export const platformRouter = router({
   })),
 
   overview: requirePlatform.query(() => listPlatformWorkspaces()),
+  health: requirePlatform.query(() => getPlatformOperationalHealth()),
 
   aiConnections: requirePlatform.query(() => listPlatformAiConnections()),
 
