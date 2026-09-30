@@ -33,22 +33,23 @@ if ($PanelPort -eq $BaileysPort) { Fail "PanelPort e BaileysPort não podem ser 
 
 $baseCompose = Get-Content -Path $composeFile -Raw
 $baseCompose = [regex]::Replace($baseCompose, '(?m)^[ \t]*container_name:[ \t]*.*(?:\r?\n|$)', '')
-$baseCompose = [regex]::Replace($baseCompose, '(?m)^[ \t]{4}ports:[ \t]*\r?\n(?:(?:^[ \t]{6}-.*(?:\r?\n|$))+)', '')
-$baseCompose = [regex]::Replace($baseCompose, '(?m)^[ \t]{4}ports:[ \t]*\[.*\][ \t]*(?:\r?\n|$)', '')
-$panelPorts = "  forte-panel:`r`n    ports:`r`n      - `"127.0.0.1:$PanelPort`:3000`"`r`n"
-$whatsappPorts = "  forte-whatsapp:`r`n    ports:`r`n      - `"127.0.0.1:$BaileysPort`:3010`"`r`n"
-$baseCompose = [regex]::Replace($baseCompose, '(?m)^  forte-panel:\r?\n', $panelPorts, 1)
-$baseCompose = [regex]::Replace($baseCompose, '(?m)^  forte-whatsapp:\r?\n', $whatsappPorts, 1)
 Set-Content -Path $baseComposeFile -Value $baseCompose -Encoding utf8
 
 $override = @"
 services:
+  postgres_panel:
+    ports: !override []
   forte-panel-migrations:
     command: ["sh", "-c", "exit 0"]
   forte-panel:
+    ports: !override
+      - "127.0.0.1:$PanelPort`:3000"
     environment:
       FORTE_PUBLIC_API_ENABLED: "false"
       PUBLIC_APP_URL: "http://localhost:$PanelPort"
+  forte-whatsapp:
+    ports: !override
+      - "127.0.0.1:$BaileysPort`:3010"
 
 networks:
   panel-network:
