@@ -109,6 +109,10 @@ describe("durable webhook outbox", () => {
       const deadLetter = path.join(directory, "dead-letter");
       return (await fs.readdir(deadLetter).catch(() => [])).length === 1;
     });
+    await waitFor(
+      async () =>
+        (await fs.readdir(directory)).filter(file => file.endsWith(".json")).length === 0
+    );
     await outbox.stop();
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
