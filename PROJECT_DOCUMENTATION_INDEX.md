@@ -27,7 +27,8 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 0. [`FORTE-PANEL-FONTE-DE-VERDADE.md`](./FORTE-PANEL-FONTE-DE-VERDADE.md) — decisão consolidada e roadmap único.
 
 1. [`ROADMAP-EXECUCAO-FORTE-PANEL.md`](./ROADMAP-EXECUCAO-FORTE-PANEL.md) — fila operacional por fatias e estado a atualizar a cada `próximo`.
-2. [`HANDOFF-CONTINUIDADE-FORTE-PANEL.md`](./HANDOFF-CONTINUIDADE-FORTE-PANEL.md) — histórico de execução, decisões e próximo passo.
+2. [`AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md`](./AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md) — matriz atual de rotas, dados demo, simulações e prontidão pública.
+3. [`HANDOFF-CONTINUIDADE-FORTE-PANEL.md`](./HANDOFF-CONTINUIDADE-FORTE-PANEL.md) — histórico de execução, decisões e próximo passo.
 3. [`todo.md`](./todo.md) — checklist vivo da implementação.
 4. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
 5. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual histórico de operação, migrations, quotas e segurança.

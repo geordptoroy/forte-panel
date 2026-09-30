@@ -74,8 +74,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 
 | ID | Onda | Fatia | Estado | Saída principal |
 |---|---|---|---|---|
-| P0.1 | Fundação pública | Inventário de superfícies demo/beta e classificação de release | **PRÓXIMA** | Matriz de telas públicas, internas, simulação e removidas |
-| P0.2 | Fundação pública | Remover DemoBanner e dados estáticos do cliente | PENDENTE | Rotas operacionais sem dados fictícios |
+| P0.1 | Fundação pública | Inventário de superfícies demo/beta e classificação de release | **CONCLUÍDA** | Matriz de telas públicas, internas, simulação e removidas |
+| P0.2 | Fundação pública | Remover DemoBanner e dados estáticos do cliente | **PRÓXIMA** | Rotas operacionais sem dados fictícios |
 | P0.3 | Fundação pública | Isolar `ensureDemo*`, seeds e bootstrap | PENDENTE | Demo somente em ambiente QA/dev |
 | P0.4 | Fundação pública | Limpar linguagem beta do Console Admin | PENDENTE | Console com linguagem de produção |
 | P0.5 | Fundação pública | Catálogo de estados e release gate por rota | PENDENTE | `core-mode` deixa de ser o único controle de exposição |
@@ -297,7 +297,7 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 |---|---|
 | Branch | `main` |
 | Base auditada | `cad2b8a` |
-| Próxima fatia | `P0.1` |
+| Última fatia concluída | `P0.1` — matriz em `AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md` |
 | Última fatia concluída por este roadmap | nenhuma |
 | Último commit deste roadmap | `19b6ccd` — `docs: establish executable public product roadmap` |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
