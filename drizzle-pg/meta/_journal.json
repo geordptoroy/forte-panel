@@ -365,6 +365,13 @@
       "when": 1790770000000,
       "tag": "0051_quote_payments_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1790780197266,
+      "tag": "0052_agent_runs_metrics",
+      "breakpoints": true
     }
   ]
 }

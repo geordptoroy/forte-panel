@@ -63,6 +63,7 @@ import {
   getOnboardingProfile,
   getOnboardingPublishCandidate,
   getNativeAgentConfig,
+  getAgentMetrics,
   getNativeAgentKillSwitch,
   getNativeAgentRuntimeConfig,
   saveNativeAgentConfig,
@@ -2255,6 +2256,9 @@ export const appRouter = router({
   }),
 
   agent: router({
+    metrics: requireManager
+      .input(z.object({ windowDays: z.number().int().min(1).max(90).default(30) }).optional())
+      .query(({ input, ctx }) => getAgentMetrics(ctx.workspace.workspaceId, input?.windowDays ?? 30)),
     killSwitch: requireManager.query(({ ctx }) => getNativeAgentKillSwitch(ctx.workspace.workspaceId)),
     setKillSwitch: requireManager
       .input(z.object({ paused: z.boolean(), reason: z.string().trim().min(1).max(500) }))

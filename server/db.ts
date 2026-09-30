@@ -19,6 +19,7 @@ import { Pool } from "pg";
 import {
   appointmentsTable,
   agentEffects,
+  agentRuns,
   apiIdempotency,
   auditLogs,
   availability,
@@ -6579,6 +6580,72 @@ export async function claimAgentEffect(input: {
     .returning();
   if (reclaimed[0]) return { claimed: true, record: reclaimed[0] };
   return { claimed: false, inProgress: true, record: existing };
+}
+
+export async function recordAgentRun(input: {
+  workspaceId: number;
+  eventId: string;
+  contactId: number;
+  model?: string;
+  outcome: "resolved" | "transferred" | "pending_confirmation" | "failed";
+  steps: number;
+  toolCalls: number;
+  transferred: boolean;
+  pendingConfirmation: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  latencyMs: number;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(agentRuns).values({
+    ...input,
+    transferred: input.transferred ? 1 : 0,
+    pendingConfirmation: input.pendingConfirmation ? 1 : 0,
+  }).onConflictDoNothing({ target: [agentRuns.workspaceId, agentRuns.eventId] });
+}
+
+export async function getAgentMetrics(workspaceId: number, windowDays: number) {
+  const db = await getDb();
+  if (!db) return {
+    windowDays, runs: 0, resolved: 0, transferred: 0, pendingConfirmation: 0, failed: 0,
+    resolutionRate: 0, transferRate: 0, avgLatencyMs: 0, totalTokens: 0, inputTokens: 0, outputTokens: 0,
+    receivedRevenueCents: 0, revenueAttribution: "workspace_total_not_attributed" as const,
+  };
+  const since = new Date(Date.now() - windowDays * 86_400_000);
+  const [runRows, revenueRows] = await Promise.all([
+    db.select({
+      runs: sql<number>`count(*)`,
+      resolved: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'resolved' then 1 else 0 end), 0)`,
+      transferred: sql<number>`coalesce(sum(${agentRuns.transferred}), 0)`,
+      pendingConfirmation: sql<number>`coalesce(sum(${agentRuns.pendingConfirmation}), 0)`,
+      failed: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'failed' then 1 else 0 end), 0)`,
+      avgLatencyMs: sql<number>`coalesce(avg(${agentRuns.latencyMs}), 0)`,
+      totalTokens: sql<number>`coalesce(sum(${agentRuns.totalTokens}), 0)`,
+      inputTokens: sql<number>`coalesce(sum(${agentRuns.inputTokens}), 0)`,
+      outputTokens: sql<number>`coalesce(sum(${agentRuns.outputTokens}), 0)`,
+    }).from(agentRuns).where(and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since))),
+    db.select({ received: sql<number>`coalesce(sum(${quotePayments.amountCents}), 0)` }).from(quotePayments).where(and(eq(quotePayments.workspaceId, workspaceId), gte(quotePayments.receivedAt, since))),
+  ]);
+  const row = runRows[0];
+  const runs = Number(row?.runs ?? 0);
+  return {
+    windowDays,
+    runs,
+    resolved: Number(row?.resolved ?? 0),
+    transferred: Number(row?.transferred ?? 0),
+    pendingConfirmation: Number(row?.pendingConfirmation ?? 0),
+    failed: Number(row?.failed ?? 0),
+    resolutionRate: runs ? Number(row?.resolved ?? 0) / runs : 0,
+    transferRate: runs ? Number(row?.transferred ?? 0) / runs : 0,
+    avgLatencyMs: Math.round(Number(row?.avgLatencyMs ?? 0)),
+    totalTokens: Number(row?.totalTokens ?? 0),
+    inputTokens: Number(row?.inputTokens ?? 0),
+    outputTokens: Number(row?.outputTokens ?? 0),
+    receivedRevenueCents: Number(revenueRows[0]?.received ?? 0),
+    revenueAttribution: "workspace_total_not_attributed" as const,
+  };
 }
 
 export async function createAgentEffectProposal(input: {

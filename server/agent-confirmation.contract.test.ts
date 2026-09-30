@@ -34,4 +34,10 @@ describe("agent confirmation gate", () => {
       reason: null,
     });
   });
+
+  it("returns an explicit non-attributed revenue basis", async () => {
+    const result = await appRouter.createCaller(context()).agent.metrics({ windowDays: 30 });
+    expect(result.revenueAttribution).toBe("workspace_total_not_attributed");
+    expect(result).toMatchObject({ runs: 0, receivedRevenueCents: 0 });
+  });
 });

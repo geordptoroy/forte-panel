@@ -1,6 +1,6 @@
 # Handoff — Forte Panel
 
-**Atualizado:** 2026-09-30 — O4.2 validada no CI; O4.3 em andamento
+**Atualizado:** 2026-09-30 — O4.3 validada no CI; O4.4 em andamento
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
@@ -76,4 +76,10 @@ Criar kill switch tenant-scoped para pausar o agente antes do processamento de e
 
 A branch `feat/o4.3-agent-kill-switch` foi criada sobre a O4.2 validada (`f00c7cb`). A entrega está registrada em `O4.3-ENTREGA-KILL-SWITCH-HUMANO.md`. O kill switch persiste em `workspaceSettings`, exige manager/owner, registra auditoria e devolve eventos de mensagem para `pending` durante a pausa, sem invocar o modelo ou perder a mensagem.
 
-Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 15 testes focados passaram. CI PostgreSQL e PR ainda pendentes.
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 15 testes focados passaram. A PR #16 está aberta e o CI PostgreSQL `36732396958` passou; staging persistente e revisão final continuam pendentes.
+
+## O4.4 — implementação local em revisão
+
+A branch `feat/o4.4-agent-outcome-metrics` foi criada sobre a O4.3 validada (`cce35a3`). A entrega está registrada em `O4.4-ENTREGA-METRICAS-AGENTE.md`. A migration 0052 cria `agentRuns`; o endpoint `agent.metrics` mede desfecho, transferência, confirmação pendente, falha, tokens e latência. Recebimentos são exibidos como total do workspace não atribuído ao agente, sem misturar quota técnica, custo de provider e cobrança SaaS.
+
+Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 7 testes focados passaram. CI PostgreSQL e PR ainda pendentes.
