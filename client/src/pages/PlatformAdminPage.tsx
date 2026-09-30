@@ -101,48 +101,56 @@ export function PlatformShell({
         </div>
         <nav className="platform-nav" aria-label="Navegação da plataforma">
           <button
+            type="button"
             className={active === "overview" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin")}
           >
             <LayoutDashboard size={15} /> Visão geral
           </button>
           <button
+            type="button"
             className={active === "workspaces" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/workspaces")}
           >
             <Users size={15} /> Workspaces
           </button>
           <button
+            type="button"
             className={active === "ai" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/ai")}
           >
             <Bot size={15} /> IA global
           </button>
           <button
+            type="button"
             className={active === "support" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/support")}
           >
             <LifeBuoy size={15} /> Suporte
           </button>
           <button
+            type="button"
             className={active === "support-instances" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/support-instances")}
           >
             <PlugZap size={15} /> Instâncias de suporte
           </button>
           <button
+            type="button"
             className={active === "prompts" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/prompts")}
           >
             <Sparkles size={15} /> Prompts por instância
           </button>
           <button
+            type="button"
             className={active === "support-inbox" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/support-inbox")}
           >
             <MessageSquareText size={15} /> Inbox de suporte
           </button>
           <button
+            type="button"
             className={active === "audit" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/audit")}
           >
