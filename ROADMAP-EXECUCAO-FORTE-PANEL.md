@@ -78,8 +78,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | P0.2 | Fundação pública | Remover DemoBanner e dados estáticos do cliente | **CONCLUÍDA** | Rotas operacionais sem dados fictícios |
 | P0.3 | Fundação pública | Isolar `ensureDemo*`, seeds e bootstrap | **CONCLUÍDA** | Demo somente em ambiente QA/dev |
 | P0.4 | Fundação pública | Limpar linguagem beta do Console Admin | **CONCLUÍDA** | Console com linguagem de produção |
-| P0.5 | Fundação pública | Catálogo de estados e release gate por rota | **PRÓXIMA** | `core-mode` deixa de ser o único controle de exposição |
-| O1.1 | Onboarding | Wizard público de 6 passos | PENDENTE | Owner configura negócio sem conhecer IA técnica |
+| P0.5 | Fundação pública | Catálogo de estados e release gate por rota | **CONCLUÍDA** | `release-catalog.ts` governa estados e exposição incremental |
+| O1.1 | Onboarding | Wizard público de 6 passos | **PRÓXIMA** | Owner configura negócio sem conhecer IA técnica |
 | O1.2 | Onboarding | Serviços, preços, duração e disponibilidade | PENDENTE | Catálogo operacional real para o núcleo comercial |
 | O1.3 | Onboarding | Regras de atendimento e revisão de exemplos | PENDENTE | Publicação humana de configuração segura |
 | O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | PENDENTE | Onboarding tolerante a interrupções |
@@ -298,7 +298,7 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 | Branch | `main` |
 | Base auditada | `cad2b8a` |
 | Última fatia concluída | `P0.3` — seeds e bootstrap isolados por ambiente |
-| Última fatia concluída por este roadmap | `P0.4` — linguagem de operação de produção no Console Admin |
+| Última fatia concluída por este roadmap | `P0.5` — catálogo de release e gate por rota |
 | Último commit deste roadmap | `1e36a7b` — `refactor: use production language in platform console` |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 

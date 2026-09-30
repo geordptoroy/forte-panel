@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { CORE_ONLY_MODE, CORE_USAGE_ROUTE } from "@/core-mode";
+import { CORE_NAV_ROUTES } from "@/release-catalog";
 
 type NavIcon = ComponentType<{
   size?: number;
@@ -311,7 +312,9 @@ const workspaceUsageNav: NavGroup[] = [
 const coreOnlyNav: NavGroup[] = [
   {
     label: "Operação",
-    items: [managementNav[0].items[0], managementNav[0].items[2]],
+    items: managementNav[0].items.filter(item =>
+      CORE_NAV_ROUTES.includes(item.href as (typeof CORE_NAV_ROUTES)[number])
+    ),
   },
 ];
 

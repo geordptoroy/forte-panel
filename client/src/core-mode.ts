@@ -1,3 +1,5 @@
+import { isRouteEnabledInCore } from "./release-catalog";
+
 /**
  * Reversible product-scope flag. Keep this enabled while the core is delivered
  * one page/flow at a time; keep only the validated operational pages available
@@ -11,10 +13,5 @@ export const CORE_USAGE_ROUTE = "/plans-usage";
 export const PLATFORM_ADMIN_ROUTE = "/platform-admin";
 
 export function isCoreAllowedRoute(pathname: string) {
-  return (
-    pathname === CORE_ROUTE ||
-    pathname === "/inbox" ||
-    pathname === PLATFORM_ADMIN_ROUTE ||
-    pathname.startsWith(`${PLATFORM_ADMIN_ROUTE}/`)
-  );
+  return isRouteEnabledInCore(pathname);
 }
