@@ -629,6 +629,11 @@ function MessageBubble({ message }: { message: Message }) {
               <div>{metadata.buttonText}</div>
             )}
         </div>
+        {typeof metadata.sentViaInstanceName === "string" && (
+          <div className="message-instance-label">
+            Enviado por {metadata.sentViaInstanceName}
+          </div>
+        )}
         <div className="message-time">
           {time}{" "}
           {message.sender !== "system" && (
@@ -899,6 +904,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   const [search, setSearch] = useState("");
   const [kindFilter, setKindFilter] = useState<"Todas" | "Individuais" | "Grupos">("Todas");
   const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[] | null>(null);
+  const [sendInstanceId, setSendInstanceId] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [interactiveType, setInteractiveType] = useState<"text" | "button" | "list" | "poll" | "carousel">("text");
@@ -977,13 +983,14 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       requestedId &&
       instancesQuery.data?.some(instance => instance.instanceId === requestedId)
     ) {
+      if (platformAdmin) setSendInstanceId(requestedId);
       setSelectedInstanceIds(current =>
         current?.length === 1 && current[0] === requestedId
           ? current
           : [requestedId]
       );
     }
-  }, [instancesQuery.data, location]);
+  }, [instancesQuery.data, location, platformAdmin]);
   useEffect(() => {
     if (!instancesQuery.data || selectedInstanceIds === null) return;
     const available = new Set(instancesQuery.data.map(instance => instance.instanceId));
@@ -991,6 +998,11 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     if (remaining.length !== selectedInstanceIds.length)
       setSelectedInstanceIds(remaining.length > 0 ? remaining : null);
   }, [instancesQuery.data, selectedInstanceIds]);
+  useEffect(() => {
+    if (!platformAdmin || !instancesQuery.data?.length) return;
+    if (!instancesQuery.data.some(instance => instance.instanceId === sendInstanceId))
+      setSendInstanceId("");
+  }, [instancesQuery.data, platformAdmin, sendInstanceId]);
 
   useEffect(() => {
     const requestedId = new URLSearchParams(location.split("?")[1] ?? "").get(
@@ -1102,6 +1114,11 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   };
   const send = () => {
     if (!draft.trim() && !attachment) return;
+    if (platformAdmin && !sendInstanceId) {
+      setRecordingError("Selecione a instância que fará o envio.");
+      return;
+    }
+    const outboundInstanceIds = platformAdmin ? [sendInstanceId] : selectedInstanceIds;
     const currentAttachment = attachment;
     const options = interactiveOptions
       .split("\n")
@@ -1117,7 +1134,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           content: draft.trim() || "Carrossel",
           messageType: "carousel",
           metadata: { payload: { interactiveMessage: { carouselMessage: parsed } } },
-          instanceIds: selectedInstanceIds,
+          instanceIds: outboundInstanceIds,
         });
         return;
       } catch (error) {
@@ -1153,7 +1170,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             ...(draft.trim() ? { caption: draft.trim() } : {}),
           }
         : interactiveMetadata,
-      instanceIds: selectedInstanceIds,
+      instanceIds: outboundInstanceIds,
     });
   };
   const selectAttachment = (file?: File) => {
@@ -1339,6 +1356,23 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             )}
           </div>
         </details>
+        {platformAdmin && (
+          <label className="inbox-send-instance">
+            <span>Enviar pela</span>
+            <select
+              className="select-control"
+              value={sendInstanceId}
+              onChange={event => setSendInstanceId(event.target.value)}
+            >
+              <option value="">Selecione uma instância</option>
+              {(instancesQuery.data ?? []).map(instance => (
+                <option key={instance.instanceId} value={instance.instanceId}>
+                  {instance.name} · {instance.status}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <div className="inbox-layout">
         <ConversationList
@@ -1539,8 +1573,9 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             <button
               className="btn-primary"
               onClick={send}
-              disabled={sendMutation.isPending || isRecording || (!draft.trim() && !attachment)}
+              disabled={sendMutation.isPending || isRecording || (!draft.trim() && !attachment) || (platformAdmin && !sendInstanceId)}
               aria-label="Enviar mensagem"
+              title={platformAdmin && !sendInstanceId ? "Selecione a instância de envio" : "Enviar mensagem"}
             >
               <Send size={14} />
             </button>

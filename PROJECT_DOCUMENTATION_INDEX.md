@@ -2,6 +2,10 @@
 
 Este arquivo organiza a documentação do projeto e aponta qual documento consultar em cada decisão.
 
+> **Fonte única de verdade consolidada (2026-09-29):** consulte [`FORTE-PANEL-FONTE-DE-VERDADE.md`](./FORTE-PANEL-FONTE-DE-VERDADE.md) primeiro. Ele consolida produto, arquitetura, Console Admin, IA, prompt canônico, UX, auditoria documental e roadmap. Os documentos abaixo são referências especialistas ou registros históricos; quando houver conflito, a fonte única de verdade e o código atual prevalecem.
+
+> **Fila de execução ativa:** consulte [`ROADMAP-EXECUCAO-FORTE-PANEL.md`](./ROADMAP-EXECUCAO-FORTE-PANEL.md). Cada mensagem `próximo` executa a primeira fatia pendente, atualiza o estado, registra validações e publica um commit no Git.
+
 > **Auditoria e proteção de ingestão WhatsApp/IA (2026-09-28):** consulte [`docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`](./docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md). A primeira fatia de proteção agora filtra `append`/backfill e texto-placeholder e verifica ownership da instância antes de salvar mídia; a importação histórica e o Console unificado de IA continuam pendentes.
 >
 > **Core ativo (2026-09-27):** consulte [`WHATSAPP-CONNECTION-FLOW-2026-09-27.md`](./WHATSAPP-CONNECTION-FLOW-2026-09-27.md) para a fase 1: CRUD de instâncias Baileys, consumo, decisões de escopo e sequência solicitada das próximas etapas. Não iniciar o console de modelos nem respostas automáticas antes da revisão do usuário.
@@ -20,20 +24,23 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 
 ## Começar pela continuidade
 
-1. [`HANDOFF-CONTINUIDADE-FORTE-PANEL.md`](./HANDOFF-CONTINUIDADE-FORTE-PANEL.md) — histórico de execução, decisões e próximo passo.
-2. [`todo.md`](./todo.md) — checklist vivo da implementação.
-3. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
-4. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual consolidado de operação do beta, migrations, quotas e segurança.
-5. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão completa do que funciona, como funciona, plano do console admin e pendências antes do beta.
-6. [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) — auditoria de divergências e roadmap canônico por fases.
-7. [`PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`](./PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md) — plano priorizado P0–P3 para console, operação, QR, UX, produto, planos e LGPD.
-8. [`AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md`](./AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md) — feedback da validação local, auditoria dos dois painéis, refatoração Baileys, IA global, Funil, profissional executor e recebimentos.
-9. [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md) — auditoria de melhoria contínua, funil de cadastro com respostas em áudio e modelo de orçamento, chave Pix e registro manual de recebimentos.
-10. [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md) — perguntas progressivas, entrada por áudio/texto, geração de prompt com confirmação e suporte administrativo auditado.
-11. [`GUIA-CONVITES-E-PERMISSOES.md`](./GUIA-CONVITES-E-PERMISSOES.md) — convite de funcionários, RBAC/ABAC, matriz de visibilidade, escopos de Inbox e critérios de aceite.
-12. [`GUIA-UX-CLAREZA-E-FACILIDADE.md`](./GUIA-UX-CLAREZA-E-FACILIDADE.md) — checklist de primeiro acesso, linguagem para leigos, estados vazios, ajuda contextual, previews e métricas de abandono.
-13. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência de teste e ambiente efetivamente validado.
-14. [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) — reset destrutivo opcional, inicialização Docker, migrations e testes PostgreSQL locais.
+0. [`FORTE-PANEL-FONTE-DE-VERDADE.md`](./FORTE-PANEL-FONTE-DE-VERDADE.md) — decisão consolidada e roadmap único.
+
+1. [`ROADMAP-EXECUCAO-FORTE-PANEL.md`](./ROADMAP-EXECUCAO-FORTE-PANEL.md) — fila operacional por fatias e estado a atualizar a cada `próximo`.
+2. [`HANDOFF-CONTINUIDADE-FORTE-PANEL.md`](./HANDOFF-CONTINUIDADE-FORTE-PANEL.md) — histórico de execução, decisões e próximo passo.
+3. [`todo.md`](./todo.md) — checklist vivo da implementação.
+4. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
+5. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual histórico de operação, migrations, quotas e segurança.
+6. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão histórica do que funciona e pendências.
+7. [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) — auditoria de divergências e roadmap histórico.
+8. [`PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`](./PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md) — plano histórico P0–P3.
+9. [`AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md`](./AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md) — auditoria e decisões históricas.
+10. [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md) — referência especialista de onboarding e financeiro.
+11. [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md) — referência especialista de onboarding.
+12. [`GUIA-CONVITES-E-PERMISSOES.md`](./GUIA-CONVITES-E-PERMISSOES.md) — referência especialista de RBAC/ABAC.
+13. [`GUIA-UX-CLAREZA-E-FACILIDADE.md`](./GUIA-UX-CLAREZA-E-FACILIDADE.md) — referência especialista de UX.
+14. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência e ambiente validado.
+15. [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) — reset opcional, Docker, migrations e PostgreSQL local.
 
 ## Produto e tenancy
 

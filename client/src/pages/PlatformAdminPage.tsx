@@ -10,6 +10,7 @@ import {
   Clock3,
   FileText,
   KeyRound,
+  KanbanSquare,
   LayoutDashboard,
   LifeBuoy,
   LockKeyhole,
@@ -59,6 +60,11 @@ const statusTone = (value: string) =>
     : ["suspended", "degraded", "stale", "paused", "disconnected"].includes(value)
       ? "red"
       : "amber";
+const workspaceKanbanColumns = [
+  { status: "onboarding" as const, label: "Onboarding", helper: "Configuração inicial" },
+  { status: "active" as const, label: "Ativos", helper: "Operação liberada" },
+  { status: "suspended" as const, label: "Suspensos", helper: "Acesso operacional pausado" },
+];
 
 export function PlatformShell({
   children,
@@ -170,6 +176,8 @@ export function PlatformShell({
                 ? "Operação"
                 : active === "ai"
                   ? "IA global"
+                  : active === "prompts"
+                    ? "Prompts por instância"
                 : active === "support"
                     ? "Suporte"
                     : active === "support-instances"
@@ -398,8 +406,24 @@ function PlatformAdminOverview() {
     null
   );
   const [reason, setReason] = useState("Acompanhamento operacional do beta");
+  const [draggedWorkspaceId, setDraggedWorkspaceId] = useState<number | null>(null);
+  const [statusChange, setStatusChange] = useState<{
+    workspaceId: number;
+    status: (typeof workspaceKanbanColumns)[number]["status"];
+  } | null>(null);
+  const [statusReason, setStatusReason] = useState("Reclassificação operacional pelo Kanban");
+  const setWorkspaceStatus = trpc.platform.setWorkspaceLifecycleStatus.useMutation({
+    onSuccess: () => {
+      toast.success("Status do workspace atualizado");
+      setStatusChange(null);
+      setDraggedWorkspaceId(null);
+      void workspaces.refetch();
+    },
+    onError: error => toast.error(error.message),
+  });
   const items = workspaces.data?.items ?? [];
   const summary = workspaces.data?.summary;
+  const canMutate = Boolean(access.data?.canMutate);
   return (
     <PlatformShell
       title="Console Administrativo"
@@ -445,6 +469,92 @@ function PlatformAdminOverview() {
           tone="red"
         />
       </div>
+      <section className="platform-card">
+        <div className="platform-card-title">
+          <div>
+            <span className="eyebrow">Operação visual</span>
+            <h2>Kanban de Workspaces</h2>
+          </div>
+          <KanbanSquare size={18} />
+        </div>
+        <p className="platform-muted">
+          Arraste um workspace para alterar seu ciclo operacional. A ação exige permissão de operador, motivo e auditoria.
+        </p>
+        {!canMutate && (
+          <div className="platform-draft-warning">
+            <ShieldAlert size={13} />
+            <span>Modo somente leitura: inicie uma sessão operadora para alterar status.</span>
+          </div>
+        )}
+        <div className="platform-workspace-kanban">
+          {workspaceKanbanColumns.map(column => {
+            const columnItems = items.filter(item => item.status === column.status);
+            return (
+              <div
+                key={column.status}
+                className={`platform-kanban-column ${draggedWorkspaceId !== null ? "is-droppable" : ""}`}
+                onDragOver={event => {
+                  if (canMutate) event.preventDefault();
+                }}
+                onDrop={event => {
+                  event.preventDefault();
+                  if (!canMutate || draggedWorkspaceId === null) return;
+                  const current = items.find(item => item.id === draggedWorkspaceId);
+                  if (!current || current.status === column.status) return;
+                  setStatusReason(`Reclassificação de ${current.name} para ${column.label}`);
+                  setStatusChange({ workspaceId: current.id, status: column.status });
+                }}
+              >
+                <div className="platform-kanban-column-head">
+                  <div>
+                    <strong>{column.label}</strong>
+                    <small>{column.helper}</small>
+                  </div>
+                  <span>{columnItems.length}</span>
+                </div>
+                {columnItems.length === 0 ? (
+                  <div className="platform-kanban-empty">Nenhum workspace nesta etapa</div>
+                ) : (
+                  columnItems.map(item => {
+                    const degraded = item.health.channel === "degraded" || item.health.worker === "degraded" || item.health.worker === "stale" || item.health.recentFailures > 0;
+                    return (
+                      <article
+                        key={item.id}
+                        className="platform-kanban-card"
+                        draggable={canMutate}
+                        onDragStart={() => setDraggedWorkspaceId(item.id)}
+                        onDragEnd={() => setDraggedWorkspaceId(null)}
+                      >
+                        <div className="platform-kanban-card-head">
+                          <div>
+                            <strong>{item.name}</strong>
+                            <small>{item.slug}</small>
+                          </div>
+                          <WorkspaceStatus value={item.status} />
+                        </div>
+                        <div className="platform-kanban-card-meta">
+                          <span>{item.plan} · {item.memberCount} membros</span>
+                          <span className={degraded ? "is-warning" : "is-healthy"}>
+                            {degraded ? "Atenção" : "Saudável"}
+                          </span>
+                        </div>
+                        <div className="platform-kanban-card-actions">
+                          <button className="btn-ghost" onClick={() => navigate(`/platform-admin/workspaces/${item.id}`)}>
+                            Detalhe
+                          </button>
+                          <button className="btn-ghost" onClick={() => { setReasonWorkspaceId(item.id); setReason("Acompanhamento operacional do beta"); }}>
+                            Suporte
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
       <section className="platform-card">
         <div className="platform-card-title">
           <div>
@@ -558,6 +668,48 @@ function PlatformAdminOverview() {
           </div>
         )}
       </section>
+      {statusChange && (
+        <div className="platform-modal-backdrop">
+          <section className="platform-modal">
+            <button
+              className="icon-button platform-modal-close"
+              onClick={() => {
+                setStatusChange(null);
+                setDraggedWorkspaceId(null);
+              }}
+              aria-label="Fechar"
+            >
+              <XCircle size={17} />
+            </button>
+            <span className="eyebrow">Mudança de ciclo</span>
+            <h2>Confirmar status</h2>
+            <p>
+              O workspace será movido para <strong>{statusLabel[statusChange.status]}</strong>. A alteração será registrada na auditoria da plataforma.
+            </p>
+            <label className="platform-field">
+              <span>Motivo obrigatório</span>
+              <textarea
+                className="textarea-control"
+                value={statusReason}
+                onChange={event => setStatusReason(event.target.value)}
+              />
+            </label>
+            <button
+              className="btn-primary"
+              disabled={setWorkspaceStatus.isPending || statusReason.trim().length < 3}
+              onClick={() =>
+                setWorkspaceStatus.mutate({
+                  workspaceId: statusChange.workspaceId,
+                  status: statusChange.status,
+                  reason: statusReason,
+                })
+              }
+            >
+              {setWorkspaceStatus.isPending ? "Atualizando…" : "Confirmar mudança"}
+            </button>
+          </section>
+        </div>
+      )}
       {reasonWorkspaceId && (
         <div className="platform-modal-backdrop">
           <section className="platform-modal">
@@ -1759,6 +1911,16 @@ export function PlatformPromptsPage() {
   const [instancePrompt, setInstancePrompt] = useState("");
   const [instanceEnabled, setInstanceEnabled] = useState(false);
   const [reason, setReason] = useState("Atualização do prompt global do suporte");
+  const [testMessage, setTestMessage] = useState("Quero saber como o agente responderia a esta mensagem.");
+  const [testResult, setTestResult] = useState<{
+    output: string;
+    model: string;
+    enabled: boolean;
+    promptSource: string;
+    bindingVersion: number | null;
+    providerCalled: boolean;
+    instance: { name: string; status: string };
+  } | null>(null);
   const globalSave = trpc.platform.saveGlobalPrompt.useMutation({
     onSuccess: result => {
       setGlobalPrompt(result.systemPrompt);
@@ -1776,6 +1938,13 @@ export function PlatformPromptsPage() {
     },
     onError: error => toast.error(error.message),
   });
+  const instanceTest = trpc.platform.simulateSupportInstanceAgent.useMutation({
+    onSuccess: result => {
+      setTestResult({ ...result, output: result.output ?? "" });
+      toast.success("Teste local da instância concluído");
+    },
+    onError: error => toast.error(error.message),
+  });
   const selectedBinding = bindings.data?.find(item => item.instanceId === instanceId);
   const canMutate = Boolean(access.data?.canMutate);
   useEffect(() => {
@@ -1788,6 +1957,9 @@ export function PlatformPromptsPage() {
     );
     setInstanceEnabled(selectedBinding?.enabled ?? false);
   }, [selectedBinding?.systemPrompt, selectedBinding?.enabled, globalAi.data?.systemPrompt]);
+  useEffect(() => {
+    setTestResult(null);
+  }, [instanceId]);
   return (
     <PlatformAccessGate>
       <PlatformShell
@@ -1899,6 +2071,54 @@ export function PlatformPromptsPage() {
             </button>
             {selectedBinding && <span className="platform-muted">Versão {selectedBinding.version} · atualizado {fmtDate(selectedBinding.updatedAt)}</span>}
           </div>
+        </section>
+        <section className="platform-card">
+          <div className="platform-card-title">
+            <div>
+              <span className="eyebrow">Teste controlado</span>
+              <h2>Testar agente nesta instância</h2>
+            </div>
+            <CheckCircle2 size={18} />
+          </div>
+          <p className="platform-muted">
+            Executa uma prévia local com o prompt efetivo da instância. Não chama provider externo, não cria efeitos e não envia mensagem pelo WhatsApp.
+          </p>
+          <textarea
+            className="textarea-control"
+            value={testMessage}
+            onChange={event => setTestMessage(event.target.value)}
+            disabled={!instanceId}
+            rows={3}
+            placeholder="Digite uma mensagem controlada para simular…"
+          />
+          <div className="platform-form-actions">
+            <button
+              className="btn-secondary"
+              disabled={!canMutate || !instanceId || !testMessage.trim() || instanceTest.isPending}
+              onClick={() => instanceTest.mutate({
+                instanceId,
+                message: testMessage,
+                reason: "Teste controlado do agente por instância",
+              })}
+            >
+              {instanceTest.isPending ? "Testando…" : "Testar agente nesta instância"}
+            </button>
+            {testResult && (
+              <span className="platform-muted">
+                {testResult.instance.name} · {testResult.model} · {testResult.promptSource === "instance" ? `v${testResult.bindingVersion}` : "prompt global"}
+              </span>
+            )}
+          </div>
+          {testResult && (
+            <div className="platform-safe-note" style={{ marginTop: 14 }}>
+              <CheckCircle2 size={13} />
+              <div>
+                <strong>{testResult.enabled ? "Agente ativo" : "Agente pausado"}</strong>
+                <p>{testResult.output}</p>
+                <small>Provider externo chamado: {testResult.providerCalled ? "sim" : "não"} · status da instância: {testResult.instance.status}</small>
+              </div>
+            </div>
+          )}
         </section>
       </PlatformShell>
     </PlatformAccessGate>

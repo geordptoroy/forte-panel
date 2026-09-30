@@ -25,6 +25,7 @@ import {
   getDb,
   getPlatformGlobalNativeAgentConfig,
   getPlatformNativeAgentConfig,
+  getNativeAgentRuntimeConfig,
   getWorkspaceById,
   ensureBaileysChannel,
   createBaileysInstance,
@@ -376,6 +377,83 @@ export async function savePlatformInstancePromptBinding(input: {
     after: { ...binding, automaticReplies: "not_activated" },
   });
   return binding;
+}
+
+export async function simulatePlatformInstanceAgent(input: {
+  platformAdminId: number;
+  instanceId: string;
+  message: string;
+  reason: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const workspace = await ensurePlatformSupportWorkspace();
+  const instance = await getBaileysInstance(workspace.id, input.instanceId);
+  if (!instance) throw new Error("Instância de suporte não encontrada");
+  const binding = (await readPlatformInstancePromptBindings()).find(
+    item => item.instanceId === instance.instanceId
+  );
+  const config = await getNativeAgentRuntimeConfig(
+    workspace.id,
+    instance.instanceId
+  );
+  const validation = validateAgentPromptInput({
+    systemPrompt: config.systemPrompt,
+    model: config.model,
+  });
+  if (!validation.valid) throw new Error(validation.reason);
+  const output = buildLocalSimulationResponse({
+    workspaceName: `${workspace.name} / ${instance.name}`,
+    prompt: config.systemPrompt,
+    message: input.message,
+  });
+  const created = (
+    await db
+      .insert(agentSimulationRuns)
+      .values({
+        workspaceId: workspace.id,
+        platformAdminId: input.platformAdminId,
+        draftId: null,
+        versionId: null,
+        input: input.message.trim(),
+        output,
+        status: "completed",
+        providerCalled: 0,
+      })
+      .returning()
+  )[0];
+  if (!created) throw new Error("Não foi possível registrar o teste da instância");
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    workspaceId: workspace.id,
+    action: "agent_instance_simulation_run",
+    reason: input.reason,
+    summary: `Teste local do agente na instância ${instance.name}`,
+    after: {
+      simulationId: created.id,
+      instanceId: instance.instanceId,
+      model: config.model,
+      enabled: config.enabled,
+      providerCalled: false,
+    },
+  });
+  return {
+    id: created.id,
+    status: created.status,
+    input: created.input,
+    output: created.output,
+    providerCalled: false,
+    instance: {
+      instanceId: instance.instanceId,
+      name: instance.name,
+      status: instance.status,
+    },
+    enabled: config.enabled,
+    model: config.model,
+    promptSource: binding ? "instance" : "global",
+    bindingVersion: binding?.version ?? null,
+    createdAt: created.createdAt.toISOString(),
+  };
 }
 
 export async function savePlatformGlobalAiPolicy(input: {
@@ -1085,9 +1163,11 @@ export async function getPlatformSupportSnapshot() {
   };
 }
 
-export async function listPlatformSupportContacts() {
+export async function listPlatformSupportContacts(
+  instanceIds: readonly string[] | null = null
+) {
   const workspace = await ensurePlatformSupportWorkspace();
-  const contacts = await listInboxContacts(workspace.id, 0, null, true);
+  const contacts = await listInboxContacts(workspace.id, 0, instanceIds, true);
   return contacts.map(mapPlatformSupportContact);
 }
 
@@ -1103,7 +1183,7 @@ export async function getPlatformSupportThread(
     listMessagesForContact(workspace.id, contactId, { instanceIds }),
     getAuditLogForContact(workspace.id, contactId),
     listContactNotes(workspace.id, contactId),
-    listInboxContacts(workspace.id, 0, null, true),
+    listInboxContacts(workspace.id, 0, instanceIds, true),
   ]);
   const contactView = contacts.find(item => item.id === contactId) ?? contact;
   return {
@@ -1144,6 +1224,11 @@ export async function sendPlatformSupportMessage(input: {
   const workspace = await ensurePlatformSupportWorkspace();
   const contact = await getContactById(workspace.id, input.contactId);
   if (!contact) throw new Error("Contato não encontrado no Inbox de suporte");
+  const instanceIds = input.instanceIds ?? [];
+  if (instanceIds.length !== 1)
+    throw new Error("Selecione exatamente uma instância para enviar a mensagem");
+  const instance = await getBaileysInstance(workspace.id, instanceIds[0]);
+  if (!instance) throw new Error("Instância de envio não encontrada");
   if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll" || input.messageType === "carousel")
     validateInteractiveMessage({
       messageType: input.messageType,
@@ -1156,8 +1241,12 @@ export async function sendPlatformSupportMessage(input: {
     input.content,
     input.actorUserId,
     input.messageType ?? "text",
-    input.metadata,
-    input.instanceIds ?? null
+    {
+      ...(input.metadata ?? {}),
+      sentViaInstanceId: instance.instanceId,
+      sentViaInstanceName: instance.name,
+    },
+    instanceIds
   );
   await recordPlatformAudit({
     platformAdminId: input.platformAdminId,
@@ -1165,7 +1254,7 @@ export async function sendPlatformSupportMessage(input: {
     action: "platform_support_message_sent",
     reason: "Atendimento pelo Inbox do Console Admin",
     summary: `Mensagem enviada para ${contact.name}`,
-    after: { contactId: input.contactId, instanceIds: input.instanceIds ?? null },
+    after: { contactId: input.contactId, instanceIds, instanceName: instance.name },
   });
   return message
     ? {
@@ -1686,6 +1775,8 @@ export async function setPlatformWorkspaceStatus(input: {
       .limit(1)
   )[0];
   if (!workspace) throw new Error("Workspace não encontrado");
+  if (workspace.slug === PLATFORM_SUPPORT_WORKSPACE_SLUG)
+    throw new Error("O workspace interno do Console Admin não pode ser movido pelo Kanban");
   const active = input.status === "suspended" ? 0 : 1;
   const updated = (
     await db

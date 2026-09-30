@@ -32,6 +32,7 @@ import {
   savePlatformAgentDraft,
   savePlatformGlobalAiPolicy,
   savePlatformInstancePromptBinding,
+  simulatePlatformInstanceAgent,
   setPlatformWorkspaceAi,
   setPlatformWorkspaceStatus,
   simulatePlatformAgent,
@@ -223,7 +224,7 @@ export const platformRouter = router({
           })
           .optional()
       )
-      .query(() => listPlatformSupportContacts()),
+      .query(({ input }) => listPlatformSupportContacts(input?.instanceIds ?? null)),
     thread: requirePlatform
       .input(
         z.object({
@@ -256,9 +257,13 @@ export const platformRouter = router({
         z.object({
           contactId: z.number().int().positive(),
           content: z.string().trim().min(1).max(12_000_000),
-          messageType: z.enum(["text", "image", "audio", "video", "document"]).default("text"),
-          metadata: z.record(z.string(), z.unknown()).optional(),
-          instanceIds: z.array(z.string().min(1).max(160)).max(50).nullable().optional(),
+          messageType: z.union([
+            z.literal("text"),
+            z.enum(["image", "audio", "video", "document"]),
+            interactiveMessageTypeSchema,
+          ]).default("text"),
+          metadata: interactiveMetadataSchema.optional(),
+          instanceIds: z.array(z.string().min(1).max(160)).min(1).max(1),
         })
       )
       .mutation(({ input, ctx }) =>
@@ -365,6 +370,21 @@ export const platformRouter = router({
       z.object({ search: z.string().trim().max(160).default("") }).optional()
     )
     .query(({ input }) => listPlatformWorkspaces(input?.search ?? "")),
+
+  setWorkspaceLifecycleStatus: requirePlatformOperator
+    .input(
+      z.object({
+        workspaceId: workspaceIdInput,
+        status: z.enum(["onboarding", "active", "suspended"]),
+        reason: reasonInput,
+      })
+    )
+    .mutation(({ input, ctx }) =>
+      setPlatformWorkspaceStatus({
+        ...input,
+        platformAdminId: ctx.platformAdmin.id,
+      })
+    ),
 
   workspaceDetail: requirePlatform
     .input(supportSessionInput)
@@ -513,6 +533,21 @@ export const platformRouter = router({
         workspaceId: workspace.id,
       });
     }),
+
+  simulateSupportInstanceAgent: requirePlatformOperator
+    .input(
+      z.object({
+        instanceId: z.string().trim().min(1).max(160),
+        message: z.string().trim().min(1).max(2_000),
+        reason: reasonInput,
+      })
+    )
+    .mutation(({ input, ctx }) =>
+      simulatePlatformInstanceAgent({
+        ...input,
+        platformAdminId: ctx.platformAdmin.id,
+      })
+    ),
 
   saveSupportPrompt: requirePlatformOperator
     .input(

@@ -2869,7 +2869,7 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll")
+        if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll" || input.messageType === "carousel")
           validateInteractiveMessage({
             messageType: input.messageType,
             content: input.content,
