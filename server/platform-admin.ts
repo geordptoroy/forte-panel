@@ -7,7 +7,9 @@ import {
   auditLogs,
   contacts,
   conversations,
+  domainEvents,
   messages,
+  webhookEvents,
   platformAdmins,
   platformAiConnections,
   platformAuditLogs,
@@ -1152,6 +1154,38 @@ function mapPlatformSupportContact(contact: any) {
   };
 }
 
+export type PlatformHealthState = "healthy" | "degraded" | "stale" | "not_configured" | "unknown";
+export async function getPlatformOperationalHealth() {
+  const db = await getDb();
+  const checkedAt = new Date().toISOString();
+  if (!db) return { checkedAt, overall: "unknown" as PlatformHealthState, components: { gateway: { status: "unknown", configuredInstances: 0, activeInstances: 0, degradedInstances: 0 }, worker: { status: "unknown", service: "forte-panel-worker", observedAt: null, lastError: false }, queues: { status: "unknown", outbound: 0, webhooks: 0, domainEvents: 0 }, storage: { status: "unknown", configured: false, privateMediaEnabled: false }, providers: { status: "unknown", active: 0, healthy: 0, degraded: 0, pending: 0 } } };
+  const [instances, workerRows, outboundRows, webhookRows, domainRows, storageRows, providerRows] = await Promise.all([
+    db.select({ status: whatsappInstances.status, active: whatsappInstances.active, lastHealthError: whatsappInstances.lastHealthError }).from(whatsappInstances),
+    db.select().from(workerHeartbeats).where(eq(workerHeartbeats.service, "forte-panel-worker")).limit(1),
+    db.select({ count: sql<number>`count(*)::int` }).from(messages).where(eq(messages.status, "queued")),
+    db.select({ count: sql<number>`count(*)::int` }).from(webhookEvents).where(eq(webhookEvents.status, "received")),
+    db.select({ count: sql<number>`count(*)::int` }).from(domainEvents).where(or(eq(domainEvents.status, "pending"), eq(domainEvents.status, "processing"))),
+    db.select({ active: whatsappChannels.active }).from(whatsappChannels),
+    db.select({ active: platformAiConnections.active, status: platformAiConnections.status }).from(platformAiConnections),
+  ]);
+  const worker = workerRows[0];
+  const workerStale = !worker || Date.now() - worker.observedAt.getTime() > Math.max(worker.intervalMs * 3, 180_000);
+  const activeInstances = instances.filter(row => row.active === 1);
+  const configuredInstances = activeInstances.filter(row => row.status !== "unknown").length;
+  const degradedInstances = activeInstances.filter(row => Boolean(row.lastHealthError) || ["error", "disconnected", "logged_out"].includes(row.status)).length;
+  const healthyInstances = activeInstances.filter(row => ["connected", "ready", "online"].includes(row.status)).length;
+  const gatewayStatus: PlatformHealthState = activeInstances.length === 0 ? "not_configured" : degradedInstances > 0 ? "degraded" : healthyInstances > 0 ? "healthy" : "unknown";
+  const queueCounts = { outbound: Number(outboundRows[0]?.count ?? 0), webhooks: Number(webhookRows[0]?.count ?? 0), domainEvents: Number(domainRows[0]?.count ?? 0) };
+  const queuesStatus: PlatformHealthState = queueCounts.outbound + queueCounts.webhooks + queueCounts.domainEvents > 100 ? "degraded" : "healthy";
+  const storageConfigured = Boolean(process.env.BUILT_IN_FORGE_API_URL && process.env.BUILT_IN_FORGE_API_KEY);
+  const privateMediaEnabled = process.env.FORTE_MEDIA_PRIVATE_STORAGE_ENABLED === "true";
+  const storageStatus: PlatformHealthState = storageConfigured ? "healthy" : "not_configured";
+  const providers = { active: providerRows.filter(row => row.active === 1).length, healthy: providerRows.filter(row => row.active === 1 && row.status === "validated").length, degraded: providerRows.filter(row => row.active === 1 && row.status === "error").length, pending: providerRows.filter(row => row.active === 1 && row.status === "pending").length };
+  const providersStatus: PlatformHealthState = providers.degraded > 0 ? "degraded" : providers.pending > 0 ? "unknown" : providers.active === 0 ? "not_configured" : "healthy";
+  const statuses = [gatewayStatus, workerStale ? "stale" : worker?.lastError ? "degraded" : "healthy", queuesStatus, storageStatus, providersStatus];
+  const overall: PlatformHealthState = statuses.includes("degraded") ? "degraded" : statuses.includes("stale") ? "stale" : statuses.includes("unknown") ? "unknown" : statuses.includes("not_configured") ? "not_configured" : "healthy";
+  return { checkedAt, overall, components: { gateway: { status: gatewayStatus, configuredInstances, activeInstances: activeInstances.length, degradedInstances }, worker: { status: workerStale ? "stale" : worker?.lastError ? "degraded" : "healthy", service: "forte-panel-worker", observedAt: worker?.observedAt.toISOString() ?? null, lastError: Boolean(worker?.lastError) }, queues: { status: queuesStatus, ...queueCounts }, storage: { status: storageStatus, configured: storageConfigured, privateMediaEnabled }, providers: { status: providersStatus, ...providers } } };
+}
 export async function getPlatformSupportSnapshot() {
   const workspace = await ensurePlatformSupportWorkspace();
   const [instances, agent] = await Promise.all([

@@ -93,3 +93,7 @@ Validações locais: `pnpm check`, `pnpm build`, `git diff --check` e 14 testes 
 ## O5.2 em revisão — suporte, tickets e sessões auditadas
 
 A branch `feat/o5.2-support-tickets-audited-sessions` adiciona a migration `0054_platform_support_tickets.sql`, operações tenant-scoped de abertura/fechamento de tickets e os tickets no detalhe do workspace. A abertura exige sessão ativa; o fechamento exige sessão ativa em modo `operator`; ambos geram `platformAuditLogs`. `pnpm check`, `pnpm build`, `git diff --check` e a validação JSON da migration passaram. A suíte ampla local teve 51 arquivos/206 testes passando e falhas pré-existentes de dependências ausentes no pacote `forte-whatsapp` (`baileys`, `pino`, `qrcode`) e no patch pinned.
+
+## O5.3 em revisão — health operacional
+
+O CI PostgreSQL da O5.2 passou no run `36735198506`. A branch `feat/o5.3-operational-health-snapshot` adiciona `platform.health`, snapshot somente leitura com gateway, worker, filas, storage e providers. O retorno é sanitizado: não expõe payloads, URLs privadas, chaves ou erros brutos. `pnpm check`, `pnpm build` e `git diff --check` passaram; o build mantém o aviso conhecido de chunk frontend acima de 500 kB. Não ligar `CORE_ONLY_MODE` nem executar chamadas externas de health nesta fatia.
