@@ -37,7 +37,7 @@ export function runRestoreRehearsalPreflight(input: {
 }): RestoreRehearsalPreflightResult {
   const packageEvidence = verifyRestoreRehearsal(input.backupDir);
   const evidence = JSON.parse(
-    readFileSync(input.evidencePath, "utf8")
+    readFileSync(input.evidencePath, "utf8").replace(/^\uFEFF/, "")
   ) as RestoreEvidenceInput & RehearsalIsolationInput;
   const isolation = validateRestoreRehearsalIsolation(evidence);
   const baseReport = buildRestoreRehearsalReport(evidence, input.now);

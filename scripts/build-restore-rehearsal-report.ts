@@ -174,7 +174,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else {
     try {
       const report = buildRestoreRehearsalReport(
-        JSON.parse(readFileSync(inputPath, "utf8")) as RestoreEvidenceInput
+        JSON.parse(
+          readFileSync(inputPath, "utf8").replace(/^\uFEFF/, "")
+        ) as RestoreEvidenceInput
       );
       const serialized = `${JSON.stringify(report, null, 2)}\n`;
       if (outputPath) writeFileSync(outputPath, serialized, { mode: 0o600 });
