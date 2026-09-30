@@ -13,6 +13,7 @@
     "report:restore-rehearsal": "tsx scripts/build-restore-rehearsal-report.ts",
     "check:restore-rehearsal-isolation": "tsx scripts/validate-restore-rehearsal-isolation.ts",
     "preflight:restore-rehearsal": "tsx scripts/run-restore-rehearsal-preflight.ts",
+    "prepare:restore-rehearsal": "tsx scripts/prepare-restore-rehearsal.ts",
     "format": "prettier --write .",
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",

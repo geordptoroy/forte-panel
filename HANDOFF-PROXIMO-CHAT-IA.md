@@ -191,3 +191,7 @@ Foi criado o preflight único `pnpm preflight:restore-rehearsal BACKUP_DIR EVIDE
 Entrega: `O7.28-ENTREGA-PREFLIGHT-RESTORE-REHEARSAL.md`. O plano, runbook, rastreio e auditoria foram atualizados. Testes do slice: 10 passaram; typecheck e `git diff --check` passaram.
 
 Depois desta atualização, criar commit e push da branch atual. O próximo chat deve revalidar `git status`, branch, remoto e o hash mais recente antes de continuar. Próxima fatia recomendada: executar o preflight em um fixture completo no Sandbox e, depois, preparar somente o gate externo Docker/staging; não executar restore destrutivo, não desligar `CORE_ONLY_MODE` e não mesclar a PR.
+
+### Atualização posterior — preparação do pacote
+
+Foi adicionado `pnpm prepare:restore-rehearsal BACKUP_DIR MEDIA_INVENTORY.json`. O comando anexa um inventário de mídia fornecido pelo operador, calcula seu SHA-256, atualiza o manifesto com modo privado e revalida o pacote inteiro. Ele não acessa provider, não executa restore e não apaga volumes. Como o provider atual só oferece presign de PUT/GET, a exportação física dos blobs e seus hashes continua sendo gate externo; não declarar o rehearsal aprovado sem essa evidência.
