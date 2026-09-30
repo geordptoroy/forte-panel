@@ -74,7 +74,7 @@ Isso não equivale ainda a um **MVP SaaS público pronto para convidar clientes 
 - CSP, HSTS, CORS, `frame-ancestors`, Referrer-Policy e Permissions-Policy;
 - limites de payload/body e retenção formal de eventos, mídia e logs;
 - backup off-host criptografado e restauração periódica automatizada;
-- blob de mídia, Redis, sessão Baileys e chave de criptografia precisam estar incluídos no plano de restore;
+- blob de mídia, Redis, sessão Baileys e chave de criptografia precisam estar incluídos no plano de restore; O7.14 definiu interface paginada e delete por etag, mas o provider Forge disponível ainda não oferece list/delete;
 - FKs/checks/chaves compostas e reconciliação persistente de órfãos/cross-tenant ainda precisam de prova; O7.13 já classifica candidatos sem apagar prefixos desconhecidos;
 - concorrência de agenda, idempotência de fila e leases precisa de testes dedicados;
 - correlação estruturada e redaction em logs;

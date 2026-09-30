@@ -1,9 +1,9 @@
 
 
-## 44. O7.13 — Reconciliação segura de mídia — 2026-09-30
+## 45. O7.14 — Contrato de provider de storage — 2026-09-30
 
-Foi criada uma política pura de reconciliação que classifica objetos por workspace, referência no banco, idade e prefixo conhecido. Objetos referenciados ou recentes ficam protegidos; objetos de outro workspace ou prefixo desconhecido nunca viram candidatos de remoção. Nenhum delete automático foi criado porque o adaptador atual de storage não oferece contrato de listagem/remoção.
+Foi criada a interface `WorkspaceMediaStore` com listagem paginada e delete condicionado por `ifMatch`/etag. O reconciliador percorre páginas, usa a política O7.13 e mantém `dryRun` como padrão. Mesmo em modo destrutivo explícito, objetos sem etag são preservados.
 
-Validação local: reconciliação 2 testes, storage privado 2 testes e upload Inbox 3 testes passaram; `pnpm check` e `git diff --check` passaram. O provider paginado, delete condicionado, métricas e restore real continuam pendentes.
+O adapter Forge configurado no projeto só oferece presign de PUT/GET; listagem e delete reais não foram inventados nem ativados. Validação local: reconciliação base 2 testes, provider 2 testes, `pnpm check` e `git diff --check` passaram.
 
-**Próximo passo:** O7.14 — provider de storage com listagem/remoção condicionada.
+**Próximo passo:** O7.15 — métricas, auditoria e ensaio do provider.
