@@ -299,7 +299,7 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 | Base auditada | `cad2b8a` |
 | Última fatia concluída | `P0.3` — seeds e bootstrap isolados por ambiente |
 | Última fatia concluída por este roadmap | `O1.1` — wizard público de onboarding em seis passos |
-| Último commit deste roadmap | será registrado após publicar a entrega O1.1 |
+| Último commit deste roadmap | `fda674f` — `feat: add public onboarding wizard` |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.

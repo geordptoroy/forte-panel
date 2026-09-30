@@ -72,5 +72,5 @@ Começar dizendo que vai verificar o checkout, ler `ROADMAP-EXECUCAO-FORTE-PANEL
 
 Depois executar O1.2 de ponta a ponta, mantendo mudanças atômicas, atualizando o roadmap a cada fatia e publicando o commit. O usuário quer continuidade direta e costuma responder somente “Próximo”.
 
-**Commit da fatia:** preencher após o commit final desta entrega.
+**Commit da fatia:** `fda674f` — `feat: add public onboarding wizard`
 **Branch esperada:** `main` sincronizada com `origin/main`.
