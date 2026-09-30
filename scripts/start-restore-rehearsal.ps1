@@ -33,6 +33,10 @@ if ($PanelPort -eq $BaileysPort) { Fail "PanelPort e BaileysPort não podem ser 
 
 $baseCompose = Get-Content -Path $composeFile -Raw
 $baseCompose = [regex]::Replace($baseCompose, '(?m)^[ \t]*container_name:[ \t]*.*(?:\r?\n|$)', '')
+$baseCompose = $baseCompose.Replace('name: forte-panel-network', "name: $ProjectName-panel-network")
+$baseCompose = [regex]::Replace($baseCompose, 'name: \$\{COMPOSE_PROJECT_NAME:-forte-local\}_whatsapp-network', "name: $ProjectName-whatsapp-network")
+$baseCompose = $baseCompose.Replace("name: $ProjectName-panel-network", "name: $ProjectName-panel-network`r`n    internal: true")
+$baseCompose = $baseCompose.Replace("name: $ProjectName-whatsapp-network", "name: $ProjectName-whatsapp-network`r`n    internal: true")
 Set-Content -Path $baseComposeFile -Value $baseCompose -Encoding utf8
 
 $override = @"
@@ -51,13 +55,6 @@ services:
     ports: !override
       - "127.0.0.1:$BaileysPort`:3010"
 
-networks:
-  panel-network:
-    name: ${ProjectName}-panel-network
-    internal: true
-  whatsapp-network:
-    name: ${ProjectName}-whatsapp-network
-    internal: true
 "@
 
 Set-Content -Path $overrideFile -Value $override -Encoding utf8
@@ -83,6 +80,7 @@ if ($LASTEXITCODE -ne 0) { Fail "Falha ao subir a stack isolada." }
 
 if ($StartApplication) {
     Write-Host "Iniciando Panel, worker e gateway após restore explícito..."
+    & docker compose @composeArgs rm --stop --force forte-panel forte-panel-worker forte-whatsapp forte-panel-migrations | Out-Host
     & docker compose @composeArgs up --detach --force-recreate --remove-orphans --pull never forte-panel forte-panel-worker forte-whatsapp
     if ($LASTEXITCODE -ne 0) { Fail "Falha ao iniciar a aplicação do rehearsal." }
 }
