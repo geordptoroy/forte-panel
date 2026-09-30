@@ -22,6 +22,8 @@ Atualizado em: 2026-09-30
 | Sessão persistente | Concluída | Reconectou após restart sem novo QR |
 | Release público | Bloqueado por gates externos | Ainda exige staging, restore, browser smoke, segurança e revisão final |
 
+Auditoria documental de 2026-09-30 confirmou gaps adicionais além do resumo operacional: idempotência de efeito externo no gateway, transação inbound, hardening de sessão/webhook/headers, runbook, observabilidade externa, coorte de até 10 workspaces, fallback/custo da IA, UX pública e billing continuam abertos. Detalhamento em [`AUDITORIA-GAPS-MVP-2026-09-30.md`](./AUDITORIA-GAPS-MVP-2026-09-30.md).
+
 ## Fila de coding
 
 ### C1 — Regressão de classificação HTTP da outbox
