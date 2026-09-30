@@ -40,6 +40,7 @@ O patch local é um backport pequeno do comportamento de confirmação proposto 
 
 - Testes do gateway fazem parte da suíte raiz: `pnpm test`.
 - Checagem separada de tipos: `pnpm exec tsc --noEmit -p forte-whatsapp/tsconfig.json`.
+- A outbox mantém retries para 5xx, timeout, rede, `408` e `429`; outros `4xx` são falhas permanentes e vão para `WHATSAPP_WEBHOOK_OUTBOX_DIR/dead-letter/` com o envelope e o motivo sanitizado. Esse diretório é diagnóstico, não fila ativa.
 - Testes reais de número/QR devem ser feitos no Docker local do usuário com linha de teste; não usar conta real sem autorização.
 - A sessão é persistente e importante. Não limpar o volume `forte_whatsapp_sessions` como forma de reiniciar o serviço.
 
