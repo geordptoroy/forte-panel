@@ -33,6 +33,8 @@ if ($PanelPort -eq $BaileysPort) { Fail "PanelPort e BaileysPort não podem ser 
 
 $baseCompose = Get-Content -Path $composeFile -Raw
 $baseCompose = [regex]::Replace($baseCompose, '(?m)^\s*container_name:\s*.*(?:\r?\n|$)', '')
+$baseCompose = [regex]::Replace($baseCompose, '(?ms)^\s{4}ports:\s*\r?\n(?:^\s{6}-.*(?:\r?\n|$))+', '')
+$baseCompose = [regex]::Replace($baseCompose, '(?m)^\s{4}ports:\s*\[.*\]\s*(?:\r?\n|$)', '')
 Set-Content -Path $baseComposeFile -Value $baseCompose -Encoding utf8
 
 $override = @"
@@ -44,6 +46,7 @@ services:
       - "127.0.0.1:$PanelPort`:3000"
     environment:
       FORTE_PUBLIC_API_ENABLED: "false"
+      PUBLIC_APP_URL: "http://localhost:$PanelPort"
   forte-whatsapp:
     ports:
       - "127.0.0.1:$BaileysPort`:3010"
