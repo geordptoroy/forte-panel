@@ -40,7 +40,10 @@ export function runRestoreRehearsalPreflight(input: {
     readFileSync(input.evidencePath, "utf8").replace(/^\uFEFF/, "")
   ) as RestoreEvidenceInput & RehearsalIsolationInput;
   const isolation = validateRestoreRehearsalIsolation(evidence);
-  const baseReport = buildRestoreRehearsalReport(evidence, input.now);
+  const baseReport = buildRestoreRehearsalReport(
+    evidence,
+    input.now ?? new Date()
+  );
   const isolationReasons = isolation.reasons.map(
     reason => `isolation_${reason}`
   );
