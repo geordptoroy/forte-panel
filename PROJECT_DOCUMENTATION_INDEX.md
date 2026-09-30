@@ -20,6 +20,8 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 
 > **Entrega O7.14:** consulte [`O7.14-ENTREGA-PROVIDER-STORAGE.md`](./O7.14-ENTREGA-PROVIDER-STORAGE.md) para o contrato paginado e delete condicionado em dry-run.
 
+> **Entrega O7.15:** consulte [`O7.15-ENTREGA-METRICAS-RECONCILIACAO.md`](./O7.15-ENTREGA-METRICAS-RECONCILIACAO.md) para métricas redigidas, limite anti-loop e auditoria segura.
+
 > **Auditoria e proteção de ingestão WhatsApp/IA (2026-09-28):** consulte [`docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`](./docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md). A primeira fatia de proteção agora filtra `append`/backfill e texto-placeholder e verifica ownership da instância antes de salvar mídia; a importação histórica e o Console unificado de IA continuam pendentes.
 >
 > **Core ativo (2026-09-27):** consulte [`WHATSAPP-CONNECTION-FLOW-2026-09-27.md`](./WHATSAPP-CONNECTION-FLOW-2026-09-27.md) para a fase 1: CRUD de instâncias Baileys, consumo, decisões de escopo e sequência solicitada das próximas etapas. Não iniciar o console de modelos nem respostas automáticas antes da revisão do usuário.

@@ -78,7 +78,7 @@ Isso não equivale ainda a um **MVP SaaS público pronto para convidar clientes 
 - FKs/checks/chaves compostas e reconciliação persistente de órfãos/cross-tenant ainda precisam de prova; O7.13 já classifica candidatos sem apagar prefixos desconhecidos;
 - concorrência de agenda, idempotência de fila e leases precisa de testes dedicados;
 - correlação estruturada e redaction em logs;
-- alertas externos para worker, gateway, DB, fila e storage;
+- alertas externos para worker, gateway, DB, fila e storage; O7.15 já produz métricas agregadas sem chaves, mas ainda não há auditoria persistida nem provider real conectado;
 - imagens devem ser promovidas por digest imutável com rollback operacional.
 
 ## 5. Gaps de escala e performance

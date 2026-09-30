@@ -117,7 +117,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O7.12 | Confiabilidade | Runbook, restore e compensação de storage | **CONCLUÍDA (primeira fatia local)** | Manifesto verificado antes do restore, alvo separado e tar de sessão vazio válido; off-host, DB/mídia/sessão real, RPO/RTO e rollback seguem pendentes |
 | O7.13 | Operação | Restore rehearsal e compensação de blobs | **CONCLUÍDA (política local)** | Classificação segura por workspace, referências e janela de proteção; provider list/delete, retenção e restore real seguem pendentes |
 | O7.14 | Operação | Provider de storage com listagem/remoção condicionada | **CONCLUÍDA (contrato + dry-run)** | Interface paginada, `ifMatch`/etag e dry-run padrão; adapter Forge real não oferece list/delete e continua sem operação destrutiva |
-| O7.15 | Operação | Métricas, auditoria e ensaio do provider | **PENDENTE** | Provider autorizado, métricas, auditoria, execução controlada e restore em ambiente limpo |
+| O7.15 | Operação | Métricas, auditoria e ensaio do provider | **CONCLUÍDA (métricas locais)** | Métricas agregadas sem chaves, limite anti-loop e dry-run; provider autorizado, auditoria persistida e restore real seguem pendentes |
+| O7.16 | Operação | Provider real, auditoria persistida e restore rehearsal | **PENDENTE** | Conectar API autorizada, alertas, retenção, execução controlada e ambiente limpo |
 | A1 | Adiado | TTS, múltiplos canais e automações genéricas | ADIADA | Só após o núcleo gerar valor recorrente |
 
 ---
