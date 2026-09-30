@@ -97,3 +97,7 @@ A branch `feat/o7.6-webhook-dead-letter-observability` será criada sobre `feat/
 Validação: `npm exec vitest run src/webhook-outbox.test.ts` passou com 3 testes; `npm run check` e `npm run build` do gateway passaram; `pnpm check` do Panel e `git diff --check` passaram. A PR #30 passou no CI PostgreSQL no run `36746224303`. Docker/staging e sessão real não foram alterados.
 
 Entrega: `O7.6-ENTREGA-OBSERVABILIDADE-DLQ.md`.
+
+### Evidência Docker local posterior — 2026-09-30
+
+O usuário executou a imagem publicada `ghcr.io/geordptoroy/forte-whatsapp:sha-f66ec8d` sem remover volumes. O gateway reportou `status=connected`, `webhookOutboxPending=0` e `webhookOutboxDeadLetter=5`. Depois de `restart forte-whatsapp`, a sessão reconectou sem novo QR e os mesmos números permaneceram. Isso confirma a reconciliação dos cinco envelopes e a persistência da métrica. O relatório não comprova inbound/outbound controlados, restore persistente ou staging externo; não declarar release público ainda.
