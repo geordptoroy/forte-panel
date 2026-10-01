@@ -279,3 +279,11 @@ Implementado o adaptador `server/audio-transcription.ts`. Quando uma mensagem in
 A transcrição não publica a mídia, limita a saída a 12.000 caracteres e registra telemetria separada de provider/tentativas em `agentRuns`. A migration `0057_agent_runs_provider_observability.sql` inclui `transcriptionProvider` e `transcriptionAttempts`. Foram adicionados testes do adaptador, incluindo MIME privado, payload multimodal e telemetria.
 
 Validação no Sandbox: `pnpm check`, testes focados de transcrição/fallback/agente/migration journal e `git diff --check` passaram. Ainda falta o aceite manual com áudio real ou fixture controlado na stack local: confirmar áudio recebido → transcrição → resposta automática textual → registro de execução. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+### Atualização posterior — MVP.2: análise de imagem e documento
+
+Implementado `server/media-analysis.ts`. Mensagens inbound de imagem e documento agora resolvem a mídia privada, chamam explicitamente as capabilities `vision` ou `document`, aplicam fallback configurado e transformam o resultado factual em contexto textual antes da resposta do agente. A mídia não é repassada desnecessariamente à chamada textual seguinte.
+
+A análise limita a saída, instrui o provider a preservar texto/números/datas e sinalizar incertezas, e registra provider/tentativas separados em `agentRuns` (`mediaAnalysisProvider` e `mediaAnalysisAttempts`). Foram adicionados testes de payload e telemetria para visão e documento. A validação técnica passou sem teste manual local, conforme orientação do operador.
+
+Próximo slice: fechar o kill switch e o aceite técnico integrado das quatro capacidades (text, audio, vision, document), podendo usar fixtures sintéticos no CI/Sandbox. Não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.

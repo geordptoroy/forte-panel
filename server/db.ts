@@ -6848,6 +6848,8 @@ export async function recordAgentRun(input: {
   failureCode?: string | null;
   transcriptionProvider?: string | null;
   transcriptionAttempts?: number;
+  mediaAnalysisProvider?: string | null;
+  mediaAnalysisAttempts?: number;
   steps: number;
   toolCalls: number;
   transferred: boolean;
