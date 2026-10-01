@@ -108,7 +108,7 @@ O problema não é quantidade por si só; é não existir uma hierarquia inequí
 | Kanban | Nome técnico aparece em rotas e documentos | Nome de produto para cliente: **Funil**; `/kanban` fica como redirect compatível |
 | Áudio | “API de áudio” é confundida com transcrição | STT/transcrição é capability própria; áudio multimodal do chat não prova uma pipeline STT |
 | Consumo | Rate limit por minuto é chamado de gasto/billing | Quota técnica, custo de provider e cobrança SaaS são métricas diferentes |
-| Release público | Alguns documentos dizem que o produto está pronto; o código ainda contém contenção `core-only`, dados demo e telas de simulação | O release público só abre após remover demo do caminho real, tornar todas as telas expostas funcionais e provar operação, isolamento, restore, segurança e E2E |
+| Release público | A contenção `core-only` foi retirada após o fechamento do núcleo comercial O3 e do contexto seguro O4.1; ainda existem provas de staging/E2E pendentes | As rotas ficam acessíveis conforme autorização real; o release público definitivo ainda exige remover demo residual e provar operação, isolamento, restore, segurança e E2E |
 | Mídia | Há data URL/base64 funcional no MVP | Arquitetura final deve usar storage privado, asset ID, limite durante streaming e URL assinada |
 
 ### 2.3 Documentos que devem permanecer
@@ -159,7 +159,7 @@ O código atual contém:
 - conexão WhatsApp;
 - Console Admin em `/platform-admin`.
 
-O `core-mode` atualmente restringe a navegação pública e confirma que o produto ainda está em contenção de desenvolvimento. Antes de abrir o produto final, essa flag deve ser removida ou substituída por um release gate baseado em capacidades reais, nunca usada para esconder módulos que o cliente deveria considerar disponíveis.
+O `core-mode` permanece como mecanismo reversível de contenção, mas `CORE_ONLY_MODE` está desligado desde 2026-10-01. A navegação pública usa as rotas do painel conforme as autorizações reais; a flag não substitui RBAC nem libera procedimentos protegidos.
 
 ### 3.2 Gateway Baileys
 

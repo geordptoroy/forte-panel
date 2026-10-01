@@ -57,7 +57,7 @@ O Console Admin é control-plane interno. Ações de suporte devem exigir autori
 
 ## Gates e bloqueios
 
-O gate técnico da última alteração deve ser executado antes do commit. O gate de produto continua pendente para prova manual com PostgreSQL persistente, microfone e número WhatsApp real. Não apagar dados nem alterar secrets. Não desligar `CORE_ONLY_MODE` antes de fechar o caminho WhatsApp → Inbox → lead.
+O gate técnico da última alteração deve ser executado antes do commit. O gate de produto continua pendente para prova manual com PostgreSQL persistente, microfone e número WhatsApp real. Não apagar dados nem alterar secrets. O caminho WhatsApp → Inbox → lead foi fechado no núcleo O3; `CORE_ONLY_MODE` permanece reversível, mas está desligado para reabrir as superfícies do painel.
 
 ## Como continuar no próximo chat
 
