@@ -4,7 +4,7 @@
 >
 > **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
 > **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
-> **Último commit funcional publicado:** `3866a96` — `test: prove controlled native agent resume`.<br>
+> **Último commit funcional publicado:** `28723f3` — `test: align synthetic model assertions with routing`.<br>
 > **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
 > **Próxima fatia autorizada:** auditoria/fechamento do kill switch e contrato integrado das capabilities `text`, `audio`, `vision` e `document`.<br>
 > **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
@@ -340,3 +340,9 @@ Próximo slice depois do CI verde: provar fallback por capability e falha contro
 ### Correção do CI PostgreSQL — modelo canônico de capability — 2026-10-01
 
 O primeiro CI da retomada (`36901328653`) falhou somente no harness: a asserção esperava que `config.model` substituísse o modelo da rota, mas `invokeConfiguredLLM` corretamente prioriza o modelo canônico da capability. A correção `28723f3` ajusta a prova para esperar quatro chamadas `synthetic-text` (respostas finais), uma `synthetic-audio`, uma `synthetic-vision` e uma `synthetic-document` (pré-processamentos). Typecheck, contratos unitários e `git diff --check` passaram localmente. Reexecutar o CI PostgreSQL sobre o novo head antes de declarar esta fatia verde.
+
+### Resultado do retry PostgreSQL — retomada controlada verde — 2026-10-01
+
+O primeiro run `36901328653` falhou no harness por expectativa incorreta de modelo. Após a correção `28723f3`, o retry [`36901572012`](https://github.com/geordptoroy/forte-panel/actions/runs/36901572012) passou contra PostgreSQL real: migrations, gateway, configuração de produção e suíte completa passaram sem skips. A prova de retomada controlada das quatro capabilities está verde no CI. O head documental atual é `2de7029`.
+
+Esta fatia prova kill switch pausado → reativação autorizada → execução com provider sintético local → `agentRuns` resolvidos e telemetria de `text`, `audio`, `vision` e `document`. Não é aceite com provider externo nem autorização para desligar `CORE_ONLY_MODE`.
