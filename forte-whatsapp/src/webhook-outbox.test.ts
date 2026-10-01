@@ -86,4 +86,36 @@ describe("durable webhook outbox", () => {
 
     expect((await fs.readdir(directory)).filter(file => file.endsWith(".json"))).toHaveLength(0);
   });
+
+  it("creates one durable item when the same event is enqueued concurrently", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "forte-outbox-"));
+    directories.push(directory);
+    let release!: () => void;
+    const fetchStarted = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    const fetchImpl = vi.fn(async () => {
+      release();
+      return new Response("ok", { status: 202 });
+    });
+    const outbox = new WebhookOutbox({
+      directory,
+      url: "https://panel.example/webhook",
+      secret: "secret",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      logger,
+    });
+
+    await Promise.all(
+      Array.from({ length: 8 }, () =>
+        outbox.enqueue({ eventId: "same-event", content: "uma vez" })
+      )
+    );
+    await outbox.flush();
+    await fetchStarted;
+    await waitFor(() => fetchImpl.mock.calls.length === 1);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect((await fs.readdir(directory)).filter(file => file.endsWith(".json"))).toHaveLength(0);
+  });
 });

@@ -110,7 +110,25 @@ export class WebhookOutbox {
     };
     const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
     await fs.writeFile(temporary, JSON.stringify(envelope), { mode: 0o600 });
-    await fs.rename(temporary, file);
+    try {
+      // `rename` replaces an existing file. A concurrent enqueue for the same
+      // event could therefore recreate an item after the first delivery
+      // deleted it. A hard-link gives us an atomic create-if-absent operation.
+      await fs.link(temporary, file);
+    } catch (error) {
+      if (
+        !(
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "EEXIST"
+        )
+      )
+        throw error;
+      return;
+    } finally {
+      await fs.rm(temporary, { force: true });
+    }
     this.pending += 1;
     void this.flush().catch(error => {
       this.lastError = error instanceof Error ? error.message : "outbox_flush_failed";

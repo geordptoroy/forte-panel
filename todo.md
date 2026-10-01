@@ -15,7 +15,8 @@
 - [x] Executar O1.3: fechar regras de atendimento, exemplos e simulação segura antes da publicação. Entrega: `O1.3-ENTREGA-REGRAS-E-SIMULACAO.md`.
 - [x] Executar O1.4: fechar retomada, autosave, missing/conflict e estados vazios tolerantes a interrupção. Entrega: `O1.4-ENTREGA-RETOMADA-E-RESILIENCIA.md`.
 - [x] Executar O2.1: fechar saúde do WhatsApp, ciclo de conexão, QR/pairing, reconexão e erros acionáveis. Entrega: `O2.1-ENTREGA-SAUDE-WHATSAPP.md`.
-- [ ] Executar O2.2: fechar inbound idempotente e histórico sem efeitos colaterais.
+- [x] Executar O2.2: fechar inbound idempotente e histórico sem efeitos colaterais. Entrega: `O2.2-ENTREGA-INBOUND-IDEMPOTENTE.md`.
+- [ ] Executar O2.3: fechar outbound com `instanceId`, fila e reconciliação.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.

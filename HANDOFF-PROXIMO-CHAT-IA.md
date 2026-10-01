@@ -105,3 +105,16 @@ Entrega documentada em `O2.1-ENTREGA-SAUDE-WHATSAPP.md`. Validações: `pnpm che
 ## Próxima ação
 
 A próxima fatia é **O2.2 — Inbound idempotente e histórico sem efeitos colaterais**. Auditar webhook/outbox, deduplicação por `eventId`, histórico Baileys, mensagens de grupo, fromMe/echo do Panel, persistência de JID e status observável antes de liberar o caminho WhatsApp → Inbox.
+
+
+## O2.2 concluída — inbound idempotente e histórico — 2026-10-01
+
+A auditoria confirmou que o callback Baileys registra `eventId` por workspace antes dos efeitos, rejeita instâncias desconhecidas/inativas, valida grupos, preserva instanceId/JID/direção/status e deduplica no webhook e na tabela de mensagens. Histórico não cria unread, lead, takeover ou evento de IA. Grupos ficam isolados por workspace + instância + JID, com participantes e autores. `fromMe` manual vira outbound humano e pausa IA; echoes do próprio Panel são filtrados sem ocultar mensagens manuais.
+
+Foi corrigida uma corrida real do `WebhookOutbox`: a escrita concorrente usava `rename`, que pode substituir um arquivo e recriá-lo depois da primeira entrega. A criação agora usa `fs.link` atômico após arquivo temporário, garantindo um item e uma entrega por eventId mesmo com oito enqueues concorrentes. O teste novo cobre essa condição.
+
+Entrega documentada em `O2.2-ENTREGA-INBOUND-IDEMPOTENTE.md`. Validações: typecheck do gateway, 38 testes aprovados e `git diff --check`; seis testes de integração PostgreSQL foram pulados porque o sandbox não possui banco configurado.
+
+## Próxima ação vigente
+
+A próxima fatia é **O2.3 — Outbound com `instanceId`, fila e reconciliação**. Auditar `queueOutboundMessage`, adapter Baileys, idempotency key, estados de envio, retries, falhas do gateway, reconciliação por externalId e a apresentação desses estados no Inbox.
