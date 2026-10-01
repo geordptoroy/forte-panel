@@ -403,6 +403,7 @@ function PlatformAdminOverview() {
     { search },
     { refetchInterval: 30_000 }
   );
+  const health = trpc.platform.health.useQuery(undefined, { refetchInterval: 30_000 });
   const start = trpc.platform.startSupportSession.useMutation({
     onSuccess: (session, input) =>
       navigate(
@@ -447,6 +448,24 @@ function PlatformAdminOverview() {
           </span>
         </div>
       </div>
+      <section className="platform-card platform-agent-overview">
+        <div className="platform-card-title">
+          <div>
+            <span className="eyebrow">Control-plane · últimos 30 dias</span>
+            <h2>Saúde agregada do agente</h2>
+          </div>
+          <Bot size={18} />
+        </div>
+        <p className="platform-muted">Somente contagens operacionais de todos os workspaces. Conteúdo de mensagens, prompts, modelos, providers e credenciais não é exibido neste console.</p>
+        {health.isLoading ? <PlatformState icon={RefreshCw} title="Consultando saúde agregada" description="Lendo somente sinais operacionais da plataforma." loading /> : health.error ? <PlatformState icon={XCircle} title="Saúde indisponível" description="Não foi possível consultar o read model agregado." /> : (
+          <div className="platform-metric-grid platform-agent-metrics">
+            <MetricCard label="Estado do agente" value={statusLabel[health.data?.components.agent.status ?? "unknown"]} helper="Sinal agregado da plataforma" icon={Activity} tone={statusTone(health.data?.components.agent.status ?? "unknown")} />
+            <MetricCard label="Execuções" value={health.data?.components.agent.runs30d ?? 0} helper="Todos os workspaces" icon={Bot} tone="blue" />
+            <MetricCard label="Falhas" value={health.data?.components.agent.failures30d ?? 0} helper="Sem conteúdo operacional" icon={ShieldAlert} tone={health.data?.components.agent.failures30d ? "red" : "green"} />
+            <MetricCard label="Fallbacks" value={health.data?.components.agent.fallbackRuns30d ?? 0} helper="Troca de provider registrada" icon={RefreshCw} tone="amber" />
+          </div>
+        )}
+      </section>
       <div className="platform-metric-grid">
         <MetricCard
           label="Contas monitoradas"

@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import {
   agentPromptDrafts,
   agentPromptVersions,
+  agentRuns,
   agentSimulationRuns,
   auditLogs,
   contacts,
@@ -1175,8 +1176,9 @@ export type PlatformHealthState = "healthy" | "degraded" | "stale" | "not_config
 export async function getPlatformOperationalHealth() {
   const db = await getDb();
   const checkedAt = new Date().toISOString();
-  if (!db) return { checkedAt, overall: "unknown" as PlatformHealthState, components: { gateway: { status: "unknown", configuredInstances: 0, activeInstances: 0, degradedInstances: 0 }, worker: { status: "unknown", service: "forte-panel-worker", observedAt: null, lastError: false }, queues: { status: "unknown", outbound: 0, webhooks: 0, domainEvents: 0 }, storage: { status: "unknown", configured: false, privateMediaEnabled: false }, providers: { status: "unknown", active: 0, healthy: 0, degraded: 0, pending: 0 } } };
-  const [instances, workerRows, outboundRows, webhookRows, domainRows, storageRows, providerRows] = await Promise.all([
+  if (!db) return { checkedAt, overall: "unknown" as PlatformHealthState, components: { gateway: { status: "unknown", configuredInstances: 0, activeInstances: 0, degradedInstances: 0 }, worker: { status: "unknown", service: "forte-panel-worker", observedAt: null, lastError: false }, queues: { status: "unknown", outbound: 0, webhooks: 0, domainEvents: 0 }, storage: { status: "unknown", configured: false, privateMediaEnabled: false }, providers: { status: "unknown", active: 0, healthy: 0, degraded: 0, pending: 0 }, agent: { status: "unknown", runs30d: 0, failures30d: 0, fallbackRuns30d: 0 } } };
+  const agentWindowStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [instances, workerRows, outboundRows, webhookRows, domainRows, storageRows, providerRows, agentRows] = await Promise.all([
     db.select({ status: whatsappInstances.status, active: whatsappInstances.active, lastHealthError: whatsappInstances.lastHealthError }).from(whatsappInstances),
     db.select().from(workerHeartbeats).where(eq(workerHeartbeats.service, "forte-panel-worker")).limit(1),
     db.select({ count: sql<number>`count(*)::int` }).from(messages).where(eq(messages.status, "queued")),
@@ -1184,6 +1186,11 @@ export async function getPlatformOperationalHealth() {
     db.select({ count: sql<number>`count(*)::int` }).from(domainEvents).where(or(eq(domainEvents.status, "pending"), eq(domainEvents.status, "processing"))),
     db.select({ active: whatsappChannels.active }).from(whatsappChannels),
     db.select({ active: platformAiConnections.active, status: platformAiConnections.status }).from(platformAiConnections),
+    db.select({
+      runs: sql<number>`count(*)::int`,
+      failures: sql<number>`count(*) filter (where ${agentRuns.outcome} = 'failed')::int`,
+      fallbackRuns: sql<number>`count(*) filter (where ${agentRuns.providerAttempts} > 1)::int`,
+    }).from(agentRuns).where(gte(agentRuns.createdAt, agentWindowStart)),
   ]);
   const worker = workerRows[0];
   const workerStale = !worker || Date.now() - worker.observedAt.getTime() > Math.max(worker.intervalMs * 3, 180_000);
@@ -1199,9 +1206,11 @@ export async function getPlatformOperationalHealth() {
   const storageStatus: PlatformHealthState = storageConfigured ? "healthy" : "not_configured";
   const providers = { active: providerRows.filter(row => row.active === 1).length, healthy: providerRows.filter(row => row.active === 1 && row.status === "validated").length, degraded: providerRows.filter(row => row.active === 1 && row.status === "error").length, pending: providerRows.filter(row => row.active === 1 && row.status === "pending").length };
   const providersStatus: PlatformHealthState = providers.degraded > 0 ? "degraded" : providers.pending > 0 ? "unknown" : providers.active === 0 ? "not_configured" : "healthy";
-  const statuses = [gatewayStatus, workerStale ? "stale" : worker?.lastError ? "degraded" : "healthy", queuesStatus, storageStatus, providersStatus];
+  const agent = { runs30d: Number(agentRows[0]?.runs ?? 0), failures30d: Number(agentRows[0]?.failures ?? 0), fallbackRuns30d: Number(agentRows[0]?.fallbackRuns ?? 0) };
+  const agentStatus: PlatformHealthState = agent.runs30d === 0 ? "not_configured" : agent.failures30d > 0 ? "degraded" : "healthy";
+  const statuses = [gatewayStatus, workerStale ? "stale" : worker?.lastError ? "degraded" : "healthy", queuesStatus, storageStatus, providersStatus, agentStatus];
   const overall: PlatformHealthState = statuses.includes("degraded") ? "degraded" : statuses.includes("stale") ? "stale" : statuses.includes("unknown") ? "unknown" : statuses.includes("not_configured") ? "not_configured" : "healthy";
-  return { checkedAt, overall, components: { gateway: { status: gatewayStatus, configuredInstances, activeInstances: activeInstances.length, degradedInstances }, worker: { status: workerStale ? "stale" : worker?.lastError ? "degraded" : "healthy", service: "forte-panel-worker", observedAt: worker?.observedAt.toISOString() ?? null, lastError: Boolean(worker?.lastError) }, queues: { status: queuesStatus, ...queueCounts }, storage: { status: storageStatus, configured: storageConfigured, privateMediaEnabled }, providers: { status: providersStatus, ...providers } } };
+  return { checkedAt, overall, components: { gateway: { status: gatewayStatus, configuredInstances, activeInstances: activeInstances.length, degradedInstances }, worker: { status: workerStale ? "stale" : worker?.lastError ? "degraded" : "healthy", service: "forte-panel-worker", observedAt: worker?.observedAt.toISOString() ?? null, lastError: Boolean(worker?.lastError) }, queues: { status: queuesStatus, ...queueCounts }, storage: { status: storageStatus, configured: storageConfigured, privateMediaEnabled }, providers: { status: providersStatus, ...providers }, agent: { status: agentStatus, ...agent } } };
 }
 export async function getPlatformSupportSnapshot() {
   const workspace = await ensurePlatformSupportWorkspace();
