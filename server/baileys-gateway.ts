@@ -29,11 +29,32 @@ async function gatewayRequest(
   });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(
-      `${body || "Gateway WhatsApp respondeu"} (HTTP ${response.status})`
-    );
+    throw new Error(formatGatewayError(body, response.status));
   }
   return response;
+}
+
+function formatGatewayError(body: string, status: number) {
+  let message = body.trim();
+  try {
+    const parsed = JSON.parse(body) as { message?: unknown; error?: unknown };
+    if (typeof parsed.message === "string") message = parsed.message;
+    else if (typeof parsed.error === "string") message = parsed.error;
+  } catch {
+    // Keep the plain gateway response when it is not JSON.
+  }
+  const normalized = message.toLowerCase();
+  if (status === 404 || normalized.includes("instance_not_found"))
+    return "Esta conexão não existe mais. Atualize a página e tente novamente.";
+  if (normalized.includes("qr_not_available"))
+    return "O QR Code ainda não está disponível. Gere uma nova conexão e aguarde alguns segundos.";
+  if (normalized.includes("already connected") || normalized.includes("já está conectada"))
+    return "Esta conexão já está ativa. Atualize o status antes de tentar parear novamente.";
+  if (normalized.includes("not configured") || normalized.includes("não configurado"))
+    return "O serviço de conexão WhatsApp ainda não está configurado neste ambiente.";
+  if (normalized.includes("timeout") || normalized.includes("timed out"))
+    return "O WhatsApp demorou para responder. Verifique o celular e tente novamente.";
+  return `${message || "O gateway WhatsApp não respondeu"} (HTTP ${status})`;
 }
 
 function jsonHeaders() {
@@ -41,7 +62,7 @@ function jsonHeaders() {
 }
 
 export function isGatewayNotFound(error: unknown) {
-  return error instanceof Error && /HTTP 404\b/.test(error.message);
+  return error instanceof Error && error.message.includes("não existe mais");
 }
 
 export async function createBaileysInstance(instanceId: string, name: string) {

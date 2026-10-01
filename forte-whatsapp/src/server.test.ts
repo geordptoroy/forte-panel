@@ -7,6 +7,8 @@ type FakeStatus = {
   instanceName: string;
   status: string;
   qr: string | null;
+  lastError?: string;
+  updatedAt?: string;
   settings: {
     rejectCalls: boolean;
     rejectGroups: boolean;
@@ -144,6 +146,28 @@ describe("Baileys gateway HTTP contract", () => {
     const ready = await fetch(`${baseUrl}/ready`);
     expect(ready.status).toBe(200);
     await expect(ready.json()).resolves.toMatchObject({ status: "ready" });
+  });
+
+  it("reports a failed secondary instance in readiness", async () => {
+    const secondary = saveStatus("secondary-instance", "Suporte");
+    secondary.status = "error";
+    secondary.lastError = "Sessão encerrada";
+    secondary.updatedAt = new Date().toISOString();
+
+    const response = await fetch(`${baseUrl}/ready`);
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "not_ready",
+      failedInstances: [
+        expect.objectContaining({
+          instanceId: "secondary-instance",
+          status: "error",
+          lastError: "Sessão encerrada",
+        }),
+      ],
+    });
+    statusById.delete("secondary-instance");
+    managerById.delete("secondary-instance");
   });
 
   it("protects operational routes with the gateway API key", async () => {

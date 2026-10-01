@@ -16,10 +16,20 @@ export function createServer(registry: InstanceRegistry) {
       const instances = registry.list();
       const defaultInstance =
         registry.get(config.instanceId)?.getStatus() ?? instances[0];
-      const ready = !defaultInstance || defaultInstance.status !== "error";
+      const failedInstances = instances.filter(
+        instance => instance.status === "error"
+      );
+      const ready = failedInstances.length === 0;
       return json(res, ready ? 200 : 503, {
         status: ready ? "ready" : "not_ready",
         instance: defaultInstance ?? null,
+        failedInstances: failedInstances.map(instance => ({
+          instanceId: instance.instanceId,
+          instanceName: instance.instanceName,
+          status: instance.status,
+          lastError: instance.lastError ?? null,
+          updatedAt: instance.updatedAt,
+        })),
         instances: instances.map(({ qr: _qr, ...instance }) => instance),
       });
     }

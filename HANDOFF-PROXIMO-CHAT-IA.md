@@ -63,7 +63,7 @@ O gate técnico da última alteração deve ser executado antes do commit. O gat
 
 Começar dizendo que vai verificar o checkout, ler `ROADMAP-EXECUCAO-FORTE-PANEL.md`, `FORTE-PANEL-FONTE-DE-VERDADE.md`, este handoff e `O1.1-ENTREGA-ONBOARDING-WIZARD.md`, além de inspecionar o código real de serviços/profissionais/agenda. Não confiar apenas na documentação: comparar sempre com `client`, `server`, `drizzle` e `forte-whatsapp`.
 
-Depois executar O2.1 de ponta a ponta, mantendo mudanças atômicas, atualizando o roadmap a cada fatia e publicando o commit. O usuário quer continuidade direta e costuma responder somente “Próximo”.
+Depois executar a próxima fatia vigente de ponta a ponta, mantendo mudanças atômicas, atualizando o roadmap a cada fatia e publicando o commit. O usuário quer continuidade direta e costuma responder somente “Próximo”.
 
 **Commit da fatia:** `commit da fatia atual` — `feat: connect onboarding to operational catalog`
 **Branch esperada:** `main` sincronizada com `origin/main`.
@@ -90,6 +90,18 @@ O autosave foi serializado no cliente: uma gravação pendente bloqueia uma segu
 
 A entrega está documentada em `O1.4-ENTREGA-RETOMADA-E-RESILIENCIA.md`. Validações: `pnpm check`, `pnpm build`, 12 testes focados aprovados e `git diff --check`. A prova manual com rede interrompida, reload e PostgreSQL persistente continua pendente.
 
+## Próxima ação histórica
+Esta seção registrava a entrada da O2.1; ela foi concluída abaixo. A continuidade vigente é O2.2.
+
+
+## O2.1 concluída — saúde do WhatsApp e ciclo de conexão — 2026-10-01
+
+A auditoria confirmou o lifecycle multi-instância do gateway: registry persistente por `instanceId`, lock por sessão, autoStart, QR, pairing por código, reconexão após queda não intencional e isolamento tenant-scoped no Panel.
+
+O probe interno `GET /ready` agora verifica todas as instâncias e retorna `503` com `failedInstances` quando qualquer sessão está em erro, em vez de olhar somente a instância default. O Panel também traduz respostas de erro JSON do gateway para mensagens acionáveis sobre conexão inexistente, QR ausente, sessão já conectada, serviço não configurado e timeout.
+
+Entrega documentada em `O2.1-ENTREGA-SAUDE-WHATSAPP.md`. Validações: `pnpm check`, typecheck do `forte-whatsapp`, build do gateway, 35 testes focados e `git diff --check`. As dependências próprias do gateway foram restauradas com `npm ci`; o comando reportou vulnerabilidades existentes no audit, sem aplicar upgrade automático.
+
 ## Próxima ação
 
-A próxima fatia é **O2.1 — Saúde do WhatsApp e ciclo de conexão**. Auditar QR/pairing, estados da instância, reconexão, polling, erros acionáveis, multi-instância e o caminho de conexão antes de liberar a superfície operacional.
+A próxima fatia é **O2.2 — Inbound idempotente e histórico sem efeitos colaterais**. Auditar webhook/outbox, deduplicação por `eventId`, histórico Baileys, mensagens de grupo, fromMe/echo do Panel, persistência de JID e status observável antes de liberar o caminho WhatsApp → Inbox.
