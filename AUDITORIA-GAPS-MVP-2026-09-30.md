@@ -52,6 +52,9 @@ Isso não equivale ainda a um **MVP SaaS público pronto para convidar clientes 
 
 ### 3.3 IA
 
+- resposta automática real no WhatsApp ainda não foi validada com provider configurado, prompt publicado, envio outbound e registro de `agentRun` completos;
+- transcrição de áudio, visão de imagem e análise de documento existem como contratos/roteamento parcial, mas ainda não têm prova end-to-end na conversa real;
+- moderação de entrada/saída e proteção operacional contra prompt injection não estão implementadas como gate independente antes do agente responder ou executar ferramentas;
 - fallback explícito entre models/capabilities, nunca silencioso;
 - transcrição dedicada quando o endpoint não aceita áudio;
 - OCR/document extraction com limite e retenção;
