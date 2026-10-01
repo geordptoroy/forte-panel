@@ -5042,7 +5042,8 @@ export async function listInboxContacts(
   workspaceId: number,
   viewerUserId?: number,
   instanceIds?: readonly string[] | null,
-  includeGroups = false
+  includeGroups = false,
+  assignmentFilter: "all" | "mine" | "unassigned" = "all"
 ) {
   const db = await getDb();
   if (!db) return [];
@@ -5069,7 +5070,12 @@ export async function listInboxContacts(
     .where(
       and(
         eq(contacts.workspaceId, workspaceId),
-        ...(includeGroups ? [] : [isNull(contacts.groupId)])
+        ...(includeGroups ? [] : [isNull(contacts.groupId)]),
+        ...(assignmentFilter === "mine" && viewerUserId
+          ? [eq(contacts.assignedUserId, viewerUserId)]
+          : assignmentFilter === "unassigned"
+            ? [isNull(contacts.assignedUserId)]
+            : [])
       )
     )
     .orderBy(desc(contacts.lastMessageAt), desc(contacts.id));
@@ -5586,6 +5592,120 @@ export async function moveContactStage(
   }
 }
 
+export async function assignInboxContact(
+  workspaceId: number,
+  contactId: number,
+  assignedUserId: number | null,
+  actorUserId?: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const contact = await getContactById(workspaceId, contactId);
+  if (!contact) throw new Error("Contact not found");
+  if (assignedUserId !== null) {
+    const member = await db
+      .select({ userId: workspaceMembers.userId })
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, workspaceId),
+          eq(workspaceMembers.userId, assignedUserId),
+          eq(workspaceMembers.active, 1)
+        )
+      )
+      .limit(1);
+    if (!member[0]) throw new Error("Responsável não pertence a este workspace");
+  }
+  const now = new Date();
+  const updated = await db
+    .update(contacts)
+    .set({ assignedUserId, updatedAt: now })
+    .where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId)))
+    .returning();
+  await db.insert(auditLogs).values({
+    workspaceId,
+    actorUserId,
+    contactId,
+    action: "contact_assigned",
+    summary: assignedUserId
+      ? `Lead atribuído ao usuário ${assignedUserId}`
+      : "Atribuição do lead removida",
+  });
+  if (assignedUserId !== null) {
+    await db
+      .insert(notifications)
+      .values({
+        workspaceId,
+        userId: assignedUserId,
+        eventKey: `contact.assigned:${contactId}:${now.getTime()}`,
+        type: "assigned_lead",
+        title: "Lead atribuído",
+        body: `${contact.name} foi atribuído a você no Inbox.`,
+        href: `/inbox?contactId=${contactId}`,
+        createdAt: now,
+      })
+      .onConflictDoNothing({
+        target: [notifications.workspaceId, notifications.userId, notifications.eventKey],
+      });
+  }
+  return updated[0];
+}
+
+export async function setInboxFollowUp(
+  workspaceId: number,
+  contactId: number,
+  input: { followUpAt?: Date | null; note?: string | null; completed?: boolean },
+  actorUserId?: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const contact = await getContactById(workspaceId, contactId);
+  if (!contact) throw new Error("Contact not found");
+  const now = new Date();
+  const completed = input.completed === true;
+  const followUpAt = completed ? contact.followUpAt : input.followUpAt ?? null;
+  const followUpNote = completed
+    ? contact.followUpNote
+    : input.note?.trim().slice(0, 500) || null;
+  const updated = await db
+    .update(contacts)
+    .set({
+      followUpAt,
+      followUpNote,
+      followUpCompletedAt: completed ? now : null,
+      updatedAt: now,
+    })
+    .where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId)))
+    .returning();
+  await db.insert(auditLogs).values({
+    workspaceId,
+    actorUserId,
+    contactId,
+    action: completed ? "follow_up_completed" : "follow_up_scheduled",
+    summary: completed
+      ? "Follow-up concluído"
+      : `Follow-up agendado para ${followUpAt?.toISOString() ?? "sem data"}`,
+  });
+  if (!completed && followUpAt && contact.assignedUserId) {
+    await db
+      .insert(notifications)
+      .values({
+        workspaceId,
+        userId: contact.assignedUserId,
+        eventKey: `follow-up:${contactId}:${followUpAt.toISOString()}`,
+        type: "follow_up_due",
+        title: "Follow-up agendado",
+        body: `${contact.name}: ${followUpNote || "retomar contato"}.`,
+        href: `/inbox?contactId=${contactId}`,
+        createdAt: now,
+      })
+      .onConflictDoNothing({
+        target: [notifications.workspaceId, notifications.userId, notifications.eventKey],
+      });
+  }
+  return updated[0];
+}
+
 export async function getContactById(workspaceId: number, contactId: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -5599,6 +5719,26 @@ export async function getContactById(workspaceId: number, contactId: number) {
   return result[0];
 }
 
+export async function listInboxAssignees(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      userId: workspaceMembers.userId,
+      name: users.name,
+      email: users.email,
+      role: workspaceMembers.role,
+    })
+    .from(workspaceMembers)
+    .innerJoin(users, eq(users.id, workspaceMembers.userId))
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.active, 1)
+      )
+    )
+    .orderBy(asc(users.name), asc(workspaceMembers.userId));
+}
 export async function listContactNotes(workspaceId: number, contactId: number) {
   const db = await getDb();
   if (!db) return [];

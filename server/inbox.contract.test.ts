@@ -21,6 +21,8 @@ describe("inbox procedures", () => {
     const caller = appRouter.createCaller(createContext());
     await expect(caller.inbox.toggleAi({ contactId: 0, enabled: true })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.inbox.markRead({ contactId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.inbox.assign({ contactId: 0, assignedUserId: null })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.inbox.followUp({ contactId: 0, completed: true })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("does not mutate or audit a contact outside the resolved workspace", async () => {
@@ -32,5 +34,6 @@ describe("inbox procedures", () => {
   it("keeps the seed procedure idempotent at the contract level", async () => {
     const caller = appRouter.createCaller(createContext());
     expect(caller.inbox.seed).toBeTypeOf("function");
+    expect(caller.inbox.assignees).toBeTypeOf("function");
   });
 });

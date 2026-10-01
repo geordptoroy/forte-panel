@@ -1088,6 +1088,10 @@ export const contacts = pgTable(
     serviceRequested: varchar("serviceRequested", { length: 180 }),
     urgency: urgencyEnum("urgency").default("Média").notNull(),
     stage: varchar("stage", { length: 80 }).default("Novo contato").notNull(),
+    assignedUserId: integer("assignedUserId"),
+    followUpAt: timestamp("followUpAt"),
+    followUpNote: varchar("followUpNote", { length: 500 }),
+    followUpCompletedAt: timestamp("followUpCompletedAt"),
     aiEnabled: integer("aiEnabled").default(1).notNull(),
     quoteCents: integer("quoteCents").default(0).notNull(),
     unreadCount: integer("unreadCount").default(0).notNull(),
@@ -1104,6 +1108,11 @@ export const contacts = pgTable(
     uniqueIndex("contacts_whatsapp_group_unique_idx")
       .on(table.groupId)
       .where(sql`${table.groupId} IS NOT NULL`),
+    index("contacts_workspace_assignment_idx").on(
+      table.workspaceId,
+      table.assignedUserId,
+      table.followUpAt
+    ),
   ]
 );
 

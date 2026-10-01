@@ -69,6 +69,9 @@ import {
   getContactById,
   getConversationByContact,
   listInboxContacts,
+  listInboxAssignees,
+  assignInboxContact,
+  setInboxFollowUp,
   listProfessionals,
   listMessagesForContact,
   listQuotes,
@@ -248,6 +251,15 @@ const mapContact = (contact: MappableContact) => ({
     contact.lastMessageAt?.toISOString() ?? contact.updatedAt.toISOString(),
   quote: contact.quoteCents / 100,
   pending: contact.quoteCents / 100,
+  assignedUserId: contact.assignedUserId ?? null,
+  followUpAt: contact.followUpAt?.toISOString() ?? null,
+  followUpNote: contact.followUpNote ?? null,
+  followUpCompletedAt: contact.followUpCompletedAt?.toISOString() ?? null,
+  followUpDue: Boolean(
+    contact.followUpAt &&
+      !contact.followUpCompletedAt &&
+      contact.followUpAt.getTime() <= Date.now()
+  ),
   daysNoReply: 0,
   initials: contact.name
     .split(" ")
@@ -2765,7 +2777,10 @@ export const appRouter = router({
     contacts: requireInbox
       .input(
         inboxInstanceFilterSchema
-          .extend({ includeGroups: z.boolean().optional() })
+          .extend({
+            includeGroups: z.boolean().optional(),
+            assignment: z.enum(["all", "mine", "unassigned"]).default("all"),
+          })
           .optional()
       )
       .query(async ({ ctx, input }) => {
@@ -2777,9 +2792,45 @@ export const appRouter = router({
           ctx.workspace.workspaceId,
           ctx.user.id,
           instanceIds,
-          input?.includeGroups === true
+          input?.includeGroups === true,
+          input?.assignment ?? "all"
         );
         return items.map(mapContact);
+      }),
+    assignees: requireInbox.query(async ({ ctx }) =>
+      listInboxAssignees(ctx.workspace.workspaceId)
+    ),
+    assign: requireInbox
+      .input(contactIdInput.extend({ assignedUserId: z.number().int().positive().nullable() }))
+      .mutation(async ({ input, ctx }) => {
+        const updated = await assignInboxContact(
+          ctx.workspace.workspaceId,
+          input.contactId,
+          input.assignedUserId,
+          ctx.user.id
+        );
+        return updated ? mapContact(updated) : null;
+      }),
+    followUp: requireInbox
+      .input(
+        contactIdInput.extend({
+          followUpAt: z.coerce.date().nullable().optional(),
+          note: z.string().trim().max(500).nullable().optional(),
+          completed: z.boolean().optional(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const updated = await setInboxFollowUp(
+          ctx.workspace.workspaceId,
+          input.contactId,
+          {
+            followUpAt: input.followUpAt,
+            note: input.note,
+            completed: input.completed,
+          },
+          ctx.user.id
+        );
+        return updated ? mapContact(updated) : null;
       }),
     renameContact: requireInbox
       .input(contactIdInput.extend({ name: z.string().trim().min(2).max(160) }))

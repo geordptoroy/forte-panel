@@ -157,3 +157,16 @@ Entrega documentada em `O3.1-ENTREGA-LEAD-UNIFICADO.md`. Validações: `pnpm che
 ## Próxima ação vigente
 
 A próxima fatia é **O3.2 — Inbox operacional com assignment e follow-up**. Auditar atribuição por operador, estado de follow-up, filtros de responsabilidade, SLA/pendências, notificações e visibilidade tenant-scoped no Inbox.
+
+
+## O3.2 concluída — Inbox operacional — 2026-10-01
+
+O Inbox agora persiste `assignedUserId`, `followUpAt`, `followUpNote` e `followUpCompletedAt` no contato, com migration `drizzle/0008_inbox_assignment_followup.sql`. A atribuição valida membro ativo do mesmo workspace, gera auditoria e notificação direcionada. O follow-up agenda/conclui a próxima ação, gera auditoria/notificação e sinaliza vencimento no Inbox.
+
+O procedimento `inbox.contacts` aceita os filtros `all`, `mine` e `unassigned`; `inbox.assignees`, `inbox.assign` e `inbox.followUp` estão expostos tenant-scoped. A ficha do lead permite operar responsável e follow-up sem sair da conversa.
+
+Entrega documentada em `O3.2-ENTREGA-INBOX-ASSIGNMENT-FOLLOWUP.md`. Validações: `pnpm check`, `pnpm build`, 18 testes focados aprovados e `git diff --check`; a prova PostgreSQL permanece pendente por ausência de `DATABASE_URL` no sandbox.
+
+## Próxima ação vigente
+
+A próxima fatia é **O3.3 — Funil canônico sem duplicação de estado**. Auditar estados atuais de `contacts.stage`, Kanban, regras de transição, auditoria, métricas e qualquer estado duplicado entre Inbox, contatos e oportunidades.

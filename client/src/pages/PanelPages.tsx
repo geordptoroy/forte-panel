@@ -158,6 +158,11 @@ type ContactLike = {
   lastMessage: string;
   lastMessageAt: string;
   quote: number;
+  assignedUserId?: number | null;
+  followUpAt?: string | null;
+  followUpNote?: string | null;
+  followUpCompletedAt?: string | null;
+  followUpDue?: boolean;
   daysNoReply: number;
   initials: string;
   isGroup?: boolean;
@@ -460,6 +465,7 @@ function ConversationList({
             <div className="conversation-preview">{contact.lastMessage}</div>
             <div className="conversation-bottom">
               <span>{formatChatTime(contact.lastMessageAt)}</span>
+              {contact.followUpDue && <StatusBadge tone="red">Follow-up vencido</StatusBadge>}
               <span
                 className={`ai-indicator ${contact.aiEnabled ? "" : "paused"}`}
               >
@@ -665,16 +671,20 @@ function ConversationProfile({
   isOpen,
   onClose,
   onRenamed,
+  assignees = [],
   platformAdmin = false,
 }: {
   contact: ContactLike;
   isOpen: boolean;
   onClose: () => void;
   onRenamed: () => void;
+  assignees?: Array<{ userId: number; name: string | null; email: string | null }>;
   platformAdmin?: boolean;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(contact.name);
+  const [followUpDraft, setFollowUpDraft] = useState("");
+  const [followUpNoteDraft, setFollowUpNoteDraft] = useState("");
   const inbox = (platformAdmin ? trpc.platform.supportInbox : trpc.inbox) as typeof trpc.inbox;
   const renameMutation = inbox.renameContact.useMutation({
     onSuccess: () => {
@@ -682,10 +692,14 @@ function ConversationProfile({
       onRenamed();
     },
   });
+  const assignMutation = trpc.inbox.assign.useMutation({ onSuccess: onRenamed });
+  const followUpMutation = trpc.inbox.followUp.useMutation({ onSuccess: onRenamed });
   useEffect(() => {
     setNameDraft(contact.name);
     setEditingName(false);
-  }, [contact.id, contact.name]);
+    setFollowUpDraft(contact.followUpAt ? contact.followUpAt.slice(0, 16) : "");
+    setFollowUpNoteDraft(contact.followUpNote ?? "");
+  }, [contact.id, contact.name, contact.followUpAt, contact.followUpNote]);
   useEffect(() => {
     if (!isOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -869,6 +883,74 @@ function ConversationProfile({
                     {contact.daysNoReply > 0 ? "Fazer follow-up" : "Aguardar retorno"}
                   </strong>
                 </div>
+                <div className="profile-field">
+                  <span>Responsável</span>
+                  <select
+                    className="select-control"
+                    value={contact.assignedUserId ?? ""}
+                    onChange={event =>
+                      assignMutation.mutate({
+                        contactId: Number(contact.id),
+                        assignedUserId: event.target.value ? Number(event.target.value) : null,
+                      })
+                    }
+                    disabled={platformAdmin || assignMutation.isPending || assignees.length === 0}
+                  >
+                    <option value="">Sem responsável</option>
+                    {assignees.map(assignee => (
+                      <option key={assignee.userId} value={assignee.userId}>
+                        {assignee.name || assignee.email || `Usuário ${assignee.userId}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="profile-follow-up">
+                <strong>Follow-up</strong>
+                <input
+                  className="input-control"
+                  type="datetime-local"
+                  value={followUpDraft}
+                  onChange={event => setFollowUpDraft(event.target.value)}
+                />
+                <input
+                  className="input-control"
+                  maxLength={500}
+                  value={followUpNoteDraft}
+                  onChange={event => setFollowUpNoteDraft(event.target.value)}
+                  placeholder="Próxima ação para este lead"
+                />
+                <div className="profile-name-actions">
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={platformAdmin || followUpMutation.isPending || !followUpDraft}
+                    onClick={() =>
+                      followUpMutation.mutate({
+                        contactId: Number(contact.id),
+                        followUpAt: new Date(followUpDraft),
+                        note: followUpNoteDraft || null,
+                      })
+                    }
+                  >
+                    {followUpMutation.isPending ? "Salvando..." : "Agendar follow-up"}
+                  </button>
+                  {contact.followUpAt && !contact.followUpCompletedAt && (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={platformAdmin || followUpMutation.isPending}
+                      onClick={() =>
+                        followUpMutation.mutate({
+                          contactId: Number(contact.id),
+                          completed: true,
+                        })
+                      }
+                    >
+                      Concluir
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="profile-actions">
                 <PageLink href={`/contacts/${contact.id}`} className="btn-secondary">
@@ -915,6 +997,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   const [location] = useLocation();
   const [search, setSearch] = useState("");
   const [kindFilter, setKindFilter] = useState<"Todas" | "Individuais" | "Grupos">("Todas");
+  const [assignmentFilter, setAssignmentFilter] = useState<"all" | "mine" | "unassigned">("all");
   const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[] | null>(null);
   const [sendInstanceId, setSendInstanceId] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
@@ -967,9 +1050,11 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   );
   const inbox = (platformAdmin ? trpc.platform.supportInbox : trpc.inbox) as typeof trpc.inbox;
   const instancesQuery = inbox.instances.useQuery();
+  const assigneesQuery = trpc.inbox.assignees.useQuery(undefined, { enabled: !platformAdmin });
   const contactsQuery = inbox.contacts.useQuery({
     instanceIds: selectedInstanceIds,
     includeGroups: true,
+    assignment: assignmentFilter,
   });
   const remoteContacts = contactsQuery.data ?? [];
   const items = remoteContacts;
@@ -1348,6 +1433,20 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             </button>
           ))}
         </div>
+        {!platformAdmin && (
+          <select
+            className="select-control"
+            value={assignmentFilter}
+            onChange={event =>
+              setAssignmentFilter(event.target.value as "all" | "mine" | "unassigned")
+            }
+            aria-label="Filtrar por responsável"
+          >
+            <option value="all">Todos os responsáveis</option>
+            <option value="mine">Meus leads</option>
+            <option value="unassigned">Sem responsável</option>
+          </select>
+        )}
         <details className="inbox-instance-filter">
           <summary className="btn-secondary">
             <Filter size={13} /> Instâncias: {selectedInstanceIds === null ? "Todas" : `${selectedInstanceIds.length} selecionada(s)`}
@@ -1624,6 +1723,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           isOpen={profileOpen}
           onClose={() => setProfileOpen(false)}
           onRenamed={refresh}
+          assignees={assigneesQuery.data ?? []}
           platformAdmin={platformAdmin}
         />
       </div>
