@@ -4,7 +4,7 @@
 >
 > **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
 > **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
-> **Último commit funcional publicado:** `2c1ae37` — `feat: expose agent fallback health metrics`.<br>
+> **Último commit funcional publicado:** `5235360` — `feat: govern agent metrics access and period`.<br>
 > **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
 > **Próxima fatia autorizada:** auditoria/fechamento do kill switch e contrato integrado das capabilities `text`, `audio`, `vision` e `document`.<br>
 > **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
@@ -358,3 +358,9 @@ O CI PostgreSQL [`36908513533`](https://github.com/geordptoroy/forte-panel/actio
 A fatia `O5.3` foi concluída no commit `2c1ae37` e documentada em `O5.3-ENTREGA-METRICAS-AGENTE.md`. `getAgentMetrics` continua tenant-scoped por `workspaceId` e agora retorna breakdown agregado por capability e os códigos de falha mais recorrentes, sem provider, modelo, URL, prompt, conteúdo ou secret. A tela **Agente de IA** exibe execuções, taxa de resolução, fallbacks, falhas, estado do kill switch, capability breakdown e incidentes resumidos.
 
 O CI PostgreSQL [`36933812864`](https://github.com/geordptoroy/forte-panel/actions/runs/36933812864) passou sem skips. Gates locais `pnpm check`, `pnpm build` e suíte focada passaram. O próximo slice é fechar governança operacional de visualização/período/estados, mantendo a separação entre operador do workspace e Console Admin.
+
+### Atualização posterior — governança das métricas do agente — 2026-10-01
+
+A fatia `O5.4` foi concluída no commit `5235360` e documentada em `O5.4-ENTREGA-GOVERNANCA-METRICAS-AGENTE.md`. A UI consulta `auth.access` antes de habilitar `agent.metrics` e `agent.killSwitch`; somente proprietário, administrador ou gerente com `canManageCatalog` veem os dados. Usuários sem permissão recebem estado restrito sem chamada protegida. O período agora é selecionável entre 7, 30 e 90 dias, com estados separados de permissão, carregamento, erro e vazio.
+
+Gates locais passaram: `pnpm check`, `pnpm build` e 20 testes focados. O próximo slice é criar contrato explícito de autorização do router para provar manager/admin/owner permitidos, agent/professional bloqueados e isolamento do `workspaceId` no read model.
