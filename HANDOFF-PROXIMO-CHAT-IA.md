@@ -271,3 +271,11 @@ A branch `feat/o7.15-storage-reconciliation-observability` está sincronizada co
 O workflow manual `Publish Forte Panel image` foi executado com sucesso no GitHub Actions: run `36798527753`. O job `verify` passou por typecheck, configuração de produção sintética, suíte completa, build de produção, testes/build do gateway WhatsApp e verificação de secrets. O job `publish` passou pelo Buildx multi-arch e publicou as imagens do Panel e do gateway WhatsApp no GHCR com tags `dev` e `sha-78a8487`, para `linux/amd64` e `linux/arm64`.
 
 A tag `latest` continua reservada ao workflow executado na branch padrão `main`; não foi sobrescrita a partir desta branch de feature e nenhuma merge automática foi feita. Para o próximo chat, revalidar branch/status/hash e continuar pelo slice de transcrição de áudio usando a imagem `ghcr.io/geordptoroy/forte-panel:dev` somente quando a operação local exigir a imagem publicada. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+### Atualização posterior — MVP.2: transcrição de áudio inbound
+
+Implementado o adaptador `server/audio-transcription.ts`. Quando uma mensagem inbound tem `messageType=audio`, o agente resolve a mídia privada (URL assinada ou data URL interna), chama a capability `audio` com prompt de transcrição literal, aplica o fallback configurado e injeta o texto transcrito no contexto textual do agente. A chamada principal seguinte usa a capability `text`, mantendo ferramentas, confirmação humana e regras de segurança.
+
+A transcrição não publica a mídia, limita a saída a 12.000 caracteres e registra telemetria separada de provider/tentativas em `agentRuns`. A migration `0057_agent_runs_provider_observability.sql` inclui `transcriptionProvider` e `transcriptionAttempts`. Foram adicionados testes do adaptador, incluindo MIME privado, payload multimodal e telemetria.
+
+Validação no Sandbox: `pnpm check`, testes focados de transcrição/fallback/agente/migration journal e `git diff --check` passaram. Ainda falta o aceite manual com áudio real ou fixture controlado na stack local: confirmar áudio recebido → transcrição → resposta automática textual → registro de execução. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.

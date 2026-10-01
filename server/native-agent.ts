@@ -25,6 +25,7 @@ import {
 } from "./llm-providers";
 import { resolvePrivateMediaUrl } from "./media-storage";
 import { inspectAgentInput, safetyHandoffMessage } from "./agent-safety";
+import { transcribeAudio } from "./audio-transcription";
 
 export type NativeAgentEvent = {
   eventId: string;
@@ -244,6 +245,7 @@ async function runNativeAgentCore(
         fallbackUsed: false,
         failureCode: `safety_${safety.reason}`,
       },
+      transcriptionTelemetry: undefined,
     };
   }
   const contact = await getContactById(event.workspaceId, event.contactId);
@@ -274,7 +276,20 @@ async function runNativeAgentCore(
     typeof event.metadata?.mediaMimeType === "string"
       ? event.metadata.mediaMimeType
       : undefined;
-  const entryText = `Nova entrada (${event.messageType ?? "text"}) de ${contact.name} (${contact.externalPhone}):\n${event.content}`;
+  const isAudio = event.messageType === "audio";
+  if (isAudio && !mediaData) throw new Error("audio_media_unavailable");
+  let normalizedContent = event.content;
+  let transcriptionTelemetry: LLMInvocationTelemetry | undefined;
+  if (isAudio && mediaData) {
+    const transcription = await transcribeAudio(config.llm, {
+      mediaUrl: mediaData,
+      mimeType: mediaMimeType,
+      model: config.model || defaultModel,
+    });
+    normalizedContent = `[Transcrição do áudio]\n${transcription.text}`;
+    transcriptionTelemetry = transcription.telemetry;
+  }
+  const entryText = `Nova entrada (${event.messageType ?? "text"}) de ${contact.name} (${contact.externalPhone}):\n${normalizedContent}`;
   const entryContent: Message["content"] =
     mediaData && event.messageType === "image"
       ? [
@@ -282,6 +297,7 @@ async function runNativeAgentCore(
           { type: "image_url", image_url: { url: mediaData, detail: "auto" } },
         ]
       : mediaData &&
+          !isAudio &&
           ["audio", "document", "video"].includes(event.messageType ?? "")
         ? [
             { type: "text", text: entryText },
@@ -313,7 +329,7 @@ async function runNativeAgentCore(
   let inputTokens = 0;
   let outputTokens = 0;
   let totalTokens = 0;
-  const capability = capabilityForMessageType(event.messageType);
+  const capability = isAudio ? "text" : capabilityForMessageType(event.messageType);
   let telemetry: LLMInvocationTelemetry = {
     capability,
     provider: null,
@@ -321,6 +337,7 @@ async function runNativeAgentCore(
     fallbackUsed: false,
     failureCode: null,
   };
+  if (transcriptionTelemetry) telemetry = transcriptionTelemetry;
   for (let step = 0; step < maxSteps; step += 1) {
     const response = await invokeConfiguredLLM(
       config.llm,
@@ -362,7 +379,7 @@ async function runNativeAgentCore(
             ...(event.instanceId ? { instanceId: event.instanceId } : {}),
           }
         );
-      return { response: text, steps: step + 1, model: response.model, toolCalls, transferred, pendingConfirmation, inputTokens, outputTokens, totalTokens, latencyMs: Date.now() - startedAt, telemetry };
+      return { response: text, steps: step + 1, model: response.model, toolCalls, transferred, pendingConfirmation, inputTokens, outputTokens, totalTokens, latencyMs: Date.now() - startedAt, telemetry, transcriptionTelemetry };
     }
     for (const call of assistant.tool_calls) {
       toolCalls += 1;
@@ -408,6 +425,8 @@ export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfi
       capability: result.telemetry.capability,
       providerAttempts: result.telemetry.attempts,
       failureCode: result.telemetry.failureCode,
+      transcriptionProvider: result.transcriptionTelemetry?.provider,
+      transcriptionAttempts: result.transcriptionTelemetry?.attempts,
     });
     return result;
   } catch (error) {

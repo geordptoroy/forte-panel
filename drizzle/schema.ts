@@ -1035,6 +1035,8 @@ export const agentRuns = pgTable(
     outcome: varchar("outcome", { length: 40 }).notNull(),
     providerAttempts: integer("providerAttempts").default(0).notNull(),
     failureCode: varchar("failureCode", { length: 80 }),
+    transcriptionProvider: varchar("transcriptionProvider", { length: 80 }),
+    transcriptionAttempts: integer("transcriptionAttempts").default(0).notNull(),
     steps: integer("steps").default(0).notNull(),
     toolCalls: integer("toolCalls").default(0).notNull(),
     transferred: integer("transferred").default(0).notNull(),

@@ -6846,6 +6846,8 @@ export async function recordAgentRun(input: {
   outcome: "resolved" | "transferred" | "pending_confirmation" | "failed";
   providerAttempts?: number;
   failureCode?: string | null;
+  transcriptionProvider?: string | null;
+  transcriptionAttempts?: number;
   steps: number;
   toolCalls: number;
   transferred: boolean;
