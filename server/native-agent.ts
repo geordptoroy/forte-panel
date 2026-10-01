@@ -20,6 +20,7 @@ import {
 import {
   capabilityForMessageType,
   invokeConfiguredLLM,
+  type LLMInvocationTelemetry,
   type AgentProviderSettings,
 } from "./llm-providers";
 import { resolvePrivateMediaUrl } from "./media-storage";
@@ -236,6 +237,13 @@ async function runNativeAgentCore(
       outputTokens: 0,
       totalTokens: 0,
       latencyMs: 0,
+      telemetry: {
+        capability: capabilityForMessageType(event.messageType),
+        provider: null,
+        attempts: 0,
+        fallbackUsed: false,
+        failureCode: `safety_${safety.reason}`,
+      },
     };
   }
   const contact = await getContactById(event.workspaceId, event.contactId);
@@ -305,10 +313,18 @@ async function runNativeAgentCore(
   let inputTokens = 0;
   let outputTokens = 0;
   let totalTokens = 0;
+  const capability = capabilityForMessageType(event.messageType);
+  let telemetry: LLMInvocationTelemetry = {
+    capability,
+    provider: null,
+    attempts: 0,
+    fallbackUsed: false,
+    failureCode: null,
+  };
   for (let step = 0; step < maxSteps; step += 1) {
     const response = await invokeConfiguredLLM(
       config.llm,
-      capabilityForMessageType(event.messageType),
+      capability,
       {
         model: config.model || defaultModel,
         messages,
@@ -317,6 +333,7 @@ async function runNativeAgentCore(
         maxTokens: 1800,
       }
     );
+    telemetry = response.telemetry;
     inputTokens += response.usage?.prompt_tokens ?? 0;
     outputTokens += response.usage?.completion_tokens ?? 0;
     totalTokens += response.usage?.total_tokens ?? 0;
@@ -345,7 +362,7 @@ async function runNativeAgentCore(
             ...(event.instanceId ? { instanceId: event.instanceId } : {}),
           }
         );
-      return { response: text, steps: step + 1, model: response.model, toolCalls, transferred, pendingConfirmation, inputTokens, outputTokens, totalTokens, latencyMs: Date.now() - startedAt };
+      return { response: text, steps: step + 1, model: response.model, toolCalls, transferred, pendingConfirmation, inputTokens, outputTokens, totalTokens, latencyMs: Date.now() - startedAt, telemetry };
     }
     for (const call of assistant.tool_calls) {
       toolCalls += 1;
@@ -387,10 +404,23 @@ export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfi
       outputTokens: result.outputTokens,
       totalTokens: result.totalTokens,
       latencyMs: result.latencyMs,
+      provider: result.telemetry.provider,
+      capability: result.telemetry.capability,
+      providerAttempts: result.telemetry.attempts,
+      failureCode: result.telemetry.failureCode,
     });
     return result;
   } catch (error) {
-    await recordAgentRun({ workspaceId: event.workspaceId, eventId: event.eventId, contactId: event.contactId, outcome: "failed", steps: 0, toolCalls: 0, transferred: false, pendingConfirmation: false, latencyMs: Date.now() - startedAt });
+    const telemetry = error && typeof error === "object" && "telemetry" in error
+      ? (error as { telemetry: LLMInvocationTelemetry }).telemetry
+      : {
+          capability: capabilityForMessageType(event.messageType),
+          provider: null,
+          attempts: 0,
+          fallbackUsed: false,
+          failureCode: "agent_runtime_error",
+        };
+    await recordAgentRun({ workspaceId: event.workspaceId, eventId: event.eventId, contactId: event.contactId, outcome: "failed", steps: 0, toolCalls: 0, transferred: false, pendingConfirmation: false, latencyMs: Date.now() - startedAt, provider: telemetry.provider, capability: telemetry.capability, providerAttempts: telemetry.attempts, failureCode: telemetry.failureCode });
     throw error;
   }
 }

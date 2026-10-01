@@ -254,3 +254,12 @@ O runtime de IA agora tenta a rota primária e, em caso de indisponibilidade, HT
 As chaves de fallback seguem o mesmo tratamento da primária: armazenamento criptografado e retorno mascarado. O erro final informa apenas provider/status técnico resumido, sem retornar chave ou corpo potencialmente sensível. Foi adicionado contrato unitário para primário indisponível, fallback bem-sucedido e ausência de fallback implícito. `pnpm check` e testes focados passaram.
 
 Próximo slice: adicionar observabilidade de provider/capability na execução normal de texto e fechar a política de erro/fallback antes de entrar em transcrição de áudio. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+
+### Atualização posterior — MVP.2: observabilidade de provider e capability
+
+O runtime agora propaga telemetria sanitizada da chamada LLM: capability (`text`, `vision`, `audio` ou `document`), provider efetivamente usado, quantidade de tentativas, uso de fallback e código resumido de falha. `agentRuns` passa a persistir esses dados por workspace, além de `fallbackRuns` nas métricas agregadas. Falhas não armazenam corpo de resposta nem secrets.
+
+Foi criada a migration PostgreSQL `0057_agent_runs_provider_observability.sql`, registrada no journal, com índice por workspace/provider/data. A execução normal, transferência pelo gate e erro de provider usam o mesmo contrato de observabilidade. `pnpm check`, build, migration journal e testes focados passaram.
+
+Próximo slice: avançar para transcrição de áudio no fluxo de mensagem recebida, usando a capability `audio`, preservando mídia privada, fallback e telemetria. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.

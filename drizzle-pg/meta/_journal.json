@@ -400,6 +400,13 @@
       "when": 1790783000055,
       "tag": "0056_security_rate_limit_buckets",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1790815887538,
+      "tag": "0057_agent_runs_provider_observability",
+      "breakpoints": true
     }
   ]
 }

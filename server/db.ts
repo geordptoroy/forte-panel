@@ -6840,8 +6840,12 @@ export async function recordAgentRun(input: {
   workspaceId: number;
   eventId: string;
   contactId: number;
+  provider?: string | null;
+  capability?: string | null;
   model?: string;
   outcome: "resolved" | "transferred" | "pending_confirmation" | "failed";
+  providerAttempts?: number;
+  failureCode?: string | null;
   steps: number;
   toolCalls: number;
   transferred: boolean;
@@ -6863,7 +6867,7 @@ export async function recordAgentRun(input: {
 export async function getAgentMetrics(workspaceId: number, windowDays: number) {
   const db = await getDb();
   if (!db) return {
-    windowDays, runs: 0, resolved: 0, transferred: 0, pendingConfirmation: 0, failed: 0,
+    windowDays, runs: 0, resolved: 0, transferred: 0, pendingConfirmation: 0, failed: 0, fallbackRuns: 0,
     resolutionRate: 0, transferRate: 0, avgLatencyMs: 0, totalTokens: 0, inputTokens: 0, outputTokens: 0,
     receivedRevenueCents: 0, revenueAttribution: "workspace_total_not_attributed" as const,
   };
@@ -6875,6 +6879,7 @@ export async function getAgentMetrics(workspaceId: number, windowDays: number) {
       transferred: sql<number>`coalesce(sum(${agentRuns.transferred}), 0)`,
       pendingConfirmation: sql<number>`coalesce(sum(${agentRuns.pendingConfirmation}), 0)`,
       failed: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'failed' then 1 else 0 end), 0)`,
+      fallbackRuns: sql<number>`coalesce(sum(case when ${agentRuns.providerAttempts} > 1 then 1 else 0 end), 0)`,
       avgLatencyMs: sql<number>`coalesce(avg(${agentRuns.latencyMs}), 0)`,
       totalTokens: sql<number>`coalesce(sum(${agentRuns.totalTokens}), 0)`,
       inputTokens: sql<number>`coalesce(sum(${agentRuns.inputTokens}), 0)`,
@@ -6891,6 +6896,7 @@ export async function getAgentMetrics(workspaceId: number, windowDays: number) {
     transferred: Number(row?.transferred ?? 0),
     pendingConfirmation: Number(row?.pendingConfirmation ?? 0),
     failed: Number(row?.failed ?? 0),
+    fallbackRuns: Number(row?.fallbackRuns ?? 0),
     resolutionRate: runs ? Number(row?.resolved ?? 0) / runs : 0,
     transferRate: runs ? Number(row?.transferred ?? 0) / runs : 0,
     avgLatencyMs: Math.round(Number(row?.avgLatencyMs ?? 0)),

@@ -34,6 +34,24 @@ export type AgentProviderSettings = {
   routing: AgentRouting;
 };
 
+export type LLMInvocationTelemetry = {
+  capability: AgentCapability;
+  provider: AgentProviderId | null;
+  attempts: number;
+  fallbackUsed: boolean;
+  failureCode: string | null;
+};
+
+export class LLMProviderError extends Error {
+  constructor(
+    message: string,
+    readonly telemetry: LLMInvocationTelemetry
+  ) {
+    super(message);
+    this.name = "LLMProviderError";
+  }
+}
+
 const DEFAULTS: AgentProviderSettings = {
   providers: {
     nvidia_nim: {
@@ -167,7 +185,7 @@ export async function invokeConfiguredLLM(
   settings: AgentProviderSettings,
   capability: AgentCapability,
   params: InvokeParams
-): Promise<InvokeResult> {
+): Promise<InvokeResult & { telemetry: LLMInvocationTelemetry }> {
   const route = settings.routing[capability];
   const candidates = [route, ...(route.fallback ?? [])];
   const timeoutMsRaw = Number(process.env.AGENT_LLM_TIMEOUT_MS ?? 45_000);
@@ -175,7 +193,9 @@ export async function invokeConfiguredLLM(
     ? Math.max(1_000, Math.min(timeoutMsRaw, 180_000))
     : 45_000;
   const failures: string[] = [];
+  let attempts = 0;
   for (const candidate of candidates) {
+    attempts += 1;
     const provider = settings.providers[candidate.provider];
     const baseUrl = candidate.baseUrl || provider?.baseUrl;
     const apiKey = candidate.apiKey || provider?.apiKey;
@@ -203,15 +223,32 @@ export async function invokeConfiguredLLM(
         failures.push(`${candidate.provider}:http_${response.status}`);
         continue;
       }
-      return (await response.json()) as InvokeResult;
+      const result = (await response.json()) as InvokeResult;
+      return {
+        ...result,
+        telemetry: {
+          capability,
+          provider: candidate.provider,
+          attempts,
+          fallbackUsed: attempts > 1,
+          failureCode: null,
+        },
+      };
     } catch (error) {
       failures.push(
         `${candidate.provider}:${error instanceof Error ? error.name : "erro"}`
       );
     }
   }
-  throw new Error(
-    `Nenhum provider disponível para ${capability}; tentativas: ${failures.join(", ")}`
+  throw new LLMProviderError(
+    `Nenhum provider disponível para ${capability}; tentativas: ${failures.join(", ")}`,
+    {
+      capability,
+      provider: null,
+      attempts,
+      fallbackUsed: attempts > 1,
+      failureCode: failures.at(-1)?.split(":").slice(1).join(":") || "unavailable",
+    }
   );
 }
 

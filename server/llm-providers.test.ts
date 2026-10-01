@@ -37,6 +37,7 @@ describe("configured LLM routing", () => {
     });
 
     expect(result.choices[0]?.message.content).toBe("Resposta de fallback");
+    expect(result.telemetry).toEqual({ capability: "text", provider: "google_gemini", attempts: 2, fallbackUsed: true, failureCode: null });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe("fallback-model");
   });
@@ -45,10 +46,12 @@ describe("configured LLM routing", () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("unavailable"));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(invokeConfiguredLLM({
+    const error = await invokeConfiguredLLM({
       ...settings,
       routing: { ...settings.routing, text: { provider: "nvidia_nim", model: "primary-model" } },
-    }, "text", { model: "unused-model", messages: [] })).rejects.toThrow("tentativas: nvidia_nim:Error");
+    }, "text", { model: "unused-model", messages: [] }).catch(error => error);
+    expect(error.telemetry).toEqual({ capability: "text", provider: null, attempts: 1, fallbackUsed: false, failureCode: "Error" });
+    expect(error.message).toContain("tentativas: nvidia_nim:Error");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
