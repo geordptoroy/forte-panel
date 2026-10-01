@@ -10,7 +10,7 @@ Você é a próxima IA responsável por continuar o desenvolvimento do **Forte P
 
 - Repositório GitHub: `geordptoroy/forte-panel`
 - Branch de trabalho: `feat/o7.15-storage-reconciliation-observability`
-- Último commit funcional publicado: `3866a96 test: prove controlled native agent resume`
+- Último commit funcional publicado: `28723f3 test: align synthetic model assertions with routing`
 - PR aberta: #39
 - Não fazer merge automático de PRs ou branches empilhadas.
 - O working tree deve começar limpo; confirme isso antes de editar.
@@ -118,6 +118,7 @@ Há um gap antigo de áudio na UI — botão de gravar/anexar duplicado e reprod
 Commits recentes:
 
 ```text
+28723f3 test: align synthetic model assertions with routing
 3866a96 test: prove controlled native agent resume
 db243df test: prove paused agent events remain reprocessable
 4705446 test: close integrated native agent kill switch gate
