@@ -13,8 +13,17 @@ import { trpc } from "@/lib/trpc";
 
 export default function WorkspaceAgentPage() {
   const query = trpc.agent.workspaceConfig.useQuery();
-  const metricsQuery = trpc.agent.metrics.useQuery({ windowDays: 30 });
-  const killSwitchQuery = trpc.agent.killSwitch.useQuery();
+  const accessQuery = trpc.auth.access.useQuery();
+  const [windowDays, setWindowDays] = useState<7 | 30 | 90>(30);
+  const canViewMetrics = Boolean(accessQuery.data?.canManageCatalog);
+  const metricsQuery = trpc.agent.metrics.useQuery(
+    { windowDays },
+    { enabled: canViewMetrics, retry: false }
+  );
+  const killSwitchQuery = trpc.agent.killSwitch.useQuery(undefined, {
+    enabled: canViewMetrics,
+    retry: false,
+  });
   const saveMutation = trpc.agent.saveWorkspaceConfig.useMutation({
     onSuccess: result => setConfig(result),
   });
@@ -65,13 +74,21 @@ export default function WorkspaceAgentPage() {
       </section>
 
       <section className="surface ai-config-section">
-        <SectionTitle eyebrow="Saúde operacional · últimos 30 dias" title="Decisões do agente" />
-        {metricsQuery.isLoading ? (
+        <SectionTitle eyebrow={`Saúde operacional · últimos ${windowDays} dias`} title="Decisões do agente" />
+        {accessQuery.isLoading ? (
+          <p className="muted">Verificando permissão de visualização...</p>
+        ) : !canViewMetrics ? (
+          <div className="agent-empty-state"><ShieldCheck size={13} /> Métricas disponíveis somente para proprietário, administrador ou gerente.</div>
+        ) : metricsQuery.isLoading ? (
           <p className="muted">Consultando execuções deste workspace...</p>
         ) : metricsQuery.error ? (
           <p className="form-error">Não foi possível consultar a saúde do agente.</p>
         ) : (
           <>
+            <div className="agent-period-picker" role="group" aria-label="Período das métricas">
+              <span>Período</span>
+              {[7, 30, 90].map(days => <button key={days} type="button" className={windowDays === days ? "is-selected" : ""} onClick={() => setWindowDays(days as 7 | 30 | 90)}>{days} dias</button>)}
+            </div>
             <div className="stat-grid agent-health-grid">
               <div className="surface stat-card"><span className="stat-label">Execuções</span><strong className="stat-value">{metricsQuery.data?.runs ?? 0}</strong><span className="stat-foot">Mensagens processadas</span></div>
               <div className="surface stat-card"><span className="stat-label">Resolvidas</span><strong className="stat-value">{Math.round((metricsQuery.data?.resolutionRate ?? 0) * 100)}%</strong><span className="stat-foot">Taxa de resolução</span></div>
