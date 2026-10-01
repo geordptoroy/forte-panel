@@ -196,3 +196,16 @@ Entrega documentada em `O3.4-ENTREGA-ORCAMENTO-ITEMIZADO.md`. Validações: `pnp
 ## Próxima ação vigente
 
 A próxima fatia é **O3.5 — Agenda com conflito, profissional e status**. Auditar criação, reagendamento, cancelamento, timezone, profissional, conflito e vínculo entre orçamento aprovado e agendamento.
+
+
+## O3.5 concluída — agenda operacional — 2026-10-01
+
+A agenda mantém validação tenant-scoped de profissional, serviço, disponibilidade, timezone, período e conflito concorrente. A máquina de estados agora bloqueia saltos e reaberturas: `requested → confirmed/cancelled`, `confirmed → in_progress/cancelled/no_show` e `in_progress → completed/cancelled`; estados terminais não podem ser reabertos. Mudanças efetivas geram auditoria com origem e destino.
+
+Reagendamento foi exposto em `agenda.reschedule` para gestores e reaplica todas as regras de horário/conflito, retornando o atendimento a `requested`. Appointments podem carregar `quoteId`, mas o backend só aceita orçamento aprovado do mesmo workspace e contato. Migration: `drizzle/0010_appointment_quote_link.sql`.
+
+Entrega documentada em `O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md`. Validações: `pnpm check`, `pnpm build`, 26 testes aprovados, 3 testes PostgreSQL de isolamento pulados sem `DATABASE_URL` e `git diff --check`.
+
+## Próxima ação vigente
+
+A próxima fatia é **O3.6 — Recebimento, ledger operacional e recibo**. Auditar recebimentos atuais, separar evento financeiro de status do orçamento, criar ledger append-only tenant-scoped e gerar recibo operacional sem gateway de pagamento.

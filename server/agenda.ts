@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, lt, ne } from "drizzle-orm";
 import {
   appointmentsTable,
+  auditLogs,
   availability,
   contacts,
   professionals,
@@ -9,12 +10,25 @@ import {
   workspaces,
 } from "../drizzle/schema";
 import { getDb, enqueueDomainEvent } from "./db";
+import { ScheduleError } from "./schedule";
 
 export type AppointmentStatus = "requested" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
+const appointmentTransitions: Record<AppointmentStatus, AppointmentStatus[]> = {
+  requested: ["confirmed", "cancelled"],
+  confirmed: ["in_progress", "cancelled", "no_show"],
+  in_progress: ["completed", "cancelled"],
+  completed: [],
+  cancelled: [],
+  no_show: [],
+};
+export function canTransitionAppointmentStatus(from: AppointmentStatus, to: AppointmentStatus) {
+  return from === to || appointmentTransitions[from].includes(to);
+}
 
 export type AgendaEntry = {
   id: number;
   contactId: number | null;
+  quoteId: number | null;
   serviceId: number;
   professionalId: number;
   startsAt: Date;
@@ -62,6 +76,7 @@ export async function listAppointmentsForProfessional(workspaceId: number, profe
   const rows = await db.select({
     id: appointmentsTable.id,
     contactId: appointmentsTable.contactId,
+    quoteId: appointmentsTable.quoteId,
     serviceId: appointmentsTable.serviceId,
     professionalId: appointmentsTable.professionalId,
     startsAt: appointmentsTable.startsAt,
@@ -202,8 +217,21 @@ export async function transitionAppointment(input: {
   const appointment = (await db.select().from(appointmentsTable).where(and(...filters)).limit(1))[0];
   if (!appointment) return undefined;
   if (appointment.status === input.status) return appointment;
+  if (!canTransitionAppointmentStatus(appointment.status, input.status))
+    throw new ScheduleError(
+      "invalid_period",
+      `Transição inválida: ${appointment.status} → ${input.status}`
+    );
   const updatedAt = new Date();
   const updated = await db.update(appointmentsTable).set({ status: input.status, updatedAt }).where(and(eq(appointmentsTable.id, appointment.id), eq(appointmentsTable.workspaceId, input.workspaceId))).returning();
+  if (appointment.contactId)
+    await db.insert(auditLogs).values({
+      workspaceId: input.workspaceId,
+      actorUserId: input.actorUserId,
+      contactId: appointment.contactId,
+      action: `appointment_${input.status}`,
+      summary: `Agendamento ${appointment.id}: ${appointment.status} → ${input.status}`,
+    });
   if (input.status === "confirmed" || input.status === "cancelled") {
     await enqueueDomainEvent({
       workspaceId: input.workspaceId,

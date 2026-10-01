@@ -1274,6 +1274,7 @@ export const appointmentsTable = pgTable(
     id: serial("id").primaryKey(),
     workspaceId: integer("workspaceId").notNull(),
     contactId: integer("contactId"),
+    quoteId: integer("quoteId"),
     serviceId: integer("serviceId").notNull(),
     professionalId: integer("professionalId").notNull(),
     startsAt: timestamp("startsAt").notNull(),

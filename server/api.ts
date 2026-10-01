@@ -59,6 +59,7 @@ const contactSchema = z.object({
 });
 const appointmentSchema = z.object({
   contactId: z.number().int().positive().optional(),
+  quoteId: z.number().int().positive().optional(),
   serviceId: z.number().int().positive(),
   professionalId: z.number().int().positive(),
   startsAt: z.coerce.date(),
@@ -739,6 +740,7 @@ api.get("/availability", async (req, res) => {
       )
       .map(appointment => ({
         id: appointment.id,
+        quoteId: appointment.quoteId,
         serviceId: appointment.serviceId,
         professionalId: appointment.professionalId,
         startsAt: appointment.startsAt,
@@ -805,6 +807,7 @@ api.post("/appointments", async (req, res) => {
         body: {
           data: {
             id: appointment?.id,
+            quoteId: appointment?.quoteId,
             status: appointment?.status,
             startsAt: appointment?.startsAt,
             endsAt: appointment?.endsAt,
@@ -1122,6 +1125,7 @@ api.post("/appointments/:id/reschedule", async (req, res) => {
         body: {
           data: {
             id,
+            quoteId: appointment.quoteId,
             status: appointment.status,
             startsAt: appointment.startsAt,
             endsAt: appointment.endsAt,

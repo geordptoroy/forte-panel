@@ -4664,6 +4664,7 @@ export type AgendaSnapshot = {
   appointments: {
     id: number;
     contactId: number | null;
+    quoteId: number | null;
     serviceId: number;
     professionalId: number;
     startsAt: Date;
@@ -4767,6 +4768,7 @@ export async function getAgendaSnapshot(
         .select({
           id: appointmentsTable.id,
           contactId: appointmentsTable.contactId,
+          quoteId: appointmentsTable.quoteId,
           serviceId: appointmentsTable.serviceId,
           professionalId: appointmentsTable.professionalId,
           startsAt: appointmentsTable.startsAt,
@@ -4843,6 +4845,7 @@ export async function createAgendaAppointment(
   workspaceId: number,
   input: {
     contactId?: number;
+    quoteId?: number;
     serviceId: number;
     professionalId: number;
     startsAt: Date;
@@ -4890,6 +4893,19 @@ export async function createAgendaAppointment(
         "contact_unavailable",
         "Contato não encontrado neste workspace"
       );
+  }
+  if (input.quoteId) {
+    const quote = (
+      await db
+        .select({ id: quotes.id, contactId: quotes.contactId, status: quotes.status })
+        .from(quotes)
+        .where(and(eq(quotes.id, input.quoteId), eq(quotes.workspaceId, workspaceId)))
+        .limit(1)
+    )[0];
+    if (!quote || quote.status !== "aprovado")
+      throw new ScheduleError("contact_unavailable", "O orçamento precisa estar aprovado neste workspace");
+    if (input.contactId !== quote.contactId)
+      throw new ScheduleError("contact_unavailable", "O orçamento não pertence ao contato informado");
   }
   const createdAppointment = await db.transaction(async tx => {
     await tx.execute(
@@ -7315,6 +7331,11 @@ export async function cancelAgendaAppointment(
       .limit(1)
   )[0];
   if (!appointment) return undefined;
+  if (appointment.status === "completed" || appointment.status === "no_show")
+    throw new ScheduleError(
+      "invalid_period",
+      "Um atendimento encerrado não pode ser cancelado"
+    );
   const updatedAt = new Date();
   await db
     .update(appointmentsTable)
@@ -7473,6 +7494,13 @@ export async function rescheduleAgendaAppointment(
         )
       )
       .returning();
+    if (updated[0]?.contactId)
+      await tx.insert(auditLogs).values({
+        workspaceId,
+        contactId: updated[0].contactId,
+        action: "appointment_rescheduled",
+        summary: `Agendamento ${appointmentId} reagendado para ${startsAt.toISOString()}`,
+      });
     return updated[0];
   });
 }

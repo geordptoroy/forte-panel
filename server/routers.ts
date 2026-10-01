@@ -33,6 +33,7 @@ import {
   createWorkspaceInvite,
   createProfessional,
   createAgendaAppointment,
+  rescheduleAgendaAppointment,
   cancelAgendaAppointment,
   updateAgendaStatus,
   createQuote,
@@ -2479,6 +2480,7 @@ export const appRouter = router({
       .input(
         z.object({
           contactId: z.number().int().positive().optional(),
+          quoteId: z.number().int().positive().optional(),
           serviceId: z.number().int().positive(),
           professionalId: z.number().int().positive(),
           startsAt: z.coerce.date(),
@@ -2538,6 +2540,41 @@ export const appRouter = router({
           summary: `Agendamento ${appointment.id} criado para ${input.startsAt.toISOString()}`,
         });
         return { id: appointment.id, status: appointment.status };
+      }),
+    reschedule: protectedProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          startsAt: z.coerce.date(),
+          endsAt: z.coerce.date(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
+        if (!access.memberActive)
+          throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
+        if (!access.canSeeFullAgenda)
+          throw new TRPCError({ code: "FORBIDDEN", message: "Somente gestores podem reagendar pela agenda" });
+        try {
+          const updated = await rescheduleAgendaAppointment(
+            ctx.workspace.workspaceId,
+            input.id,
+            input.startsAt,
+            input.endsAt
+          );
+          if (!updated)
+            throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado" });
+          await logWorkspaceAction({
+            workspaceId: ctx.workspace.workspaceId,
+            actorUserId: ctx.user.id,
+            action: "appointment_rescheduled",
+            summary: `Agendamento ${input.id} reagendado para ${input.startsAt.toISOString()}`,
+          });
+          return { id: updated.id, status: updated.status, startsAt: updated.startsAt, endsAt: updated.endsAt };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          throwScheduleTrpcError(error);
+        }
       }),
     updateStatus: protectedProcedure
       .input(
