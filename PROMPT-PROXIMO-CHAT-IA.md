@@ -10,7 +10,7 @@ Você é a próxima IA responsável por continuar o desenvolvimento do **Forte P
 
 - Repositório GitHub: `geordptoroy/forte-panel`
 - Branch de trabalho: `feat/o7.15-storage-reconciliation-observability`
-- Último commit funcional publicado: `ba265d8 feat: expose aggregate agent health to platform console`
+- Último commit funcional publicado: `b4ae056 docs: close platform health contract continuity`
 - PR aberta: #39
 - Não fazer merge automático de PRs ou branches empilhadas.
 - O working tree deve começar limpo; confirme isso antes de editar.
@@ -286,6 +286,7 @@ Até lá, use termos como **implementado em código**, **validado por testes sin
 ## Estado final desta continuidade — O5.7
 
 - Último commit de implementação: `32e074c test: fix aggregate health key ordering`.
+- Último commit documental/estado: `b4ae056 docs: close platform health contract continuity`.
 - Entrega canônica: `O5.7-ENTREGA-CONTRATO-PLATFORM-HEALTH.md`.
 - CI PostgreSQL verde: run `36941127598`, sem skips.
 - Contrato: `server/platform-health.contract.integration.test.ts`.
