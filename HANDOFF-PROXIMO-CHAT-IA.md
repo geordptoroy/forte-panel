@@ -287,3 +287,7 @@ Implementado `server/media-analysis.ts`. Mensagens inbound de imagem e documento
 A análise limita a saída, instrui o provider a preservar texto/números/datas e sinalizar incertezas, e registra provider/tentativas separados em `agentRuns` (`mediaAnalysisProvider` e `mediaAnalysisAttempts`). Foram adicionados testes de payload e telemetria para visão e documento. A validação técnica passou sem teste manual local, conforme orientação do operador.
 
 Próximo slice: fechar o kill switch e o aceite técnico integrado das quatro capacidades (text, audio, vision, document), podendo usar fixtures sintéticos no CI/Sandbox. Não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+### Prompt operacional de transferência
+
+O fluxo de trabalho, as regras do usuário, o estado técnico atual, os commits, as tags GHCR, os comandos, os critérios de validação e o próximo slice foram consolidados em `PROMPT-PROXIMO-CHAT-IA.md`. A próxima IA deve ler esse prompt junto com este handoff e o roadmap antes de executar qualquer ação.
