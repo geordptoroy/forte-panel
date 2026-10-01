@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   agentRuns,
+  auditLogs,
   domainEvents,
   workspaceSettings,
   workspaces,
@@ -91,6 +92,10 @@ describe.skipIf(!hasDatabase)("native agent runtime integration", () => {
       .where(
         andWorkspaceEvents(workspaceId, eventKeys)
       );
+    const auditRows = await db
+      .select({ action: auditLogs.action, summary: auditLogs.summary })
+      .from(auditLogs)
+      .where(eq(auditLogs.workspaceId, workspaceId));
 
     expect(rows).toHaveLength(4);
     expect(rows).toEqual(
@@ -105,6 +110,33 @@ describe.skipIf(!hasDatabase)("native agent runtime integration", () => {
           })
         )
       )
+    );
+    expect(auditRows).toHaveLength(4);
+    expect(auditRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "native_agent_kill_switch_blocked",
+          summary: expect.stringContaining("capability text"),
+        }),
+        expect.objectContaining({
+          action: "native_agent_kill_switch_blocked",
+          summary: expect.stringContaining("capability audio"),
+        }),
+        expect.objectContaining({
+          action: "native_agent_kill_switch_blocked",
+          summary: expect.stringContaining("capability vision"),
+        }),
+        expect.objectContaining({
+          action: "native_agent_kill_switch_blocked",
+          summary: expect.stringContaining("capability document"),
+        }),
+      ])
+    );
+    expect(
+      auditRows.every(row => !/[\u0000-\u001f\u007f]/.test(row.summary))
+    ).toBe(true);
+    expect(auditRows.every(row => !row.summary.includes("https://"))).toBe(
+      true
     );
     expect(
       await db.select({ id: agentRuns.id }).from(agentRuns).where(eq(agentRuns.workspaceId, workspaceId))

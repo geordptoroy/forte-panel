@@ -123,6 +123,7 @@ import {
   type NotificationEvent,
 } from "./notification-contract";
 import {
+  capabilityForMessageType,
   decryptProviderSecret,
   encryptProviderSecret,
   maskProviderSecret,
@@ -3688,6 +3689,28 @@ export async function setNativeAgentKillSwitch(input: { workspaceId: number; pau
   const changedAt = new Date().toISOString();
   await upsertWorkspaceSetting(input.workspaceId, NATIVE_AGENT_KILL_SWITCH_KEY, JSON.stringify({ paused: input.paused, reason: sanitizeAgentPauseReason(input.reason), changedAt, changedBy: input.actorUserId }));
   return getNativeAgentKillSwitch(input.workspaceId);
+}
+
+export async function recordNativeAgentKillSwitchBlock(input: {
+  workspaceId: number;
+  eventId: string;
+  messageType?: string;
+  reason: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const capability = capabilityForMessageType(input.messageType);
+  const reason = sanitizeAgentPauseReason(input.reason);
+  const eventId = input.eventId.replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 120);
+  await db.insert(auditLogs).values({
+    workspaceId: input.workspaceId,
+    action: "native_agent_kill_switch_blocked",
+    summary:
+      `Agente pausado: capability ${capability}; evento ${eventId}; motivo ${reason}`.slice(
+        0,
+        500
+      ),
+  });
 }
 
 async function readStoredNativeAgentConfig(workspaceId?: number) {
@@ -8752,6 +8775,12 @@ export async function processDomainEventsOnce(
         const runtimeGate = decideAgentRuntimeGate(config);
         if (runtimeGate.action !== "execute") {
           if (runtimeGate.action === "requeue") {
+            await recordNativeAgentKillSwitchBlock({
+              workspaceId: item.workspaceId,
+              eventId: item.eventKey,
+              messageType: String(eventPayload.messageType ?? "text"),
+              reason: runtimeGate.reason,
+            });
             await db
               .update(domainEvents)
               .set({

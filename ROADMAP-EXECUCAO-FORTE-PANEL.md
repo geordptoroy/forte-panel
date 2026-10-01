@@ -333,3 +333,13 @@ Este quadro deve ser atualizado a cada fatia. O documento canônico continua sen
 - [x] Publicar a imagem do Console Admin agregado: run [`36939943370`](https://github.com/geordptoroy/forte-panel/actions/runs/36939943370).
 
 **Próxima fatia:** revisão/aceite da PR #39 e preparação da Onda O6 para prova persistente de produção. Não repetir backup/restore, pareamento real ou aceite manual já concluídos.
+
+
+## Atualização de estado — contrato integrado do kill switch — 2026-10-01
+- [x] Confirmar gate tenant-scoped antes de qualquer provider para `text`, `audio`, `vision` e `document`.
+- [x] Preservar eventos pausados como `pending`/reprocessáveis, sem criar `agentRuns`.
+- [x] Registrar auditoria redigida `native_agent_kill_switch_blocked` com capability, evento truncado e motivo sanitizado; sem conteúdo de mensagem, URL ou secret.
+- [x] Ampliar o contrato PostgreSQL em `server/agent-runtime.integration.test.ts` para provar as quatro auditorias e ausência de execução.
+- [x] Validações locais: `pnpm check`, build, `git diff --check` e testes focados passaram; a integração PostgreSQL ficou skip no Sandbox por ausência de `DATABASE_URL`.
+- [ ] Executar CI PostgreSQL sem skips para fechar a evidência da fatia.
+**Próxima fatia:** acompanhar o CI PostgreSQL desta alteração e, se verde, revisar/aceitar a PR #39 sem merge automático e preparar a Onda O6 de infraestrutura persistente.

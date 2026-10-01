@@ -384,3 +384,11 @@ O contrato integrado foi concluído em `server/platform-health.contract.integrat
 O boundary real do `appRouter` agora é provado com dois workspaces e execuções sintéticas contendo dados sensíveis. A resposta de `platform.health` retorna somente o agregado `status`, `runs30d`, `failures30d` e `fallbackRuns30d`, além dos componentes operacionais já existentes. Acesso sem `platformAdmins` recebe `FORBIDDEN`.
 
 Documentação canônica: `O5.7-ENTREGA-CONTRATO-PLATFORM-HEALTH.md`. O roadmap, índice e `todo.md` foram atualizados. Próxima ação autorizada: revisar/aceitar a PR #39 sem merge automático e preparar a Onda O6 com infraestrutura persistente; não repetir backup/restore, pareamento real ou aceite manual já concluídos.
+
+
+### Atualização posterior — contrato integrado do kill switch — 2026-10-01
+A auditoria da branch `feat/o7.15-storage-reconciliation-observability` confirmou que o gate tenant-scoped já bloqueava o runtime pausado antes de qualquer provider para `text`, `audio`, `vision` e `document`, mantendo os eventos `pending` e reprocessáveis e impedindo reativação pelo modelo. A lacuna fechada nesta fatia foi a auditoria por evento: o worker agora registra `native_agent_kill_switch_blocked` com capability derivada do `messageType`, event key truncado e motivo sanitizado, sem conteúdo, URL ou secret; `agentRuns` continua vazio durante a pausa.
+
+O contrato `server/agent-runtime.integration.test.ts` agora prova as quatro capabilities, as quatro auditorias sanitizadas e a ausência de `agentRuns`. No Sandbox passaram `pnpm check`, `pnpm build`, `git diff --check`, `server/agent-runtime-gate.test.ts` e `server/migration-journal.test.ts`; `server/agent-runtime.integration.test.ts` foi coletado e marcado skip por ausência de `DATABASE_URL`. O check global de Prettier ainda acusa formatação histórica preexistente nos dois arquivos, sem reformatar o legado.
+
+**Próxima ação:** executar/acompanhar o CI PostgreSQL sem skips para esta alteração. Se verde, revisar/aceitar a PR #39 sem merge automático e preparar a Onda O6 de infraestrutura persistente. Manter `CORE_ONLY_MODE = true`, não repetir backup/restore, pareamento real ou aceite manual.
