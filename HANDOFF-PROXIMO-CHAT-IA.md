@@ -212,3 +212,9 @@ Implementada a primeira correção da aceitação MVP, mantendo `CORE_ONLY_MODE 
 - a suíte completa local ainda falha somente na camada já conhecida de dependências ausentes do subprojeto `forte-whatsapp` (`baileys`, `pino`, `qrcode`) e no teste do patch pinned; 73 arquivos passaram, 18 foram pulados e 1 teste do patch falhou por arquivo ausente.
 
 Próximo passo na máquina Windows: atualizar a branch, iniciar com `scripts/start-docker.ps1`, criar uma conta via `/signup` (não usar a conta de console admin), confirmar que login permanece na sessão, percorrer a sidebar e repetir inbound/outbound com a instância pareada. Se a Inbox ainda vier vazia, coletar somente status/logs sanitizados e contagens tenant-scoped; não apagar volumes nem parear um número real adicional sem instrução.
+
+### Atualização posterior — aceite manual MVP.1
+
+O operador confirmou o fluxo principal com conta criada em `/signup`: autenticação, sidebar, conexão WhatsApp, inbound/outbound na Inbox, refresh da conversa, Kanban com mudança de etapa persistida, Contatos, Serviços, Profissionais, Agenda e Integrações. O aceite manual é parcial por três gaps concretos: áudio recebido não reproduz dentro do painel, o composer tem controles sobrepostos de gravação/anexo e Profissionais ainda não possui intervalos intradiários.
+
+Próximo slice recomendado: corrigir reprodução de áudio na Inbox e consolidar o composer. Depois, implementar intervalos/disponibilidade dos profissionais e validar conflitos na Agenda. Não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle neste momento.
