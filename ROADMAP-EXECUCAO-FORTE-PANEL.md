@@ -343,3 +343,12 @@ Este quadro deve ser atualizado a cada fatia. O documento canônico continua sen
 - [x] Validações locais: `pnpm check`, build, `git diff --check` e testes focados passaram; a integração PostgreSQL ficou skip no Sandbox por ausência de `DATABASE_URL`.
 - [ ] Executar CI PostgreSQL sem skips para fechar a evidência da fatia.
 **Próxima fatia:** acompanhar o CI PostgreSQL desta alteração e, se verde, revisar/aceitar a PR #39 sem merge automático e preparar a Onda O6 de infraestrutura persistente.
+
+
+## Atualização de estado — revisão da PR #39 e transição para O6 — 2026-10-01
+- [x] CI PostgreSQL no head `2cbc5c4`: run [`36941988050`](https://github.com/geordptoroy/forte-panel/actions/runs/36941988050), concluído com sucesso e sem skips.
+- [x] Verify/Publish GHCR no head `2cbc5c4`: run [`36941988213`](https://github.com/geordptoroy/forte-panel/actions/runs/36941988213), concluído com sucesso.
+- [x] Revisão técnica da PR #39 concluída; a PR está `OPEN` e `CLEAN`, sem merge automático.
+- [ ] Aprovação formal externa: a conta autora não pode aprovar a própria PR (`Review Can not approve your own pull request`).
+- [ ] Preparar prova O6 em PostgreSQL persistente/staging com dois ou mais workspaces, sem repetir backup/restore ou pareamento já concluídos.
+**Próxima fatia:** obter revisão de outro mantenedor ou manter a PR aguardando revisão e preparar o ambiente persistente da Onda O6; não executar merge automático.

@@ -392,3 +392,9 @@ A auditoria da branch `feat/o7.15-storage-reconciliation-observability` confirmo
 O contrato `server/agent-runtime.integration.test.ts` agora prova as quatro capabilities, as quatro auditorias sanitizadas e a ausência de `agentRuns`. No Sandbox passaram `pnpm check`, `pnpm build`, `git diff --check`, `server/agent-runtime-gate.test.ts` e `server/migration-journal.test.ts`; `server/agent-runtime.integration.test.ts` foi coletado e marcado skip por ausência de `DATABASE_URL`. O check global de Prettier ainda acusa formatação histórica preexistente nos dois arquivos, sem reformatar o legado.
 
 **Próxima ação:** executar/acompanhar o CI PostgreSQL sem skips para esta alteração. Se verde, revisar/aceitar a PR #39 sem merge automático e preparar a Onda O6 de infraestrutura persistente. Manter `CORE_ONLY_MODE = true`, não repetir backup/restore, pareamento real ou aceite manual.
+
+
+### Atualização posterior — revisão da PR #39 e transição para O6 — 2026-10-01
+O preflight confirmou a branch limpa no head `2cbc5c4`. O CI PostgreSQL [`36941988050`](https://github.com/geordptoroy/forte-panel/actions/runs/36941988050) passou sem skips no mesmo head, e o workflow GHCR [`36941988213`](https://github.com/geordptoroy/forte-panel/actions/runs/36941988213) concluiu Verify e Publish com sucesso. A PR [#39](https://github.com/geordptoroy/forte-panel/pull/39) está `OPEN` e `CLEAN`; não foi feito merge.
+
+A revisão técnica foi concluída, mas a aprovação formal não pôde ser registrada porque a conta autora não pode aprovar a própria PR (`Review Can not approve your own pull request`). Não contornar essa proteção. O próximo trabalho é obter revisão de outro mantenedor ou deixar a PR aguardando revisão e preparar a Onda O6 em PostgreSQL persistente/staging com dois ou mais workspaces, migrations limpas, provas negativas, browser smoke e evidência operacional. Não repetir backup/restore, pareamento real ou aceite manual já concluídos; manter `CORE_ONLY_MODE = true`.
