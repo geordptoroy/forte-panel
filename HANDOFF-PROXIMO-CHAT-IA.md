@@ -4,7 +4,7 @@
 >
 > **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
 > **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
-> **Último commit funcional publicado:** `6d7583c` — `test: prove capability fallback and failure telemetry`.<br>
+> **Último commit funcional publicado:** `2c1ae37` — `feat: expose agent fallback health metrics`.<br>
 > **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
 > **Próxima fatia autorizada:** auditoria/fechamento do kill switch e contrato integrado das capabilities `text`, `audio`, `vision` e `document`.<br>
 > **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
@@ -352,3 +352,9 @@ Esta fatia prova kill switch pausado → reativação autorizada → execução 
 A fatia `O5.2` foi concluída no commit `6d7583c` e documentada em `O5.2-ENTREGA-FALLBACK-FALHAS-CONTROLADAS.md`. Foram adicionados contratos para `text`, `vision`, `audio` e `document`, cobrindo fallback explícito, ausência de fallback e telemetria limitada. A prova PostgreSQL também confirma fallback persistido como `resolved` com `providerAttempts = 2` e falha fail-closed persistida como `failed`, com `providerAttempts = 1`, `provider = null` e `failureCode = Error`.
 
 O CI PostgreSQL [`36908513533`](https://github.com/geordptoroy/forte-panel/actions/runs/36908513533) passou sem skips. Gates locais `pnpm check`, `pnpm build` e suíte focada passaram. O próximo slice é expor métricas de fallback/falha no painel/admin com isolamento por `workspaceId` e sem dados sensíveis.
+
+### Atualização posterior — métricas operacionais do agente — 2026-10-01
+
+A fatia `O5.3` foi concluída no commit `2c1ae37` e documentada em `O5.3-ENTREGA-METRICAS-AGENTE.md`. `getAgentMetrics` continua tenant-scoped por `workspaceId` e agora retorna breakdown agregado por capability e os códigos de falha mais recorrentes, sem provider, modelo, URL, prompt, conteúdo ou secret. A tela **Agente de IA** exibe execuções, taxa de resolução, fallbacks, falhas, estado do kill switch, capability breakdown e incidentes resumidos.
+
+O CI PostgreSQL [`36933812864`](https://github.com/geordptoroy/forte-panel/actions/runs/36933812864) passou sem skips. Gates locais `pnpm check`, `pnpm build` e suíte focada passaram. O próximo slice é fechar governança operacional de visualização/período/estados, mantendo a separação entre operador do workspace e Console Admin.
