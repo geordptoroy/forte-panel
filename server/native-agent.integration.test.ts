@@ -185,4 +185,109 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
       expect.objectContaining({ eventId: eventIds[3], outcome: "resolved", mediaAnalysisProvider: "google_gemini" }),
     ]));
   });
+
+  it("uses configured fallback and persists a fail-closed provider error", async () => {
+    const textRecord = contactsByType.get("text");
+    if (!textRecord) throw new Error("fixture ausente: text");
+
+    const fallbackSettings: AgentProviderSettings = {
+      ...settings,
+      providers: {
+        ...settings.providers,
+        nvidia_nim: {
+          enabled: true,
+          baseUrl: "https://synthetic-primary.invalid/v1",
+          apiKey: "primary-key",
+        },
+      },
+      routing: {
+        ...settings.routing,
+        text: {
+          provider: "nvidia_nim",
+          model: "synthetic-primary-text",
+          fallback: [{ provider: "google_gemini", model: "synthetic-fallback-text" }],
+        },
+      },
+    };
+    const fallbackEventId = `synthetic:fallback:${suffix}`;
+    const fallbackFetch = vi.fn()
+      .mockRejectedValueOnce(new Error("primary unavailable"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        model: "synthetic-fallback-text",
+        choices: [{ message: { content: "Resposta recuperada pelo fallback." } }],
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fallbackFetch);
+
+    await runNativeAgent({
+      eventId: fallbackEventId,
+      workspaceId,
+      contactId: textRecord.contactId,
+      conversationId: textRecord.conversationId,
+      content: "mensagem com fallback",
+      messageType: "text",
+    }, {
+      enabled: true,
+      model: "ignored-by-route",
+      systemPrompt: "Responda de forma curta.",
+      maxSteps: 1,
+      llm: fallbackSettings,
+    });
+    expect(fallbackFetch).toHaveBeenCalledTimes(2);
+
+    const failedEventId = `synthetic:failed:${suffix}`;
+    const failedFetch = vi.fn().mockRejectedValue(new Error("provider offline"));
+    vi.stubGlobal("fetch", failedFetch);
+    await expect(runNativeAgent({
+      eventId: failedEventId,
+      workspaceId,
+      contactId: textRecord.contactId,
+      conversationId: textRecord.conversationId,
+      content: "mensagem sem fallback",
+      messageType: "text",
+    }, {
+      enabled: true,
+      model: "ignored-by-route",
+      systemPrompt: "Responda de forma curta.",
+      maxSteps: 1,
+      llm: {
+        ...settings,
+        routing: {
+          ...settings.routing,
+          text: { provider: "google_gemini", model: "synthetic-no-fallback" },
+        },
+      },
+    })).rejects.toThrow("Nenhum provider disponível para text");
+
+    const db = await getDb();
+    if (!db) throw new Error("database unavailable");
+    const runs = await db
+      .select({
+        eventId: agentRuns.eventId,
+        outcome: agentRuns.outcome,
+        provider: agentRuns.provider,
+        providerAttempts: agentRuns.providerAttempts,
+        failureCode: agentRuns.failureCode,
+      })
+      .from(agentRuns)
+      .where(and(
+        eq(agentRuns.workspaceId, workspaceId),
+        inArray(agentRuns.eventId, [fallbackEventId, failedEventId])
+      ));
+    expect(runs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        eventId: fallbackEventId,
+        outcome: "resolved",
+        provider: "google_gemini",
+        providerAttempts: 2,
+        failureCode: null,
+      }),
+      expect.objectContaining({
+        eventId: failedEventId,
+        outcome: "failed",
+        provider: null,
+        providerAttempts: 1,
+        failureCode: "Error",
+      }),
+    ]));
+  });
 });
