@@ -82,6 +82,13 @@ const routeCatalog: Record<string, ReleaseSurface> = {
     reason: "Governança técnica interna, sem exposição ao cliente final.",
     enabledInCore: false,
   },
+  "/ai-agent": {
+    state: "public_ready",
+    title: "Agente de IA",
+    reason:
+      "Política de comportamento do agente por workspace, sem credenciais de provider.",
+    enabledInCore: true,
+  },
   "/kanban": {
     state: "not_ready",
     title: "Funil de atendimento",

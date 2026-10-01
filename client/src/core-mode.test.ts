@@ -15,7 +15,7 @@ describe("core-only routes", () => {
     expect(isCoreAllowedRoute(CORE_USAGE_ROUTE)).toBe(false);
   });
 
-  it("allows the operational sidebar while keeping billing plans and internal IA frozen", () => {
+  it("allows the operational sidebar while keeping platform IA governance frozen", () => {
     expect(isCoreAllowedRoute("/dashboard")).toBe(true);
     expect(isCoreAllowedRoute("/billing")).toBe(true);
     expect(isCoreAllowedRoute("/agenda")).toBe(true);
@@ -25,6 +25,7 @@ describe("core-only routes", () => {
     expect(isCoreAllowedRoute("/services")).toBe(true);
     expect(isCoreAllowedRoute("/professionals")).toBe(true);
     expect(isCoreAllowedRoute("/settings")).toBe(true);
+    expect(isCoreAllowedRoute("/ai-agent")).toBe(true);
     expect(isCoreAllowedRoute(CORE_USAGE_ROUTE)).toBe(false);
     expect(isCoreAllowedRoute("/ai-config")).toBe(false);
   });

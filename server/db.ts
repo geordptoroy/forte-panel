@@ -3768,6 +3768,40 @@ export async function getNativeAgentConfig(
   return readNativeAgentConfig(await getActiveWorkspaceById(workspaceId));
 }
 
+export type WorkspaceAgentPolicy = {
+  enabled: boolean;
+  systemPrompt: string;
+  maxSteps: number;
+};
+
+export async function getWorkspaceAgentPolicy(
+  workspaceId: number
+): Promise<WorkspaceAgentPolicy> {
+  const config = await getNativeAgentConfig(workspaceId);
+  return {
+    enabled: config.enabled,
+    systemPrompt: config.systemPrompt,
+    maxSteps: config.maxSteps,
+  };
+}
+
+export async function saveWorkspaceAgentPolicy(
+  workspaceId: number,
+  input: Partial<WorkspaceAgentPolicy>
+): Promise<WorkspaceAgentPolicy> {
+  const current = await getNativeAgentConfig(workspaceId);
+  const updated = await saveNativeAgentConfig(workspaceId, {
+    enabled: input.enabled ?? current.enabled,
+    systemPrompt: input.systemPrompt ?? current.systemPrompt,
+    maxSteps: input.maxSteps ?? current.maxSteps,
+  });
+  return {
+    enabled: updated.enabled,
+    systemPrompt: updated.systemPrompt,
+    maxSteps: updated.maxSteps,
+  };
+}
+
 export async function getPlatformNativeAgentConfig(
   workspaceId: number
 ): Promise<NativeAgentConfig> {

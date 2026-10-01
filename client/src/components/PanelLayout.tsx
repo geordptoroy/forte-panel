@@ -9,6 +9,7 @@ import {
 import {
   BarChart3,
   Bell,
+  Bot,
   CalendarDays,
   CheckCheck,
   ClipboardList,
@@ -170,6 +171,12 @@ const managementNav: NavGroup[] = [
         label: "Preferências",
         description: "Preferências do painel",
         icon: Settings,
+      },
+      {
+        href: "/ai-agent",
+        label: "Agente de IA",
+        description: "Prompt e comportamento do atendimento",
+        icon: Bot,
       },
     ],
   },

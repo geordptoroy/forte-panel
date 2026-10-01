@@ -25,6 +25,7 @@ import {
 import { ProfessionalsPage, ServicesPage } from "./pages/CatalogPage";
 import { ProfessionalPortalPage } from "./pages/ProfessionalPortal";
 import { SettingsTabsPage } from "./pages/SettingsTabs";
+import WorkspaceAgentPage from "./pages/WorkspaceAgentPage";
 import TeamPage from "./pages/TeamPage";
 import AccessGuard, {
   OnboardingGuard,
@@ -163,6 +164,13 @@ function Router() {
       </Route>
       <Route path="/my-work" component={ProfessionalPortalPage} />
       <Route path="/settings" component={SettingsTabsPage} />
+      <Route path="/ai-agent">
+        {() => (
+          <OnboardingGuard title="Agente de IA">
+            <WorkspaceAgentPage />
+          </OnboardingGuard>
+        )}
+      </Route>
       <Route component={NotFoundPage} />
     </Switch>
   );

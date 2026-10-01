@@ -218,3 +218,12 @@ Próximo passo na máquina Windows: atualizar a branch, iniciar com `scripts/sta
 O operador confirmou o fluxo principal com conta criada em `/signup`: autenticação, sidebar, conexão WhatsApp, inbound/outbound na Inbox, refresh da conversa, Kanban com mudança de etapa persistida, Contatos, Serviços, Profissionais, Agenda e Integrações. O aceite manual é parcial por três gaps concretos: áudio recebido não reproduz dentro do painel, o composer tem controles sobrepostos de gravação/anexo e Profissionais ainda não possui intervalos intradiários.
 
 O núcleo operacional não deve ser chamado de MVP completo sem IA. A próxima fatia passa a ser o aceite end-to-end da resposta automática no WhatsApp, transcrição de áudio, visão/análise de documento e moderação; também devem ser provados fallback, proteção contra prompt injection, transferência para humano e kill switch. Só depois ficam reprodução de áudio na Inbox, consolidação do composer e intervalos/disponibilidade dos profissionais. Não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle neste momento.
+
+
+### Atualização posterior — MVP.2: política do agente por workspace
+
+Implementada a primeira fatia da configuração de IA do MVP. `agent.workspaceConfig` e `agent.saveWorkspaceConfig` permitem que owner/admin leia e altere apenas `enabled`, `systemPrompt` e `maxSteps` do próprio workspace. Providers, modelos, roteamento técnico e API keys continuam fora da tela do cliente e protegidos por `requirePlatformAdministrator`.
+
+A nova rota `/ai-agent` foi adicionada à sidebar operacional e ao catálogo core, mantendo `CORE_ONLY_MODE = true`. A tela deixa explícito que API keys não devem ser colocadas no prompt e que moderação e providers são governados pela plataforma. Nenhuma chave ou credencial é retornada pelo novo contrato de workspace. Typecheck, contratos de core/acessibilidade, contrato do agente e `git diff --check` passaram.
+
+Próximo passo: iniciar a stack com o código atual, abrir `/ai-agent` usando a conta criada via `/signup`, salvar uma política sintética sem secrets e então validar o runtime da IA em texto. Depois seguir para áudio/transcrição, visão/documento, moderação, prompt injection, fallback, handoff humano e kill switch. Não repetir backup/restore, não parear número real adicional, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.

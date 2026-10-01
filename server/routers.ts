@@ -76,10 +76,12 @@ import {
   getOnboardingProfile,
   getOnboardingPublishCandidate,
   getNativeAgentConfig,
+  getWorkspaceAgentPolicy,
   getAgentMetrics,
   getNativeAgentKillSwitch,
   getNativeAgentRuntimeConfig,
   saveNativeAgentConfig,
+  saveWorkspaceAgentPolicy,
   setNativeAgentKillSwitch,
   resetWorkspaceDevelopmentData,
   revokeWorkspaceInvite,
@@ -2311,6 +2313,30 @@ export const appRouter = router({
   }),
 
   agent: router({
+    workspaceConfig: requireAdministrator.query(({ ctx }) =>
+      getWorkspaceAgentPolicy(ctx.workspace.workspaceId)
+    ),
+    saveWorkspaceConfig: requireAdministrator
+      .input(
+        z.object({
+          enabled: z.boolean(),
+          systemPrompt: z.string().max(30_000),
+          maxSteps: z.number().int().min(1).max(8),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const result = await saveWorkspaceAgentPolicy(
+          ctx.workspace.workspaceId,
+          input
+        );
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: "workspace_agent_policy_updated",
+          summary: `Política do agente ${result.enabled ? "ativada" : "pausada"}`,
+        });
+        return result;
+      }),
     metrics: requireManager
       .input(z.object({ windowDays: z.number().int().min(1).max(90).default(30) }).optional())
       .query(({ input, ctx }) => getAgentMetrics(ctx.workspace.workspaceId, input?.windowDays ?? 30)),
