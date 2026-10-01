@@ -183,6 +183,7 @@ import {
   updateOwnProfile,
   updateProfessional,
   updateService,
+  validateAvailabilityEntries,
   type OperationalRole,
   type WorkspaceAccess,
   type WorkspaceMemberRole,
@@ -1157,13 +1158,11 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const invalid = input.entries.find(
-          entry => entry.endMinute <= entry.startMinute
-        );
-        if (invalid)
+        const validationError = validateAvailabilityEntries(input.entries);
+        if (validationError)
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "O horário final precisa ser maior que o inicial",
+            message: validationError,
           });
         const entries = await replaceAvailability(
           ctx.workspace.workspaceId,
@@ -3031,13 +3030,11 @@ export const appRouter = router({
             code: "FORBIDDEN",
             message: "Seu usuário não está vinculado a um profissional",
           });
-        const invalid = input.entries.find(
-          entry => entry.endMinute <= entry.startMinute
-        );
-        if (invalid)
+        const validationError = validateAvailabilityEntries(input.entries);
+        if (validationError)
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "O horário final precisa ser maior que o inicial",
+            message: validationError,
           });
         const entries = await replaceAvailability(
           ctx.workspace.workspaceId,

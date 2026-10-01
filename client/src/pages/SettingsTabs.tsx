@@ -166,22 +166,22 @@ function AvailabilityTab() {
   if (!availabilityQuery.data) return <EmptyState icon={Clock3} title="Carregando disponibilidade" description="Buscando sua jornada de trabalho." />;
   if (!availabilityQuery.data.linked) return <EmptyState icon={Clock3} title="Sem profissional vinculado" description="Peça ao administrador para vincular seu acesso a um profissional." />;
   return <div>
-    <SectionTitle eyebrow="Jornada" title="Minha disponibilidade semanal" action={<StatusBadge tone="green">{draft.length} faixas</StatusBadge>} />
+    <SectionTitle eyebrow="Jornada" title="Minha disponibilidade semanal" action={<StatusBadge tone="green">{draft.length} intervalos</StatusBadge>} />
+    <p className="muted" style={{ margin: "-5px 0 12px", fontSize: 10 }}>Adicione intervalos separados para registrar pausas durante o dia.</p>
     <div className="team-table">{weekdays.map((day) => {
-      const entry = draft.find((item) => item.weekday === day.value);
+      const dayEntries = draft.filter((item) => item.weekday === day.value);
       return <div className="team-row" key={day.value}>
         <div className="time-block" style={{ width: 52 }}>{day.short}</div>
         <div className="row-copy">
           <small>{day.label}</small>
-          {entry
-            ? <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
-              <input className="input-control" style={{ maxWidth: 110 }} type="time" value={minuteToTime(entry.startMinute)} onChange={(event) => setDraft((current) => current.map((item) => item.weekday === day.value ? { ...item, startMinute: timeToMinute(event.target.value) } : item))} />
-              <span className="muted" style={{ fontSize: 10 }}>até</span>
-              <input className="input-control" style={{ maxWidth: 110 }} type="time" value={minuteToTime(entry.endMinute)} onChange={(event) => setDraft((current) => current.map((item) => item.weekday === day.value ? { ...item, endMinute: timeToMinute(event.target.value) } : item))} />
-            </div>
-            : <small className="muted" style={{ display: "block", marginTop: 4 }}>Sem atendimento neste dia</small>}
+          {dayEntries.length ? dayEntries.map((entry, index) => <div key={`${day.value}-${index}`} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+            <input className="input-control" style={{ maxWidth: 110 }} type="time" value={minuteToTime(entry.startMinute)} onChange={(event) => setDraft((current) => { let seen = -1; return current.map((item) => item.weekday === day.value ? (++seen === index ? { ...item, startMinute: timeToMinute(event.target.value) } : item) : item); })} />
+            <span className="muted" style={{ fontSize: 10 }}>até</span>
+            <input className="input-control" style={{ maxWidth: 110 }} type="time" value={minuteToTime(entry.endMinute)} onChange={(event) => setDraft((current) => { let seen = -1; return current.map((item) => item.weekday === day.value ? (++seen === index ? { ...item, endMinute: timeToMinute(event.target.value) } : item) : item); })} />
+            <button className="btn-ghost" type="button" onClick={() => setDraft((current) => { let seen = -1; return current.filter((item) => item.weekday !== day.value || (++seen !== index)); })}>Remover</button>
+          </div>) : <small className="muted" style={{ display: "block", marginTop: 4 }}>Sem atendimento neste dia</small>}
         </div>
-        <button className="btn-ghost" onClick={() => setDraft((current) => entry ? current.filter((item) => item.weekday !== day.value) : [...current, { weekday: day.value, startMinute: 9 * 60, endMinute: 18 * 60 }])}>{entry ? "Remover" : <><Plus size={12} /> Adicionar</>}</button>
+        <button className="btn-ghost" type="button" onClick={() => setDraft((current) => [...current, { weekday: day.value, startMinute: dayEntries.length ? 14 * 60 : 9 * 60, endMinute: 18 * 60 }])}><Plus size={12} /> Adicionar intervalo</button>
       </div>;
     })}</div>
     <button className="btn-primary" style={{ marginTop: 16 }} disabled={save.isPending} onClick={() => save.mutate({ entries: draft })}>{save.isPending ? "Salvando..." : "Salvar disponibilidade"}</button>

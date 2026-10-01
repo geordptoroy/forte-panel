@@ -227,3 +227,12 @@ Implementada a primeira fatia da configuração de IA do MVP. `agent.workspaceCo
 A nova rota `/ai-agent` foi adicionada à sidebar operacional e ao catálogo core, mantendo `CORE_ONLY_MODE = true`. A tela deixa explícito que API keys não devem ser colocadas no prompt e que moderação e providers são governados pela plataforma. Nenhuma chave ou credencial é retornada pelo novo contrato de workspace. Typecheck, contratos de core/acessibilidade, contrato do agente e `git diff --check` passaram.
 
 Próximo passo: iniciar a stack com o código atual, abrir `/ai-agent` usando a conta criada via `/signup`, salvar uma política sintética sem secrets e então validar o runtime da IA em texto. Depois seguir para áudio/transcrição, visão/documento, moderação, prompt injection, fallback, handoff humano e kill switch. Não repetir backup/restore, não parear número real adicional, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+
+### Atualização posterior — MVP.1: intervalos intradiários dos profissionais
+
+Implementados múltiplos intervalos semanais por profissional, preservando a tabela `availability` existente e o isolamento por workspace. A tela de Profissionais, o onboarding e a autoedição em Configurações agora permitem adicionar, editar e remover intervalos separados no mesmo dia, por exemplo `09:00–12:00` e `14:00–18:00`.
+
+O backend valida dia, limites, horário final maior que o inicial e sobreposição entre intervalos do mesmo dia; entradas válidas são normalizadas por dia e início. A validação da Agenda já consumia todas as janelas e continua rejeitando agendamentos que não estejam totalmente cobertos por uma delas. Foram adicionados testes para intervalos separados, sobreposição e limites. Typecheck, testes de schedule, build e `git diff --check` passaram. Os testes de isolamento que dependem de PostgreSQL ficaram pulados por ausência de banco no Sandbox.
+
+Próximo passo: publicar esta fatia e, na máquina Windows, testar um profissional com `09:00–12:00` e `14:00–18:00`, confirmar persistência após refresh e tentar criar um agendamento no intervalo da pausa para confirmar o bloqueio. Não repetir backup/restore, não parear número real adicional, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.

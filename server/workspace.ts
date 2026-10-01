@@ -14,9 +14,18 @@ import {
 import { getDb, type WorkspaceMembershipContext } from "./db";
 import { defaultNotificationPreferences, parseNotificationPreferences, type NotificationPreferences } from "./notification-contract";
 import type { ServicePriceType } from "../shared/service-price";
+import { validateWeeklyAvailabilityEntries } from "./schedule";
 
 export type WorkspaceMemberRole = "owner" | "admin" | "manager" | "agent";
 export type OperationalRole = "human_attendant" | "ai_attendant" | "professional";
+
+export type AvailabilityEntryInput = {
+  weekday: number;
+  startMinute: number;
+  endMinute: number;
+};
+
+export const validateAvailabilityEntries = validateWeeklyAvailabilityEntries;
 
 export type WorkspaceAccess = {
   userId: number;
@@ -236,18 +245,21 @@ export async function setProfessionalServices(workspaceId: number, professionalI
   return validIds;
 }
 
-export async function replaceAvailability(workspaceId: number, professionalId: number, entries: { weekday: number; startMinute: number; endMinute: number }[]) {
+export async function replaceAvailability(workspaceId: number, professionalId: number, entries: AvailabilityEntryInput[]) {
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const professional = await getProfessionalInWorkspace(workspaceId, professionalId);
   if (!professional) throw new Error("Profissional não encontrado neste workspace");
+  const validationError = validateAvailabilityEntries(entries);
+  if (validationError) throw new Error(validationError);
+  const normalizedEntries = [...entries].sort((a, b) => a.weekday - b.weekday || a.startMinute - b.startMinute);
   await db.transaction(async (tx) => {
     // Use the same per-professional lock as reservation checks, so changing
     // weekly hours cannot race with a booking using the previous schedule.
     await tx.execute(sql`SELECT "id" FROM "professionals" WHERE "id" = ${professionalId} AND "workspaceId" = ${workspaceId} FOR UPDATE`);
     await tx.delete(availability).where(and(eq(availability.workspaceId, workspaceId), eq(availability.professionalId, professionalId)));
-    if (entries.length > 0) {
-      await tx.insert(availability).values(entries.map((entry) => ({
+    if (normalizedEntries.length > 0) {
+      await tx.insert(availability).values(normalizedEntries.map((entry) => ({
         workspaceId: workspaceId,
         professionalId,
         weekday: entry.weekday,
@@ -257,7 +269,7 @@ export async function replaceAvailability(workspaceId: number, professionalId: n
       })));
     }
   });
-  return entries;
+  return normalizedEntries;
 }
 
 /* ------------------------------------------------------------------ */

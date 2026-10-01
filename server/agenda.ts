@@ -251,6 +251,6 @@ export async function listActiveProfessionalsForService(workspaceId: number, ser
 export async function listAvailabilityForProfessional(workspaceId: number, professionalId: number) {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select().from(availability).where(and(eq(availability.workspaceId, workspaceId), eq(availability.professionalId, professionalId))).orderBy(availability.weekday);
+  const rows = await db.select().from(availability).where(and(eq(availability.workspaceId, workspaceId), eq(availability.professionalId, professionalId))).orderBy(asc(availability.weekday), asc(availability.startMinute));
   return rows;
 }

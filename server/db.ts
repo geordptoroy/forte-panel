@@ -5162,7 +5162,7 @@ export async function getAgendaSnapshot(
                 : [])
             )
           )
-          .orderBy(availability.weekday)
+          .orderBy(asc(availability.weekday), asc(availability.startMinute))
       : [];
   return {
     timezone: workspace.timezone,
