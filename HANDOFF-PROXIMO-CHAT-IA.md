@@ -224,3 +224,11 @@ Entrega documentada em `O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md`. Validações
 ## Próxima ação vigente
 
 A próxima fatia é **O3.7 — Dashboard de decisões do dia**: consolidar pendências de follow-up, agenda, recebimentos, pipeline e saúde do canal em uma visão operacional tenant-scoped.
+
+## O3.7 em andamento — dashboard de decisões do dia — 2026-10-01
+
+Primeira subfatia implementada e validada. `getDashboardSnapshot(workspaceId)` agora consulta quotes, `paymentLedger`, appointments, contatos, `whatsappChannels` e `whatsappInstances` com escopo explícito do workspace. O dashboard mostra leads sem resposta/follow-up vencido, orçamentos sem atualização há 48 horas, agenda do dia, recebimento do mês pelo ledger e saúde real do WhatsApp.
+
+O cálculo de pendência financeira deixou de somar `contacts.quoteCents`; usa `quotedCents - receivedCents` somente para quotes abertos. Recebimento mensal não é mais zerado. O dia usa `workspace.timezone` via `getLocalDayBounds`. A UI adicionou a seção “Decisões de hoje” com estados vazios honestos e links para Inbox/contatos, Faturamento e Agenda.
+
+Gates desta subfatia: `pnpm check`, `pnpm build`, 22 testes focados e `git diff --check` aprovados. A O3.7 ainda não está concluída: falta revisar e testar o comportamento com PostgreSQL persistente, melhorar a nomenclatura/consulta de leads conforme o SLA do produto e fechar a documentação específica da fatia.

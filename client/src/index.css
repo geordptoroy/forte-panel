@@ -161,6 +161,7 @@ a { color: inherit; text-decoration: none; }
 .stat-foot { color: #555; font-size: 10px; }
 .stat-foot strong { color: var(--green); font-weight: 700; }
 .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(340px, .65fr); gap: 28px; }
+.decisions-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .list-stack { display: flex; flex-direction: column; }
 .event-row, .appointment-row { display: flex; align-items: center; gap: 13px; padding: 15px 0; border-bottom: 1px solid rgba(255,255,255,.055); }
 .event-row:last-child, .appointment-row:last-child { border-bottom: 0; }
@@ -436,7 +437,7 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 1120px) {
   .inbox-layout { grid-template-columns: 255px minmax(300px, 1fr); }
   .inbox-profile { display: none; }
-  .dashboard-grid, .agenda-layout, .billing-layout { grid-template-columns: 1fr; }
+  .dashboard-grid, .decisions-grid, .agenda-layout, .billing-layout { grid-template-columns: 1fr; }
   .billing-summary { grid-template-columns: repeat(3, minmax(0,1fr)); }
 }
 @media (max-width: 800px) {

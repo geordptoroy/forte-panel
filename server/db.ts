@@ -5865,6 +5865,10 @@ export async function getDashboardSnapshot(workspaceId: number) {
       appointmentsToday: 0,
       receivedMonthCents: 0,
       pendingCents: 0,
+      pendingLeads: [],
+      stalledQuotes: [],
+      todayAppointments: [],
+      channelHealth: { status: "not_configured", label: "Sem canal configurado", detail: "Conecte o WhatsApp para receber mensagens." },
       recentEvents: [],
       upcomingAppointments: [],
     };
@@ -5874,6 +5878,24 @@ export async function getDashboardSnapshot(workspaceId: number) {
     .from(appointmentsTable)
     .where(eq(appointmentsTable.workspaceId, workspaceId))
     .orderBy(asc(appointmentsTable.startsAt));
+  const workspaceQuotes = await db
+    .select({ quote: quotes, contact: contacts })
+    .from(quotes)
+    .leftJoin(contacts, eq(quotes.contactId, contacts.id))
+    .where(eq(quotes.workspaceId, workspaceId))
+    .orderBy(desc(quotes.updatedAt), desc(quotes.id));
+  const workspacePayments = await db
+    .select()
+    .from(paymentLedger)
+    .where(eq(paymentLedger.workspaceId, workspaceId));
+  const workspaceChannels = await db
+    .select()
+    .from(whatsappChannels)
+    .where(and(eq(whatsappChannels.workspaceId, workspaceId), eq(whatsappChannels.active, 1)));
+  const workspaceInstances = await db
+    .select()
+    .from(whatsappInstances)
+    .where(and(eq(whatsappInstances.workspaceId, workspaceId), eq(whatsappInstances.active, 1)));
   const contactIds = workspaceContacts.map(contact => contact.id);
   const recentEvents =
     contactIds.length === 0
@@ -5893,15 +5915,56 @@ export async function getDashboardSnapshot(workspaceId: number) {
           .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
           .limit(8);
   const now = new Date();
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
+  const dayBounds = getLocalDayBounds(now, workspace.timezone);
+  const startOfToday = dayBounds.start;
+  const endOfToday = dayBounds.end;
+  const monthStart = new Date(startOfToday);
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
   const activeAppointments = workspaceAppointments.filter(
     appointment => appointment.status !== "cancelled"
   );
-  const pendingCents = workspaceContacts.reduce(
-    (total, contact) => total + contact.quoteCents,
+  const openQuotes = workspaceQuotes.filter(({ quote }) =>
+    !["pago", "cancelado"].includes(quote.status)
+  );
+  const pendingCents = openQuotes.reduce(
+    (total, { quote }) => total + Math.max(0, quote.quotedCents - quote.receivedCents),
     0
   );
+  const stalledSince = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+  const pendingLeads = workspaceContacts
+    .filter(contact => Boolean(contact.awaitingResponse || (contact.followUpAt && contact.followUpAt <= now && !contact.followUpCompletedAt)))
+    .sort((a, b) => (a.followUpAt?.getTime() ?? 0) - (b.followUpAt?.getTime() ?? 0))
+    .slice(0, 8)
+    .map(contact => ({
+      id: contact.id,
+      name: contact.name,
+      stage: contact.stage,
+      awaitingResponse: contact.awaitingResponse,
+      followUpAt: contact.followUpAt?.toISOString() ?? null,
+      lastMessageAt: contact.lastMessageAt?.toISOString() ?? null,
+    }));
+  const stalledQuotes = openQuotes
+    .filter(({ quote }) => quote.updatedAt <= stalledSince)
+    .slice(0, 8)
+    .map(({ quote, contact }) => ({
+      id: quote.id,
+      contactId: quote.contactId,
+      contactName: contact?.name ?? "Contato removido",
+      serviceName: quote.serviceName,
+      status: quote.status,
+      pendingCents: Math.max(0, quote.quotedCents - quote.receivedCents),
+      updatedAt: quote.updatedAt.toISOString(),
+    }));
+  const channelInstance = workspaceInstances.find(instance => instance.status === "connected") ?? workspaceInstances[0];
+  const channelHealth = !workspaceChannels.length
+    ? { status: "not_configured", label: "Sem canal configurado", detail: "Conecte o WhatsApp para receber mensagens." }
+    : channelInstance?.status === "connected"
+      ? { status: "connected", label: "WhatsApp conectado", detail: channelInstance.lastSeenAt ? `Última atividade ${channelInstance.lastSeenAt.toLocaleString("pt-BR")}` : "Instância conectada." }
+      : { status: "attention", label: "WhatsApp requer atenção", detail: channelInstance?.lastHealthError ?? "Nenhuma instância conectada no momento." };
+  const todayAppointments = activeAppointments
+    .filter(appointment => appointment.startsAt >= startOfToday && appointment.startsAt < endOfToday)
+    .map(appointment => appointment);
   return {
     newContactsToday: workspaceContacts.filter(
       contact => contact.createdAt >= startOfToday
@@ -5920,11 +5983,16 @@ export async function getDashboardSnapshot(workspaceId: number) {
     appointmentsToday: activeAppointments.filter(
       appointment =>
         appointment.startsAt >= startOfToday &&
-        appointment.startsAt <
-          new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000)
+        appointment.startsAt < endOfToday
     ).length,
-    receivedMonthCents: 0,
+    receivedMonthCents: workspacePayments
+      .filter(payment => payment.receivedAt >= monthStart)
+      .reduce((total, payment) => total + payment.amountCents, 0),
     pendingCents,
+    pendingLeads,
+    stalledQuotes,
+    todayAppointments,
+    channelHealth,
     recentEvents,
     upcomingAppointments: activeAppointments
       .filter(appointment => appointment.startsAt >= now)

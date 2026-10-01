@@ -1499,7 +1499,15 @@ export const appRouter = router({
           ...event,
           createdAt: event.createdAt.toISOString(),
         })),
+        pendingLeads: snapshot.pendingLeads.map(lead => ({
+          ...lead,
+          followUpAt: lead.followUpAt,
+          lastMessageAt: lead.lastMessageAt,
+        })),
         upcomingAppointments: snapshot.upcomingAppointments.map(appointment =>
+          serializeAgendaAppointment(appointment)
+        ),
+        todayAppointments: snapshot.todayAppointments.map(appointment =>
           serializeAgendaAppointment(appointment)
         ),
       };

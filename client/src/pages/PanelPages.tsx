@@ -286,6 +286,63 @@ export function DashboardPage() {
           />
         </PageLink>
       </div>
+      <section style={{ marginTop: 20 }}>
+        <SectionTitle
+          eyebrow="Decisões de hoje"
+          title="O que precisa de atenção"
+          action={
+            <StatusBadge tone={snapshot?.channelHealth.status === "connected" ? "green" : "amber"}>
+              {snapshot?.channelHealth.label ?? "Verificando canal"}
+            </StatusBadge>
+          }
+        />
+        <div className="decisions-grid">
+          <div className="surface" style={{ padding: "0 17px" }}>
+            <div className="event-row">
+              <div className="event-icon"><MessageCircle size={15} /></div>
+              <div className="row-copy"><strong>Leads para responder</strong><small>Conversas com resposta ou follow-up vencido.</small></div>
+              <span className="row-meta">{snapshot?.pendingLeads.length ?? 0}</span>
+            </div>
+            {(snapshot?.pendingLeads ?? []).slice(0, 4).map(lead => (
+              <PageLink href={`/contacts/${lead.id}`} className="event-row" key={lead.id}>
+                <div className="row-copy"><strong>{lead.name}</strong><small>{lead.stage} · {lead.awaitingResponse ? "aguarda resposta" : "follow-up vencido"}</small></div>
+                <ArrowUpRight size={13} />
+              </PageLink>
+            ))}
+            {(snapshot?.pendingLeads ?? []).length === 0 && <EmptyState icon={Check} title="Nenhuma pendência de resposta" description="O atendimento está em dia." />}
+          </div>
+          <div className="surface" style={{ padding: "0 17px" }}>
+            <div className="event-row">
+              <div className="event-icon"><FileText size={15} /></div>
+              <div className="row-copy"><strong>Orçamentos parados</strong><small>Sem atualização há mais de 48 horas.</small></div>
+              <span className="row-meta">{snapshot?.stalledQuotes.length ?? 0}</span>
+            </div>
+            {(snapshot?.stalledQuotes ?? []).slice(0, 4).map(quote => (
+              <PageLink href="/billing" className="event-row" key={quote.id}>
+                <div className="row-copy"><strong>{quote.contactName}</strong><small>{quote.serviceName} · {money(quote.pendingCents)}</small></div>
+                <ArrowUpRight size={13} />
+              </PageLink>
+            ))}
+            {(snapshot?.stalledQuotes ?? []).length === 0 && <EmptyState icon={Check} title="Nenhum orçamento parado" description="Não há proposta sem movimentação por 48 horas." />}
+          </div>
+          <div className="surface" style={{ padding: "0 17px" }}>
+            <div className="event-row">
+              <div className="event-icon"><Wifi size={15} /></div>
+              <div className="row-copy"><strong>Saúde do canal</strong><small>{snapshot?.channelHealth.detail ?? "Consultando o WhatsApp."}</small></div>
+            </div>
+            <div className="event-row">
+              <div className="event-icon"><CalendarCheck2 size={15} /></div>
+              <div className="row-copy"><strong>Agenda de hoje</strong><small>{snapshot?.appointmentsToday ?? 0} atendimento(s) no dia.</small></div>
+              <PageLink href="/agenda" className="btn-ghost">Abrir</PageLink>
+            </div>
+            <div className="event-row">
+              <div className="event-icon"><WalletCards size={15} /></div>
+              <div className="row-copy"><strong>Recebido no mês</strong><small>Ledger operacional append-only.</small></div>
+              <strong>{money(snapshot?.receivedMonthCents ?? 0)}</strong>
+            </div>
+          </div>
+        </div>
+      </section>
       {onboardingSession && onboardingSession.status !== "completed" && (
         <section
           className="surface"
