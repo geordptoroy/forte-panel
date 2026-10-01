@@ -336,3 +336,7 @@ Foi criado `server/native-agent.integration.test.ts` para provar a retomada auto
 Gates locais desta fatia: `pnpm check`, `pnpm build` e contratos focados passaram; os dois testes PostgreSQL foram skipped no Sandbox por ausência de `DATABASE_URL`. Commit funcional publicado: `3866a96` (`test: prove controlled native agent resume`). O CI PostgreSQL ainda deve executar esta nova prova contra migrations reais.
 
 Próximo slice depois do CI verde: provar fallback por capability e falha controlada/telemetria, sem secrets reais. Manter `CORE_ONLY_MODE = true`, não usar providers externos, não repetir backup/restore, não parear número real adicional e não mesclar a PR.
+
+### Correção do CI PostgreSQL — modelo canônico de capability — 2026-10-01
+
+O primeiro CI da retomada (`36901328653`) falhou somente no harness: a asserção esperava que `config.model` substituísse o modelo da rota, mas `invokeConfiguredLLM` corretamente prioriza o modelo canônico da capability. A correção `28723f3` ajusta a prova para esperar quatro chamadas `synthetic-text` (respostas finais), uma `synthetic-audio`, uma `synthetic-vision` e uma `synthetic-document` (pré-processamentos). Typecheck, contratos unitários e `git diff --check` passaram localmente. Reexecutar o CI PostgreSQL sobre o novo head antes de declarar esta fatia verde.
