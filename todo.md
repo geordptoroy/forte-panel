@@ -20,7 +20,8 @@
 - [x] Executar O2.4: fechar mídia privada e capacidades do composer. Entrega: `O2.4-ENTREGA-MIDIA-PRIVADA-COMPOSER.md`.
 - [x] Executar O3.1: unificar lead entre contato, conversa e oportunidade. Entrega: `O3.1-ENTREGA-LEAD-UNIFICADO.md`.
 - [x] Executar O3.2: fechar Inbox operacional com assignment e follow-up. Entrega: `O3.2-ENTREGA-INBOX-ASSIGNMENT-FOLLOWUP.md`.
-- [ ] Executar O3.3: fechar funil canônico sem duplicação de estado.
+- [x] Executar O3.3: fechar funil canônico sem duplicação de estado. Entrega: `O3.3-ENTREGA-FUNIL-CANONICO.md`.
+- [ ] Executar O3.4: fechar orçamento com itens, validade e aprovação.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.

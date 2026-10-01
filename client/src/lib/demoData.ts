@@ -1,16 +1,7 @@
+import { CONTACT_STAGE_ORDER, type ContactStage } from "@shared/contact-stage";
+
 export type Urgency = "Baixa" | "Média" | "Alta" | "Crítica";
-export type Stage =
-  | "Novo contato"
-  | "Triagem"
-  | "Aguardando foto"
-  | "Avaliação pendente"
-  | "Orçamento enviado"
-  | "Aguardando decisão"
-  | "Visita solicitada"
-  | "Agendado"
-  | "Concluído"
-  | "Sem retorno"
-  | "Perdido";
+export type Stage = ContactStage;
 
 export type Contact = {
   id: string;
@@ -64,19 +55,7 @@ export type Quote = {
   due: string;
 };
 
-export const stageOrder: Stage[] = [
-  "Novo contato",
-  "Triagem",
-  "Aguardando foto",
-  "Avaliação pendente",
-  "Orçamento enviado",
-  "Aguardando decisão",
-  "Visita solicitada",
-  "Agendado",
-  "Concluído",
-  "Sem retorno",
-  "Perdido",
-];
+export const stageOrder: Stage[] = [...CONTACT_STAGE_ORDER];
 
 export const contacts: Contact[] = [
   {

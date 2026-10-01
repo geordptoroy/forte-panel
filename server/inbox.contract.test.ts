@@ -23,6 +23,7 @@ describe("inbox procedures", () => {
     await expect(caller.inbox.markRead({ contactId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.inbox.assign({ contactId: 0, assignedUserId: null })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.inbox.followUp({ contactId: 0, completed: true })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.inbox.moveStage({ contactId: 1, stage: "status-customizado" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("does not mutate or audit a contact outside the resolved workspace", async () => {

@@ -170,3 +170,16 @@ Entrega documentada em `O3.2-ENTREGA-INBOX-ASSIGNMENT-FOLLOWUP.md`. Validações
 ## Próxima ação vigente
 
 A próxima fatia é **O3.3 — Funil canônico sem duplicação de estado**. Auditar estados atuais de `contacts.stage`, Kanban, regras de transição, auditoria, métricas e qualquer estado duplicado entre Inbox, contatos e oportunidades.
+
+
+## O3.3 concluída — funil canônico — 2026-10-01
+
+A lista de estágios agora vive em `shared/contact-stage.ts` e é consumida pelo Kanban, dados demo, tRPC, API REST e atualização de lead via agente. Estágios arbitrários são rejeitados; uma transição para o mesmo estágio é no-op sem auditoria/evento duplicado; mudanças reais registram origem e destino.
+
+A ferramenta de IA não escreve mais `quoteCents` diretamente. A projeção do contato permanece derivada dos `quotes` não cancelados, enquanto status de orçamento e agendamento ficam nas entidades próprias sem duplicação silenciosa em `contacts.stage`.
+
+Entrega documentada em `O3.3-ENTREGA-FUNIL-CANONICO.md`. Validações: `pnpm check`, `pnpm build`, 19 testes focados aprovados e `git diff --check`; a prova PostgreSQL permanece pendente por ausência de `DATABASE_URL` no sandbox.
+
+## Próxima ação vigente
+
+A próxima fatia é **O3.4 — Orçamento com itens, validade e aprovação**. Auditar o modelo atual de quotes, adicionar itens/versão/validade e formalizar aprovação sem duplicar total ou status entre contato e orçamento.

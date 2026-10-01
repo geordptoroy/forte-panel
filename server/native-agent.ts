@@ -79,7 +79,6 @@ const tools: Tool[] = [
                 enum: ["Baixa", "Média", "Alta", "Crítica"],
               },
               stage: { type: "string" },
-              quoteCents: { type: "number" },
               aiEnabled: { type: "boolean" },
             },
             additionalProperties: false,

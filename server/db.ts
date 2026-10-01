@@ -61,6 +61,7 @@ import {
   type InsertUser,
 } from "../drizzle/schema";
 import type { WhatsappProvider } from "./integrations/contracts";
+import { isContactStage } from "@shared/contact-stage";
 import {
   OPERATIONAL_WHATSAPP_PROVIDER,
   assertOperationalWhatsappProvider,
@@ -5563,6 +5564,10 @@ export async function moveContactStage(
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  if (!isContactStage(stage)) throw new Error("Estágio de lead inválido");
+  const existing = await getContactById(workspaceId, contactId);
+  if (!existing) throw new Error("Contact not found");
+  if (existing.stage === stage) return existing;
   const updatedAt = new Date();
   const updated = await db
     .update(contacts)
@@ -5571,13 +5576,12 @@ export async function moveContactStage(
       and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
     )
     .returning({ id: contacts.id });
-  if (!updated[0]) throw new Error("Contact not found");
   await db.insert(auditLogs).values({
     workspaceId,
     actorUserId,
     contactId,
     action: "stage_changed",
-    summary: `Lead movido para ${stage}`,
+    summary: `Lead movido de ${existing.stage} para ${stage}`,
   });
   const contact = await getContactById(workspaceId, contactId);
   if (contact?.workspaceId) {
@@ -7394,7 +7398,6 @@ export async function leadMemoryOperation(
       serviceRequested?: string;
       urgency?: "Baixa" | "Média" | "Alta" | "Crítica";
       stage?: string;
-      quoteCents?: number;
       aiEnabled?: boolean;
     };
     note?: string;
@@ -7455,16 +7458,12 @@ export async function leadMemoryOperation(
     if (!contact) throw new Error("Contact could not be created");
     if (
       fields.urgency ||
-      fields.stage ||
-      fields.quoteCents !== undefined ||
       fields.aiEnabled !== undefined
     ) {
       await db
         .update(contacts)
         .set({
           urgency: fields.urgency,
-          stage: fields.stage,
-          quoteCents: fields.quoteCents,
           aiEnabled:
             fields.aiEnabled === undefined
               ? undefined
@@ -7481,6 +7480,10 @@ export async function leadMemoryOperation(
           .where(eq(contacts.id, contact.id))
           .limit(1)
       )[0];
+    }
+    if (fields.stage !== undefined) {
+      await moveContactStage(workspaceId, contact.id, fields.stage);
+      contact = (await getContactById(workspaceId, contact.id)) ?? contact;
     }
     return {
       exists: true,

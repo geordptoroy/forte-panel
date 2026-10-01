@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import express, { type Express, type Request, type Response } from "express";
 import { z } from "zod";
+import { isContactStage } from "@shared/contact-stage";
 import {
   cancelAgendaAppointment,
   checkDatabaseHealth,
@@ -185,7 +186,9 @@ const messageBatchSchema = z.object({
   messages: z.array(messageSchema).min(1).max(50),
   batchId: z.string().trim().min(1).max(180).optional(),
 });
-const stageSchema = z.object({ stage: z.string().min(1).max(80) });
+const stageSchema = z.object({
+  stage: z.string().min(1).max(80).refine(isContactStage, "Estágio de lead inválido"),
+});
 const rescheduleSchema = z.object({
   startsAt: z.coerce.date(),
   endsAt: z.coerce.date(),
@@ -209,8 +212,7 @@ const leadMemorySchema = z.object({
       neighborhood: z.string().max(100).optional(),
       serviceRequested: z.string().max(180).optional(),
       urgency: z.enum(["Baixa", "Média", "Alta", "Crítica"]).optional(),
-      stage: z.string().max(80).optional(),
-      quoteCents: z.number().int().nonnegative().optional(),
+      stage: z.string().max(80).refine(isContactStage, "Estágio de lead inválido").optional(),
       aiEnabled: z.boolean().optional(),
     })
     .optional(),

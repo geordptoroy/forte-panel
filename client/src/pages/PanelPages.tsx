@@ -50,25 +50,14 @@ import PanelLayout, {
 } from "@/components/PanelLayout";
 import { PlatformShell } from "./PlatformAdminPage";
 import { trpc } from "@/lib/trpc";
+import { CONTACT_STAGE_ORDER } from "@shared/contact-stage";
 import {
   WhatsappConnectionPage,
   WorkspaceUsagePage,
 } from "./WhatsappConnectionPage";
 export { WhatsappConnectionPage, WorkspaceUsagePage };
 
-const stageOrder = [
-  "Novo contato",
-  "Triagem",
-  "Aguardando foto",
-  "Avaliação pendente",
-  "Orçamento enviado",
-  "Aguardando decisão",
-  "Visita solicitada",
-  "Agendado",
-  "Concluído",
-  "Sem retorno",
-  "Perdido",
-] as const;
+const stageOrder = CONTACT_STAGE_ORDER;
 const formatCurrency = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 

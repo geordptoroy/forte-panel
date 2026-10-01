@@ -17,6 +17,7 @@ import {
   recordSignupAttempt,
 } from "./_core/request-security";
 import { ScheduleError } from "./schedule";
+import { isContactStage } from "@shared/contact-stage";
 import {
   InboxInstanceFilterError,
   normalizeInboxInstanceSelection,
@@ -3000,7 +3001,11 @@ export const appRouter = router({
           : null;
       }),
     moveStage: requireInbox
-      .input(contactIdInput.extend({ stage: z.string().min(1).max(80) }))
+      .input(
+        contactIdInput.extend({
+          stage: z.string().min(1).max(80).refine(isContactStage, "Estágio de lead inválido"),
+        })
+      )
       .mutation(async ({ input, ctx }) => {
         const existing = await getContactById(
           ctx.workspace.workspaceId,
