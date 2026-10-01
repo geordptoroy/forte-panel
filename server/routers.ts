@@ -72,6 +72,7 @@ import {
   listProfessionals,
   listMessagesForContact,
   listQuotes,
+  listQuotesForContact,
   listInAppNotifications,
   listWorkspaceInvites,
   issuePasswordResetToken,
@@ -2831,12 +2832,13 @@ export const appRouter = router({
           input.contactId
         );
         if (!contact) return null;
-        const [conversation, items, audit] = await Promise.all([
+        const [conversation, items, audit, quotes] = await Promise.all([
           getConversationByContact(ctx.workspace.workspaceId, input.contactId),
           listMessagesForContact(ctx.workspace.workspaceId, input.contactId, {
             instanceIds,
           }),
           getAuditLogForContact(ctx.workspace.workspaceId, input.contactId),
+          listQuotesForContact(ctx.workspace.workspaceId, input.contactId),
         ]);
         if (instanceIds && items.length === 0) return null;
         const notes = await listContactNotes(
@@ -2857,6 +2859,7 @@ export const appRouter = router({
           })),
           audit,
           notes,
+          quotes,
         };
       }),
     addNote: requireInbox

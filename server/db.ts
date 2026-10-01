@@ -5782,6 +5782,42 @@ export async function listQuotes(workspaceId: number) {
   }));
 }
 
+export async function listQuotesForContact(
+  workspaceId: number,
+  contactId: number
+) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(quotes)
+    .where(
+      and(eq(quotes.workspaceId, workspaceId), eq(quotes.contactId, contactId))
+    )
+    .orderBy(desc(quotes.updatedAt), desc(quotes.id));
+}
+
+async function refreshContactQuoteCents(
+  workspaceId: number,
+  contactId: number,
+  db: Awaited<ReturnType<typeof getDb>>
+) {
+  if (!db) return;
+  const totals = await db
+    .select({ total: sql<number>`coalesce(sum(${quotes.quotedCents}), 0)` })
+    .from(quotes)
+    .where(
+      and(
+        eq(quotes.workspaceId, workspaceId),
+        eq(quotes.contactId, contactId),
+        ne(quotes.status, "cancelado")
+      )
+    );
+  await db
+    .update(contacts)
+    .set({ quoteCents: Number(totals[0]?.total ?? 0), updatedAt: new Date() })
+    .where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId)));
+}
 export async function createQuote(
   input: {
     contactId: number;
@@ -5834,15 +5870,7 @@ export async function createQuote(
       updatedAt: now,
     })
     .returning();
-  await db
-    .update(contacts)
-    .set({ quoteCents: input.quotedCents, updatedAt: now })
-    .where(
-      and(
-        eq(contacts.id, input.contactId),
-        eq(contacts.workspaceId, workspaceId)
-      )
-    );
+  await refreshContactQuoteCents(workspaceId, input.contactId, db);
   await db.insert(auditLogs).values({
     workspaceId,
     actorUserId,
@@ -5880,6 +5908,7 @@ export async function updateQuotePayment(
     .set({ receivedCents, status, updatedAt: new Date() })
     .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
     .returning();
+  await refreshContactQuoteCents(workspaceId, existing[0].contactId, db);
   await db.insert(auditLogs).values({
     workspaceId,
     actorUserId,

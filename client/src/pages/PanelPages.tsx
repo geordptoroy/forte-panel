@@ -2480,6 +2480,7 @@ export function ContactDetailPage() {
           {[
             ["overview", "Visão geral"],
             ["conversation", "Conversa"],
+            ["opportunities", "Oportunidades"],
             ["appointments", "Agendamentos"],
             ["notes", "Notas internas"],
             ["history", "Histórico de eventos"],
@@ -2572,6 +2573,36 @@ export function ContactDetailPage() {
                   icon={MessageCircle}
                   title="Nenhuma mensagem ainda"
                   description="As mensagens deste contato aparecerão aqui."
+                />
+              )}
+            </div>
+          )}
+          {tab === "opportunities" && (
+            <div className="list-stack">
+              {(threadQuery.data?.quotes ?? []).length > 0 ? (
+                (threadQuery.data?.quotes ?? []).map(quote => (
+                  <div className="quote-row" key={quote.id}>
+                    <div className="avatar">R$</div>
+                    <div className="row-copy">
+                      <strong>{quote.serviceName}</strong>
+                      <small>{quote.description || "Sem descrição"}</small>
+                      <small>
+                        Atualizado em {new Date(quote.updatedAt).toLocaleDateString("pt-BR")}
+                      </small>
+                    </div>
+                    <div className="quote-amount">
+                      <strong>{formatCurrency(quote.quotedCents / 100)}</strong>
+                      <StatusBadge tone={quote.status === "pago" ? "green" : quote.status === "cancelado" ? "red" : "amber"}>
+                        {quote.status}
+                      </StatusBadge>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <EmptyState
+                  icon={WalletCards}
+                  title="Nenhuma oportunidade vinculada"
+                  description="Orçamentos criados no Billing para este lead aparecerão aqui."
                 />
               )}
             </div>

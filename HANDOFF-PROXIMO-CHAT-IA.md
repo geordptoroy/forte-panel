@@ -144,3 +144,16 @@ Entrega documentada em `O2.4-ENTREGA-MIDIA-PRIVADA-COMPOSER.md`. Validações: `
 ## Próxima ação vigente
 
 A próxima fatia é **O3.1 — Lead unificado entre contato, conversa e oportunidade**. Auditar criação/atualização de lead pelo WhatsApp, vínculo canônico entre contato/conversa/oportunidade, deduplicação por workspace/telefone, histórico de mudanças e estados observáveis no CRM.
+
+
+## O3.1 concluída — lead unificado — 2026-10-01
+
+O contato já era a entidade canônica do telefone normalizado por workspace, com conversa 1:1 e mensagens ligadas à conversa. A auditoria confirmou isolamento de grupos por instância/JID e deduplicação do inbound por evento/mensagem.
+
+A ficha do lead agora retorna e exibe as oportunidades (`quotes`) vinculadas ao mesmo contato, com serviço, descrição, valor, status e atualização. O total denormalizado `contacts.quoteCents` passou a ser recalculado a partir dos quotes não cancelados na criação e na atualização de status/recebimento, evitando sobrescrita quando há múltiplos orçamentos.
+
+Entrega documentada em `O3.1-ENTREGA-LEAD-UNIFICADO.md`. Validações: `pnpm check`, `pnpm build`, 16 testes aprovados e 6 testes PostgreSQL pulados por ausência de banco no sandbox; `git diff --check` aprovado.
+
+## Próxima ação vigente
+
+A próxima fatia é **O3.2 — Inbox operacional com assignment e follow-up**. Auditar atribuição por operador, estado de follow-up, filtros de responsabilidade, SLA/pendências, notificações e visibilidade tenant-scoped no Inbox.
