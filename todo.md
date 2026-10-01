@@ -25,6 +25,8 @@
 - [x] Executar O3.5: fechar agenda com conflito, profissional e status. Entrega: `O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md`.
 - [x] Executar O3.6: fechar recebimento, ledger operacional e recibo. Entrega: `O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md`.
 - [x] Executar O3.7: fechar dashboard de decisões do dia. Entrega: `O3.7-ENTREGA-DASHBOARD-DECISOES-DIA.md`. Prova PostgreSQL persistente/browser/staging continua pendente.
+- [x] Executar O4.1: fechar contexto comercial seguro somente leitura para o agente. Entrega: `O4.1-ENTREGA-CONTEXTO-COMERCIAL-SEGURO.md`.
+- [ ] Executar O4.2: separar ferramentas somente leitura e mutações com confirmação explícita.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.

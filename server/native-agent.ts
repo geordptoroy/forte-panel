@@ -7,6 +7,8 @@ import {
   getOnboardingProfile,
   leadMemoryOperation,
   listMessagesForContact,
+  listQuotesForContact,
+  listBaileysInstances,
   queueOutboundMessage,
   claimAgentEffect,
   completeAgentEffect,
@@ -43,6 +45,19 @@ type AgentConfig = {
 const defaultModel = process.env.AGENT_MODEL ?? "gpt-5-mini";
 
 const tools: Tool[] = [
+  {
+    type: "function",
+    function: {
+      name: "consultar_contexto_comercial",
+      description:
+        "Consulta somente leitura o contexto comercial do contato atual: lead, histórico recente, orçamentos, pagamentos e agendamentos vinculados. Não use para alterar dados.",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -301,7 +316,7 @@ export async function runNativeAgent(
   throw new Error("O agente excedeu o número máximo de etapas");
 }
 
-const mutatingTools = new Set([
+export const nativeAgentMutatingToolNames = new Set([
   "atualizar_lead",
   "registrar_nota",
   "criar_agendamento",
@@ -314,7 +329,7 @@ async function executeTool(
   event: NativeAgentEvent,
   toolCallId: string
 ) {
-  if (!mutatingTools.has(name)) return executeToolEffect(name, args, event);
+  if (!nativeAgentMutatingToolNames.has(name)) return executeToolEffect(name, args, event);
   const fingerprint = crypto
     .createHash("sha256")
     .update(JSON.stringify({ name, args }))
@@ -360,6 +375,80 @@ async function executeToolEffect(
   args: Record<string, unknown>,
   event: NativeAgentEvent
 ) {
+  if (name === "consultar_contexto_comercial") {
+    const [lead, thread, quotes, agenda, instances] = await Promise.all([
+      getContactById(event.workspaceId, event.contactId),
+      listMessagesForContact(event.workspaceId, event.contactId, { limit: 30 }),
+      listQuotesForContact(event.workspaceId, event.contactId),
+      getAgendaSnapshot(event.workspaceId),
+      listBaileysInstances(event.workspaceId),
+    ]);
+    if (!lead) throw new Error("Contato do evento não encontrado");
+    return {
+      lead: {
+        id: lead.id,
+        name: lead.name,
+        phone: lead.externalPhone,
+        stage: lead.stage,
+        urgency: lead.urgency,
+        serviceRequested: lead.serviceRequested,
+        assignedUserId: lead.assignedUserId,
+        followUpAt: lead.followUpAt,
+        followUpCompletedAt: lead.followUpCompletedAt,
+        aiEnabled: lead.aiEnabled === 1,
+      },
+      recentMessages: thread.slice(-20).map(message => ({
+        direction: message.direction,
+        senderType: message.senderType,
+        status: message.status,
+        content: message.content,
+        createdAt: message.createdAt,
+      })),
+      quotes: quotes.map(quote => ({
+        id: quote.id,
+        serviceName: quote.serviceName,
+        description: quote.description,
+        quotedCents: quote.quotedCents,
+        receivedCents: quote.receivedCents,
+        status: quote.status,
+        dueDate: quote.dueDate,
+        validUntil: quote.validUntil,
+        approvedAt: quote.approvedAt,
+        items: quote.items.map(item => ({
+          description: item.description,
+          quantity: item.quantity,
+          unitCents: item.unitCents,
+          totalCents: item.totalCents,
+        })),
+        payments: quote.payments.map(payment => ({
+          amountCents: payment.amountCents,
+          method: payment.method,
+          receivedAt: payment.receivedAt,
+          note: payment.note,
+          receiptId: payment.receiptId,
+        })),
+      })),
+      appointments: agenda.appointments
+        .filter(appointment => appointment.contactId === event.contactId)
+        .map(appointment => ({
+          id: appointment.id,
+          quoteId: appointment.quoteId,
+          serviceName: appointment.serviceName,
+          professionalName: appointment.professionalName,
+          startsAt: appointment.startsAt,
+          endsAt: appointment.endsAt,
+          status: appointment.status,
+          notes: appointment.notes,
+        })),
+      timezone: agenda.timezone,
+      channelHealth: instances.map(instance => ({
+        instanceId: instance.instanceId,
+        name: instance.name,
+        status: instance.status,
+        lastSeenAt: instance.lastSeenAt,
+      })),
+    };
+  }
   if (name === "buscar_lead")
     return leadMemoryOperation(event.workspaceId, {
       action: "buscar_lead",

@@ -240,3 +240,15 @@ Entrega documentada em `O3.7-ENTREGA-DASHBOARD-DECISOES-DIA.md`. Gates finais: `
 ## Próxima ação vigente
 
 A O3.7 está concluída. A próxima frente é **O4.1 — Contexto comercial seguro para o agente**, começando por auditoria de leitura tenant-scoped de lead, quote, agenda, recebimento e saúde do canal antes de expor qualquer ferramenta à IA.
+
+## O4.1 concluída — contexto comercial seguro — 2026-10-01
+
+O agente nativo agora possui a ferramenta somente leitura `consultar_contexto_comercial`. Ela usa exclusivamente `event.workspaceId` e `event.contactId`, sem aceitar IDs fornecidos pelo modelo, e retorna lead, mensagens recentes, quotes com itens, pagamentos/recibos, appointments vinculados, fuso e saúde das instâncias Baileys.
+
+A leitura de canal usa `listBaileysInstances` e não provisiona canal. As ferramentas mutáveis permanecem separadas em `nativeAgentMutatingToolNames` e o contrato de teste garante que o novo contexto não entra no claim de efeitos. Entrega: `O4.1-ENTREGA-CONTEXTO-COMERCIAL-SEGURO.md`.
+
+Gates: `pnpm check`, `pnpm build`, 10 testes focados e `git diff --check` aprovados. PostgreSQL persistente, gateway e provider LLM real continuam como prova de staging pendente.
+
+## Próxima ação vigente
+
+A próxima fatia é **O4.2 — Ferramentas somente leitura e confirmação mutável**: impedir que o agente execute mutations de negócio sem intenção/confirmação explícita e tornar a sugestão humana auditável.
