@@ -4,7 +4,7 @@
 >
 > **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
 > **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
-> **Último commit funcional publicado:** `9ce527c` — `test: prove agent metrics authorization isolation`.<br>
+> **Último commit funcional publicado:** `ba265d8` — `feat: expose aggregate agent health to platform console`.<br>
 > **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
 > **Próxima fatia autorizada:** auditoria/fechamento do kill switch e contrato integrado das capabilities `text`, `audio`, `vision` e `document`.<br>
 > **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
@@ -370,3 +370,9 @@ Gates locais passaram: `pnpm check`, `pnpm build` e 20 testes focados. O próxim
 A fatia `O5.5` foi concluída no commit `9ce527c` e documentada em `O5.5-ENTREGA-AUTORIZACAO-METRICAS-AGENTE.md`. O teste integrado `server/agent-metrics-authorization.integration.test.ts` prova no boundary do router que owner/admin/manager podem consultar métricas e kill switch, enquanto agent/professional recebem `FORBIDDEN`. A mesma prova semeia dois workspaces e confirma que o caller de A nunca recebe a execução ou capability de B.
 
 O CI PostgreSQL [`36939301972`](https://github.com/geordptoroy/forte-panel/actions/runs/36939301972) passou sem skips. Gates locais `pnpm check`, `pnpm build` e testes de contexto/agente passaram. O próximo slice é consolidar a experiência do Console Admin com métricas agregadas de plataforma sem expor conteúdo operacional ou credenciais de workspace.
+
+### Atualização posterior — saúde agregada no Console Admin — 2026-10-01
+
+A fatia `O5.6` foi concluída no commit `ba265d8` e documentada em `O5.6-ENTREGA-SAude-AGREGADA-CONSOLE-ADMIN.md`. `platform.health` agora agrega apenas execuções, falhas e fallbacks do agente nos últimos 30 dias, sem serializar workspaceId, contactId, eventId, conteúdo, prompt, modelo, provider, tokens ou credenciais. A tela do Console Admin exibe esses sinais sob a fronteira `platformAdmins`.
+
+O CI PostgreSQL [`36939807435`](https://github.com/geordptoroy/forte-panel/actions/runs/36939807435) passou sem skips. Gates locais `pnpm check`, `pnpm build` e testes focados passaram. O próximo slice é criar o contrato integrado específico de `platform.health` para garantir que nenhuma coluna sensível de `agentRuns` atravesse o boundary do router.
