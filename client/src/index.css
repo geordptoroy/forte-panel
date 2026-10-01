@@ -401,6 +401,19 @@ a { color: inherit; text-decoration: none; }
 .ai-provider-fields, .ai-route-fields, .ai-operation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .ai-provider-fields small, .ai-route-fields small, .ai-operation-grid small { color: #626262; font-size: 9px; line-height: 1.4; }
 .ai-config-section { padding: 20px; margin-bottom: 18px; }
+.agent-health-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 14px 0 16px; }
+.agent-health-status { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border: 1px solid rgba(86,214,138,.16); background: rgba(86,214,138,.045); color: var(--green); }
+.agent-health-status > span { display: grid; gap: 3px; }
+.agent-health-status strong { color: #c9e8d3; font-size: 10px; }
+.agent-health-status small { color: #777; font-size: 9px; }
+.agent-health-columns { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(220px, .75fr); gap: 18px; margin-top: 18px; }
+.agent-health-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.agent-health-heading strong { color: #ddd; font-size: 11px; }
+.agent-health-heading small { color: #626262; font-size: 9px; }
+.agent-failure-list { display: grid; gap: 7px; }
+.agent-failure-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.018); color: #999; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; }
+.agent-failure-row strong { color: #e5b27a; font-family: inherit; font-size: 11px; }
+.agent-empty-state { display: flex; align-items: center; gap: 7px; padding: 12px; border: 1px dashed rgba(255,255,255,.1); color: #6b6b6b; font-size: 9px; }
 .ai-section-intro { max-width: 700px; margin: -5px 0 0; color: #777; font-size: 10px; line-height: 1.5; }
 .ai-route-card { display: grid; grid-template-columns: 38px minmax(150px, .7fr) minmax(300px, 1.3fr); gap: 14px; align-items: center; }
 .ai-route-card-expanded { display: block; }
@@ -518,6 +531,9 @@ a { color: inherit; text-decoration: none; }
   .ai-config-hero { align-items: flex-start; flex-wrap: wrap; padding: 15px; }
   .ai-config-status { width: 100%; margin-left: 56px; }
   .ai-config-section { padding: 15px; }
+  .agent-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .agent-health-columns { grid-template-columns: 1fr; gap: 16px; }
+  .agent-health-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .ai-provider-heading { flex-direction: column; }
   .ai-toggle { width: 100%; justify-content: space-between; }
   .ai-provider-fields, .ai-route-fields, .ai-operation-grid { grid-template-columns: 1fr; }

@@ -9,7 +9,7 @@ import {
   workspaceSettings,
   workspaces,
 } from "../drizzle/schema";
-import { getDb, getNativeAgentKillSwitch, setNativeAgentKillSwitch } from "./db";
+import { getAgentMetrics, getDb, getNativeAgentKillSwitch, setNativeAgentKillSwitch } from "./db";
 import { runNativeAgent } from "./native-agent";
 import type { AgentProviderSettings } from "./llm-providers";
 
@@ -288,6 +288,16 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
         providerAttempts: 1,
         failureCode: "Error",
       }),
+    ]));
+
+    const metrics = await getAgentMetrics(workspaceId, 30);
+    expect(metrics.fallbackRuns).toBeGreaterThanOrEqual(1);
+    expect(metrics.failed).toBeGreaterThanOrEqual(1);
+    expect(metrics.capabilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ capability: "text", fallbackRuns: expect.any(Number) }),
+    ]));
+    expect(metrics.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({ failureCode: "Error", occurrences: expect.any(Number) }),
     ]));
   });
 });

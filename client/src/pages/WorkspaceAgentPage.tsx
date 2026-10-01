@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
-import { Bot, CheckCircle2, Info, Save, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  Info,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+} from "lucide-react";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 
 export default function WorkspaceAgentPage() {
   const query = trpc.agent.workspaceConfig.useQuery();
+  const metricsQuery = trpc.agent.metrics.useQuery({ windowDays: 30 });
+  const killSwitchQuery = trpc.agent.killSwitch.useQuery();
   const saveMutation = trpc.agent.saveWorkspaceConfig.useMutation({
     onSuccess: result => setConfig(result),
   });
@@ -52,6 +62,44 @@ export default function WorkspaceAgentPage() {
           <span className="live-dot" />
           <strong>{config.enabled ? "Ativo" : "Pausado"}</strong>
         </div>
+      </section>
+
+      <section className="surface ai-config-section">
+        <SectionTitle eyebrow="Saúde operacional · últimos 30 dias" title="Decisões do agente" />
+        {metricsQuery.isLoading ? (
+          <p className="muted">Consultando execuções deste workspace...</p>
+        ) : metricsQuery.error ? (
+          <p className="form-error">Não foi possível consultar a saúde do agente.</p>
+        ) : (
+          <>
+            <div className="stat-grid agent-health-grid">
+              <div className="surface stat-card"><span className="stat-label">Execuções</span><strong className="stat-value">{metricsQuery.data?.runs ?? 0}</strong><span className="stat-foot">Mensagens processadas</span></div>
+              <div className="surface stat-card"><span className="stat-label">Resolvidas</span><strong className="stat-value">{Math.round((metricsQuery.data?.resolutionRate ?? 0) * 100)}%</strong><span className="stat-foot">Taxa de resolução</span></div>
+              <div className="surface stat-card"><span className="stat-label">Fallbacks</span><strong className="stat-value">{metricsQuery.data?.fallbackRuns ?? 0}</strong><span className="stat-foot">Recuperações técnicas</span></div>
+              <div className="surface stat-card"><span className="stat-label">Falhas</span><strong className="stat-value">{metricsQuery.data?.failed ?? 0}</strong><span className="stat-foot">Requerem acompanhamento</span></div>
+            </div>
+            <div className="agent-health-status">
+              {killSwitchQuery.data?.paused ? <AlertTriangle size={14} /> : <ShieldCheck size={14} />}
+              <span><strong>{killSwitchQuery.data?.paused ? "Execução pausada" : "Execução liberada"}</strong><small>{killSwitchQuery.data?.paused ? "O kill switch está ativo para este workspace." : "Sem pausa operacional registrada para este workspace."}</small></span>
+            </div>
+            <div className="agent-health-columns">
+              <div>
+                <div className="agent-health-heading"><strong>Por capability</strong><small>Sem nomes de provider ou conteúdo</small></div>
+                <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Capability</th><th>Execuções</th><th>Fallbacks</th><th>Falhas</th></tr></thead><tbody>
+                  {(metricsQuery.data?.capabilities ?? []).map(item => <tr key={item.capability}><td>{item.capability}</td><td>{item.runs}</td><td>{item.fallbackRuns}</td><td>{item.failed}</td></tr>)}
+                  {(metricsQuery.data?.capabilities ?? []).length === 0 && <tr><td colSpan={4}>Nenhuma execução no período.</td></tr>}
+                </tbody></table></div>
+              </div>
+              <div>
+                <div className="agent-health-heading"><strong>Incidentes recorrentes</strong><small>Códigos técnicos resumidos</small></div>
+                <div className="agent-failure-list">
+                  {(metricsQuery.data?.failures ?? []).map(item => <div className="agent-failure-row" key={item.failureCode}><span>{item.failureCode}</span><strong>{item.occurrences}</strong></div>)}
+                  {(metricsQuery.data?.failures ?? []).length === 0 && <div className="agent-empty-state"><RotateCcw size={13} /> Nenhuma falha registrada.</div>}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </section>
 
       <section className="surface ai-config-section">

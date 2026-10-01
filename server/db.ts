@@ -6878,9 +6878,10 @@ export async function getAgentMetrics(workspaceId: number, windowDays: number) {
     windowDays, runs: 0, resolved: 0, transferred: 0, pendingConfirmation: 0, failed: 0, fallbackRuns: 0,
     resolutionRate: 0, transferRate: 0, avgLatencyMs: 0, totalTokens: 0, inputTokens: 0, outputTokens: 0,
     receivedRevenueCents: 0, revenueAttribution: "workspace_total_not_attributed" as const,
+    capabilities: [], failures: [],
   };
   const since = new Date(Date.now() - windowDays * 86_400_000);
-  const [runRows, revenueRows] = await Promise.all([
+  const [runRows, revenueRows, capabilityRows, failureRows] = await Promise.all([
     db.select({
       runs: sql<number>`count(*)`,
       resolved: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'resolved' then 1 else 0 end), 0)`,
@@ -6894,6 +6895,16 @@ export async function getAgentMetrics(workspaceId: number, windowDays: number) {
       outputTokens: sql<number>`coalesce(sum(${agentRuns.outputTokens}), 0)`,
     }).from(agentRuns).where(and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since))),
     db.select({ received: sql<number>`coalesce(sum(${quotePayments.amountCents}), 0)` }).from(quotePayments).where(and(eq(quotePayments.workspaceId, workspaceId), gte(quotePayments.receivedAt, since))),
+    db.select({
+      capability: agentRuns.capability,
+      runs: sql<number>`count(*)`,
+      failed: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'failed' then 1 else 0 end), 0)`,
+      fallbackRuns: sql<number>`coalesce(sum(case when ${agentRuns.providerAttempts} > 1 then 1 else 0 end), 0)`,
+    }).from(agentRuns).where(and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since))).groupBy(agentRuns.capability),
+    db.select({
+      failureCode: agentRuns.failureCode,
+      occurrences: sql<number>`count(*)`,
+    }).from(agentRuns).where(and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since), eq(agentRuns.outcome, "failed"))).groupBy(agentRuns.failureCode).orderBy(sql`count(*) desc`).limit(10),
   ]);
   const row = runRows[0];
   const runs = Number(row?.runs ?? 0);
@@ -6913,6 +6924,16 @@ export async function getAgentMetrics(workspaceId: number, windowDays: number) {
     outputTokens: Number(row?.outputTokens ?? 0),
     receivedRevenueCents: Number(revenueRows[0]?.received ?? 0),
     revenueAttribution: "workspace_total_not_attributed" as const,
+    capabilities: capabilityRows.map(row => ({
+      capability: row.capability ?? "unknown",
+      runs: Number(row.runs ?? 0),
+      failed: Number(row.failed ?? 0),
+      fallbackRuns: Number(row.fallbackRuns ?? 0),
+    })),
+    failures: failureRows.map(row => ({
+      failureCode: row.failureCode ?? "unknown",
+      occurrences: Number(row.occurrences ?? 0),
+    })),
   };
 }
 
