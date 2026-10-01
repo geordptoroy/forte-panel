@@ -863,6 +863,14 @@ api.post("/messages", async (req, res) => {
           body: { error: "not_found", message: "Contato não encontrado" },
         };
       const provider = parsed.data.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
+      if (provider === "baileys" && !parsed.data.instanceId)
+        return {
+          statusCode: 400,
+          body: {
+            error: "instance_id_required",
+            message: "instanceId é obrigatório para envio Baileys",
+          },
+        };
       const senderType = parsed.data.senderType ?? "human";
       const messageType = parsed.data.messageType ?? "text";
       const message = await queueOutboundMessage(
@@ -894,11 +902,15 @@ api.post("/messages", async (req, res) => {
       };
     });
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Falha ao enfileirar mensagem";
     return fail(
       res,
-      500,
-      error instanceof Error ? error.message : "Falha ao enfileirar mensagem",
-      "internal_error"
+      message.includes("instanceId é obrigatório") ? 400 : 500,
+      message,
+      message.includes("instanceId é obrigatório")
+        ? "instance_id_required"
+        : "internal_error"
     );
   }
 });
@@ -932,6 +944,15 @@ api.post("/messages/batch", async (req, res) => {
       const results: Array<Record<string, unknown>> = [];
       for (let index = 0; index < parsed.data.messages.length; index += 1) {
         const item = parsed.data.messages[index];
+        const provider = item.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
+        if (provider === "baileys" && !item.instanceId)
+          return {
+            statusCode: 400,
+            body: {
+              error: "instance_id_required",
+              message: `instanceId é obrigatório no item ${index + 1}`,
+            },
+          };
         const contact = item.contactId
           ? await getContactById(workspaceId, item.contactId)
           : await upsertApiContact(workspaceId, {
@@ -946,7 +967,6 @@ api.post("/messages/batch", async (req, res) => {
               message: `Contato não encontrado no item ${index + 1}`,
             },
           };
-        const provider = item.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
         const senderType = item.senderType ?? "ai";
         const messageType = item.messageType ?? "text";
         const batchId =
@@ -991,13 +1011,17 @@ api.post("/messages/batch", async (req, res) => {
       };
     });
   } catch (error) {
-    return fail(
-      res,
-      500,
+    const message =
       error instanceof Error
         ? error.message
-        : "Falha ao enfileirar lote de mensagens",
-      "internal_error"
+        : "Falha ao enfileirar lote de mensagens";
+    return fail(
+      res,
+      message.includes("instanceId é obrigatório") ? 400 : 500,
+      message,
+      message.includes("instanceId é obrigatório")
+        ? "instance_id_required"
+        : "internal_error"
     );
   }
 });

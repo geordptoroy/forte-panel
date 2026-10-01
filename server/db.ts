@@ -5463,6 +5463,10 @@ export async function sendManualMessage(
     instanceIds?.length === 1
   )
     route.instanceId = instanceIds[0];
+  if (route.provider === "baileys" && !route.instanceId)
+    throw new Error(
+      "Selecione uma única conexão WhatsApp ou responda à conversa pela instância de origem"
+    );
   const createdAt = new Date();
   const metadata = {
     ...(messageMetadata ?? {}),
@@ -6767,6 +6771,12 @@ export async function queueOutboundMessage(
   const selectedProvider = assertOperationalWhatsappProvider(
     provider ?? OPERATIONAL_WHATSAPP_PROVIDER
   );
+  if (
+    selectedProvider === "baileys" &&
+    (typeof metadata?.instanceId !== "string" ||
+      metadata.instanceId.trim().length === 0)
+  )
+    throw new Error("instanceId é obrigatório para enfileirar mensagem Baileys");
   const contact = await getContactById(workspaceId, contactId);
   if (!contact) throw new Error("Contact not found");
   const channels = await listWhatsappChannels(workspaceId);
@@ -6878,27 +6888,44 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
   let failed = 0;
   let throttled = 0;
   for (const item of pending) {
-    if (item.workspaceId) {
-      const usage = await consumeWorkspaceUsage(
-        item.workspaceId,
-        "outboundMessages"
-      );
-      if (!usage.allowed) {
-        throttled += 1;
-        continue;
-      }
-    }
     const claimed = await db
       .update(messages)
       .set({
         status: "processing",
-        attemptCount: sql`${messages.attemptCount} + 1`,
       })
       .where(
         and(eq(messages.id, item.message.id), eq(messages.status, "queued"))
       )
       .returning({ id: messages.id });
     if (claimed.length === 0) continue;
+    if (item.workspaceId) {
+      const usage = await consumeWorkspaceUsage(
+        item.workspaceId,
+        "outboundMessages"
+      );
+      if (!usage.allowed) {
+        await db
+          .update(messages)
+          .set({ status: "queued" })
+          .where(
+            and(
+              eq(messages.id, item.message.id),
+              eq(messages.status, "processing")
+            )
+          );
+        throttled += 1;
+        continue;
+      }
+    }
+    await db
+      .update(messages)
+      .set({ attemptCount: sql`${messages.attemptCount} + 1` })
+      .where(
+        and(
+          eq(messages.id, item.message.id),
+          eq(messages.status, "processing")
+        )
+      );
     try {
       const selectedProvider = assertOperationalWhatsappProvider(
         item.message.provider

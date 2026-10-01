@@ -118,3 +118,16 @@ Entrega documentada em `O2.2-ENTREGA-INBOUND-IDEMPOTENTE.md`. Validações: type
 ## Próxima ação vigente
 
 A próxima fatia é **O2.3 — Outbound com `instanceId`, fila e reconciliação**. Auditar `queueOutboundMessage`, adapter Baileys, idempotency key, estados de envio, retries, falhas do gateway, reconciliação por externalId e a apresentação desses estados no Inbox.
+
+
+## O2.3 concluída — outbound, fila e reconciliação — 2026-10-01
+
+A auditoria confirmou que o outbound usa mensagem persistida como unidade de trabalho, claim condicional, estados `queued`/`processing`/`sent`/`failed`, tentativas limitadas, `lastError`, `sentAt`, `externalId` e evento `message.sent`. O adapter envia para a rota da instância explícita e inclui uma chave estável baseada no ID da mensagem.
+
+A entrada REST e as chamadas internas agora exigem `instanceId` para Baileys antes de criarem fila ou contato; o envio manual do Inbox falha fechado quando não resolve uma única conexão. O worker disputa o claim antes de consumir cota, devolve a mensagem à fila quando limitado e só incrementa tentativa quando o envio realmente pode começar.
+
+Entrega documentada em `O2.3-ENTREGA-OUTBOUND-FILA-RECONCILIACAO.md`. Validações: `pnpm check`, `pnpm build`, 30 testes de adapter/API/roteamento/estado e `git diff --check`. A prova PostgreSQL com dois workers, timeout após envio e gateway real continua pendente.
+
+## Próxima ação vigente
+
+A próxima fatia é **O2.4 — Mídia privada e capacidades do composer**. Auditar download/upload de mídia, URLs privadas, limites de tamanho, MIME, limpeza de dados, payloads de imagem/áudio/vídeo/documento e estados de erro no Inbox.

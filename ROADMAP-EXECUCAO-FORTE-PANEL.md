@@ -85,8 +85,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | **CONCLUÍDA** | Onboarding tolerante a interrupções |
 | O2.1 | Canal | Saúde do WhatsApp e ciclo de conexão | **CONCLUÍDA** | QR, pairing, reconexão e erros acionáveis |
 | O2.2 | Canal | Inbound idempotente e histórico sem efeitos colaterais | **CONCLUÍDA** | Mensagem recebida uma vez, com status observável |
-| O2.3 | Canal | Outbound com `instanceId`, fila e reconciliação | **PRÓXIMA** | Envio rastreável até gateway e telefone |
-| O2.4 | Canal | Mídia privada e capacidades do composer | PENDENTE | Texto, imagem, áudio, vídeo e documento com limites claros |
+| O2.3 | Canal | Outbound com `instanceId`, fila e reconciliação | **CONCLUÍDA** | Envio rastreável até gateway e telefone |
+| O2.4 | Canal | Mídia privada e capacidades do composer | **PRÓXIMA** | Texto, imagem, áudio, vídeo e documento com limites claros |
 | O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | PENDENTE | WhatsApp cria/atualiza lead real |
 | O3.2 | Comercial | Inbox operacional com assignment e follow-up | PENDENTE | Nenhum lead importante fica sem próxima ação |
 | O3.3 | Comercial | Funil canônico sem duplicação de estado | PENDENTE | Lead atravessa estágios com auditoria |
