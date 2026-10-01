@@ -4,7 +4,7 @@
 >
 > **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
 > **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
-> **Último commit funcional publicado:** `4705446` — `test: close integrated native agent kill switch gate`.<br>
+> **Último commit funcional publicado:** `db243df` — `test: prove paused agent events remain reprocessable`.<br>
 > **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
 > **Próxima fatia autorizada:** auditoria/fechamento do kill switch e contrato integrado das capabilities `text`, `audio`, `vision` e `document`.<br>
 > **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
@@ -311,3 +311,12 @@ Foram adicionados contratos sintéticos para as quatro capabilities (`text`, `au
 Gates locais: `pnpm check` passou; `pnpm exec vitest run server/agent-runtime-gate.test.ts server/agent-confirmation.contract.test.ts server/agent-safety.test.ts server/audio-transcription.test.ts server/media-analysis.test.ts server/llm-providers.test.ts server/migration-journal.test.ts` passou com 7 arquivos/21 testes; `pnpm build` passou; o aviso conhecido de chunk frontend acima de 500 kB permanece. A integração PostgreSQL/worker e o aceite end-to-end com provider real continuam pendentes para CI/ambiente controlado.
 
 Próximo slice: executar a prova integrada PostgreSQL/worker das quatro capabilities com provider sintético, confirmando `pending` durante pausa, ausência de chamada ao provider e retomada após reativação autorizada. Manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar a PR #39.
+
+
+### Atualização posterior — prova integrada PostgreSQL/worker — 2026-10-01
+
+A prova integrada foi adicionada em `server/agent-runtime.integration.test.ts`. Ela cria um workspace isolado, pausa o kill switch com motivo contendo caracteres de controle, enfileira eventos `message.received` de `text`, `audio`, `image` e `document`, executa o worker filtrado por `workspaceId` e verifica que todos permanecem `pending`, com `attemptCount=1`, sem worker lease, motivo sanitizado e nenhum `agentRun`. O terceiro argumento opcional de `processDomainEventsOnce` existe apenas para permitir a prova tenant-scoped sem alterar o processamento normal do worker.
+
+O Sandbox não possui `DATABASE_URL`: os contratos unitários passaram (13 testes) e a prova PostgreSQL foi corretamente marcada como skipped localmente. `pnpm check`, `pnpm build` e `git diff --check` passaram. O commit funcional publicado é `db243df` (`test: prove paused agent events remain reprocessable`).
+
+Próximo gate: o workflow PostgreSQL da PR #39 deve executar essa prova contra migrations reais; somente após CI verde considerar fechado o bloqueio/reprocessamento integrado. O aceite end-to-end com provider sintético/real e retomada autorizada continua separado e pendente. Manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar a PR.
