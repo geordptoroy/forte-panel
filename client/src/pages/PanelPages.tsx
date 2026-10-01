@@ -1191,6 +1191,32 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       setRecordingError("O áudio/anexo excede o limite de 8 MB.");
       return;
     }
+    const mimeType = file.type.split(";", 1)[0].toLowerCase();
+    const allowedMime = new Set([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "audio/ogg",
+      "audio/mpeg",
+      "audio/mp4",
+      "audio/webm",
+      "audio/wav",
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/plain",
+      "text/csv",
+    ]);
+    if (!allowedMime.has(mimeType)) {
+      setRecordingError("Este tipo de arquivo não é permitido pelo WhatsApp.");
+      return;
+    }
     if (attachmentPreviewUrlRef.current)
       URL.revokeObjectURL(attachmentPreviewUrlRef.current);
     attachmentPreviewUrlRef.current = "";
@@ -1209,7 +1235,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
         setAttachment({
           name: file.name,
           type,
-          mimeType: file.type || "application/octet-stream",
+          mimeType,
           dataUrl: reader.result,
           previewUrl,
         });

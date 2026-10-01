@@ -17,7 +17,8 @@
 - [x] Executar O2.1: fechar saúde do WhatsApp, ciclo de conexão, QR/pairing, reconexão e erros acionáveis. Entrega: `O2.1-ENTREGA-SAUDE-WHATSAPP.md`.
 - [x] Executar O2.2: fechar inbound idempotente e histórico sem efeitos colaterais. Entrega: `O2.2-ENTREGA-INBOUND-IDEMPOTENTE.md`.
 - [x] Executar O2.3: fechar outbound com `instanceId`, fila e reconciliação. Entrega: `O2.3-ENTREGA-OUTBOUND-FILA-RECONCILIACAO.md`.
-- [ ] Executar O2.4: fechar mídia privada e capacidades do composer.
+- [x] Executar O2.4: fechar mídia privada e capacidades do composer. Entrega: `O2.4-ENTREGA-MIDIA-PRIVADA-COMPOSER.md`.
+- [ ] Executar O3.1: unificar lead entre contato, conversa e oportunidade.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.

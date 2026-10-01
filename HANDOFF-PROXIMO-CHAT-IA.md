@@ -130,4 +130,17 @@ Entrega documentada em `O2.3-ENTREGA-OUTBOUND-FILA-RECONCILIACAO.md`. Validaçõ
 
 ## Próxima ação vigente
 
-A próxima fatia é **O2.4 — Mídia privada e capacidades do composer**. Auditar download/upload de mídia, URLs privadas, limites de tamanho, MIME, limpeza de dados, payloads de imagem/áudio/vídeo/documento e estados de erro no Inbox.
+Esta instrução foi executada na seção **O2.4 concluída** abaixo; a continuidade vigente agora é O3.1.
+
+
+## O2.4 concluída — mídia privada e composer — 2026-10-01
+
+O composer do Inbox continua oferecendo imagem, áudio, vídeo e documento, mas agora o servidor valida data URL, MIME coerente e limite de tamanho; o cliente também bloqueia MIME desconhecido antes de carregar o arquivo. A gravação de áudio mantém o limite de 10 minutos.
+
+Quando `FORTE_MEDIA_PRIVATE_STORAGE_ENABLED=true`, mídia inbound e outbound é persistida em storage privado tenant-scoped. O outbound não grava mais base64 no JSON da mensagem: mantém chave, MIME, tamanho e nome; o worker resolve uma URL assinada temporária antes de chamar o gateway. O histórico autorizado hidrata somente URLs assinadas. Sem storage configurado, a validação server-side continua ativa e o comportamento legado permanece compatível para desenvolvimento.
+
+Entrega documentada em `O2.4-ENTREGA-MIDIA-PRIVADA-COMPOSER.md`. Validações: `pnpm check`, `pnpm build`, typecheck do gateway, 28 testes de mídia/adapter/API/roteamento e `git diff --check`. A prova real com Forge/S3 e URL expirada continua pendente por falta de credenciais no sandbox.
+
+## Próxima ação vigente
+
+A próxima fatia é **O3.1 — Lead unificado entre contato, conversa e oportunidade**. Auditar criação/atualização de lead pelo WhatsApp, vínculo canônico entre contato/conversa/oportunidade, deduplicação por workspace/telefone, histórico de mudanças e estados observáveis no CRM.

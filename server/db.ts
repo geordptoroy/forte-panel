@@ -108,7 +108,11 @@ import {
   mergeAgentProviderSettings,
   type AgentProviderSettings,
 } from "./llm-providers";
-import { persistInboundMedia, resolvePrivateMediaUrl } from "./media-storage";
+import {
+  persistInboundMedia,
+  persistOutboundMedia,
+  resolvePrivateMediaUrl,
+} from "./media-storage";
 import { onboardingFollowUpFieldKeys } from "./onboarding-followups";
 
 const DOMAIN_EVENT_WORKER_ID =
@@ -5474,6 +5478,18 @@ export async function sendManualMessage(
     ...(route.instanceId ? { instanceId: route.instanceId } : {}),
     ...(route.usedLegacyFallback ? { routingSource: "legacy_default" } : { routingSource: "inbound_origin" }),
   };
+  const persistedMetadata =
+    messageType === "image" ||
+    messageType === "audio" ||
+    messageType === "video" ||
+    messageType === "document"
+      ? await persistOutboundMedia(
+          workspaceId,
+          crypto.randomUUID(),
+          metadata,
+          messageType
+        )
+      : metadata;
   await db.insert(messages).values({
     conversationId: conversation.id,
     direction: "outbound",
@@ -5483,7 +5499,9 @@ export async function sendManualMessage(
       messageType === "text"
         ? content
         : String(messageMetadata?.fileName ?? `[${messageType}]`),
-    metadata: Object.keys(metadata).length ? metadata : undefined,
+    metadata: Object.keys(persistedMetadata ?? {}).length
+      ? persistedMetadata
+      : undefined,
     status: "queued",
     provider: route.provider,
     createdAt,
@@ -6374,7 +6392,7 @@ export async function ingestInboundWhatsApp(
   const metadata = await persistInboundMedia(workspace.id, input.eventId, {
     ...sourceMetadata,
     ...(normalizedJid ? { jid: normalizedJid } : {}),
-  });
+  }, messageType === "image" || messageType === "audio" || messageType === "video" || messageType === "document" ? messageType : "document");
   const priorMessage = await db
     .select({
       messageId: messages.id,
@@ -6931,6 +6949,10 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
         item.message.provider
       );
       const adapter = getWhatsappAdapter(selectedProvider);
+      const mediaUrl = await resolvePrivateMediaUrl(item.message.metadata ?? undefined);
+      const outboundMetadata = mediaUrl
+        ? { ...(item.message.metadata ?? {}), mediaData: mediaUrl }
+        : item.message.metadata ?? undefined;
       const instanceId =
         typeof item.message.metadata?.instanceId === "string"
           ? item.message.metadata.instanceId
@@ -6938,9 +6960,9 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
       const result = await adapter.sendMessage({
         idempotencyKey: `forte-message-${item.message.id}`,
         phone: item.phone,
-        content: item.message.content,
+        content: mediaUrl ?? item.message.content,
         messageType: item.message.messageType,
-        metadata: item.message.metadata ?? undefined,
+        metadata: outboundMetadata,
         instanceId,
         provider: selectedProvider,
       });
