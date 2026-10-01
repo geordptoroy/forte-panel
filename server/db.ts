@@ -136,6 +136,10 @@ import {
   SecurityBackendUnavailableError,
   securityFailClosed,
 } from "./_core/security-mode";
+import {
+  decideAgentRuntimeGate,
+  sanitizeAgentPauseReason,
+} from "./agent-runtime-gate";
 
 const DOMAIN_EVENT_WORKER_ID =
   process.env.WORKER_ID?.trim() || `worker-${crypto.randomUUID()}`;
@@ -3682,7 +3686,7 @@ export async function getNativeAgentKillSwitch(workspaceId: number) {
 
 export async function setNativeAgentKillSwitch(input: { workspaceId: number; paused: boolean; reason: string; actorUserId: number }) {
   const changedAt = new Date().toISOString();
-  await upsertWorkspaceSetting(input.workspaceId, NATIVE_AGENT_KILL_SWITCH_KEY, JSON.stringify({ paused: input.paused, reason: input.reason.trim(), changedAt, changedBy: input.actorUserId }));
+  await upsertWorkspaceSetting(input.workspaceId, NATIVE_AGENT_KILL_SWITCH_KEY, JSON.stringify({ paused: input.paused, reason: sanitizeAgentPauseReason(input.reason), changedAt, changedBy: input.actorUserId }));
   return getNativeAgentKillSwitch(input.workspaceId);
 }
 
@@ -8715,8 +8719,9 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
           item.workspaceId,
           eventInstanceId
         );
-        if (!config.enabled) {
-          if (config.killSwitch?.paused) {
+        const runtimeGate = decideAgentRuntimeGate(config);
+        if (runtimeGate.action !== "execute") {
+          if (runtimeGate.action === "requeue") {
             await db
               .update(domainEvents)
               .set({
@@ -8725,7 +8730,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
                 claimedAt: null,
                 leaseUntil: null,
                 availableAt: new Date(Date.now() + 30_000),
-                lastError: `native_agent_kill_switch:${config.killSwitch.reason ?? "manual"}`,
+                lastError: `native_agent_kill_switch:${runtimeGate.reason}`,
                 updatedAt: new Date(),
               })
               .where(

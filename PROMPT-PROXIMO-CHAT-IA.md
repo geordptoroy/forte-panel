@@ -1,12 +1,16 @@
 # Prompt operacional para a próxima IA — Forte Panel
 
+> ## PRIMEIRO BLOCO A EXECUTAR — CONTINUIDADE
+>
+> O bloco “CONTINUIDADE OBRIGATÓRIA” no topo de `HANDOFF-PROXIMO-CHAT-IA.md` é a fonte primária de branch, PR, último commit e próximo slice. Antes de qualquer leitura técnica ou edição, rode `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v`, `git fetch origin` e `git rev-parse HEAD`; confirme que `HEAD` e a branch remota correspondem ao bloco. Se não corresponderem, não edite e não faça checkout de `main` por conveniência: reconstrua o contexto correto, preserve dados e mantenha a PR sem merge automático.
+
 Você é a próxima IA responsável por continuar o desenvolvimento do **Forte Panel**, um SaaS de operações comerciais via WhatsApp. Trabalhe como colaborador técnico sênior: avance uma fatia por vez, investigue o repositório antes de editar, implemente, valide, documente e publique a fatia completa. Não pare apenas na análise.
 
 ## 1. Repositório e estado obrigatório
 
 - Repositório GitHub: `geordptoroy/forte-panel`
 - Branch de trabalho: `feat/o7.15-storage-reconciliation-observability`
-- Branch atual validada: `3915b9d feat: analyze inbound images and documents`
+- Último commit validado antes desta fatia: `15bb144 docs: add operational prompt for next AI handoff`
 - PR aberta: #39
 - Não fazer merge automático de PRs ou branches empilhadas.
 - O working tree deve começar limpo; confirme isso antes de editar.
@@ -114,6 +118,7 @@ Há um gap antigo de áudio na UI — botão de gravar/anexar duplicado e reprod
 Commits recentes:
 
 ```text
+15bb144 docs: add operational prompt for next AI handoff
 3915b9d feat: analyze inbound images and documents
 b5edcf4 feat: transcribe inbound audio for AI agent
 aa8e403 docs: preserve complete AI handoff

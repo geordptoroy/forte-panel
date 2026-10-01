@@ -5,6 +5,8 @@
 **Base:** `FORTE-PANEL-FONTE-DE-VERDADE.md` + auditoria do código e documentação
 **Regra de continuidade:** cada mensagem `próximo` executa uma fatia por vez, registra commit em branch empilhada e abre PR para revisão; nunca mesclar automaticamente.
 
+> **Preflight obrigatório para qualquer nova IA:** o bloco “CONTINUIDADE OBRIGATÓRIA” no topo de `HANDOFF-PROXIMO-CHAT-IA.md` é a primeira fonte operacional. Antes de tocar no código, confirmar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v`, `git fetch origin` e `git rev-parse HEAD`; a branch, PR, commit remoto e próximo slice do bloco devem coincidir. Se houver divergência, parar a implementação, preservar a branch e corrigir o contexto antes de editar. Nunca usar `main` como branch de continuidade quando o handoff indicar uma branch empilhada.
+
 > Este documento transforma a estratégia de reposicionamento em trabalho executável. Não é uma lista de ideias: cada fatia tem escopo, saída verificável e critério de conclusão.
 
 ---

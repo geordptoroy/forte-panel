@@ -1,5 +1,14 @@
 # Handoff — Forte Panel
 
+> ## CONTINUIDADE OBRIGATÓRIA — ler antes de qualquer outra seção
+>
+> **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
+> **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
+> **Último commit conhecido no início desta fatia:** `15bb144` — `docs: add operational prompt for next AI handoff`.<br>
+> **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
+> **Próxima fatia autorizada:** auditoria/fechamento do kill switch e contrato integrado das capabilities `text`, `audio`, `vision` e `document`.<br>
+> **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
+
 **Atualizado:** 2026-09-30 — O4.4 validada no CI; O5.1 em andamento
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
@@ -291,3 +300,14 @@ Próximo slice: fechar o kill switch e o aceite técnico integrado das quatro ca
 ### Prompt operacional de transferência
 
 O fluxo de trabalho, as regras do usuário, o estado técnico atual, os commits, as tags GHCR, os comandos, os critérios de validação e o próximo slice foram consolidados em `PROMPT-PROXIMO-CHAT-IA.md`. A próxima IA deve ler esse prompt junto com este handoff e o roadmap antes de executar qualquer ação.
+
+
+### Atualização posterior — O4.3: contrato integrado do kill switch — 2026-10-01
+
+A auditoria confirmou que o kill switch já era tenant-scoped, exigia manager/owner, devolvia eventos para `pending` durante a pausa e não permitia reativação pelo modelo. Para fechar o contrato sem duplicar a implementação, foi criado `server/agent-runtime-gate.ts`, que centraliza as decisões `execute`, `requeue` e `deliver` do worker. O worker agora usa esse contrato antes de importar/executar `runNativeAgent`; a pausa sempre reencaminha o evento para `pending` e o motivo é sanitizado, limitado e livre de caracteres de controle antes de persistir no estado/auditoria operacional.
+
+Foram adicionados contratos sintéticos para as quatro capabilities (`text`, `audio`, `vision`, `document`), para o bloqueio fail-closed durante a pausa, para a não reativação por configuração e para a sanitização do motivo. Nenhum provider real, secret real ou número WhatsApp real foi usado.
+
+Gates locais: `pnpm check` passou; `pnpm exec vitest run server/agent-runtime-gate.test.ts server/agent-confirmation.contract.test.ts server/agent-safety.test.ts server/audio-transcription.test.ts server/media-analysis.test.ts server/llm-providers.test.ts server/migration-journal.test.ts` passou com 7 arquivos/21 testes; `pnpm build` passou; o aviso conhecido de chunk frontend acima de 500 kB permanece. A integração PostgreSQL/worker e o aceite end-to-end com provider real continuam pendentes para CI/ambiente controlado.
+
+Próximo slice: executar a prova integrada PostgreSQL/worker das quatro capabilities com provider sintético, confirmando `pending` durante pausa, ausência de chamada ao provider e retomada após reativação autorizada. Manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar a PR #39.
