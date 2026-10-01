@@ -320,3 +320,10 @@ A prova integrada foi adicionada em `server/agent-runtime.integration.test.ts`. 
 O Sandbox não possui `DATABASE_URL`: os contratos unitários passaram (13 testes) e a prova PostgreSQL foi corretamente marcada como skipped localmente. `pnpm check`, `pnpm build` e `git diff --check` passaram. O commit funcional publicado é `db243df` (`test: prove paused agent events remain reprocessable`).
 
 Próximo gate: o workflow PostgreSQL da PR #39 deve executar essa prova contra migrations reais; somente após CI verde considerar fechado o bloqueio/reprocessamento integrado. O aceite end-to-end com provider sintético/real e retomada autorizada continua separado e pendente. Manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar a PR.
+
+
+### Resultado do CI PostgreSQL — prova integrada verde — 2026-10-01
+
+O workflow PostgreSQL da PR #39 passou no run [`36894222761`](https://github.com/geordptoroy/forte-panel/actions/runs/36894222761), no head `d668365`: inicialização do PostgreSQL, migrations versionadas, typecheck do gateway, configuração de produção, suíte completa contra PostgreSQL e journal de migrations passaram sem skips. A prova `server/agent-runtime.integration.test.ts` foi executada contra banco real do CI e confirmou o requeue tenant-scoped de `text`, `audio`, `vision` e `document`, sem `agentRuns` durante a pausa.
+
+O bloqueio/reprocessamento integrado está validado em código + CI PostgreSQL. O próximo gate separado é o aceite controlado do runtime após reativação autorizada, com provider sintético ou ambiente de teste aprovado, cobrindo resposta textual, transcrição, visão/documento e telemetria. Não declarar aceite end-to-end real nem usar secrets reais.
