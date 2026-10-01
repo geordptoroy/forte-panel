@@ -110,8 +110,8 @@ describe.skipIf(!hasDatabase)("platform.health response contract", () => {
     expect(health.components.agent.failures30d).toBeGreaterThanOrEqual(1);
     expect(health.components.agent.fallbackRuns30d).toBeGreaterThanOrEqual(1);
     expect(Object.keys(health.components.agent).sort()).toEqual([
-      "fallbackRuns30d",
       "failures30d",
+      "fallbackRuns30d",
       "runs30d",
       "status",
     ]);
