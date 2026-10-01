@@ -231,4 +231,6 @@ Primeira subfatia implementada e validada. `getDashboardSnapshot(workspaceId)` a
 
 O cálculo de pendência financeira deixou de somar `contacts.quoteCents`; usa `quotedCents - receivedCents` somente para quotes abertos. Recebimento mensal não é mais zerado. O dia usa `workspace.timezone` via `getLocalDayBounds`. A UI adicionou a seção “Decisões de hoje” com estados vazios honestos e links para Inbox/contatos, Faturamento e Agenda.
 
-Gates desta subfatia: `pnpm check`, `pnpm build`, 22 testes focados e `git diff --check` aprovados. A O3.7 ainda não está concluída: falta revisar e testar o comportamento com PostgreSQL persistente, melhorar a nomenclatura/consulta de leads conforme o SLA do produto e fechar a documentação específica da fatia.
+Foi corrigida uma inconsistência de semântica: `awaitingResponse` significa que a empresa enviou a última mensagem e aguarda o lead; não é pendência do operador. A fila “Leads para responder” usa agora `needsOperatorResponse` ou follow-up vencido. O contrato puro está em `server/dashboard-contract.ts`, com testes de fronteira para resposta pendente, follow-up concluído e orçamento parado em 48 horas.
+
+Gates desta subfatia: `pnpm check`, `pnpm build`, 18 testes focados e `git diff --check` aprovados. A O3.7 ainda não está concluída: falta revisar e testar o comportamento com PostgreSQL persistente, completar a visão de agenda/pendências conforme o SLA do produto e fechar a documentação específica da fatia.

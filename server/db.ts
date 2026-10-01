@@ -95,6 +95,10 @@ import {
   ScheduleError,
 } from "./schedule";
 import {
+  isDashboardPendingLead,
+  isDashboardStalledQuote,
+} from "./dashboard-contract";
+import {
   dailySummaryEventKey,
   dailySummaryFor,
   notificationForEvent,
@@ -5931,21 +5935,20 @@ export async function getDashboardSnapshot(workspaceId: number) {
     (total, { quote }) => total + Math.max(0, quote.quotedCents - quote.receivedCents),
     0
   );
-  const stalledSince = new Date(now.getTime() - 48 * 60 * 60 * 1000);
   const pendingLeads = workspaceContacts
-    .filter(contact => Boolean(contact.awaitingResponse || (contact.followUpAt && contact.followUpAt <= now && !contact.followUpCompletedAt)))
+    .filter(contact => isDashboardPendingLead(contact, now))
     .sort((a, b) => (a.followUpAt?.getTime() ?? 0) - (b.followUpAt?.getTime() ?? 0))
     .slice(0, 8)
     .map(contact => ({
       id: contact.id,
       name: contact.name,
       stage: contact.stage,
-      awaitingResponse: contact.awaitingResponse,
+      needsOperatorResponse: contact.needsOperatorResponse,
       followUpAt: contact.followUpAt?.toISOString() ?? null,
       lastMessageAt: contact.lastMessageAt?.toISOString() ?? null,
     }));
   const stalledQuotes = openQuotes
-    .filter(({ quote }) => quote.updatedAt <= stalledSince)
+    .filter(({ quote }) => isDashboardStalledQuote(quote.updatedAt, now))
     .slice(0, 8)
     .map(({ quote, contact }) => ({
       id: quote.id,

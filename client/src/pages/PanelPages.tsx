@@ -305,7 +305,7 @@ export function DashboardPage() {
             </div>
             {(snapshot?.pendingLeads ?? []).slice(0, 4).map(lead => (
               <PageLink href={`/contacts/${lead.id}`} className="event-row" key={lead.id}>
-                <div className="row-copy"><strong>{lead.name}</strong><small>{lead.stage} · {lead.awaitingResponse ? "aguarda resposta" : "follow-up vencido"}</small></div>
+                <div className="row-copy"><strong>{lead.name}</strong><small>{lead.stage} · {lead.needsOperatorResponse ? "resposta pendente" : "follow-up vencido"}</small></div>
                 <ArrowUpRight size={13} />
               </PageLink>
             ))}
