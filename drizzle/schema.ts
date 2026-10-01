@@ -1303,10 +1303,26 @@ export const quotes = pgTable("quotes", {
   receivedCents: integer("receivedCents").default(0).notNull(),
   status: quoteStatusEnum("status").default("orcamento").notNull(),
   dueDate: timestamp("dueDate"),
+  validUntil: timestamp("validUntil"),
+  approvedAt: timestamp("approvedAt"),
+  approvedByUserId: integer("approvedByUserId"),
   notes: varchar("notes", { length: 1000 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
+export const quoteItems = pgTable(
+  "quoteItems",
+  {
+    id: serial("id").primaryKey(),
+    quoteId: integer("quoteId").notNull(),
+    description: varchar("description", { length: 240 }).notNull(),
+    quantity: integer("quantity").default(1).notNull(),
+    unitCents: integer("unitCents").default(0).notNull(),
+    totalCents: integer("totalCents").default(0).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("quote_items_quote_idx").on(table.quoteId)]
+);
 
 export const auditLogs = pgTable("auditLogs", {
   id: serial("id").primaryKey(),

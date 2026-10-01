@@ -36,6 +36,7 @@ import {
   cancelAgendaAppointment,
   updateAgendaStatus,
   createQuote,
+  approveQuote,
   confirmOnboardingStep,
   getAgendaSnapshot,
   getUserByEmail,
@@ -2377,6 +2378,8 @@ export const appRouter = router({
       return items.map(item => ({
         ...item,
         dueDate: item.dueDate?.toISOString() ?? null,
+        validUntil: item.validUntil?.toISOString() ?? null,
+        approvedAt: item.approvedAt?.toISOString() ?? null,
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
       }));
@@ -2387,13 +2390,22 @@ export const appRouter = router({
           contactId: z.number().int().positive(),
           serviceName: z.string().trim().min(1).max(160),
           description: z.string().max(4000).optional(),
-          quotedCents: z.number().int().nonnegative(),
+          quotedCents: z.number().int().nonnegative().optional(),
           receivedCents: z.number().int().nonnegative().default(0),
+          items: z
+            .array(
+              z.object({
+                description: z.string().trim().min(1).max(240),
+                quantity: z.number().int().positive(),
+                unitCents: z.number().int().nonnegative(),
+              })
+            )
+            .min(1)
+            .optional(),
           status: z
             .enum([
               "orcamento",
               "aguardando_aprovacao",
-              "aprovado",
               "sinal_pendente",
               "parcialmente_pago",
               "pago",
@@ -2401,6 +2413,7 @@ export const appRouter = router({
             ])
             .default("orcamento"),
           dueDate: z.coerce.date().optional(),
+          validUntil: z.coerce.date().optional(),
           notes: z.string().max(1000).optional(),
         })
       )
@@ -2415,7 +2428,6 @@ export const appRouter = router({
           status: z.enum([
             "orcamento",
             "aguardando_aprovacao",
-            "aprovado",
             "sinal_pendente",
             "parcialmente_pago",
             "pago",
@@ -2431,6 +2443,11 @@ export const appRouter = router({
           ctx.workspace.workspaceId,
           ctx.user.id
         )
+      ),
+    approve: requireManager
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input, ctx }) =>
+        approveQuote(input.id, ctx.workspace.workspaceId, ctx.user.id)
       ),
   }),
 

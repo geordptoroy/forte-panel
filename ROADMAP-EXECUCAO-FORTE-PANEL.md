@@ -90,8 +90,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | **CONCLUÍDA** | WhatsApp cria/atualiza lead real |
 | O3.2 | Comercial | Inbox operacional com assignment e follow-up | **CONCLUÍDA** | Nenhum lead importante fica sem próxima ação |
 | O3.3 | Comercial | Funil canônico sem duplicação de estado | **CONCLUÍDA** | Lead atravessa estágios com auditoria |
-| O3.4 | Comercial | Orçamento com itens, validade e aprovação | **PRÓXIMA** | Conversa pode gerar proposta rastreável |
-| O3.5 | Comercial | Agenda com conflito, profissional e status | PENDENTE | Orçamento aprovado pode virar agendamento real |
+| O3.4 | Comercial | Orçamento com itens, validade e aprovação | **CONCLUÍDA** | Conversa pode gerar proposta rastreável |
+| O3.5 | Comercial | Agenda com conflito, profissional e status | **PRÓXIMA** | Orçamento aprovado pode virar agendamento real |
 | O3.6 | Comercial | Recebimento, ledger operacional e recibo | PENDENTE | Serviço concluído fecha ciclo de receita |
 | O3.7 | Comercial | Dashboard de decisões do dia | PENDENTE | Usuário vê pendências, receita e saúde do canal |
 | O4.1 | IA | Contexto comercial seguro para o agente | PENDENTE | IA consulta dados reais sem atravessar tenant |

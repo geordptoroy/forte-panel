@@ -45,6 +45,7 @@ import {
   professionals,
   professionalServices,
   quotes,
+  quoteItems,
   services,
   users,
   webhookEvents,
@@ -4213,6 +4214,12 @@ export async function resetWorkspaceDevelopmentData(workspaceId?: number) {
     await tx
       .delete(appointmentsTable)
       .where(eq(appointmentsTable.workspaceId, workspace.id));
+    await tx.delete(quoteItems).where(
+      inArray(
+        quoteItems.quoteId,
+        sql`(SELECT "id" FROM "quotes" WHERE "workspaceId" = ${workspace.id})`
+      )
+    );
     await tx.delete(quotes).where(eq(quotes.workspaceId, workspace.id));
     await tx
       .delete(professionalServices)
@@ -5914,8 +5921,13 @@ export async function listQuotes(workspaceId: number) {
     .leftJoin(contacts, eq(quotes.contactId, contacts.id))
     .where(eq(quotes.workspaceId, workspaceId))
     .orderBy(desc(quotes.createdAt));
+  const quoteIds = rows.map(({ quote }) => quote.id);
+  const itemRows = quoteIds.length
+    ? await db.select().from(quoteItems).where(inArray(quoteItems.quoteId, quoteIds))
+    : [];
   return rows.map(({ quote, contact }) => ({
     ...quote,
+    items: itemRows.filter(item => item.quoteId === quote.id),
     contactName: contact?.name ?? "Contato removido",
     contactInitials: (contact?.name ?? "CR")
       .split(" ")
@@ -5932,13 +5944,21 @@ export async function listQuotesForContact(
 ) {
   const db = await getDb();
   if (!db) return [];
-  return db
+  const rows = await db
     .select()
     .from(quotes)
     .where(
       and(eq(quotes.workspaceId, workspaceId), eq(quotes.contactId, contactId))
     )
     .orderBy(desc(quotes.updatedAt), desc(quotes.id));
+  const quoteIds = rows.map(quote => quote.id);
+  const itemRows = quoteIds.length
+    ? await db.select().from(quoteItems).where(inArray(quoteItems.quoteId, quoteIds))
+    : [];
+  return rows.map(quote => ({
+    ...quote,
+    items: itemRows.filter(item => item.quoteId === quote.id),
+  }));
 }
 
 async function refreshContactQuoteCents(
@@ -5967,17 +5987,18 @@ export async function createQuote(
     contactId: number;
     serviceName: string;
     description?: string;
-    quotedCents: number;
+    quotedCents?: number;
     receivedCents?: number;
+    items?: Array<{ description: string; quantity: number; unitCents: number }>;
     status?:
       | "orcamento"
       | "aguardando_aprovacao"
-      | "aprovado"
       | "sinal_pendente"
       | "parcialmente_pago"
       | "pago"
       | "cancelado";
     dueDate?: Date;
+    validUntil?: Date;
     notes?: string;
   },
   workspaceId: number,
@@ -5997,6 +6018,28 @@ export async function createQuote(
     )
     .limit(1);
   if (!contact[0]) throw new Error("Contact not found");
+  const items = input.items?.length
+    ? input.items.map(item => {
+        if (!Number.isInteger(item.quantity) || item.quantity <= 0)
+          throw new Error("Quantidade de item inválida");
+        if (!Number.isInteger(item.unitCents) || item.unitCents < 0)
+          throw new Error("Valor unitário inválido");
+        const totalCents = item.quantity * item.unitCents;
+        if (!Number.isSafeInteger(totalCents)) throw new Error("Total do item inválido");
+        return { ...item, totalCents };
+      })
+    : [
+        {
+          description: input.serviceName,
+          quantity: 1,
+          unitCents: input.quotedCents ?? 0,
+          totalCents: input.quotedCents ?? 0,
+        },
+      ];
+  const quotedCents = items.reduce((total, item) => total + item.totalCents, 0);
+  if (!Number.isSafeInteger(quotedCents)) throw new Error("Total do orçamento inválido");
+  if ((input.receivedCents ?? 0) > quotedCents)
+    throw new Error("Recebimento não pode superar o total do orçamento");
   const now = new Date();
   const inserted = await db
     .insert(quotes)
@@ -6005,15 +6048,26 @@ export async function createQuote(
       contactId: input.contactId,
       serviceName: input.serviceName,
       description: input.description,
-      quotedCents: input.quotedCents,
+      quotedCents,
       receivedCents: input.receivedCents ?? 0,
       status: input.status ?? "orcamento",
       dueDate: input.dueDate,
+      validUntil: input.validUntil,
       notes: input.notes,
       createdAt: now,
       updatedAt: now,
     })
     .returning();
+  await db.insert(quoteItems).values(
+    items.map(item => ({
+      quoteId: inserted[0]!.id,
+      description: item.description.trim().slice(0, 240),
+      quantity: item.quantity,
+      unitCents: item.unitCents,
+      totalCents: item.totalCents,
+      createdAt: now,
+    }))
+  );
   await refreshContactQuoteCents(workspaceId, input.contactId, db);
   await db.insert(auditLogs).values({
     workspaceId,
@@ -6031,7 +6085,6 @@ export async function updateQuotePayment(
   status:
     | "orcamento"
     | "aguardando_aprovacao"
-    | "aprovado"
     | "sinal_pendente"
     | "parcialmente_pago"
     | "pago"
@@ -6047,6 +6100,8 @@ export async function updateQuotePayment(
     .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
     .limit(1);
   if (!existing[0]) throw new Error("Quote not found");
+  if (receivedCents > existing[0].quotedCents)
+    throw new Error("Recebimento não pode superar o total do orçamento");
   const updated = await db
     .update(quotes)
     .set({ receivedCents, status, updatedAt: new Date() })
@@ -6059,6 +6114,46 @@ export async function updateQuotePayment(
     contactId: existing[0].contactId,
     action: "quote_updated",
     summary: `Recebimento do orçamento atualizado para ${receivedCents} centavos`,
+  });
+  return updated[0];
+}
+
+export async function approveQuote(
+  id: number,
+  workspaceId: number,
+  actorUserId?: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const existing = await db
+    .select()
+    .from(quotes)
+    .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
+    .limit(1);
+  const quote = existing[0];
+  if (!quote) throw new Error("Quote not found");
+  if (quote.status === "cancelado")
+    throw new Error("Orçamento cancelado não pode ser aprovado");
+  if (quote.validUntil && quote.validUntil.getTime() < Date.now())
+    throw new Error("Orçamento expirado; atualize a validade antes de aprovar");
+  if (quote.status === "aprovado") return quote;
+  const now = new Date();
+  const updated = await db
+    .update(quotes)
+    .set({
+      status: "aprovado",
+      approvedAt: now,
+      approvedByUserId: actorUserId,
+      updatedAt: now,
+    })
+    .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
+    .returning();
+  await db.insert(auditLogs).values({
+    workspaceId,
+    actorUserId,
+    contactId: quote.contactId,
+    action: "quote_approved",
+    summary: `Orçamento ${id} aprovado`,
   });
   return updated[0];
 }

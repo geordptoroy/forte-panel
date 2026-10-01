@@ -183,3 +183,16 @@ Entrega documentada em `O3.3-ENTREGA-FUNIL-CANONICO.md`. Validações: `pnpm che
 ## Próxima ação vigente
 
 A próxima fatia é **O3.4 — Orçamento com itens, validade e aprovação**. Auditar o modelo atual de quotes, adicionar itens/versão/validade e formalizar aprovação sem duplicar total ou status entre contato e orçamento.
+
+
+## O3.4 concluída — orçamento itemizado — 2026-10-01
+
+Quotes agora possuem `quoteItems`, `validUntil`, `approvedAt` e `approvedByUserId`, com migration `drizzle/0009_quote_items_approval.sql`. O total `quotes.quotedCents` é calculado pelo backend como soma dos itens; o Billing permite múltiplas linhas e mostra o total calculado.
+
+A aprovação foi separada em `billing.approve`, com validação de validade, bloqueio de cancelados, auditoria e usuário aprovador. `billing.updatePayment` não concede mais aprovação implicitamente. O read model do Billing e da ficha do lead retorna itens, validade e aprovação.
+
+Entrega documentada em `O3.4-ENTREGA-ORCAMENTO-ITEMIZADO.md`. Validações: `pnpm check`, `pnpm build`, 15 testes focados aprovados e `git diff --check`; a prova PostgreSQL permanece pendente por ausência de `DATABASE_URL` no sandbox.
+
+## Próxima ação vigente
+
+A próxima fatia é **O3.5 — Agenda com conflito, profissional e status**. Auditar criação, reagendamento, cancelamento, timezone, profissional, conflito e vínculo entre orçamento aprovado e agendamento.
