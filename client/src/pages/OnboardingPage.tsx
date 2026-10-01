@@ -139,6 +139,9 @@ export default function OnboardingPage() {
   const sessionStarted = useRef(false);
   const startSession = trpc.onboarding.start.useMutation({
     onSuccess: () => void sessionQuery.refetch(),
+    onError: () => {
+      sessionStarted.current = false;
+    },
   });
   const governanceQuery = trpc.onboarding.governance.useQuery();
   const [retention, setRetention] = useState({ rawArtifactDays: 30, derivedDataDays: 180 });
@@ -183,13 +186,19 @@ export default function OnboardingPage() {
   const [savedVersion, setSavedVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [autosaveState, setAutosaveState] = useState<"idle" | "waiting" | "saving" | "saved" | "error">("idle");
+  const latestProfileRef = useRef(profile);
+  const autosavePayloadRef = useRef<Profile | null>(null);
   const autosave = trpc.onboarding.autosave.useMutation({
     onSuccess: () => {
-      setDirty(false);
-      setAutosaveState("saved");
+      const changedWhileSaving = latestProfileRef.current !== autosavePayloadRef.current;
+      setDirty(changedWhileSaving);
+      setAutosaveState(changedWhileSaving ? "waiting" : "saved");
       void utils.onboarding.profile.invalidate();
     },
-    onError: () => setAutosaveState("error"),
+    onError: () => {
+      setDirty(true);
+      setAutosaveState("error");
+    },
   });
   const confirmStep = trpc.onboarding.confirmStep.useMutation({
     onSuccess: () => void utils.onboarding.profile.invalidate(),
@@ -283,14 +292,18 @@ export default function OnboardingPage() {
     setFollowUpDrafts(current => ({ ...current, [key]: value }));
 
   useEffect(() => {
-    if (profileQuery.data) {
+    latestProfileRef.current = profile;
+  }, [profile]);
+
+  useEffect(() => {
+    if (profileQuery.data && !dirty) {
       setProfile(profileQuery.data.profile);
       setPublished(profileQuery.data.published);
       setSavedVersion(profileQuery.data.version);
       setDirty(false);
       setAutosaveState("idle");
     }
-  }, [profileQuery.data]);
+  }, [dirty, profileQuery.data]);
 
   useEffect(() => {
     if (governanceQuery.data?.retention) {
@@ -311,13 +324,18 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (!dirty) return;
+    if (autosave.isPending) {
+      setAutosaveState("waiting");
+      return;
+    }
     setAutosaveState("waiting");
     const timeout = window.setTimeout(() => {
       setAutosaveState("saving");
+      autosavePayloadRef.current = profile;
       autosave.mutate({ profile });
     }, 1200);
     return () => window.clearTimeout(timeout);
-  }, [autosave.mutate, dirty, profile]);
+  }, [autosave.isPending, autosave.mutate, dirty, profile]);
 
   useEffect(() => () => {
     streamRef.current?.getTracks().forEach(track => track.stop());
@@ -513,6 +531,28 @@ export default function OnboardingPage() {
     </div>
   );
 
+  if (sessionQuery.isLoading || profileQuery.isLoading) {
+    return (
+      <PanelLayout eyebrow="Sistema / Configuração" title="Configuração da empresa" description="Carregando o rascunho salvo com segurança.">
+        <div className="surface" style={{ padding: 22 }} role="status">
+          <div style={{ display: "flex", gap: 8, alignItems: "center", color: "#bbb", fontSize: 12 }}><Loader2 size={15} className="animate-spin" /> Recuperando sua configuração...</div>
+        </div>
+      </PanelLayout>
+    );
+  }
+
+  if (sessionQuery.error || profileQuery.error) {
+    const error = sessionQuery.error ?? profileQuery.error;
+    return (
+      <PanelLayout eyebrow="Sistema / Configuração" title="Não foi possível carregar o onboarding" description="O rascunho não foi alterado. Tente novamente antes de continuar.">
+        <div className="surface" style={{ padding: 22 }} role="alert">
+          <div className="demo-banner" style={{ margin: 0 }}><Info size={15} /> {error?.message ?? "Falha temporária ao recuperar a configuração."}</div>
+          <button type="button" className="btn-primary" style={{ marginTop: 14 }} onClick={() => { void sessionQuery.refetch(); void profileQuery.refetch(); }}>Tentar novamente</button>
+        </div>
+      </PanelLayout>
+    );
+  }
+
   return (
     <PanelLayout
       eyebrow="Sistema / Configuração"
@@ -558,8 +598,13 @@ export default function OnboardingPage() {
         </div>
         {sessionQuery.data?.status === "paused" && (
           <p className="muted" style={{ margin: "10px 0 0", fontSize: 11 }}>
-            Retomando o rascunho salvo anteriormente...
+            Rascunho pausado encontrado. Retomando automaticamente...
           </p>
+        )}
+        {startSession.error && (
+          <div className="demo-banner" style={{ margin: "10px 0 0" }} role="alert">
+            <Info size={14} /> Não foi possível retomar a sessão. O rascunho continua preservado. <button type="button" className="btn-ghost" style={{ padding: "3px 6px", fontSize: 9 }} onClick={() => { sessionStarted.current = true; startSession.mutate(); }}>Tentar retomar</button>
+          </div>
         )}
       </div>
       {governanceQuery.data && (
@@ -800,14 +845,18 @@ export default function OnboardingPage() {
           {rollbackMutation.error && <div className="demo-banner" style={{ marginTop: 10, fontSize: 10 }}><Info size={13} /> {rollbackMutation.error.message}</div>}
         </section>
       )}
-      {(profileQuery.data?.stepAnswers ?? []).length > 0 && (
+      {profileQuery.data && currentStepId === "review" && (
         <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
           <SectionTitle
             eyebrow="Revisão humana"
             title="Confirme cada bloco antes de publicar"
             action={<span className="muted" style={{ fontSize: 10 }}>{confirmedRequiredCount}/{requiredStepKeys.length} obrigatórios confirmados</span>}
           />
-          <div style={{ display: "grid", gap: 10 }}>
+          {(profileQuery.data.stepAnswers ?? []).length === 0 ? (
+            <div className="muted" style={{ padding: 14, border: "1px dashed rgba(255,255,255,.12)", fontSize: 10, lineHeight: 1.5 }}>
+              Ainda não há respostas estruturadas para revisar. Preencha os blocos do formulário e salve o rascunho; as respostas humanas aparecerão aqui antes da confirmação.
+            </div>
+          ) : <div style={{ display: "grid", gap: 10 }}>
             {(profileQuery.data?.stepAnswers ?? []).map(step => {
               const required = requiredStepKeys.includes(step.stepKey as (typeof requiredStepKeys)[number]);
               const confirmed = step.status === "confirmed";
@@ -908,7 +957,7 @@ export default function OnboardingPage() {
                 </div>
               );
             })}
-          </div>
+          </div>}
           {(confirmStep.error || resolveConflict.error) && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} /> {(confirmStep.error || resolveConflict.error)?.message}</div>}
         </section>
       )}
@@ -946,6 +995,8 @@ export default function OnboardingPage() {
               <button className="btn-secondary" style={{ padding: "5px 8px", fontSize: 9 }} disabled={updateService.isPending} onClick={() => updateService.mutate({ serviceId: service.id, active: !service.active })}>{service.active ? "Pausar" : "Ativar"}</button>
             </div>
           ))}
+          {servicesQuery.isLoading && <div className="muted" style={{ padding: 12, fontSize: 10 }}><Loader2 size={13} className="animate-spin" /> Carregando catálogo...</div>}
+          {servicesQuery.error && <div className="demo-banner" style={{ margin: 0, fontSize: 10 }}><Info size={13} /> Não foi possível carregar os serviços. Tente novamente.</div>}
           {!servicesQuery.isLoading && !(servicesQuery.data ?? []).length && <div className="muted" style={{ padding: 12, border: "1px dashed rgba(255,255,255,.12)", fontSize: 10 }}>Nenhum serviço cadastrado ainda. Você pode decidir depois e continuar com o rascunho.</div>}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(180px, 1.5fr) 110px 110px auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
@@ -987,6 +1038,8 @@ export default function OnboardingPage() {
               {professional.availability.length > 0 && <div className="muted" style={{ fontSize: 9, marginTop: 8 }}>{professional.availability.map(entry => `${weekdayLabels[entry.weekday]} ${formatMinute(entry.startMinute)}–${formatMinute(entry.endMinute)}`).join(" · ")}</div>}
             </div>
           ))}
+          {professionalsQuery.isLoading && <div className="muted" style={{ padding: 12, fontSize: 10 }}><Loader2 size={13} className="animate-spin" /> Carregando profissionais...</div>}
+          {professionalsQuery.error && <div className="demo-banner" style={{ margin: 0, fontSize: 10 }}><Info size={13} /> Não foi possível carregar os profissionais. Tente novamente.</div>}
           {!professionalsQuery.isLoading && !(professionalsQuery.data ?? []).length && <div className="muted" style={{ padding: 12, border: "1px dashed rgba(255,255,255,.12)", fontSize: 10 }}>Nenhum profissional cadastrado. O catálogo pode funcionar com equipe geral por enquanto.</div>}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "end", marginBottom: 14 }}>
@@ -1091,7 +1144,7 @@ export default function OnboardingPage() {
             {autosaveState === "waiting" && "Alterações pendentes..."}
             {autosaveState === "saving" && "Salvando rascunho..."}
             {autosaveState === "saved" && "Rascunho salvo"}
-            {autosaveState === "error" && "Autosave indisponível; use Salvar rascunho."}
+            {autosaveState === "error" && <><span>Autosave indisponível.</span> <button type="button" className="btn-ghost" style={{ padding: "2px 5px", fontSize: 9 }} disabled={autosave.isPending} onClick={() => { setAutosaveState("saving"); autosavePayloadRef.current = latestProfileRef.current; autosave.mutate({ profile: latestProfileRef.current }); }}>Tentar novamente</button></>}
           </small>
           <button
             className="btn-secondary"

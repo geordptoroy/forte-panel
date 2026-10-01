@@ -13,7 +13,8 @@
 - [x] Criar `O1.1-ENTREGA-ONBOARDING-WIZARD.md` e `HANDOFF-PROXIMO-CHAT-IA.md` para continuidade entre chats.
 - [x] Executar O1.2: conectar serviços, preços, duração e disponibilidade ao catálogo operacional persistido. Entrega: `O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`.
 - [x] Executar O1.3: fechar regras de atendimento, exemplos e simulação segura antes da publicação. Entrega: `O1.3-ENTREGA-REGRAS-E-SIMULACAO.md`.
-- [ ] Executar O1.4: fechar retomada, autosave, missing/conflict e estados vazios tolerantes a interrupção.
+- [x] Executar O1.4: fechar retomada, autosave, missing/conflict e estados vazios tolerantes a interrupção. Entrega: `O1.4-ENTREGA-RETOMADA-E-RESILIENCIA.md`.
+- [ ] Executar O2.1: fechar saúde do WhatsApp, ciclo de conexão, QR/pairing, reconexão e erros acionáveis.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.

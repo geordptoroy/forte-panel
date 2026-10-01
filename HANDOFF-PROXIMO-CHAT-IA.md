@@ -45,16 +45,7 @@ A etapa de Serviços do onboarding agora consulta e grava `services` com nome, p
 
 ## Próxima ação recomendada
 
-A próxima fatia é **O1.3 — Regras de atendimento e revisão de exemplos**. O trabalho deve auditar os contratos atuais de perfil, exemplos/simulação, prompt publicado e confirmação humana, garantindo que preço, prazo, disponibilidade e políticas só sejam apresentados como fonte aprovada.
-
-A sequência recomendada para O1.2 é:
-
-1. Ler o contrato real de regras, exemplos e simulação no backend e no onboarding.
-2. Confirmar quais exemplos são apenas simulação e quais podem entrar na publicação.
-3. Conectar a revisão a dados do catálogo e agenda, sem deixar a IA inventar preço ou horário.
-4. Atualizar testes, documentação, roadmap e este handoff.
-5. Executar `pnpm check`, `pnpm build` e `git diff --check`; pular testes completos somente se essa instrução continuar vigente.
-6. Commitar e fazer push para `origin/main`.
+A próxima fatia é **O2.1 — Saúde do WhatsApp e ciclo de conexão**. O trabalho deve auditar QR/pairing, estados da instância, reconexão, polling, erros acionáveis e isolamento multi-instância antes de liberar o caminho operacional.
 
 ## Regras de produto que não podem ser quebradas
 
@@ -72,7 +63,7 @@ O gate técnico da última alteração deve ser executado antes do commit. O gat
 
 Começar dizendo que vai verificar o checkout, ler `ROADMAP-EXECUCAO-FORTE-PANEL.md`, `FORTE-PANEL-FONTE-DE-VERDADE.md`, este handoff e `O1.1-ENTREGA-ONBOARDING-WIZARD.md`, além de inspecionar o código real de serviços/profissionais/agenda. Não confiar apenas na documentação: comparar sempre com `client`, `server`, `drizzle` e `forte-whatsapp`.
 
-Depois executar O1.2 de ponta a ponta, mantendo mudanças atômicas, atualizando o roadmap a cada fatia e publicando o commit. O usuário quer continuidade direta e costuma responder somente “Próximo”.
+Depois executar O2.1 de ponta a ponta, mantendo mudanças atômicas, atualizando o roadmap a cada fatia e publicando o commit. O usuário quer continuidade direta e costuma responder somente “Próximo”.
 
 **Commit da fatia:** `commit da fatia atual` — `feat: connect onboarding to operational catalog`
 **Branch esperada:** `main` sincronizada com `origin/main`.
@@ -89,3 +80,16 @@ Validações executadas: `pnpm check`, `pnpm build`, `pnpm exec vitest run serve
 ## Próxima ação
 
 A próxima fatia é **O1.4 — Retomada, autosave, missing/conflict e empty states**. Auditar a recuperação de sessão, hidratação do perfil, autosave após interrupção, estados de carregamento/erro/vazio e a consistência entre respostas do formulário, catálogo e revisão antes de alterar o gate público.
+
+
+## O1.4 concluída — retomada e resiliência — 2026-10-01
+
+A tela do onboarding agora tem loading explícito e erro com retry para recuperação de sessão/perfil. Sessões pausadas retomam automaticamente e oferecem uma ação manual se a retomada falhar. A hidratação não sobrescreve edições locais sujas.
+
+O autosave foi serializado no cliente: uma gravação pendente bloqueia uma segunda gravação concorrente, mudanças feitas durante a requisição continuam marcadas como `dirty` e são salvas depois, e falhas oferecem retry sem perder o perfil. A revisão mostra estado vazio quando não há respostas estruturadas; serviços e profissionais distinguem loading, vazio e erro.
+
+A entrega está documentada em `O1.4-ENTREGA-RETOMADA-E-RESILIENCIA.md`. Validações: `pnpm check`, `pnpm build`, 12 testes focados aprovados e `git diff --check`. A prova manual com rede interrompida, reload e PostgreSQL persistente continua pendente.
+
+## Próxima ação
+
+A próxima fatia é **O2.1 — Saúde do WhatsApp e ciclo de conexão**. Auditar QR/pairing, estados da instância, reconexão, polling, erros acionáveis, multi-instância e o caminho de conexão antes de liberar a superfície operacional.
