@@ -236,3 +236,12 @@ Implementados múltiplos intervalos semanais por profissional, preservando a tab
 O backend valida dia, limites, horário final maior que o inicial e sobreposição entre intervalos do mesmo dia; entradas válidas são normalizadas por dia e início. A validação da Agenda já consumia todas as janelas e continua rejeitando agendamentos que não estejam totalmente cobertos por uma delas. Foram adicionados testes para intervalos separados, sobreposição e limites. Typecheck, testes de schedule, build e `git diff --check` passaram. Os testes de isolamento que dependem de PostgreSQL ficaram pulados por ausência de banco no Sandbox.
 
 Próximo passo: publicar esta fatia e, na máquina Windows, testar um profissional com `09:00–12:00` e `14:00–18:00`, confirmar persistência após refresh e tentar criar um agendamento no intervalo da pausa para confirmar o bloqueio. Não repetir backup/restore, não parear número real adicional, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+
+### Atualização posterior — MVP.2: gate de segurança do agente
+
+Implementado o primeiro gate runtime antes do provider de IA. A política pura em `server/agent-safety.ts` identifica tentativas de prompt injection, exfiltração de credenciais, sinais de autoagressão, violência e conteúdo sexual envolvendo menores. O gate é executado antes de consultas de contexto, carregamento de histórico, mídia, provider ou ferramentas.
+
+Quando sinalizado, o fluxo não chama o LLM: desliga a IA do contato, envia uma mensagem neutra de encaminhamento para humano e registra a execução como `transferred` com modelo `safety-gate:<reason>`. O sinal técnico não é exposto ao cliente. Foram adicionados contratos unitários do gate. `pnpm check`, testes focados e `git diff --check` passaram.
+
+Próximo slice: validar e endurecer a resposta automática normal de texto end-to-end, incluindo fallback de provider e observabilidade; depois implementar transcrição de áudio e análise de imagem/documento. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.

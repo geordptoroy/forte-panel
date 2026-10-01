@@ -23,6 +23,7 @@ import {
   type AgentProviderSettings,
 } from "./llm-providers";
 import { resolvePrivateMediaUrl } from "./media-storage";
+import { inspectAgentInput, safetyHandoffMessage } from "./agent-safety";
 
 export type NativeAgentEvent = {
   eventId: string;
@@ -202,6 +203,41 @@ async function runNativeAgentCore(
   event: NativeAgentEvent,
   config: AgentConfig
 ) {
+  const safety = inspectAgentInput({
+    content: event.content,
+    messages: event.messages,
+  });
+  if (safety.decision === "handoff" && safety.reason) {
+    await setContactAi(event.workspaceId, event.contactId, false);
+    const response = safetyHandoffMessage(safety.reason);
+    await queueOutboundMessage(
+      event.workspaceId,
+      event.contactId,
+      response,
+      undefined,
+      "ai",
+      "text",
+      {
+        agent: true,
+        safetyGate: true,
+        safetyReason: safety.reason,
+        eventId: event.eventId,
+        ...(event.instanceId ? { instanceId: event.instanceId } : {}),
+      }
+    );
+    return {
+      response,
+      steps: 0,
+      model: `safety-gate:${safety.reason}`,
+      toolCalls: 0,
+      transferred: true,
+      pendingConfirmation: false,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      latencyMs: 0,
+    };
+  }
   const contact = await getContactById(event.workspaceId, event.contactId);
   if (!contact) throw new Error("Contato do evento não encontrado");
   const thread = await listMessagesForContact(
