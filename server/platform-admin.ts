@@ -287,6 +287,20 @@ function safeProviderSettings(
                 : maskProviderSecret(route.apiKey),
             }
           : {}),
+        ...(route.fallback
+          ? {
+              fallback: route.fallback.map(fallback => ({
+                ...fallback,
+                ...(fallback.apiKey
+                  ? {
+                      apiKey: fallback.apiKey.startsWith("••••")
+                        ? fallback.apiKey
+                        : maskProviderSecret(fallback.apiKey),
+                    }
+                  : {}),
+              })),
+            }
+          : {}),
       },
     ])
   ) as AgentProviderSettings["routing"];

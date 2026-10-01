@@ -245,3 +245,12 @@ Implementado o primeiro gate runtime antes do provider de IA. A política pura e
 Quando sinalizado, o fluxo não chama o LLM: desliga a IA do contato, envia uma mensagem neutra de encaminhamento para humano e registra a execução como `transferred` com modelo `safety-gate:<reason>`. O sinal técnico não é exposto ao cliente. Foram adicionados contratos unitários do gate. `pnpm check`, testes focados e `git diff --check` passaram.
 
 Próximo slice: validar e endurecer a resposta automática normal de texto end-to-end, incluindo fallback de provider e observabilidade; depois implementar transcrição de áudio e análise de imagem/documento. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+
+### Atualização posterior — MVP.2: fallback explícito de providers
+
+O runtime de IA agora tenta a rota primária e, em caso de indisponibilidade, HTTP não-2xx ou timeout, percorre somente os fallbacks explicitamente configurados. No Console Admin, a primeira conexão ativa de uma capability é primária e as seguintes da mesma capability viram fallback em ordem de criação, limitadas a três secundárias. Não há fallback implícito para providers não configurados.
+
+As chaves de fallback seguem o mesmo tratamento da primária: armazenamento criptografado e retorno mascarado. O erro final informa apenas provider/status técnico resumido, sem retornar chave ou corpo potencialmente sensível. Foi adicionado contrato unitário para primário indisponível, fallback bem-sucedido e ausência de fallback implícito. `pnpm check` e testes focados passaram.
+
+Próximo slice: adicionar observabilidade de provider/capability na execução normal de texto e fechar a política de erro/fallback antes de entrar em transcrição de áudio. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.

@@ -288,7 +288,7 @@ function AiConnectionsCard({ canMutate }: { canMutate: boolean }) {
         </div>
         <KeyRound size={18} />
       </div>
-      <p className="platform-muted">Cadastre a URL, modelo e chave do provedor para uma função específica. A chave fica criptografada no servidor e nunca retorna ao navegador em texto aberto.</p>
+      <p className="platform-muted">Cadastre a URL, modelo e chave do provedor para uma função específica. A primeira conexão ativa é primária; as seguintes da mesma função são usadas como fallback em ordem de criação. A chave fica criptografada no servidor e nunca retorna ao navegador em texto aberto.</p>
       <div className="platform-form-grid">
         <label className="platform-field"><span>Nome da conexão</span><input className="input-control" value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} placeholder="Ex.: Gemini para atendimento" /></label>
         <label className="platform-field"><span>Função do sistema</span><select className="select-control" value={form.capability} onChange={event => setForm(current => ({ ...current, capability: event.target.value as AiCapability }))}>{Object.entries(aiCapabilityLabels).map(([key, value]) => <option key={key} value={key}>{value.title}</option>)}</select></label>

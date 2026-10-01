@@ -3714,7 +3714,11 @@ async function readStoredNativeAgentConfig(workspaceId?: number) {
 async function applyPlatformAiConnections(settings: AgentProviderSettings) {
   const db = await getDb();
   if (!db) return settings;
-  const rows = await db.select().from(platformAiConnections).where(eq(platformAiConnections.active, 1));
+  const rows = await db
+    .select()
+    .from(platformAiConnections)
+    .where(eq(platformAiConnections.active, 1))
+    .orderBy(asc(platformAiConnections.id));
   const capabilityRoutes = {
     whatsapp_reply: "text",
     admin_support: "text",
@@ -3722,24 +3726,41 @@ async function applyPlatformAiConnections(settings: AgentProviderSettings) {
     image_analysis: "vision",
     document_analysis: "document",
   } as const;
+  const grouped = new Map<string, typeof rows>();
   for (const row of rows) {
     const routeKey = capabilityRoutes[row.capability as keyof typeof capabilityRoutes];
     if (!routeKey || !["nvidia_nim", "google_gemini", "openai_compatible"].includes(row.provider)) continue;
-    const provider = row.provider as keyof AgentProviderSettings["providers"];
-    settings.routing[routeKey] = {
-      ...settings.routing[routeKey],
-      provider,
-      baseUrl: row.baseUrl,
-      apiKey: row.encryptedApiKey,
-      model: row.model,
-    };
-    settings.providers[provider] = {
-      ...settings.providers[provider],
-      enabled: true,
-      baseUrl: row.baseUrl,
-      apiKey: row.encryptedApiKey,
-    };
+    const current = grouped.get(routeKey) ?? [];
+    current.push(row);
+    grouped.set(routeKey, current);
   }
+  grouped.forEach((connections, routeKey) => {
+    const [primary, ...fallbacks] = connections;
+    if (!primary) return;
+    const provider = primary.provider as keyof AgentProviderSettings["providers"];
+    settings.routing[routeKey as keyof AgentProviderSettings["routing"]] = {
+      ...settings.routing[routeKey as keyof AgentProviderSettings["routing"]],
+      provider,
+      baseUrl: primary.baseUrl,
+      apiKey: primary.encryptedApiKey,
+      model: primary.model,
+      fallback: fallbacks.slice(0, 3).map(fallback => ({
+        provider: fallback.provider as keyof AgentProviderSettings["providers"],
+        baseUrl: fallback.baseUrl,
+        apiKey: fallback.encryptedApiKey,
+        model: fallback.model,
+      })),
+    };
+    for (const connection of connections) {
+      const connectionProvider = connection.provider as keyof AgentProviderSettings["providers"];
+      settings.providers[connectionProvider] = {
+        ...settings.providers[connectionProvider],
+        enabled: true,
+        baseUrl: connection.baseUrl,
+        apiKey: connection.encryptedApiKey,
+      };
+    }
+  });
   return settings;
 }
 
@@ -3752,6 +3773,9 @@ async function readNativeAgentConfig(
     provider.apiKey = maskProviderSecret(provider.apiKey);
   for (const route of Object.values(llm.routing))
     if (route.apiKey) route.apiKey = maskProviderSecret(route.apiKey);
+  for (const route of Object.values(llm.routing))
+    for (const fallback of route.fallback ?? [])
+      if (fallback.apiKey) fallback.apiKey = maskProviderSecret(fallback.apiKey);
   return {
     enabled: stored.enabled !== false,
     model: stored.model?.trim() || process.env.AGENT_MODEL || "gpt-5-mini",
@@ -3932,6 +3956,14 @@ export async function saveNativeAgentConfig(
       incoming.apiKey && !incoming.apiKey.startsWith("••••")
         ? encryptProviderSecret(incoming.apiKey)
         : previous.apiKey;
+    for (let index = 0; index < (incoming.fallback ?? []).length; index += 1) {
+      const fallback = incoming.fallback![index];
+      const previousFallback = previous.fallback?.[index];
+      fallback.apiKey =
+        fallback.apiKey && !fallback.apiKey.startsWith("••••")
+          ? encryptProviderSecret(fallback.apiKey)
+          : previousFallback?.apiKey;
+    }
   }
   await upsertWorkspaceSetting(
     workspace.id,
@@ -3943,6 +3975,9 @@ export async function saveNativeAgentConfig(
     provider.apiKey = maskProviderSecret(provider.apiKey);
   for (const route of Object.values(response.llm.routing))
     if (route.apiKey) route.apiKey = maskProviderSecret(route.apiKey);
+  for (const route of Object.values(response.llm.routing))
+    for (const fallback of route.fallback ?? [])
+      if (fallback.apiKey) fallback.apiKey = maskProviderSecret(fallback.apiKey);
   return response;
 }
 
@@ -3986,6 +4021,14 @@ export async function savePlatformGlobalNativeAgentConfig(
       incoming.apiKey && !incoming.apiKey.startsWith("••••")
         ? encryptProviderSecret(incoming.apiKey)
         : previous.apiKey;
+    for (let index = 0; index < (incoming.fallback ?? []).length; index += 1) {
+      const fallback = incoming.fallback![index];
+      const previousFallback = previous.fallback?.[index];
+      fallback.apiKey =
+        fallback.apiKey && !fallback.apiKey.startsWith("••••")
+          ? encryptProviderSecret(fallback.apiKey)
+          : previousFallback?.apiKey;
+    }
   }
   await upsertWorkspaceSetting(
     PLATFORM_GLOBAL_AGENT_WORKSPACE_ID,

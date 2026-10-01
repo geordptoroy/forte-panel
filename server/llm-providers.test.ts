@@ -1,0 +1,54 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { invokeConfiguredLLM, type AgentProviderSettings } from "./llm-providers";
+
+const settings: AgentProviderSettings = {
+  providers: {
+    nvidia_nim: { enabled: true, baseUrl: "https://primary.example/v1", apiKey: "primary-key" },
+    google_gemini: { enabled: true, baseUrl: "https://fallback.example/v1", apiKey: "fallback-key" },
+    openai_compatible: { enabled: false, baseUrl: "", apiKey: "" },
+  },
+  routing: {
+    text: {
+      provider: "nvidia_nim",
+      model: "primary-model",
+      fallback: [{ provider: "google_gemini", model: "fallback-model" }],
+    },
+    vision: { provider: "nvidia_nim", model: "vision-model" },
+    audio: { provider: "nvidia_nim", model: "audio-model" },
+    document: { provider: "nvidia_nim", model: "document-model" },
+  },
+};
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("configured LLM routing", () => {
+  it("uses the explicit fallback after a primary provider failure", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error("primary unavailable"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        model: "fallback-model",
+        choices: [{ message: { content: "Resposta de fallback" } }],
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await invokeConfiguredLLM(settings, "text", {
+      model: "unused-model",
+      messages: [{ role: "user", content: "Olá" }],
+    });
+
+    expect(result.choices[0]?.message.content).toBe("Resposta de fallback");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe("fallback-model");
+  });
+
+  it("does not try an implicit provider when no fallback is configured", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("unavailable"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(invokeConfiguredLLM({
+      ...settings,
+      routing: { ...settings.routing, text: { provider: "nvidia_nim", model: "primary-model" } },
+    }, "text", { model: "unused-model", messages: [] })).rejects.toThrow("tentativas: nvidia_nim:Error");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

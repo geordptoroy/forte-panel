@@ -20,6 +20,12 @@ export type AgentRouting = Record<
     model: string;
     baseUrl?: string;
     apiKey?: string;
+    fallback?: Array<{
+      provider: AgentProviderId;
+      model: string;
+      baseUrl?: string;
+      apiKey?: string;
+    }>;
   }
 >;
 
@@ -163,37 +169,50 @@ export async function invokeConfiguredLLM(
   params: InvokeParams
 ): Promise<InvokeResult> {
   const route = settings.routing[capability];
-  const provider = settings.providers[route.provider];
-  const baseUrl = route.baseUrl || provider?.baseUrl;
-  const apiKey = route.apiKey || provider?.apiKey;
-  if (
-    (!provider?.enabled && !(route.baseUrl && route.apiKey)) ||
-    !baseUrl ||
-    !apiKey
-  )
-    throw new Error(
-      `Provedor configurado para ${capability} não está disponível`
-    );
+  const candidates = [route, ...(route.fallback ?? [])];
   const timeoutMsRaw = Number(process.env.AGENT_LLM_TIMEOUT_MS ?? 45_000);
   const timeoutMs = Number.isFinite(timeoutMsRaw)
     ? Math.max(1_000, Math.min(timeoutMsRaw, 180_000))
     : 45_000;
-  const response = await fetch(`${endpoint(baseUrl)}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${decryptProviderSecret(apiKey)}`,
-    },
-    body: JSON.stringify(
-      normalizeParams({ ...params, model: route.model || params.model })
-    ),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok)
-    throw new Error(
-      `LLM ${route.provider} respondeu ${response.status}: ${await response.text()}`
-    );
-  return (await response.json()) as InvokeResult;
+  const failures: string[] = [];
+  for (const candidate of candidates) {
+    const provider = settings.providers[candidate.provider];
+    const baseUrl = candidate.baseUrl || provider?.baseUrl;
+    const apiKey = candidate.apiKey || provider?.apiKey;
+    if (
+      (!provider?.enabled && !(candidate.baseUrl && candidate.apiKey)) ||
+      !baseUrl ||
+      !apiKey
+    ) {
+      failures.push(`${candidate.provider}:indisponível`);
+      continue;
+    }
+    try {
+      const response = await fetch(`${endpoint(baseUrl)}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${decryptProviderSecret(apiKey)}`,
+        },
+        body: JSON.stringify(
+          normalizeParams({ ...params, model: candidate.model || params.model })
+        ),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) {
+        failures.push(`${candidate.provider}:http_${response.status}`);
+        continue;
+      }
+      return (await response.json()) as InvokeResult;
+    } catch (error) {
+      failures.push(
+        `${candidate.provider}:${error instanceof Error ? error.name : "erro"}`
+      );
+    }
+  }
+  throw new Error(
+    `Nenhum provider disponível para ${capability}; tentativas: ${failures.join(", ")}`
+  );
 }
 
 export function capabilityForMessageType(

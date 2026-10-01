@@ -147,6 +147,12 @@ const routingConfigInput = z.object({
   model: z.string().trim().min(1).max(200),
   baseUrl: z.string().trim().max(500).optional(),
   apiKey: z.string().max(4_000).optional(),
+  fallback: z.array(z.object({
+    provider: z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]),
+    model: z.string().trim().min(1).max(200),
+    baseUrl: z.string().trim().max(500).optional(),
+    apiKey: z.string().max(4_000).optional(),
+  })).max(3).optional(),
 });
 const globalLlmInput = z.object({
   providers: z.object({
