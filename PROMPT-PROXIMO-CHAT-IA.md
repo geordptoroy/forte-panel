@@ -10,7 +10,7 @@ Você é a próxima IA responsável por continuar o desenvolvimento do **Forte P
 
 - Repositório GitHub: `geordptoroy/forte-panel`
 - Branch de trabalho: `feat/o7.15-storage-reconciliation-observability`
-- Último commit funcional publicado: `5235360 feat: govern agent metrics access and period`
+- Último commit funcional publicado: `9ce527c test: prove agent metrics authorization isolation`
 - PR aberta: #39
 - Não fazer merge automático de PRs ou branches empilhadas.
 - O working tree deve começar limpo; confirme isso antes de editar.
@@ -118,6 +118,7 @@ Há um gap antigo de áudio na UI — botão de gravar/anexar duplicado e reprod
 Commits recentes:
 
 ```text
+9ce527c test: prove agent metrics authorization isolation
 5235360 feat: govern agent metrics access and period
 2c1ae37 feat: expose agent fallback health metrics
 6d7583c test: prove capability fallback and failure telemetry

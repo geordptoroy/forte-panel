@@ -4,7 +4,7 @@
 >
 > **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
 > **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
-> **Último commit funcional publicado:** `5235360` — `feat: govern agent metrics access and period`.<br>
+> **Último commit funcional publicado:** `9ce527c` — `test: prove agent metrics authorization isolation`.<br>
 > **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
 > **Próxima fatia autorizada:** auditoria/fechamento do kill switch e contrato integrado das capabilities `text`, `audio`, `vision` e `document`.<br>
 > **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
@@ -364,3 +364,9 @@ O CI PostgreSQL [`36933812864`](https://github.com/geordptoroy/forte-panel/actio
 A fatia `O5.4` foi concluída no commit `5235360` e documentada em `O5.4-ENTREGA-GOVERNANCA-METRICAS-AGENTE.md`. A UI consulta `auth.access` antes de habilitar `agent.metrics` e `agent.killSwitch`; somente proprietário, administrador ou gerente com `canManageCatalog` veem os dados. Usuários sem permissão recebem estado restrito sem chamada protegida. O período agora é selecionável entre 7, 30 e 90 dias, com estados separados de permissão, carregamento, erro e vazio.
 
 Gates locais passaram: `pnpm check`, `pnpm build` e 20 testes focados. O próximo slice é criar contrato explícito de autorização do router para provar manager/admin/owner permitidos, agent/professional bloqueados e isolamento do `workspaceId` no read model.
+
+### Atualização posterior — autorização e isolamento das métricas — 2026-10-01
+
+A fatia `O5.5` foi concluída no commit `9ce527c` e documentada em `O5.5-ENTREGA-AUTORIZACAO-METRICAS-AGENTE.md`. O teste integrado `server/agent-metrics-authorization.integration.test.ts` prova no boundary do router que owner/admin/manager podem consultar métricas e kill switch, enquanto agent/professional recebem `FORBIDDEN`. A mesma prova semeia dois workspaces e confirma que o caller de A nunca recebe a execução ou capability de B.
+
+O CI PostgreSQL [`36939301972`](https://github.com/geordptoroy/forte-panel/actions/runs/36939301972) passou sem skips. Gates locais `pnpm check`, `pnpm build` e testes de contexto/agente passaram. O próximo slice é consolidar a experiência do Console Admin com métricas agregadas de plataforma sem expor conteúdo operacional ou credenciais de workspace.
