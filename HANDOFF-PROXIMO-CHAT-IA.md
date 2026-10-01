@@ -4,7 +4,7 @@
 >
 > **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
 > **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
-> **Último commit funcional publicado:** `db243df` — `test: prove paused agent events remain reprocessable`.<br>
+> **Último commit funcional publicado:** `3866a96` — `test: prove controlled native agent resume`.<br>
 > **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
 > **Próxima fatia autorizada:** auditoria/fechamento do kill switch e contrato integrado das capabilities `text`, `audio`, `vision` e `document`.<br>
 > **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
@@ -327,3 +327,12 @@ Próximo gate: o workflow PostgreSQL da PR #39 deve executar essa prova contra m
 O workflow PostgreSQL da PR #39 passou no run [`36894222761`](https://github.com/geordptoroy/forte-panel/actions/runs/36894222761), no head `d668365`: inicialização do PostgreSQL, migrations versionadas, typecheck do gateway, configuração de produção, suíte completa contra PostgreSQL e journal de migrations passaram sem skips. A prova `server/agent-runtime.integration.test.ts` foi executada contra banco real do CI e confirmou o requeue tenant-scoped de `text`, `audio`, `vision` e `document`, sem `agentRuns` durante a pausa.
 
 O bloqueio/reprocessamento integrado está validado em código + CI PostgreSQL. O próximo gate separado é o aceite controlado do runtime após reativação autorizada, com provider sintético ou ambiente de teste aprovado, cobrindo resposta textual, transcrição, visão/documento e telemetria. Não declarar aceite end-to-end real nem usar secrets reais.
+
+
+### Atualização posterior — aceite controlado de retomada — 2026-10-01
+
+Foi criado `server/native-agent.integration.test.ts` para provar a retomada autorizada sem provider real. A fixture cria um workspace e quatro contatos/conversas isolados; pausa o kill switch, confirma o estado, reativa com motivo controlado, instala um `fetch` sintético local e executa `runNativeAgent` para `text`, `audio`, `image` e `document`. O teste verifica sete chamadas sintéticas (uma para texto e duas para cada mídia: pré-processamento + resposta), ausência de rede externa, respostas resolvidas, e telemetria de provider/capability em `agentRuns`, incluindo `transcriptionProvider` e `mediaAnalysisProvider`.
+
+Gates locais desta fatia: `pnpm check`, `pnpm build` e contratos focados passaram; os dois testes PostgreSQL foram skipped no Sandbox por ausência de `DATABASE_URL`. Commit funcional publicado: `3866a96` (`test: prove controlled native agent resume`). O CI PostgreSQL ainda deve executar esta nova prova contra migrations reais.
+
+Próximo slice depois do CI verde: provar fallback por capability e falha controlada/telemetria, sem secrets reais. Manter `CORE_ONLY_MODE = true`, não usar providers externos, não repetir backup/restore, não parear número real adicional e não mesclar a PR.
