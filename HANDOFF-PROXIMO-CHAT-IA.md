@@ -209,3 +209,18 @@ Entrega documentada em `O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md`. Validações: 
 ## Próxima ação vigente
 
 A próxima fatia é **O3.6 — Recebimento, ledger operacional e recibo**. Auditar recebimentos atuais, separar evento financeiro de status do orçamento, criar ledger append-only tenant-scoped e gerar recibo operacional sem gateway de pagamento.
+
+
+## O3.6 concluída — recebimento e recibo operacional — 2026-10-01
+
+O recebimento foi separado da assinatura do Forte Panel e de qualquer pagamento/repasse ao usuário. Foi criada a tabela append-only `paymentLedger` com quote, contato, valor, método, data, observação, usuário e appointment opcional. A migration é `drizzle/0011_payment_ledger.sql`.
+
+A procedure `billing.receive` registra o lançamento dentro de transação com lock do quote, valida workspace, quote aprovado/em recebimento, saldo e vínculo opcional com appointment. O quote mantém `receivedCents` como projeção compatível e o status passa a `parcialmente_pago` ou `pago`. A mutation legada não pode mais alterar valores financeiros diretamente.
+
+Cada lançamento expõe recibo operacional determinístico `FP-{workspaceId}-{paymentId}`. O Billing agora permite informar valor, método e observação, lista os lançamentos e mostra o recibo. Isso não é nota fiscal, comprovante bancário, cobrança de assinatura nem repasse profissional.
+
+Entrega documentada em `O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md`. Validações: `pnpm check`, `pnpm build`, 19 testes focados e `git diff --check`.
+
+## Próxima ação vigente
+
+A próxima fatia é **O3.7 — Dashboard de decisões do dia**: consolidar pendências de follow-up, agenda, recebimentos, pipeline e saúde do canal em uma visão operacional tenant-scoped.

@@ -23,7 +23,8 @@
 - [x] Executar O3.3: fechar funil canônico sem duplicação de estado. Entrega: `O3.3-ENTREGA-FUNIL-CANONICO.md`.
 - [x] Executar O3.4: fechar orçamento com itens, validade e aprovação. Entrega: `O3.4-ENTREGA-ORCAMENTO-ITEMIZADO.md`.
 - [x] Executar O3.5: fechar agenda com conflito, profissional e status. Entrega: `O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md`.
-- [ ] Executar O3.6: fechar recebimento, ledger operacional e recibo.
+- [x] Executar O3.6: fechar recebimento, ledger operacional e recibo. Entrega: `O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md`.
+- [ ] Executar O3.7: fechar dashboard de decisões do dia.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.

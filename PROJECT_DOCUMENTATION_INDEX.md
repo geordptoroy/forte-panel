@@ -29,7 +29,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 1. [`ROADMAP-EXECUCAO-FORTE-PANEL.md`](./ROADMAP-EXECUCAO-FORTE-PANEL.md) — fila operacional por fatias e estado a atualizar a cada `próximo`.
 2. [`AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md`](./AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md) — matriz atual de rotas, dados demo, simulações e prontidão pública.
 3. [`HANDOFF-CONTINUIDADE-FORTE-PANEL.md`](./HANDOFF-CONTINUIDADE-FORTE-PANEL.md) — histórico de execução, decisões e próximo passo.
-4. [`HANDOFF-PROXIMO-CHAT-IA.md`](./HANDOFF-PROXIMO-CHAT-IA.md) — contexto operacional para o próximo chat continuar O3.6.
+4. [`HANDOFF-PROXIMO-CHAT-IA.md`](./HANDOFF-PROXIMO-CHAT-IA.md) — contexto operacional para o próximo chat continuar O3.7.
 5. [`O1.1-ENTREGA-ONBOARDING-WIZARD.md`](./O1.1-ENTREGA-ONBOARDING-WIZARD.md) — decisões e critérios da entrega do wizard de seis passos.
 6. [`O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`](./O1.2-ENTREGA-CATALOGO-OPERACIONAL.md) — catálogo persistido de serviços, profissionais e disponibilidade no onboarding.
 7. [`O1.3-ENTREGA-REGRAS-E-SIMULACAO.md`](./O1.3-ENTREGA-REGRAS-E-SIMULACAO.md) — regras aprovadas, simulação sem provider e revisão de exemplos antes da publicação.
@@ -43,6 +43,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 15. [`O3.3-ENTREGA-FUNIL-CANONICO.md`](./O3.3-ENTREGA-FUNIL-CANONICO.md) — contrato único de estágios, auditoria e fonte de verdade comercial.
 16. [`O3.4-ENTREGA-ORCAMENTO-ITEMIZADO.md`](./O3.4-ENTREGA-ORCAMENTO-ITEMIZADO.md) — itens, total calculado, validade e aprovação auditada.
 17. [`O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md`](./O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md) — conflitos, disponibilidade, transições, reagendamento e quote aprovado.
+18. [`O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md`](./O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md) — recebimentos append-only, recibo operacional e projeção de saldo.
 7. [`todo.md`](./todo.md) — checklist vivo da implementação.
 7. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
 8. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual histórico de operação, migrations, quotas e segurança.

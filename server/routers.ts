@@ -115,6 +115,8 @@ import {
   upsertUser,
   verifyLocalPassword,
   updateQuotePayment,
+  createQuotePayment,
+  listQuotePayments,
 } from "./db";
 import { sendInviteEmail, sendPasswordResetEmail } from "./_core/email";
 import { storageGetSignedUrl, storagePut } from "./storage";
@@ -2381,6 +2383,11 @@ export const appRouter = router({
         dueDate: item.dueDate?.toISOString() ?? null,
         validUntil: item.validUntil?.toISOString() ?? null,
         approvedAt: item.approvedAt?.toISOString() ?? null,
+        payments: item.payments.map(payment => ({
+          ...payment,
+          receivedAt: payment.receivedAt.toISOString(),
+          createdAt: payment.createdAt.toISOString(),
+        })),
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
       }));
@@ -2430,8 +2437,6 @@ export const appRouter = router({
             "orcamento",
             "aguardando_aprovacao",
             "sinal_pendente",
-            "parcialmente_pago",
-            "pago",
             "cancelado",
           ]),
         })
@@ -2445,6 +2450,30 @@ export const appRouter = router({
           ctx.user.id
         )
       ),
+    receive: requireFinancial
+      .input(
+        z.object({
+          quoteId: z.number().int().positive(),
+          amountCents: z.number().int().positive(),
+          method: z.enum(["pix", "dinheiro", "cartao", "transferencia", "boleto", "outro"]),
+          appointmentId: z.number().int().positive().optional(),
+          receivedAt: z.coerce.date().optional(),
+          note: z.string().trim().max(500).optional(),
+        })
+      )
+      .mutation(({ input, ctx }) =>
+        createQuotePayment(ctx.workspace.workspaceId, ctx.user.id, input)
+      ),
+    payments: requireFinancial
+      .input(z.object({ quoteId: z.number().int().positive() }))
+      .query(async ({ input, ctx }) => {
+        const payments = await listQuotePayments(ctx.workspace.workspaceId, input.quoteId);
+        return payments.map(payment => ({
+          ...payment,
+          receivedAt: payment.receivedAt.toISOString(),
+          createdAt: payment.createdAt.toISOString(),
+        }));
+      }),
     approve: requireManager
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(({ input, ctx }) =>

@@ -1324,6 +1324,26 @@ export const quoteItems = pgTable(
   },
   table => [index("quote_items_quote_idx").on(table.quoteId)]
 );
+export const paymentLedger = pgTable(
+  "paymentLedger",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    quoteId: integer("quoteId").notNull(),
+    contactId: integer("contactId").notNull(),
+    appointmentId: integer("appointmentId"),
+    amountCents: integer("amountCents").notNull(),
+    method: varchar("method", { length: 40 }).notNull(),
+    receivedAt: timestamp("receivedAt").defaultNow().notNull(),
+    note: varchar("note", { length: 500 }),
+    createdByUserId: integer("createdByUserId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("payment_ledger_workspace_idx").on(table.workspaceId, table.receivedAt),
+    index("payment_ledger_quote_idx").on(table.quoteId, table.createdAt),
+  ]
+);
 
 export const auditLogs = pgTable("auditLogs", {
   id: serial("id").primaryKey(),

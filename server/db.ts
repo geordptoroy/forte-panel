@@ -46,6 +46,7 @@ import {
   professionalServices,
   quotes,
   quoteItems,
+  paymentLedger,
   services,
   users,
   webhookEvents,
@@ -4214,6 +4215,9 @@ export async function resetWorkspaceDevelopmentData(workspaceId?: number) {
     await tx
       .delete(appointmentsTable)
       .where(eq(appointmentsTable.workspaceId, workspace.id));
+    await tx
+      .delete(paymentLedger)
+      .where(eq(paymentLedger.workspaceId, workspace.id));
     await tx.delete(quoteItems).where(
       inArray(
         quoteItems.quoteId,
@@ -5941,9 +5945,19 @@ export async function listQuotes(workspaceId: number) {
   const itemRows = quoteIds.length
     ? await db.select().from(quoteItems).where(inArray(quoteItems.quoteId, quoteIds))
     : [];
+  const paymentRows = quoteIds.length
+    ? await db
+        .select()
+        .from(paymentLedger)
+        .where(inArray(paymentLedger.quoteId, quoteIds))
+        .orderBy(asc(paymentLedger.receivedAt), asc(paymentLedger.id))
+    : [];
   return rows.map(({ quote, contact }) => ({
     ...quote,
     items: itemRows.filter(item => item.quoteId === quote.id),
+    payments: paymentRows
+      .filter(payment => payment.quoteId === quote.id)
+      .map(payment => ({ ...payment, receiptId: `FP-${workspaceId}-${payment.id}` })),
     contactName: contact?.name ?? "Contato removido",
     contactInitials: (contact?.name ?? "CR")
       .split(" ")
@@ -5971,9 +5985,19 @@ export async function listQuotesForContact(
   const itemRows = quoteIds.length
     ? await db.select().from(quoteItems).where(inArray(quoteItems.quoteId, quoteIds))
     : [];
+  const paymentRows = quoteIds.length
+    ? await db
+        .select()
+        .from(paymentLedger)
+        .where(inArray(paymentLedger.quoteId, quoteIds))
+        .orderBy(asc(paymentLedger.receivedAt), asc(paymentLedger.id))
+    : [];
   return rows.map(quote => ({
     ...quote,
     items: itemRows.filter(item => item.quoteId === quote.id),
+    payments: paymentRows
+      .filter(payment => payment.quoteId === quote.id)
+      .map(payment => ({ ...payment, receiptId: `FP-${workspaceId}-${payment.id}` })),
   }));
 }
 
@@ -6095,6 +6119,130 @@ export async function createQuote(
   return inserted[0];
 }
 
+export type OperationalPaymentMethod =
+  | "pix"
+  | "dinheiro"
+  | "cartao"
+  | "transferencia"
+  | "boleto"
+  | "outro";
+
+export async function listQuotePayments(workspaceId: number, quoteId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(paymentLedger)
+    .where(
+      and(
+        eq(paymentLedger.workspaceId, workspaceId),
+        eq(paymentLedger.quoteId, quoteId)
+      )
+    )
+    .orderBy(asc(paymentLedger.receivedAt), asc(paymentLedger.id));
+  return rows.map(payment => ({
+    ...payment,
+    receiptId: `FP-${workspaceId}-${payment.id}`,
+  }));
+}
+
+export async function createQuotePayment(
+  workspaceId: number,
+  actorUserId: number,
+  input: {
+    quoteId: number;
+    amountCents: number;
+    method: OperationalPaymentMethod;
+    appointmentId?: number;
+    receivedAt?: Date;
+    note?: string;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0)
+    throw new Error("O valor recebido precisa ser um inteiro positivo em centavos");
+  const created = await db.transaction(async tx => {
+    await tx.execute(
+      sql`SELECT "id" FROM "quotes" WHERE "id" = ${input.quoteId} AND "workspaceId" = ${workspaceId} FOR UPDATE`
+    );
+    const quote = (
+      await tx
+        .select({
+          id: quotes.id,
+          contactId: quotes.contactId,
+          quotedCents: quotes.quotedCents,
+          receivedCents: quotes.receivedCents,
+          status: quotes.status,
+        })
+        .from(quotes)
+        .where(and(eq(quotes.id, input.quoteId), eq(quotes.workspaceId, workspaceId)))
+        .limit(1)
+    )[0];
+    if (!quote) throw new Error("Orçamento não encontrado neste workspace");
+    if (quote.status === "cancelado") throw new Error("Não é possível receber um orçamento cancelado");
+    if (quote.status !== "aprovado" && quote.status !== "sinal_pendente" && quote.status !== "parcialmente_pago")
+      throw new Error("O orçamento precisa estar aprovado antes do recebimento");
+    if (input.appointmentId) {
+      const appointment = (
+        await tx
+          .select({ id: appointmentsTable.id, contactId: appointmentsTable.contactId, quoteId: appointmentsTable.quoteId })
+          .from(appointmentsTable)
+          .where(and(eq(appointmentsTable.id, input.appointmentId), eq(appointmentsTable.workspaceId, workspaceId)))
+          .limit(1)
+      )[0];
+      if (!appointment || appointment.contactId !== quote.contactId || appointment.quoteId !== quote.id)
+        throw new Error("O agendamento não está vinculado ao orçamento e contato informados");
+    }
+    const prior = (
+      await tx
+        .select({ total: sql<number>`coalesce(sum(${paymentLedger.amountCents}), 0)` })
+        .from(paymentLedger)
+        .where(and(eq(paymentLedger.workspaceId, workspaceId), eq(paymentLedger.quoteId, quote.id)))
+    )[0]?.total ?? 0;
+    const ledgerReceived = Number(prior);
+    const legacyReceived = Math.max(0, quote.receivedCents - ledgerReceived);
+    const receivedBefore = legacyReceived + ledgerReceived;
+    if (receivedBefore + input.amountCents > quote.quotedCents)
+      throw new Error("O recebimento não pode superar o total do orçamento");
+    const inserted = await tx
+      .insert(paymentLedger)
+      .values({
+        workspaceId,
+        quoteId: quote.id,
+        contactId: quote.contactId,
+        appointmentId: input.appointmentId,
+        amountCents: input.amountCents,
+        method: input.method,
+        receivedAt: input.receivedAt ?? new Date(),
+        note: input.note,
+        createdByUserId: actorUserId,
+      })
+      .returning();
+    const totalReceived = receivedBefore + input.amountCents;
+    const nextStatus = totalReceived >= quote.quotedCents ? "pago" : "parcialmente_pago";
+    await tx
+      .update(quotes)
+      .set({ receivedCents: totalReceived, status: nextStatus, updatedAt: new Date() })
+      .where(and(eq(quotes.id, quote.id), eq(quotes.workspaceId, workspaceId)));
+    await tx.insert(auditLogs).values({
+      workspaceId,
+      actorUserId,
+      contactId: quote.contactId,
+      action: "payment_received",
+      summary: `Recebimento de ${input.amountCents} centavos registrado no orçamento ${quote.id}`,
+    });
+    return inserted[0];
+  });
+  if (!created) throw new Error("Não foi possível registrar o recebimento");
+  return {
+    ...created,
+    receiptId: `FP-${workspaceId}-${created.id}`,
+    quoteId: created.quoteId,
+    amountCents: created.amountCents,
+  };
+}
+
 export async function updateQuotePayment(
   id: number,
   receivedCents: number,
@@ -6102,8 +6250,6 @@ export async function updateQuotePayment(
     | "orcamento"
     | "aguardando_aprovacao"
     | "sinal_pendente"
-    | "parcialmente_pago"
-    | "pago"
     | "cancelado",
   workspaceId: number,
   actorUserId?: number
@@ -6116,6 +6262,8 @@ export async function updateQuotePayment(
     .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
     .limit(1);
   if (!existing[0]) throw new Error("Quote not found");
+  if (receivedCents !== existing[0].receivedCents)
+    throw new Error("Use o registro de recebimento para alterar valores financeiros");
   if (receivedCents > existing[0].quotedCents)
     throw new Error("Recebimento não pode superar o total do orçamento");
   const updated = await db

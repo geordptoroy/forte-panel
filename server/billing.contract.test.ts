@@ -41,4 +41,14 @@ describe("billing procedures", () => {
       caller.billing.updatePayment({ id: 1, receivedCents: 0, status: "aprovado" as never })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+
+  it("requires a positive operational payment amount and known method", async () => {
+    const caller = appRouter.createCaller(createContext());
+    await expect(
+      caller.billing.receive({ quoteId: 1, amountCents: 0, method: "pix" })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      caller.billing.receive({ quoteId: 1, amountCents: 1000, method: "crypto" as never })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });
