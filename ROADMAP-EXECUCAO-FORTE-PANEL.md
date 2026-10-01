@@ -352,3 +352,12 @@ Este quadro deve ser atualizado a cada fatia. O documento canônico continua sen
 - [ ] Aprovação formal externa: a conta autora não pode aprovar a própria PR (`Review Can not approve your own pull request`).
 - [ ] Preparar prova O6 em PostgreSQL persistente/staging com dois ou mais workspaces, sem repetir backup/restore ou pareamento já concluídos.
 **Próxima fatia:** obter revisão de outro mantenedor ou manter a PR aguardando revisão e preparar o ambiente persistente da Onda O6; não executar merge automático.
+
+
+## Atualização de estado — preparação da Onda O6 — 2026-10-01
+- [x] Verificar dispositivos autorizados: somente o Manus Sandbox está disponível nesta sessão.
+- [x] Criar `docs/O6-PROVA-PERSISTENTE-RUNBOOK.md` com topologia, gates, variáveis, workflow E2E e evidências exigidas.
+- [x] Confirmar que o workflow `.github/workflows/staging-e2e.yml` já falha fechado sem URL descartável e secrets de staging.
+- [ ] Executar O6 em ambiente persistente autorizado; bloqueado até existir staging/Cloud Computer ou ambiente equivalente com autorização explícita.
+- [ ] Não executar `staging-e2e`, browser smoke ou tráfego WhatsApp contra URL desconhecida.
+**Próxima fatia:** quando houver ambiente persistente autorizado, executar os gates A–D do runbook; até lá, manter O6 como `BLOQUEADA`, não inventar evidência e não repetir backup/restore ou pareamento real.

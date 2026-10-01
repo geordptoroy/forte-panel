@@ -398,3 +398,9 @@ O contrato `server/agent-runtime.integration.test.ts` agora prova as quatro capa
 O preflight confirmou a branch limpa no head `2cbc5c4`. O CI PostgreSQL [`36941988050`](https://github.com/geordptoroy/forte-panel/actions/runs/36941988050) passou sem skips no mesmo head, e o workflow GHCR [`36941988213`](https://github.com/geordptoroy/forte-panel/actions/runs/36941988213) concluiu Verify e Publish com sucesso. A PR [#39](https://github.com/geordptoroy/forte-panel/pull/39) está `OPEN` e `CLEAN`; não foi feito merge.
 
 A revisão técnica foi concluída, mas a aprovação formal não pôde ser registrada porque a conta autora não pode aprovar a própria PR (`Review Can not approve your own pull request`). Não contornar essa proteção. O próximo trabalho é obter revisão de outro mantenedor ou deixar a PR aguardando revisão e preparar a Onda O6 em PostgreSQL persistente/staging com dois ou mais workspaces, migrations limpas, provas negativas, browser smoke e evidência operacional. Não repetir backup/restore, pareamento real ou aceite manual já concluídos; manter `CORE_ONLY_MODE = true`.
+
+
+### Atualização posterior — preparação da Onda O6 — 2026-10-01
+O preflight de dispositivos encontrou somente o Manus Sandbox online; não há Cloud Computer, workspace persistente, URL de staging ou secrets de staging autorizados nesta sessão. Portanto, não foi executado `staging-e2e`, browser smoke, tráfego WhatsApp ou provisionamento fictício.
+
+Foi criado `docs/O6-PROVA-PERSISTENTE-RUNBOOK.md`, com a topologia mínima persistente, configuração fail-closed, gates A–D, uso seguro de `.github/workflows/staging-e2e.yml`, matriz de isolamento para dois workspaces e lista de evidências. A execução da O6 permanece bloqueada até existir ambiente descartável/persistente autorizado. Não repetir backup/restore, pareamento real ou aceite manual; manter `CORE_ONLY_MODE = true`.
