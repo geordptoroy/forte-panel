@@ -8476,7 +8476,11 @@ export async function recoverProcessingDomainEvents() {
   return recovered.length;
 }
 
-export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
+export async function processDomainEventsOnce(
+  limit = 10,
+  maxAttempts = 5,
+  workspaceId?: number
+) {
   const db = await getDb();
   if (!db) return { processed: 0, delivered: 0, failed: 0, skipped: true };
   const now = new Date();
@@ -8484,15 +8488,20 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
     .select()
     .from(domainEvents)
     .where(
-      or(
-        and(
-          eq(domainEvents.status, "pending"),
-          lte(domainEvents.availableAt, now)
+      and(
+        or(
+          and(
+            eq(domainEvents.status, "pending"),
+            lte(domainEvents.availableAt, now)
+          ),
+          and(
+            eq(domainEvents.status, "processing"),
+            or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, now))
+          )
         ),
-        and(
-          eq(domainEvents.status, "processing"),
-          or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, now))
-        )
+        ...(workspaceId !== undefined
+          ? [eq(domainEvents.workspaceId, workspaceId)]
+          : [])
       )
     )
     .orderBy(asc(domainEvents.availableAt), asc(domainEvents.id))
