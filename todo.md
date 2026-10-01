@@ -6,13 +6,14 @@
 
 ## Direção registrada — 2026-09-27: core antes do restante
 
-## Continuidade registrada — 2026-09-29: onboarding público em seis passos
+## Continuidade registrada — 2026-10-01: regras e simulação segura no onboarding
 
 - [x] Criar wizard visual de seis passos em `client/src/pages/OnboardingPage.tsx`, preservando autosave, sessão, consentimento, confirmação humana, publicação versionada e rollback.
 - [x] Separar identidade, serviços, operação, atendimento, revisão e ativação em cartões de linguagem de negócio.
 - [x] Criar `O1.1-ENTREGA-ONBOARDING-WIZARD.md` e `HANDOFF-PROXIMO-CHAT-IA.md` para continuidade entre chats.
 - [x] Executar O1.2: conectar serviços, preços, duração e disponibilidade ao catálogo operacional persistido. Entrega: `O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`.
-- [ ] Executar O1.3: fechar regras de atendimento, exemplos e simulação segura antes da publicação.
+- [x] Executar O1.3: fechar regras de atendimento, exemplos e simulação segura antes da publicação. Entrega: `O1.3-ENTREGA-REGRAS-E-SIMULACAO.md`.
+- [ ] Executar O1.4: fechar retomada, autosave, missing/conflict e estados vazios tolerantes a interrupção.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.

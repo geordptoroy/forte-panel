@@ -101,6 +101,7 @@ import {
   recordOnboardingTelemetry,
   rollbackOnboardingPublishedVersion,
   saveOnboardingProfile,
+  simulateOnboardingMessage,
   startOnboardingSession,
   setContactAi,
   upsertApiContact,
@@ -1799,6 +1800,44 @@ export const appRouter = router({
               code: "BAD_REQUEST",
               message: "Resolva os conflitos dos blocos obrigatórios antes de publicar.",
             });
+          throw error;
+        }
+      }),
+    simulate: requireOnboardingEditor
+      .input(z.object({
+        profile: z.object({
+          businessName: z.string().max(160),
+          segment: z.string().max(80),
+          description: z.string().max(4000),
+          services: z.string().max(8000),
+          serviceArea: z.string().max(2000),
+          businessHours: z.string().max(2000),
+          toneOfVoice: z.string().max(500),
+          forbiddenWords: z.string().max(2000),
+          faq: z.string().max(8000),
+          cancellationPolicy: z.string().max(2000),
+          humanHandoffRules: z.string().max(2000),
+          qualificationRules: z.string().max(2000),
+        }),
+        message: z.string().trim().min(1).max(2000),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const result = await simulateOnboardingMessage({
+            workspaceId: ctx.workspace.workspaceId,
+            profile: input.profile,
+            message: input.message,
+          });
+          await logWorkspaceAction({
+            workspaceId: ctx.workspace.workspaceId,
+            actorUserId: ctx.user.id,
+            action: "onboarding_simulation_run",
+            summary: "Simulação do onboarding executada sem provider externo",
+          });
+          return result;
+        } catch (error) {
+          if (error instanceof Error && error.message === "ONBOARDING_SIMULATION_MESSAGE_REQUIRED")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma mensagem para simular." });
           throw error;
         }
       }),

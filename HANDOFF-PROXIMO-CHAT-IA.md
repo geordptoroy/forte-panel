@@ -76,3 +76,16 @@ Depois executar O1.2 de ponta a ponta, mantendo mudanças atômicas, atualizando
 
 **Commit da fatia:** `commit da fatia atual` — `feat: connect onboarding to operational catalog`
 **Branch esperada:** `main` sincronizada com `origin/main`.
+
+
+## O1.3 concluída — regras e simulação segura — 2026-10-01
+
+A etapa de Revisão do onboarding agora permite testar exemplos com o rascunho atual antes da publicação. A nova procedure `onboarding.simulate` é tenant-scoped, determinística e não chama provider externo. Ela consulta o catálogo operacional e a disponibilidade do workspace autenticado, reconhece pedidos de preço, horário e transferência humana e falha fechado quando não existe fonte aprovada. Cada execução gera auditoria `onboarding_simulation_run`.
+
+A tela `client/src/pages/OnboardingPage.tsx` oferece exemplos prontos, mensagem livre, resposta simulada, fontes usadas e indicação de transferência. A entrega está documentada em `O1.3-ENTREGA-REGRAS-E-SIMULACAO.md`; não foi necessária migration.
+
+Validações executadas: `pnpm check`, `pnpm build`, `pnpm exec vitest run server/onboarding.test.ts server/onboarding-structured.test.ts` com 9 testes aprovados e `git diff --check`. A prova persistente com dois workspaces, navegador e staging continua pendente.
+
+## Próxima ação
+
+A próxima fatia é **O1.4 — Retomada, autosave, missing/conflict e empty states**. Auditar a recuperação de sessão, hidratação do perfil, autosave após interrupção, estados de carregamento/erro/vazio e a consistência entre respostas do formulário, catálogo e revisão antes de alterar o gate público.

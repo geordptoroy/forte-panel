@@ -213,6 +213,8 @@ export default function OnboardingPage() {
       void utils.onboarding.versions.invalidate();
     },
   });
+  const [simulationMessage, setSimulationMessage] = useState("");
+  const simulation = trpc.onboarding.simulate.useMutation();
   const rollbackMutation = trpc.onboarding.rollback.useMutation({
     onSuccess: result => {
       setPublished(true);
@@ -725,6 +727,37 @@ export default function OnboardingPage() {
           </div>
         </section>
       )}
+      <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
+        <SectionTitle eyebrow="Simulação segura" title="Revise exemplos antes de publicar" />
+        <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11, lineHeight: 1.5 }}>
+          Teste uma mensagem com o rascunho atual. A resposta é determinística, não chama um provider e só usa o catálogo, disponibilidade e regras aprovadas deste workspace.
+        </p>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+          {["Qual é o preço do meu serviço?", "Quais horários estão disponíveis?", "Quero falar com uma pessoa."].map(example => (
+            <button key={example} type="button" className="btn-ghost" style={{ padding: "5px 8px", fontSize: 9 }} onClick={() => setSimulationMessage(example)}>{example}</button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <div className="form-field" style={{ flex: 1 }}>
+            <label htmlFor="onboarding-simulation-message">Mensagem de teste</label>
+            <input id="onboarding-simulation-message" className="input-control" value={simulationMessage} onChange={event => setSimulationMessage(event.target.value)} placeholder="Ex.: Quanto custa a consulta inicial?" maxLength={2000} />
+          </div>
+          <button type="button" className="btn-primary" disabled={!simulationMessage.trim() || simulation.isPending} onClick={() => simulation.mutate({ profile, message: simulationMessage })}>
+            <Sparkles size={13} /> {simulation.isPending ? "Testando..." : "Simular"}
+          </button>
+        </div>
+        {simulation.error && <div className="demo-banner" style={{ marginTop: 10, fontSize: 10 }}><Info size={13} /> {simulation.error.message}</div>}
+        {simulation.data && (
+          <div style={{ marginTop: 12, padding: 12, border: `1px solid ${simulation.data.handoff ? "rgba(240,184,74,.25)" : "rgba(86,214,138,.22)"}`, background: simulation.data.handoff ? "rgba(240,184,74,.035)" : "rgba(86,214,138,.035)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+              <strong style={{ color: simulation.data.handoff ? "var(--amber)" : "#b9e4c7", fontSize: 11 }}>{simulation.data.handoff ? "Transferência indicada" : "Resposta simulada"}</strong>
+              <span className="muted" style={{ fontSize: 9 }}>sem provider externo</span>
+            </div>
+            <p style={{ margin: "9px 0 0", color: "#c8c8c8", fontSize: 11, lineHeight: 1.5 }}>{simulation.data.response}</p>
+            <div className="muted" style={{ marginTop: 8, fontSize: 9 }}>Fontes: {simulation.data.sources.length ? simulation.data.sources.join(" · ") : "nenhuma fonte específica"}</div>
+          </div>
+        )}
+      </section>
       {metricsQuery.data && (
         <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
           <SectionTitle eyebrow="Medição · últimos 30 dias" title="Qualidade do onboarding" action={<span className="muted" style={{ fontSize: 10 }}>sem conteúdo de respostas</span>} />

@@ -81,8 +81,8 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | P0.5 | Fundação pública | Catálogo de estados e release gate por rota | **CONCLUÍDA** | `release-catalog.ts` governa estados e exposição incremental |
 | O1.1 | Onboarding | Wizard público de 6 passos | **CONCLUÍDA** | Owner configura negócio sem conhecer IA técnica |
 | O1.2 | Onboarding | Serviços, preços, duração e disponibilidade | **CONCLUÍDA** | Catálogo operacional real para o núcleo comercial |
-| O1.3 | Onboarding | Regras de atendimento e revisão de exemplos | **PRÓXIMA** | Publicação humana de configuração segura |
-| O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | PENDENTE | Onboarding tolerante a interrupções |
+| O1.3 | Onboarding | Regras de atendimento e revisão de exemplos | **CONCLUÍDA** | Publicação humana de configuração segura |
+| O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | **PRÓXIMA** | Onboarding tolerante a interrupções |
 | O2.1 | Canal | Saúde do WhatsApp e ciclo de conexão | PENDENTE | QR, pairing, reconexão e erros acionáveis |
 | O2.2 | Canal | Inbound idempotente e histórico sem efeitos colaterais | PENDENTE | Mensagem recebida uma vez, com status observável |
 | O2.3 | Canal | Outbound com `instanceId`, fila e reconciliação | PENDENTE | Envio rastreável até gateway e telefone |

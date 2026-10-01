@@ -2259,6 +2259,63 @@ export function buildOnboardingStepAnswers(profile: OnboardingProfile): Onboardi
   }));
 }
 
+export async function simulateOnboardingMessage(input: {
+  workspaceId: number;
+  profile: OnboardingProfile;
+  message: string;
+}) {
+  const message = input.message.trim();
+  if (!message) throw new Error("ONBOARDING_SIMULATION_MESSAGE_REQUIRED");
+  const snapshot = await getAgendaSnapshot(input.workspaceId, undefined, true);
+  const normalizedMessage = message.toLocaleLowerCase();
+  const matchedService = snapshot.services.find(service => normalizedMessage.includes(service.name.toLocaleLowerCase()));
+  const asksPrice = /preço|preco|valor|custa|quanto/i.test(message);
+  const asksAvailability = /horário|horario|dispon|agenda|atende|aberto/i.test(message);
+  const asksHuman = /humano|pessoa|atendente|reclama|cancel|reembolso/i.test(message);
+  const sources: string[] = [];
+  let response = "Posso ajudar com informações do negócio. Para confirmar preço, prazo ou horário, preciso consultar os dados aprovados.";
+  let handoff = false;
+
+  if (asksHuman || (input.profile.humanHandoffRules.trim() && /urgên|urgenc|risco/i.test(message))) {
+    handoff = true;
+    response = input.profile.humanHandoffRules.trim()
+      ? `Vou encaminhar você para uma pessoa da equipe conforme a regra cadastrada: ${input.profile.humanHandoffRules.trim()}`
+      : "Vou encaminhar você para uma pessoa da equipe.";
+    sources.push("regra de transferência humana");
+  } else if (matchedService && asksPrice) {
+    sources.push(`catálogo: ${matchedService.name}`);
+    response = matchedService.priceCents > 0
+      ? `${matchedService.name} custa ${(matchedService.priceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} e dura ${matchedService.durationMinutes} minutos. Confirme a disponibilidade antes de marcar.`
+      : `Ainda não há preço publicado para ${matchedService.name}. Vou pedir confirmação à equipe antes de informar um valor.`;
+  } else if (matchedService && asksAvailability) {
+    const links = snapshot.serviceLinks.filter(link => link.serviceId === matchedService.id);
+    const professionalIds = links.length ? links.map(link => link.professionalId) : snapshot.professionals.map(professional => professional.id);
+    const slots = snapshot.availability.filter(entry => professionalIds.includes(entry.professionalId));
+    sources.push(`catálogo: ${matchedService.name}`);
+    sources.push("disponibilidade cadastrada");
+    response = slots.length
+      ? `Há disponibilidade cadastrada para ${matchedService.name} em ${Array.from(new Set(slots.map(slot => ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"][slot.weekday]))).join(", ")}. O horário exato precisa ser confirmado na agenda.`
+      : `Não encontrei disponibilidade cadastrada para ${matchedService.name}. Vou encaminhar para confirmação da equipe.`;
+  } else if (input.profile.faq.trim()) {
+    sources.push("FAQ aprovado");
+    response = `Resposta baseada no FAQ aprovado: ${input.profile.faq.trim().slice(0, 600)}`;
+  }
+
+  if (!matchedService && (asksPrice || asksAvailability)) {
+    sources.push("sem correspondência no catálogo");
+    response = "Não encontrei esse serviço no catálogo aprovado. Não vou inventar preço ou horário; a equipe precisa confirmar antes de responder.";
+  }
+  return {
+    input: message,
+    response,
+    sources,
+    handoff,
+    providerCalled: false,
+    catalogServices: snapshot.services.length,
+    availabilityEntries: snapshot.availability.length,
+  };
+}
+
 async function listOnboardingStepAnswers(workspaceId: number) {
   const db = await getDb();
   const session = await getOnboardingSession(workspaceId);
