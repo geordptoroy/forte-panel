@@ -166,10 +166,10 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
 
     expect(fetchMock).toHaveBeenCalled();
     expect(calls.length).toBe(7);
-    expect(calls.filter(call => call.model === "synthetic-text")).toHaveLength(1);
-    expect(calls.filter(call => call.model === "synthetic-audio")).toHaveLength(2);
-    expect(calls.filter(call => call.model === "synthetic-image")).toHaveLength(2);
-    expect(calls.filter(call => call.model === "synthetic-document")).toHaveLength(2);
+    expect(calls.filter(call => call.model === "synthetic-text")).toHaveLength(4);
+    expect(calls.filter(call => call.model === "synthetic-audio")).toHaveLength(1);
+    expect(calls.filter(call => call.model === "synthetic-vision")).toHaveLength(1);
+    expect(calls.filter(call => call.model === "synthetic-document")).toHaveLength(1);
 
     const db = await getDb();
     if (!db) throw new Error("database unavailable");
