@@ -233,4 +233,10 @@ O cálculo de pendência financeira deixou de somar `contacts.quoteCents`; usa `
 
 Foi corrigida uma inconsistência de semântica: `awaitingResponse` significa que a empresa enviou a última mensagem e aguarda o lead; não é pendência do operador. A fila “Leads para responder” usa agora `needsOperatorResponse` ou follow-up vencido. O contrato puro está em `server/dashboard-contract.ts`, com testes de fronteira para resposta pendente, follow-up concluído e orçamento parado em 48 horas.
 
-Gates desta subfatia: `pnpm check`, `pnpm build`, 18 testes focados e `git diff --check` aprovados. A O3.7 ainda não está concluída: falta revisar e testar o comportamento com PostgreSQL persistente, completar a visão de agenda/pendências conforme o SLA do produto e fechar a documentação específica da fatia.
+A agenda principal agora usa `todayAppointments`, limitado aos atendimentos não cancelados do dia no fuso do workspace, em vez de misturar horários de dias futuros.
+
+Entrega documentada em `O3.7-ENTREGA-DASHBOARD-DECISOES-DIA.md`. Gates finais: `pnpm check`, `pnpm build`, 30 testes focados e `git diff --check` aprovados. A prova PostgreSQL persistente, browser E2E, número WhatsApp real e staging continuam pendentes e foram registrados como limitações, não como validações concluídas.
+
+## Próxima ação vigente
+
+A O3.7 está concluída. A próxima frente é **O4.1 — Contexto comercial seguro para o agente**, começando por auditoria de leitura tenant-scoped de lead, quote, agenda, recebimento e saúde do canal antes de expor qualquer ferramenta à IA.

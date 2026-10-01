@@ -426,8 +426,8 @@ export function DashboardPage() {
         </section>
         <section>
           <SectionTitle
-            eyebrow="Próximos horários"
-            title="Agenda"
+            eyebrow="Decisão do dia"
+            title="Agenda de hoje"
             action={
               <PageLink href="/agenda" className="btn-ghost">
                 Abrir agenda <ArrowUpRight size={13} />
@@ -435,8 +435,8 @@ export function DashboardPage() {
             }
           />
           <div className="surface" style={{ padding: "0 17px" }}>
-            {(snapshot?.upcomingAppointments ?? []).length > 0 ? (
-              snapshot?.upcomingAppointments.map(appointment => (
+            {(snapshot?.todayAppointments ?? []).length > 0 ? (
+              snapshot?.todayAppointments.map(appointment => (
                 <div className="appointment-row" key={appointment.id}>
                   <div className="time-block">
                     {new Date(appointment.startsAt).toLocaleTimeString(
@@ -466,7 +466,7 @@ export function DashboardPage() {
               <EmptyState
                 icon={CalendarCheck2}
                 title="Agenda livre"
-                description="Nenhum próximo horário confirmado."
+                description="Nenhum atendimento previsto para hoje."
               />
             )}
           </div>

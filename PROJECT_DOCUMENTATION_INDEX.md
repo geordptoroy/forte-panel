@@ -44,6 +44,7 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 16. [`O3.4-ENTREGA-ORCAMENTO-ITEMIZADO.md`](./O3.4-ENTREGA-ORCAMENTO-ITEMIZADO.md) — itens, total calculado, validade e aprovação auditada.
 17. [`O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md`](./O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md) — conflitos, disponibilidade, transições, reagendamento e quote aprovado.
 18. [`O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md`](./O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md) — recebimentos append-only, recibo operacional e projeção de saldo.
+19. [`O3.7-ENTREGA-DASHBOARD-DECISOES-DIA.md`](./O3.7-ENTREGA-DASHBOARD-DECISOES-DIA.md) — decisões operacionais do dia, pendências, agenda, ledger e saúde do canal.
 7. [`todo.md`](./todo.md) — checklist vivo da implementação.
 7. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
 8. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual histórico de operação, migrations, quotas e segurança.

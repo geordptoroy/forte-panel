@@ -93,7 +93,7 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | O3.4 | Comercial | Orçamento com itens, validade e aprovação | **CONCLUÍDA** | Conversa pode gerar proposta rastreável |
 | O3.5 | Comercial | Agenda com conflito, profissional e status | **CONCLUÍDA** | Orçamento aprovado pode virar agendamento real |
 | O3.6 | Comercial | Recebimento, ledger operacional e recibo | **CONCLUÍDA** | Serviço concluído fecha ciclo de receita |
-| O3.7 | Comercial | Dashboard de decisões do dia | **EM ANDAMENTO** | Usuário vê pendências, receita e saúde do canal |
+| O3.7 | Comercial | Dashboard de decisões do dia | **CONCLUÍDA** | Usuário vê pendências, receita e saúde do canal |
 | O4.1 | IA | Contexto comercial seguro para o agente | PENDENTE | IA consulta dados reais sem atravessar tenant |
 | O4.2 | IA | Ferramentas somente leitura e confirmação mutável | PENDENTE | IA sugere; humano/backend autoriza efeitos |
 | O4.3 | IA | Transferência para humano e kill switch | PENDENTE | Falha segura e controle operacional |
