@@ -323,3 +323,13 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.
+
+## Atualização de estado — O5.7 — 2026-10-01
+
+- [x] Expor saúde agregada do agente no Console Admin sem conteúdo privado (`ba265d8`).
+- [x] Criar contrato integrado de `platform.health` no boundary do router (`5a22ec5`, corrigido em `32e074c`).
+- [x] Provar no PostgreSQL que provider, modelo, failure code, IDs de tenant/contato/evento e tokens não são serializados.
+- [x] Validar retry PostgreSQL verde sem skips: run [`36941127598`](https://github.com/geordptoroy/forte-panel/actions/runs/36941127598).
+- [x] Publicar a imagem do Console Admin agregado: run [`36939943370`](https://github.com/geordptoroy/forte-panel/actions/runs/36939943370).
+
+**Próxima fatia:** revisão/aceite da PR #39 e preparação da Onda O6 para prova persistente de produção. Não repetir backup/restore, pareamento real ou aceite manual já concluídos.

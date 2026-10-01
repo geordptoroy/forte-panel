@@ -376,3 +376,11 @@ O CI PostgreSQL [`36939301972`](https://github.com/geordptoroy/forte-panel/actio
 A fatia `O5.6` foi concluída no commit `ba265d8` e documentada em `O5.6-ENTREGA-SAude-AGREGADA-CONSOLE-ADMIN.md`. `platform.health` agora agrega apenas execuções, falhas e fallbacks do agente nos últimos 30 dias, sem serializar workspaceId, contactId, eventId, conteúdo, prompt, modelo, provider, tokens ou credenciais. A tela do Console Admin exibe esses sinais sob a fronteira `platformAdmins`.
 
 O CI PostgreSQL [`36939807435`](https://github.com/geordptoroy/forte-panel/actions/runs/36939807435) passou sem skips. Gates locais `pnpm check`, `pnpm build` e testes focados passaram. O próximo slice é criar o contrato integrado específico de `platform.health` para garantir que nenhuma coluna sensível de `agentRuns` atravesse o boundary do router.
+
+### Atualização posterior — O5.7 contrato de `platform.health` — 2026-10-01
+
+O contrato integrado foi concluído em `server/platform-health.contract.integration.test.ts`. A primeira execução do CI (`36941001842`) falhou somente porque a expectativa do teste ordenava `fallbackRuns30d` antes de `failures30d`; a implementação estava correta. A correção pontual foi publicada em `32e074c` e o retry PostgreSQL [`36941127598`](https://github.com/geordptoroy/forte-panel/actions/runs/36941127598) passou sem skips.
+
+O boundary real do `appRouter` agora é provado com dois workspaces e execuções sintéticas contendo dados sensíveis. A resposta de `platform.health` retorna somente o agregado `status`, `runs30d`, `failures30d` e `fallbackRuns30d`, além dos componentes operacionais já existentes. Acesso sem `platformAdmins` recebe `FORBIDDEN`.
+
+Documentação canônica: `O5.7-ENTREGA-CONTRATO-PLATFORM-HEALTH.md`. O roadmap, índice e `todo.md` foram atualizados. Próxima ação autorizada: revisar/aceitar a PR #39 sem merge automático e preparar a Onda O6 com infraestrutura persistente; não repetir backup/restore, pareamento real ou aceite manual já concluídos.

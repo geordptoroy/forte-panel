@@ -571,3 +571,13 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Adicionar Inbox própria com leitura, resposta e auditoria.
 - [x] Adicionar prompt próprio do agente de suporte com salvar/publicar.
 - [ ] Executar smoke test real no Docker: parear número do suporte, inbound, resposta outbound e agente.
+
+## O5.7 — Contrato final do Console Admin — 2026-10-01
+- [x] Criar `platform-health.contract.integration.test.ts` com caller real do router.
+- [x] Provar `platformAdmins` permitido e usuário não registrado bloqueado.
+- [x] Provar shape agregado sem `workspaceId`, `contactId`, `eventId`, provider, modelo, failure code ou tokens.
+- [x] Corrigir expectativa lexicográfica identificada pelo primeiro CI e publicar `32e074c`.
+- [x] Passar CI PostgreSQL sem skips no run `36941127598`.
+- [x] Documentar O5.7, atualizar handoff, prompt e índice.
+- [ ] Revisar/aceitar PR #39 sem merge automático.
+- [ ] Iniciar Onda O6 somente com infraestrutura persistente e aceite manual autorizado; não repetir backup/restore ou pareamento real.

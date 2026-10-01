@@ -282,3 +282,13 @@ Até lá, use termos como **implementado em código**, **validado por testes sin
 - Ao terminar uma fatia, informe: o que mudou, validações, commit, CI/GHCR e próximo slice.
 - Não peça confirmação para edições/commits/push dentro do escopo já autorizado.
 - Peça decisão somente se houver escolha material de produto, permissão nova ou ação externa de alto impacto.
+
+## Estado final desta continuidade — O5.7
+
+- Último commit de implementação: `32e074c test: fix aggregate health key ordering`.
+- Entrega canônica: `O5.7-ENTREGA-CONTRATO-PLATFORM-HEALTH.md`.
+- CI PostgreSQL verde: run `36941127598`, sem skips.
+- Contrato: `server/platform-health.contract.integration.test.ts`.
+- Próxima ação: revisar/aceitar a PR #39 sem merge automático e preparar a Onda O6 com infraestrutura persistente.
+- Não repetir backup/restore, pareamento real ou aceite manual já concluídos.
+- Antes de editar, repetir o preflight do topo deste prompt e conferir o bloco prioritário do `HANDOFF-PROXIMO-CHAT-IA.md`.
