@@ -50,6 +50,7 @@ export class WebhookOutbox {
   private readonly logger: NonNullable<WebhookOutboxOptions["logger"]>;
   private readonly inFlight = new Set<string>();
   private timer?: ReturnType<typeof setInterval>;
+  private flushPromise?: Promise<void>;
   private pending = 0;
   private deadLetter = 0;
   private lastError?: string;
@@ -101,6 +102,7 @@ export class WebhookOutbox {
   async stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    await this.flushPromise;
   }
 
   async enqueue(payload: WebhookOutboxPayload) {
@@ -131,6 +133,14 @@ export class WebhookOutbox {
   }
 
   async flush() {
+    if (this.flushPromise) return this.flushPromise;
+    this.flushPromise = this.flushInternal().finally(() => {
+      this.flushPromise = undefined;
+    });
+    return this.flushPromise;
+  }
+
+  private async flushInternal() {
     if (!this.url) return;
     await fs.mkdir(this.directory, { recursive: true });
     const entries = await fs.readdir(this.directory, { withFileTypes: true });
