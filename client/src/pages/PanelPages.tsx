@@ -1908,7 +1908,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             <button
               className="btn-primary"
               onClick={() => void send()}
-              disabled={sendMutation.isPending || uploadAttachmentMutation.isPending || isRecording || (!draft.trim() && !attachment) || (platformAdmin && !sendInstanceId)}
+              disabled={sendMutation.isPending || uploadAttachmentMutation.isPending || isRecording || (interactiveType === "text" && !draft.trim() && !attachment) || (platformAdmin && !sendInstanceId)}
               aria-label={uploadAttachmentMutation.isPending ? "Enviando anexo para armazenamento privado" : "Enviar mensagem"}
               title={platformAdmin && !sendInstanceId ? "Selecione a instância de envio" : uploadAttachmentMutation.isPending ? "Guardando anexo com segurança…" : "Enviar mensagem"}
             >
