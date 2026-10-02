@@ -84,13 +84,13 @@ const run = async () => {
   console.log("\n3. Acesso do profissional");
   const accountA = await trpc("workspace.createMember", {
     name: `Acesso A ${suffix}`, email: `prof_a_${suffix}@teste.local`, password: "senha-teste-12345",
-    role: "agent", operationalRole: "professional", professionalId: professionalAId,
+    role: "agent", operationalRole: "professional", professionalId: professionalAId, jobTitle: "Profissional executor",
   }, adminCookie);
   check("acesso do executor A criado", Boolean(accountA.payload?.result?.data?.json?.id), JSON.stringify(accountA.payload).slice(0, 200));
 
   const accountB = await trpc("workspace.createMember", {
     name: `Acesso B ${suffix}`, email: `prof_b_${suffix}@teste.local`, password: "senha-teste-12345",
-    role: "agent", operationalRole: "professional", professionalId: professionalBId,
+    role: "agent", operationalRole: "professional", professionalId: professionalBId, jobTitle: "Profissional executor",
   }, adminCookie);
   check("acesso do executor B criado", Boolean(accountB.payload?.result?.data?.json?.id));
 
