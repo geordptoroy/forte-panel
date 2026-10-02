@@ -1527,15 +1527,21 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
       recordingChunksRef.current = [];
-      const preferredMime = [
+      const mimeCandidates = [
         "audio/webm;codecs=opus",
         "audio/ogg;codecs=opus",
         "audio/mp4",
-      ].find(type => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(
-        stream,
-        preferredMime ? { mimeType: preferredMime } : undefined
-      );
+      ].filter(type => MediaRecorder.isTypeSupported(type));
+      let recorder: MediaRecorder | undefined;
+      for (const mimeType of mimeCandidates) {
+        try {
+          recorder = new MediaRecorder(stream, { mimeType });
+          break;
+        } catch {
+          // Alguns navegadores declaram suporte, mas rejeitam o MIME no construtor.
+        }
+      }
+      if (!recorder) recorder = new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
       recorder.ondataavailable = event => {
         if (event.data.size > 0) recordingChunksRef.current.push(event.data);
@@ -1581,10 +1587,23 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           stopRecording();
         }
       }, 1000);
-    } catch {
+    } catch (error) {
       mediaStreamRef.current?.getTracks().forEach(track => track.stop());
       mediaStreamRef.current = null;
-      setRecordingError("Permita o acesso ao microfone para gravar um áudio.");
+      const name = error instanceof DOMException ? error.name : "";
+      const message =
+        name === "NotAllowedError" || name === "SecurityError"
+          ? "O navegador bloqueou o microfone. Libere a permissão para localhost:3002 e recarregue a página."
+          : name === "NotFoundError"
+            ? "Nenhum microfone foi encontrado neste computador."
+            : name === "NotReadableError"
+              ? "O microfone está ocupado por outro aplicativo. Feche-o e tente novamente."
+              : name === "OverconstrainedError"
+                ? "O microfone selecionado não está disponível. Escolha outro microfone no sistema."
+                : error instanceof Error && error.message
+                  ? `Não foi possível iniciar o microfone: ${error.message}`
+                  : "Não foi possível iniciar o microfone. Verifique o dispositivo e tente novamente.";
+      setRecordingError(message);
     }
   };
   return (
