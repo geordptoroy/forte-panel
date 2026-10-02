@@ -41,6 +41,11 @@ import {
   saveOnboardingRetentionPolicy,
   listBaileysInstances,
   getAgendaSnapshot,
+  createProfessional,
+  createAgendaAppointment,
+  cancelAgendaAppointment,
+  rescheduleAgendaAppointment,
+  updateAgendaStatus,
   listInboxContacts,
   getContactById,
   getConversationByContact,
@@ -54,7 +59,15 @@ import {
   getWorkspaceSetting,
   upsertWorkspaceSetting,
 } from "./db";
-import { listProfessionalsDetailed, listServices } from "./workspace";
+import {
+  createService,
+  listProfessionalsDetailed,
+  listServices,
+  replaceAvailability,
+  setProfessionalServices,
+  updateProfessional,
+  updateService,
+} from "./workspace";
 import type { NativeAgentConfig } from "./db";
 import {
   createBaileysInstance as createBaileysGatewayInstance,
@@ -1259,6 +1272,71 @@ export async function getPlatformSupportSnapshot() {
   };
 }
 
+export async function createPlatformSupportService(input: { platformAdminId: number; name: string; description?: string; durationMinutes?: number; priceCents?: number; priceType?: "fixed" | "starting_at" | "quote"; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const service = await createService(workspace.id, input);
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_service_created", reason: input.reason, summary: `Serviço interno ${service.name} criado`, after: { id: service.id, name: service.name } });
+  return service;
+}
+export async function updatePlatformSupportService(input: { platformAdminId: number; serviceId: number; name?: string; description?: string | null; durationMinutes?: number; priceCents?: number; priceType?: "fixed" | "starting_at" | "quote"; active?: boolean; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const updated = await updateService(workspace.id, input.serviceId, input);
+  if (!updated) throw new Error("Serviço não encontrado no workspace interno");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_service_updated", reason: input.reason, summary: `Serviço interno ${updated.name} atualizado`, after: { id: updated.id, active: updated.active } });
+  return updated;
+}
+export async function createPlatformSupportProfessional(input: { platformAdminId: number; name: string; specialty?: string; color?: string; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const professional = await createProfessional(workspace.id, input);
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_professional_created", reason: input.reason, summary: `Profissional interno ${professional.name} criado`, after: { id: professional.id, name: professional.name } });
+  return professional;
+}
+export async function updatePlatformSupportProfessional(input: { platformAdminId: number; professionalId: number; name?: string; specialty?: string | null; color?: string; active?: boolean; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const updated = await updateProfessional(workspace.id, input.professionalId, input);
+  if (!updated) throw new Error("Profissional não encontrado no workspace interno");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_professional_updated", reason: input.reason, summary: `Profissional interno ${updated.name} atualizado`, after: { id: updated.id, active: updated.active } });
+  return updated;
+}
+export async function setPlatformSupportProfessionalServices(input: { platformAdminId: number; professionalId: number; serviceIds: number[]; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const serviceIds = await setProfessionalServices(workspace.id, input.professionalId, input.serviceIds);
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_professional_services_updated", reason: input.reason, summary: `Vínculos do profissional interno ${input.professionalId} atualizados`, after: { professionalId: input.professionalId, serviceIds } });
+  return { professionalId: input.professionalId, serviceIds };
+}
+export async function setPlatformSupportAvailability(input: { platformAdminId: number; professionalId: number; entries: { weekday: number; startMinute: number; endMinute: number }[]; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const entries = await replaceAvailability(workspace.id, input.professionalId, input.entries);
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_professional_availability_updated", reason: input.reason, summary: `Disponibilidade do profissional interno ${input.professionalId} atualizada`, after: { professionalId: input.professionalId, entries } });
+  return { professionalId: input.professionalId, entries };
+}
+export async function createPlatformSupportAppointment(input: { platformAdminId: number; contactId?: number; serviceId: number; professionalId: number; startsAt: Date; endsAt: Date; notes?: string; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const appointment = await createAgendaAppointment(workspace.id, input);
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_appointment_created", reason: input.reason, summary: `Agendamento interno ${appointment.id} criado`, after: { id: appointment.id, startsAt: appointment.startsAt, endsAt: appointment.endsAt } });
+  return { id: appointment.id, status: appointment.status };
+}
+export async function updatePlatformSupportAppointmentStatus(input: { platformAdminId: number; appointmentId: number; status: "confirmed" | "completed" | "no_show"; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const appointment = await updateAgendaStatus(workspace.id, input.appointmentId, input.status);
+  if (!appointment) throw new Error("Agendamento não encontrado no workspace interno");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: `support_appointment_${input.status}`, reason: input.reason, summary: `Agendamento interno ${appointment.id} atualizado para ${input.status}` });
+  return { id: appointment.id, status: appointment.status };
+}
+export async function reschedulePlatformSupportAppointment(input: { platformAdminId: number; appointmentId: number; startsAt: Date; endsAt: Date; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const appointment = await rescheduleAgendaAppointment(workspace.id, input.appointmentId, input.startsAt, input.endsAt);
+  if (!appointment) throw new Error("Agendamento não encontrado no workspace interno");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_appointment_rescheduled", reason: input.reason, summary: `Agendamento interno ${appointment.id} reagendado`, after: { startsAt: appointment.startsAt, endsAt: appointment.endsAt } });
+  return { id: appointment.id, status: appointment.status, startsAt: appointment.startsAt, endsAt: appointment.endsAt };
+}
+export async function cancelPlatformSupportAppointment(input: { platformAdminId: number; appointmentId: number; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const appointment = await cancelAgendaAppointment(workspace.id, input.appointmentId);
+  if (!appointment) throw new Error("Agendamento não encontrado no workspace interno");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_appointment_cancelled", reason: input.reason, summary: `Agendamento interno ${appointment.id} cancelado` });
+  return { id: appointment.id, status: appointment.status };
+}
 export async function listPlatformSupportContacts(
   instanceIds: readonly string[] | null = null
 ) {

@@ -439,3 +439,8 @@ O modo simulado foi endurecido: as rotas retornam `mode: simulation_only`, não 
 A rota `/platform-admin/support-workspace` agora apresenta o tenant interno `forte-platform-support` com métricas e dados tenant-scoped de instâncias WhatsApp, catálogo de serviços, profissionais e agenda. Os atalhos levam à Inbox de suporte, instâncias, prompts e providers, mantendo as ações sensíveis sob as proteções já existentes do Console Admin.
 
 Esta fatia é somente a base operacional de leitura e não executa provider real, pareamento ou resposta automática. O próximo slice autorizado é adicionar criação/edição de serviços, profissionais, disponibilidade e agenda dentro desse tenant interno, com auditoria e permissão de operador.
+
+### Atualização — mutações do workspace operacional interno — 2026-10-02
+As procedures `platform.createSupportService`, `platform.updateSupportService`, `platform.createSupportProfessional`, `platform.updateSupportProfessional`, `platform.setSupportProfessionalServices`, `platform.setSupportAvailability`, `platform.createSupportAppointment`, `platform.updateSupportAppointmentStatus`, `platform.rescheduleSupportAppointment` e `platform.cancelSupportAppointment` foram adicionadas ao tenant interno. Todas exigem operador do Console Admin e registram motivo, ação e resumo em `platformAuditLogs`. O snapshot continua tenant-scoped por `ensurePlatformSupportWorkspace`.
+
+Validações executadas: `pnpm check`, `pnpm build`, `git diff --check` e testes focados de autorização/Console Admin. A próxima fatia é construir a tela operacional de edição para consumir essas procedures; nenhum teste na máquina do usuário é necessário nesta etapa.

@@ -382,3 +382,11 @@ O requisito de produto para o próximo slice ficou registrado: o Console Admin d
 Foi criada a rota interna `/platform-admin/support-workspace`, separada da operação dos workspaces clientes. O snapshot tenant-scoped do suporte agora inclui instâncias WhatsApp, catálogo de serviços, profissionais e agenda, além do agente já existente. A página oferece atalhos para Inbox, instâncias, prompts e providers e deixa explícito que o tenant interno não mistura dados públicos.
 
 Typecheck, testes focados de autorização/tenancy e `git diff --check` passaram. A próxima fatia do mesmo escopo é expor mutações de catálogo e agenda para o operador autorizado; não envolve provider real nem pareamento automático.
+
+## Atualização de estado — mutações do workspace operacional interno — 2026-10-02
+- [x] Procedures protegidas por `requirePlatformOperator` para criar e atualizar serviços do tenant interno.
+- [x] Procedures para criar/atualizar profissionais, vincular serviços e substituir disponibilidade semanal.
+- [x] Procedures para criar, confirmar, concluir, marcar no-show, reagendar e cancelar agendamentos internos.
+- [x] Cada mutação registra `platformAuditLogs` com operador, motivo e resumo sanitizado.
+- [x] `pnpm check`, build de produção e testes focados do Console Admin executados com sucesso.
+- [ ] Próximo slice: tela operacional de edição usando essas procedures.

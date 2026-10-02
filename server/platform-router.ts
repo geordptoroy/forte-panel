@@ -11,6 +11,16 @@ import {
   getPlatformGlobalAgentSnapshot,
   getPlatformAdminAccess,
   getPlatformSupportSnapshot,
+  createPlatformSupportService,
+  updatePlatformSupportService,
+  createPlatformSupportProfessional,
+  updatePlatformSupportProfessional,
+  setPlatformSupportProfessionalServices,
+  setPlatformSupportAvailability,
+  createPlatformSupportAppointment,
+  updatePlatformSupportAppointmentStatus,
+  reschedulePlatformSupportAppointment,
+  cancelPlatformSupportAppointment,
   getPlatformOperationalHealth,
   listPlatformSupportContacts,
   getPlatformSupportThread,
@@ -586,6 +596,36 @@ export const platformRouter = router({
     }),
 
   supportWorkspace: requirePlatform.query(() => getPlatformSupportSnapshot()),
+  createSupportService: requirePlatformOperator
+    .input(z.object({ name: z.string().trim().min(2).max(160), description: z.string().max(2_000).optional(), durationMinutes: z.number().int().min(5).max(1_440).default(60), priceCents: z.number().int().min(0).max(100_000_000).default(0), priceType: z.enum(["fixed", "starting_at", "quote"]).default("fixed"), reason: reasonInput }))
+    .mutation(({ input, ctx }) => createPlatformSupportService({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  updateSupportService: requirePlatformOperator
+    .input(z.object({ serviceId: z.number().int().positive(), name: z.string().trim().min(2).max(160).optional(), description: z.string().max(2_000).nullable().optional(), durationMinutes: z.number().int().min(5).max(1_440).optional(), priceCents: z.number().int().min(0).max(100_000_000).optional(), priceType: z.enum(["fixed", "starting_at", "quote"]).optional(), active: z.boolean().optional(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => updatePlatformSupportService({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  createSupportProfessional: requirePlatformOperator
+    .input(z.object({ name: z.string().trim().min(2).max(160), specialty: z.string().max(120).optional(), color: z.string().max(20).optional(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => createPlatformSupportProfessional({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  updateSupportProfessional: requirePlatformOperator
+    .input(z.object({ professionalId: z.number().int().positive(), name: z.string().trim().min(2).max(160).optional(), specialty: z.string().max(120).nullable().optional(), color: z.string().max(20).optional(), active: z.boolean().optional(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => updatePlatformSupportProfessional({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  setSupportProfessionalServices: requirePlatformOperator
+    .input(z.object({ professionalId: z.number().int().positive(), serviceIds: z.array(z.number().int().positive()).max(200), reason: reasonInput }))
+    .mutation(({ input, ctx }) => setPlatformSupportProfessionalServices({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  setSupportAvailability: requirePlatformOperator
+    .input(z.object({ professionalId: z.number().int().positive(), entries: z.array(z.object({ weekday: z.number().int().min(0).max(6), startMinute: z.number().int().min(0).max(1_439), endMinute: z.number().int().min(1).max(1_440) })).max(50), reason: reasonInput }))
+    .mutation(({ input, ctx }) => setPlatformSupportAvailability({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  createSupportAppointment: requirePlatformOperator
+    .input(z.object({ contactId: z.number().int().positive().optional(), serviceId: z.number().int().positive(), professionalId: z.number().int().positive(), startsAt: z.coerce.date(), endsAt: z.coerce.date(), notes: z.string().max(500).optional(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => createPlatformSupportAppointment({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  updateSupportAppointmentStatus: requirePlatformOperator
+    .input(z.object({ appointmentId: z.number().int().positive(), status: z.enum(["confirmed", "completed", "no_show"]), reason: reasonInput }))
+    .mutation(({ input, ctx }) => updatePlatformSupportAppointmentStatus({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  rescheduleSupportAppointment: requirePlatformOperator
+    .input(z.object({ appointmentId: z.number().int().positive(), startsAt: z.coerce.date(), endsAt: z.coerce.date(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => reschedulePlatformSupportAppointment({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  cancelSupportAppointment: requirePlatformOperator
+    .input(z.object({ appointmentId: z.number().int().positive(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => cancelPlatformSupportAppointment({ ...input, platformAdminId: ctx.platformAdmin.id })),
 
   supportAgent: requirePlatform.query(async () => {
     const workspace = await ensurePlatformSupportWorkspace();
