@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isAllowedOutboundMediaUrl } from "./media-reference.js";
+import {
+  decodeAllowedOutboundMediaData,
+  isAllowedOutboundMediaReference,
+  isAllowedOutboundMediaUrl,
+} from "./media-reference.js";
 
 describe("outbound private media URL guard", () => {
   it("allows signed HTTPS URLs on public hosts", () => {
@@ -24,5 +28,20 @@ describe("outbound private media URL guard", () => {
       "https://bucket.internal/file",
     ])
       expect(isAllowedOutboundMediaUrl(url), url).toBe(false);
+  });
+
+  it("allows a small validated base64 data URL and decodes its bytes", () => {
+    const value = "data:image/png;base64,SGk=";
+    expect(isAllowedOutboundMediaReference(value)).toBe(true);
+    expect(decodeAllowedOutboundMediaData(value)).toMatchObject({
+      mimeType: "image/png",
+      buffer: Buffer.from("Hi"),
+    });
+  });
+
+  it("rejects malformed or oversized base64 data URLs", () => {
+    expect(isAllowedOutboundMediaReference("data:image/png;base64,not-base64!")).toBe(false);
+    const oversized = `data:image/png;base64,${Buffer.alloc(8 * 1024 * 1024 + 1).toString("base64")}`;
+    expect(isAllowedOutboundMediaReference(oversized)).toBe(false);
   });
 });

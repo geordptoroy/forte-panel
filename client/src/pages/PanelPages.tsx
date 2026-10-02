@@ -1185,6 +1185,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     mimeType: string;
     previewUrl?: string;
     storageKey?: string;
+    mediaData?: string;
     sizeBytes?: number;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1421,6 +1422,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
                 name: uploaded.fileName,
                 mimeType: uploaded.mimeType,
                 storageKey: uploaded.storageKey,
+                mediaData: uploaded.mediaData,
                 sizeBytes: uploaded.sizeBytes,
               }
             : current
@@ -1430,7 +1432,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           content: caption || uploaded.fileName,
           messageType: currentAttachment.type,
           metadata: {
-            mediaStorageKey: uploaded.storageKey,
+            ...(uploaded.storageKey ? { mediaStorageKey: uploaded.storageKey } : {}),
+            ...(uploaded.mediaData ? { mediaData: uploaded.mediaData } : {}),
             mediaMimeType: uploaded.mimeType,
             mediaSizeBytes: uploaded.sizeBytes,
             fileName: uploaded.fileName,

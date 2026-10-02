@@ -31,7 +31,10 @@ import {
 } from "./pairing-code.js";
 import { reconnectDelayMs } from "./reconnect-policy.js";
 import { normalizeBaileysMessageStatus, type DeliveryStatus } from "./delivery-status.js";
-import { isAllowedOutboundMediaUrl } from "./media-reference.js";
+import {
+  decodeAllowedOutboundMediaData,
+  isAllowedOutboundMediaReference,
+} from "./media-reference.js";
 import { SendLedger, stableFingerprint } from "./send-ledger.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
 import { buildNativeInteractivePayload } from "./interactive-payload.js";
@@ -564,18 +567,22 @@ export class InstanceManager {
       throw new Error("WhatsApp instance is not connected");
     if (
       ["image", "audio", "video", "document"].includes(messageType) &&
-      (!isAllowedOutboundMediaUrl(content) || typeof metadata.mediaData === "string")
+      !isAllowedOutboundMediaReference(content)
     )
-      throw new Error("Mídia de saída exige uma URL HTTPS privada válida");
+      throw new Error("Mídia de saída exige uma URL HTTPS privada ou data URL válida");
     const jid = phone.includes("@")
       ? phone
       : phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
     let message: AnyMessageContent;
+    const mediaReference = decodeAllowedOutboundMediaData(content);
+    const mediaSource = mediaReference
+      ? mediaReference.buffer
+      : { url: content };
     if (messageType === "text") {
       message = { text: content };
     } else if (messageType === "audio") {
       message = {
-        audio: { url: content },
+        audio: mediaSource,
         mimetype:
           typeof metadata.mimetype === "string"
             ? metadata.mimetype
@@ -584,7 +591,7 @@ export class InstanceManager {
       };
     } else if (messageType === "image") {
       message = {
-        image: { url: content },
+        image: mediaSource,
         caption:
           typeof metadata.caption === "string" ? metadata.caption : undefined,
         mimetype:
@@ -592,7 +599,7 @@ export class InstanceManager {
       };
     } else if (messageType === "video") {
       message = {
-        video: { url: content },
+        video: mediaSource,
         caption:
           typeof metadata.caption === "string" ? metadata.caption : undefined,
         mimetype:
@@ -601,7 +608,7 @@ export class InstanceManager {
       };
     } else if (messageType === "document") {
       message = {
-        document: { url: content },
+        document: mediaSource,
         mimetype:
           typeof metadata.mimetype === "string"
             ? metadata.mimetype

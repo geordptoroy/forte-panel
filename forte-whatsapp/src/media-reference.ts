@@ -52,3 +52,17 @@ export function isAllowedOutboundMediaUrl(value: string) {
     return false;
   }
 }
+
+const DATA_URL_PATTERN = /^data:([^;,]+)(?:;[^;,]*)*;base64,([A-Za-z0-9+/=]+)$/i;
+
+export function decodeAllowedOutboundMediaData(value: string) {
+  const match = DATA_URL_PATTERN.exec(value);
+  if (!match) return undefined;
+  const buffer = Buffer.from(match[2], "base64");
+  if (buffer.length < 1 || buffer.length > 8 * 1024 * 1024) return undefined;
+  return { mimeType: match[1].toLowerCase(), buffer };
+}
+
+export function isAllowedOutboundMediaReference(value: string) {
+  return isAllowedOutboundMediaUrl(value) || Boolean(decodeAllowedOutboundMediaData(value));
+}

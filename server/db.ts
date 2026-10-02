@@ -78,6 +78,7 @@ import {
   shouldUpsertLeadFromInbound,
 } from "../shared/lead-opportunity";
 import {
+  decodeMediaDataUrl,
   isSupportedInboxMimeType,
   isWorkspaceInboxMediaKey,
 } from "./inbox-media-upload";
@@ -6024,21 +6025,31 @@ export async function sendManualMessage(
   const mediaMessageTypes = ["image", "audio", "video", "document"];
   if (mediaMessageTypes.includes(messageType)) {
     const mediaStorageKey = messageMetadata?.mediaStorageKey;
+    const mediaData = messageMetadata?.mediaData;
     const mediaMimeType = messageMetadata?.mediaMimeType;
     const mediaSizeBytes = messageMetadata?.mediaSizeBytes;
+    const decodedMediaData =
+      typeof mediaData === "string" ? decodeMediaDataUrl(mediaData) : null;
+    const hasPrivateStorage =
+      typeof mediaStorageKey === "string" &&
+      isWorkspaceInboxMediaKey(workspaceId, mediaStorageKey);
+    const hasTransientMedia =
+      typeof mediaData === "string" &&
+      decodedMediaData !== null &&
+      decodedMediaData.buffer.length > 0 &&
+      decodedMediaData.buffer.length <= 8 * 1024 * 1024;
     if (
-      typeof mediaStorageKey !== "string" ||
-      !isWorkspaceInboxMediaKey(workspaceId, mediaStorageKey) ||
       typeof mediaMimeType !== "string" ||
       !isSupportedInboxMimeType(messageType as "image" | "audio" | "video" | "document", mediaMimeType) ||
       typeof mediaSizeBytes !== "number" ||
       !Number.isInteger(mediaSizeBytes) ||
       mediaSizeBytes < 1 ||
       mediaSizeBytes > 8 * 1024 * 1024 ||
-      typeof messageMetadata?.mediaData === "string" ||
+      (!hasPrivateStorage && !hasTransientMedia) ||
+      (hasTransientMedia && decodedMediaData?.mimeType.split(";", 1)[0].toLowerCase() !== mediaMimeType.split(";", 1)[0].toLowerCase()) ||
       typeof messageMetadata?.mediaUrl === "string"
     )
-      throw new Error("Invalid or non-private outbound media reference");
+      throw new Error("Invalid outbound media reference");
   }
   const createdAt = new Date();
   const metadata = {
@@ -8072,12 +8083,22 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
       let sendContent = item.message.content;
       let sendMetadata = item.message.metadata ?? undefined;
       if (["image", "audio", "video", "document"].includes(item.message.messageType)) {
-        const mediaUrl = await resolvePrivateMediaUrl(sendMetadata);
-        if (!mediaUrl)
-          throw new Error("Private outbound attachment is missing or unavailable");
-        sendContent = mediaUrl;
-        const { mediaStorageKey: _key, mediaSizeBytes: _size, ...providerMetadata } =
-          sendMetadata ?? {};
+        const transientMediaData =
+          typeof sendMetadata?.mediaData === "string"
+            ? sendMetadata.mediaData
+            : undefined;
+        const mediaUrl = transientMediaData
+          ? undefined
+          : await resolvePrivateMediaUrl(sendMetadata);
+        if (!transientMediaData && !mediaUrl)
+          throw new Error("Outbound attachment is missing or unavailable");
+        sendContent = transientMediaData ?? mediaUrl!;
+        const {
+          mediaStorageKey: _key,
+          mediaSizeBytes: _size,
+          mediaData: _data,
+          ...providerMetadata
+        } = sendMetadata ?? {};
         sendMetadata = providerMetadata;
       }
       const result = await adapter.sendMessage({
@@ -8096,6 +8117,15 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
           externalId: result.externalId,
           sentAt: new Date(),
           lastError: null,
+          ...(item.message.metadata?.mediaData
+            ? {
+                metadata: Object.fromEntries(
+                  Object.entries(item.message.metadata).filter(
+                    ([key]) => key !== "mediaData"
+                  )
+                ),
+              }
+            : {}),
         })
         .where(eq(messages.id, item.message.id));
       await db.insert(auditLogs).values({

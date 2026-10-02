@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import { config } from "./config.js";
 import { parseBaileysInstanceSettings } from "./instance-settings.js";
 import type { InstanceRegistry } from "./instance-registry.js";
-import { isAllowedOutboundMediaUrl } from "./media-reference.js";
+import { isAllowedOutboundMediaReference } from "./media-reference.js";
 import { SendLedgerError } from "./send-ledger.js";
 
 export function createServer(registry: InstanceRegistry) {
@@ -153,9 +153,9 @@ export function createServer(registry: InstanceRegistry) {
         if (!phone) return json(res, 400, { error: "phone_required" });
         if (
           ["image", "audio", "video", "document"].includes(messageType) &&
-          (!isAllowedOutboundMediaUrl(content) || typeof metadata.mediaData === "string")
+          !isAllowedOutboundMediaReference(content)
         )
-          return json(res, 400, { error: "private_https_media_url_required" });
+          return json(res, 400, { error: "private_media_reference_required" });
         if (body.payload && typeof body.payload === "object") {
           const externalId = await registry.sendPayload(
             instanceId,
