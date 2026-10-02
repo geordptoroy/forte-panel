@@ -4,12 +4,12 @@
 >
 > **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
 > **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
-> **Último commit funcional publicado:** `26ef21b` — `docs: inventory PAPI operational API`.<br>
+> **HEAD de base verificado:** `db51134abe5bad57bbb5e420b8047ae425746b92` — `docs: prepare inbox audit prompt for next AI`; a correção same-origin de Permissions Policy, teste e documentação estão no working tree e ainda não commitados.<br>
 > **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
-> **Próxima fatia autorizada:** executar `docs/PROMPT-PROXIMA-IA-AUDITORIA-INBOX-BAILEYS.md`; a auditoria completa foi preparada, mas pausada a pedido do usuário. Não alterar o provedor e não executar testes na máquina do usuário.<br>
+> **Próximo passo:** aplicar/reiniciar a versão com o header `microphone=(self)` em `localhost:3002` e confirmar que desaparece a violação de Permissions Policy; o agente não captou áudio. Se o erro persistir, investigar permissão OS/dispositivo. Depois, manter MIME/PTT numa fatia separada. Não mesclar PRs.<br>
 > **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
 
-**Atualizado:** 2026-09-30 — O4.4 validada no CI; O5.1 em andamento
+**Atualizado:** 2026-10-02 — causa do microfone identificada; policy same-origin corrigida e suíte/typecheck passaram no Sandbox
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
@@ -473,3 +473,34 @@ O usuário solicitou interromper a auditoria em andamento e preparar o escopo pa
 O prompt exige auditoria separada de: permissão e gravação de microfone; upload e envio de áudio; anexos; editor de botões, listas e enquetes; versão e payloads do Baileys; diferenças com a PAPI 1.5.1; normalização, persistência e tenancy dos eventos inbound; e documentação de um plano de correção em fatias pequenas.
 
 A auditoria completa **não foi declarada como executada**. O próximo agente deve produzir os relatórios técnicos antes de alterar código, mantendo `CORE_ONLY_MODE = true`, sem secrets reais, sem provider real, sem merge e sem testes na máquina do usuário.
+
+
+## Estado atual — auditoria completa da Inbox/Baileys — 2026-10-02
+
+A auditoria foi feita no Sandbox, branch `feat/o7.15-storage-reconciliation-observability`, a partir de `db51134abe5bad57bbb5e420b8047ae425746b92`; o HEAD local e `origin/feat/o7.15-storage-reconciliation-observability` coincidiam. As alterações desta execução são documentais; não houve alteração de provider/lógica, uso de secrets reais, teste na máquina do utilizador, envio a número real, commit ou merge. `CORE_ONLY_MODE` continua ativo.
+
+**Entregáveis:**
+
+- `docs/AUDITORIA-COMPLETA-INBOX-BAILEYS.md` — relatório principal.
+- `docs/AUDITORIA-BAILEYS-INTERACTIVE-AUDIO.md` — payloads Native Flow, PAPI/Baileys, áudio e anexos.
+- `docs/MATRIZ-COBERTURA-INBOX-EVENTOS.md` — dez eventos analisados com evidências por etapa.
+- `docs/PLANO-CORRECAO-INBOX-BAILEYS.md` — fatias pequenas, ordem, riscos e testes.
+- `docs/PROMPT-PROXIMA-IA-AUDITORIA-INBOX-BAILEYS.md` — prompt original preservado e atualizado com addendum.
+- Este handoff e `ROADMAP-EXECUCAO-FORTE-PANEL.md` foram atualizados.
+
+**Conclusões operacionais importantes:** Forte está em `baileys@7.0.0-rc14`; a causa do `NotAllowedError` na origem real e a entrega/renderização física dos interativos permanecem não confirmadas. Foi confirmada uma divergência `mediaMimeType`/`mimetype`, com OGG fallback e `ptt=true` no gateway; a lista tem `rowId` no editor e `id` na fixture, e usa `single_select`, ao contrário de `listMessage` legado descrito na auditoria PAPI. A versão Baileys embutida na PAPI 1.5.1 também permanece não confirmada. O estado `queued`/`sent` e o echo local não equivalem a receipt/renderização.
+
+**Eventos:** `messages.upsert` e `messages.update` têm implementação extensa e estado na Inbox; não há teste E2E único do socket até UI. `messaging-history.set` é aceito pelo endpoint como `ignored` e não persistido, apesar da função DB e documentação de importação. `messages.reaction` é parcial como `reactionMessage` dentro de upsert, mas o payload é descartado pelo adaptador e não foi provada associação à mensagem alvo. Handlers dedicados para chats/contacts/presence/groups/participants/labels não foram encontrados no caminho auditado. Ver matriz antes de declarar ausência fora deste checkout.
+
+**Validação realmente executada:** suite geral no Sandbox — 336 testes passaram, 62 foram ignorados; 46 testes focados de gateway passaram; `pnpm check` da raiz e `tsc --noEmit` do gateway passaram. Não foi executado CI PostgreSQL, browser do utilizador, envio/receipt/read num telefone nem teste no segundo cliente WhatsApp Web.
+
+**Próximo passo proposto, ainda sem autorização de código:** escolher uma única fatia. Para problema de captura, primeiro recolher diagnóstico de origem, contexto seguro, APIs, Permissions API e erro sem gravar áudio. Para a correção de áudio, priorizar contrato MIME/PTT com testes de worker/adaptador/gateway. Lista/Native Flow, histórico/eventos e hardening de anexos permanecem separados. Não implementar até haver autorização explícita; não desligar `CORE_ONLY_MODE` nem declarar prova real sem a executar.
+
+
+## Follow-up — Permissions Policy do microfone — 2026-10-02
+
+O utilizador forneceu logs de Chrome e Edge com `Permissions policy violation: microphone is not allowed in this document`, seguido de `NotAllowedError`, em `http://localhost:3002`; informou que a permissão do site está em «Permitir». Os logs reportam `secureContext=true` e `mediaDevicesAvailable=true`. A causa foi encontrada no header global `Permissions-Policy: camera=(), microphone=(), geolocation=()` (`server/_core/http-security.ts`, aplicado em `server/_core/index.ts:36-40`).
+
+A alteração no working tree permite `microphone=(self)` e conserva câmera/geolocalização bloqueadas; o teste correspondente foi atualizado. A suíte passou (336 testes; 62 ignorados), `pnpm check` e `git diff --check` passaram. Nada foi commitado ou mesclado e o agente não captou áudio. A correção ainda não foi carregada/verificada na app local do utilizador.
+
+**Próxima ação:** reiniciar/atualizar `localhost:3002`, verificar o response header e confirmar que desaparece a violação de Permissions Policy. Se persistir `NotAllowedError`, investigar permissões do sistema operativo/dispositivo; não alterar MIME/PTT como se fosse a mesma causa. O warning `unload` corresponde ao debug collector em `client/public/__manus__/debug-collector.js:759-760` e é independente.

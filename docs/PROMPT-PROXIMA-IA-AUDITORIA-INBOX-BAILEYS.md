@@ -263,3 +263,46 @@ A próxima IA deve terminar com:
 - documentos criados/atualizados;
 - testes realmente executados;
 - testes que continuam pendentes.
+
+
+---
+
+## Addendum — auditoria concluída em 2026-10-02
+
+A auditoria foi concluída a partir do commit `db51134abe5bad57bbb5e420b8047ae425746b92` na branch `feat/o7.15-storage-reconciliation-observability`. HEAD local e remoto estavam alinhados. **Não foi alterado código de produto**; apenas documentação foi criada/atualizada. `CORE_ONLY_MODE` permanece `true`; não foram usados secrets reais, nem houve merge, teste na máquina do utilizador ou envio para WhatsApp real.
+
+### Descobertas confirmadas
+
+- Forte usa `baileys@7.0.0-rc14` (`forte-whatsapp/package.json` e lockfile); `relayMessage` da distribuição retorna `Promise<string>`. Não inferir entrega física a partir desse retorno.
+- O aviso específico de permissão do microfone só é selecionado para `NotAllowedError`. O fluxo não consulta `navigator.permissions.query`; a causa concreta no Chrome/origem `localhost:3002` continua **não confirmada**, porque esta execução não teve acesso ao browser/dispositivo do utilizador.
+- Recorder tenta WebM/Opus primeiro; a metadata de upload/fila/adaptador usa `mediaMimeType`, mas o gateway consulta `mimetype`. O gateway pode, portanto, enviar WebM anunciado como OGG/Opus e marca áudio como PTT por omissão. Este problema não explica a rejeição de captura pré-upload.
+- O editor da lista gera `rows[].rowId`; a fixture do payload nativo usa `rows[].id`; o builder preserva a secção sem conversão. O Forte envia listas como Native Flow `single_select`; a auditoria prévia da PAPI descreve `listMessage` legado. A causa da não entrega/renderização no telefone continua **não confirmada**.
+- `queued` é persistência local. A resposta `status: sent` do gateway é o retorno do método Baileys; não prova entrega, read receipt ou renderização. O normalizador/echo não classifica Native Flow como tipo nativo e pode suprimi-lo como texto vazio.
+- `messaging-history.set` é devolvido como `202 ignored` antes de ownership/tenancy, ledger e ingestão; não confundir outbox entregue com histórico importado.
+- `messages.upsert` e `messages.update` têm caminho de implementação e status na UI, com lacunas de E2E; chats/contacts/presence/groups/participants/labels não têm handlers dedicados encontrados. `messages.reaction` tem suporte parcial dentro de upsert, sem associação confirmada à mensagem-alvo. Consultar a matriz para cada detalhe e ressalva.
+- Storage privado outbound é preferido; fallback data URL é limitado/validado e `mediaData` é removido após sucesso, mas fica retido para retry em erro. MIME/extensão não são validados por conteúdo e o filtro de URL não resolve/fixa DNS. Storage privado inbound depende de `FORTE_MEDIA_PRIVATE_STORAGE_ENABLED=true`.
+- A versão exata do Baileys embutido na PAPI 1.5.1 está **não confirmada**; `/tmp/pastorini-root` não existe e a documentação PAPI anterior não regista o lockfile dessa imagem.
+
+### Resultados de validação e entregáveis
+
+- Suite do repositório no Sandbox: 336 testes passaram; 62 foram ignorados (86 ficheiros passaram, 22 ignorados). Não equivale a CI/PostgreSQL sem skips.
+- Testes focados do gateway: 46 passaram; TypeScript raiz e do gateway passaram.
+- Não executados: Chrome do utilizador, envio/receipt/read em telefone, segundo cliente WhatsApp Web, comparação do package lock PAPI e CI PostgreSQL.
+- Relatórios: `docs/AUDITORIA-COMPLETA-INBOX-BAILEYS.md`, `docs/AUDITORIA-BAILEYS-INTERACTIVE-AUDIO.md`, `docs/MATRIZ-COBERTURA-INBOX-EVENTOS.md` e `docs/PLANO-CORRECAO-INBOX-BAILEYS.md`.
+
+### Próxima IA
+
+Usar o plano de correção como sequência, mas **não implementar correções sem autorização explícita**. Manter microfone, MIME/PTT, lista/Native Flow, eventos/histórico e hardening de anexos em fatias separadas. O próximo passo de diagnóstico runtime do microfone deve recolher apenas origem, `isSecureContext`, disponibilidade das APIs, estado da Permissions API e nome/código da exceção — sem gravar áudio nem testar no computador do utilizador sem pedido explícito. O plano sugere, como primeira fatia técnica depois de autorização, o contrato MIME/PTT de áudio, com testes do worker/adaptador/gateway.
+
+As restrições das secções anteriores deste prompt continuam válidas e prevalecem sobre este addendum.
+
+
+---
+
+## Addendum posterior — Permissions Policy do microfone — 2026-10-02
+
+**Nova evidência do utilizador:** Chrome e Edge mostram `Permissions policy violation: microphone is not allowed in this document` antes de `NotAllowedError`; a permissão de site está em «Permitir». O objeto de erro informa `origin=http://localhost:3002`, `secureContext=true`, `mediaDevicesAvailable=true`. Isto identifica a política HTTP do documento, não o botão, credenciais nem codec, como causa do bloqueio de captura.
+
+No commit de base, `server/_core/http-security.ts` enviava `camera=(), microphone=(), geolocation=()`; o middleware global está em `server/_core/index.ts:36-40`. **Correção já aplicada no working tree:** `microphone=(self)`, sem abrir câmera/geolocalização; teste atualizado em `server/_core/http-security.test.ts`. A suite passou com 336 testes e 62 skips, `pnpm check` passou e `git diff --check` passou. O código ainda não foi commitado/publicado e o utilizador ainda tem de reiniciar/atualizar `localhost:3002` e confirmar a remoção da violação. A captura real não foi iniciada pelo agente.
+
+O aviso `unload is not allowed` é separado e corresponde ao listener `beforeunload` no debug collector `client/public/__manus__/debug-collector.js:759-760`; não confundir com a violação do microfone. Se o erro do microfone persistir após carregar a policy nova, investigar permissão OS/dispositivo/Permissions API. Não misturar com MIME/PTT, lista ou teste WhatsApp físico.

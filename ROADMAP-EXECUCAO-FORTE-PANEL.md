@@ -416,3 +416,32 @@ Typecheck, testes focados de autorização/tenancy e `git diff --check` passaram
 - [x] O escopo da auditoria completa da Inbox foi preparado em `docs/PROMPT-PROXIMA-IA-AUDITORIA-INBOX-BAILEYS.md`, incluindo microfone, áudio, anexos, botões, listas, Baileys, PAPI e eventos.
 - [ ] A auditoria completa da Inbox ainda não foi executada; foi interrompida a pedido do usuário e deve ser iniciada pela próxima IA usando o prompt dedicado.
 - [ ] Próximo slice: executar o prompt de auditoria e produzir os relatórios, sem liberar provider/resposta automática e sem teste na máquina do usuário.
+
+
+## Atualização de estado — auditoria completa da Inbox/Baileys — 2026-10-02
+
+Esta atualização supersede as linhas 417–418, que descreviam o estado anterior, quando a auditoria ainda não tinha sido executada. A auditoria documental foi concluída no commit de base `db51134abe5bad57bbb5e420b8047ae425746b92`, na branch `feat/o7.15-storage-reconciliation-observability`; o HEAD local e remoto estavam alinhados.
+
+- [x] Relatório principal, análise interativos/áudio, matriz de dez eventos e plano faseado criados em `docs/`.
+- [x] Prompt para próxima IA atualizado sem remover as restrições originais.
+- [x] Suíte Sandbox: 336 testes passaram e 62 foram ignorados; typechecks da raiz e do gateway passaram.
+- [x] Nenhuma lógica de produto foi alterada; `CORE_ONLY_MODE` continua ativo, sem secrets reais, sem merge e sem teste na máquina do utilizador.
+- [ ] Reproduzir em browser autorizado o `NotAllowedError` do microfone; recolher somente diagnóstico de origem/API/permissão/erro, sem captar áudio.
+- [ ] Após autorização explícita para código, priorizar uma fatia isolada MIME/PTT de áudio; tratar lista/Native Flow, eventos/histórico e hardening de anexos separadamente.
+- [ ] Prova posterior em telefone/WhatsApp Web controlado para delivery, receipt e renderização; ainda não realizada.
+
+**Próxima fatia proposta, não autorizada para implementação nesta auditoria:** corrigir e testar o contrato MIME/PTT de áudio em `client → worker → adaptador → gateway`. Se a prioridade for resolver a mensagem de permissão, começar apenas com a fatia de diagnóstico do microfone. Não misturar ambas; não desligar `CORE_ONLY_MODE`; não inferir entrega física a partir de `queued`, do retorno do gateway ou do echo local.
+
+
+## Atualização de estado — desbloqueio da captura do microfone — 2026-10-02
+
+Esta atualização supersede a conclusão anterior de que a causa do microfone permanecia não confirmada. O utilizador forneceu logs de Chrome e Edge: `Permissions policy violation: microphone is not allowed in this document`, `NotAllowedError`, `origin=http://localhost:3002`, contexto seguro e API `mediaDevices` disponível; a permissão do site está em «Permitir». A origem era o header global `microphone=()` em `server/_core/http-security.ts`.
+
+- [x] Alterar a diretiva para `microphone=(self)`; manter `camera=()` e `geolocation=()`.
+- [x] Atualizar `server/_core/http-security.test.ts`.
+- [x] Suite Sandbox: 336 testes passaram, 62 ignorados; `pnpm check` e `git diff --check` passaram.
+- [ ] O utilizador reinicia/atualiza a aplicação local e confirma que o header novo está ativo e a violação `microphone` desapareceu. Esta verificação não exige gravar áudio.
+- [ ] Se persistir `NotAllowedError` com a policy corrigida, investigar permissão OS/dispositivo e `Permissions API`.
+- [ ] Manter MIME/PTT, Native Flow/lista, histórico e events como fatias independentes; não inferir playback/delivery a partir desta correção.
+
+A alteração está apenas no working tree desta execução, sem commit ou merge; não houve captação de áudio pelo agente. O warning separado de `unload` vem do listener do debug collector e não é a causa do microfone.

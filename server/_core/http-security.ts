@@ -7,7 +7,7 @@ export function securityHeadersForRequest(req: Pick<Request, "protocol" | "secur
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Permissions-Policy": "camera=(), microphone=(self), geolocation=()",
     ...(isHttps
       ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" }
       : {}),
