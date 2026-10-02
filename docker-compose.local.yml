@@ -37,10 +37,7 @@ services:
     networks: [panel-network]
 
   forte-panel-migrations:
-    image: forte-panel:local
-    build:
-      context: .
-      dockerfile: infra/Dockerfile
+    image: ${FORTE_PANEL_IMAGE:-ghcr.io/geordptoroy/forte-panel:dev}
     container_name: forte_panel_migrations
     restart: "no"
     command: ["./docker-entrypoint.sh", "migrate"]
@@ -53,10 +50,7 @@ services:
     networks: [panel-network]
 
   forte-panel:
-    image: forte-panel:local
-    build:
-      context: .
-      dockerfile: infra/Dockerfile
+    image: ${FORTE_PANEL_IMAGE:-ghcr.io/geordptoroy/forte-panel:dev}
     container_name: forte_panel
     restart: unless-stopped
     environment:
@@ -102,10 +96,7 @@ services:
     networks: [panel-network, whatsapp-network]
 
   forte-panel-worker:
-    image: forte-panel:local
-    build:
-      context: .
-      dockerfile: infra/Dockerfile
+    image: ${FORTE_PANEL_IMAGE:-ghcr.io/geordptoroy/forte-panel:dev}
     container_name: forte_panel_worker
     restart: unless-stopped
     command: ["./docker-entrypoint.sh", "worker"]
@@ -144,10 +135,7 @@ services:
     networks: [panel-network, whatsapp-network]
 
   forte-whatsapp:
-    image: forte-whatsapp:local
-    build:
-      context: ./forte-whatsapp
-      dockerfile: Dockerfile
+    image: ${FORTE_WHATSAPP_IMAGE:-ghcr.io/geordptoroy/forte-whatsapp:dev}
     container_name: forte_whatsapp
     restart: unless-stopped
     environment:

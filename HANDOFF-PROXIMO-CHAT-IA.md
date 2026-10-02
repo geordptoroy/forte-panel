@@ -410,3 +410,14 @@ Foi criado `docs/O6-PROVA-PERSISTENTE-RUNBOOK.md`, com a topologia mínima persi
 O `scripts/validate-flow.mjs` foi adaptado para autenticar a conta criada pelo `/signup` com `VALIDATION_EMAIL` e `VALIDATION_PASSWORD`; as variáveis `LOCAL_ADMIN_EMAIL` e `LOCAL_ADMIN_PASSWORD` permanecem como fallback legado. O script agora falha cedo quando o login retorna 401, evitando interpretar chamadas subsequentes como falhas independentes. `node --check scripts/validate-flow.mjs` e `git diff --check` passaram.
 
 Entendimento confirmado para o próximo slice de produto: o Console Admin não deve ser apenas uma tela administrativa. Ele deve ter um workspace operacional administrativo próprio, separado do workspace público, com Inbox, instância(s) WhatsApp, Agenda, Serviços, Profissionais e IA para suporte pela própria plataforma. Somente as contas do Console Admin terão acesso a esse workspace; seus dados, instâncias, histórico e permissões devem permanecer isolados do workspace público. Não implementar isso nesta fatia de teste.
+
+
+## Regra operacional permanente — stack local usa imagens publicadas
+
+Para os próximos chats de IA e para a operação local do usuário:
+
+- A stack local deve usar as imagens publicadas no GHCR na tag de desenvolvimento: `ghcr.io/geordptoroy/forte-panel:dev` e `ghcr.io/geordptoroy/forte-whatsapp:dev`.
+- Antes de iniciar, executar `docker compose pull`; não executar `docker compose build` no PC do usuário.
+- Para reset destrutivo no Windows, usar `.\scripts\start-docker.ps1 -Reset -ResetConfirmation APAGAR-TUDO` a partir da raiz do repositório.
+- Esse reset apaga containers, volumes, imagens, redes e cache Docker local; só usar quando o usuário confirmar que os dados locais podem ser apagados.
+- O `docker-compose.local.yml` não deve voltar a declarar builds locais; as imagens podem ser substituídas por `FORTE_PANEL_IMAGE` e `FORTE_WHATSAPP_IMAGE` no `.env` quando necessário.
