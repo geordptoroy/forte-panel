@@ -2,7 +2,7 @@ name: Publish Forte Panel image
 
 on:
   push:
-    branches: [main, docs/ai-admin-core-plan-2026-09-27]
+    branches: [main, docs/ai-admin-core-plan-2026-09-27, feat/o7.15-storage-reconciliation-observability]
   workflow_dispatch:
 
 permissions:
