@@ -367,3 +367,12 @@ Este quadro deve ser atualizado a cada fatia. O documento canônico continua sen
 O script `scripts/validate-flow.mjs` agora aceita `VALIDATION_EMAIL` e `VALIDATION_PASSWORD`, correspondentes à conta criada pelo `/signup`, mantendo `LOCAL_ADMIN_EMAIL`/`LOCAL_ADMIN_PASSWORD` apenas como fallback legado. Se o login falhar, o fluxo encerra imediatamente em vez de produzir uma cascata de falsos erros de autorização.
 
 O requisito de produto para o próximo slice ficou registrado: o Console Admin deve possuir um workspace operacional administrativo próprio, separado do workspace público, com as capacidades de workspace (instância WhatsApp, Inbox, Agenda, Serviços, Profissionais e IA) para suporte real pela plataforma. O acesso deve ser exclusivo às contas do Console Admin, com isolamento explícito de dados, instâncias e permissões; não implementar essa mudança junto com a adaptação do teste.
+
+
+## Atualização de estado — Console Admin IA e simulação obrigatória — 2026-10-01
+- [x] Corrigir o contrato de conexões de IA para permitir múltiplas conexões ativas por capability; a primeira permanece primária e as seguintes viram fallback.
+- [x] Manter chaves criptografadas no banco, mascaradas no Console Admin e nunca serializadas em auditorias/respostas.
+- [x] Tornar explícito o retorno `mode: simulation_only` nas simulações global e por instância; provider externo e gateway Baileys continuam bloqueados.
+- [x] Exigir uma simulação concluída depois do último salvamento do rascunho antes de publicar uma versão do agente.
+- [ ] Configurar credenciais reais de provider e executar testes externos; fica para depois, conforme solicitado.
+**Próxima fatia:** validar os fluxos reais de provider/WhatsApp no ambiente do usuário e, somente após aceite, discutir liberação supervisionada de respostas automáticas.

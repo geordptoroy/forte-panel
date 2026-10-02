@@ -852,9 +852,6 @@ export const platformAiConnections = pgTable(
   table => [
     index("platform_ai_connections_capability_idx").on(table.capability, table.active),
     uniqueIndex("platform_ai_connections_name_unique_idx").on(table.name),
-    uniqueIndex("platform_ai_connections_active_capability_unique_idx")
-      .on(table.capability)
-      .where(sql`${table.active} = 1`),
   ]
 );
 export const workspaceUsageBuckets = pgTable(

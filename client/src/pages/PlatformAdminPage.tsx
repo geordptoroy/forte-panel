@@ -1694,7 +1694,7 @@ function AgentTab({
           {simulate.data && (
             <div className="platform-simulation-result">
               <small>
-                providerCalled: {String(simulate.data.providerCalled)}
+                modo: {simulate.data.mode} · providerCalled: {String(simulate.data.providerCalled)}
               </small>
               <p>{simulate.data.output}</p>
             </div>
@@ -1943,6 +1943,7 @@ export function PlatformPromptsPage() {
     output: string;
     model: string;
     enabled: boolean;
+    mode: "simulation_only";
     promptSource: string;
     bindingVersion: number | null;
     providerCalled: boolean;
@@ -2142,7 +2143,7 @@ export function PlatformPromptsPage() {
               <div>
                 <strong>{testResult.enabled ? "Agente ativo" : "Agente pausado"}</strong>
                 <p>{testResult.output}</p>
-                <small>Provider externo chamado: {testResult.providerCalled ? "sim" : "não"} · status da instância: {testResult.instance.status}</small>
+                <small>Modo: {testResult.mode} · provider externo chamado: {testResult.providerCalled ? "sim" : "não"} · status da instância: {testResult.instance.status}</small>
               </div>
             </div>
           )}

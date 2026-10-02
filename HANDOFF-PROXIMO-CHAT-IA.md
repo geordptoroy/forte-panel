@@ -425,3 +425,11 @@ Para os próximos chats de IA e para a operação local do usuário:
 
 ## Correção de autenticação local — 2026-10-01
 O login local deixou de usar uma única conta arbitrária por email. Ele agora carrega todas as contas com o email normalizado e seleciona a conta cujo hash corresponde à senha informada; a conta administrativa configurada continua sendo priorizada quando suas credenciais explícitas coincidem. Foi adicionado teste para o caso da conta histórica `local_admin` sem workspace e da conta owner criada pelo signup.
+
+
+### Atualização posterior — providers IA e simulação controlada — 2026-10-01
+A branch agora permite múltiplas conexões ativas por capability para suportar fallback real; a migration `0058_platform_ai_connection_fallbacks.sql` remove o índice único conflitante, sem apagar conexões. O runtime já aplica as conexões ativas por capability com chaves criptografadas e o Console Admin continua exibindo apenas máscaras.
+
+O modo simulado foi endurecido: as rotas retornam `mode: simulation_only`, não chamam provider externo, não usam Baileys e registram auditoria/resultado com `providerCalled=false`. A publicação de um rascunho passa a exigir uma simulação concluída depois do último salvamento daquele rascunho. Não foram usados secrets reais nem infraestrutura do usuário.
+
+**Próximo passo:** o usuário deve configurar as credenciais do provider no Console Admin quando decidir fazê-lo; depois executar os testes reais de provider/WhatsApp. Não liberar resposta automática antes desse aceite.

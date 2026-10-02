@@ -461,6 +461,7 @@ export async function simulatePlatformInstanceAgent(input: {
   });
   return {
     id: created.id,
+    mode: "simulation_only" as const,
     status: created.status,
     input: created.input,
     output: created.output,
@@ -1664,7 +1665,28 @@ export async function publishPlatformAgentDraft(input: {
   workspaceId: number;
   reason: string;
 }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
   const snapshot = await getPlatformAgentSnapshot(input.workspaceId);
+  if (snapshot.draft) {
+    const latestSimulation = (
+      await db
+        .select({ createdAt: agentSimulationRuns.createdAt })
+        .from(agentSimulationRuns)
+        .where(
+          and(
+            eq(agentSimulationRuns.workspaceId, input.workspaceId),
+            eq(agentSimulationRuns.draftId, snapshot.draft.id),
+            eq(agentSimulationRuns.status, "completed")
+          )
+        )
+        .orderBy(desc(agentSimulationRuns.createdAt), desc(agentSimulationRuns.id))
+        .limit(1)
+    )[0];
+    if (!latestSimulation || latestSimulation.createdAt < new Date(snapshot.draft.updatedAt)) {
+      throw new Error("Execute uma simulação concluída depois do último salvamento do rascunho antes de publicar");
+    }
+  }
   const config = snapshot.draft?.config ?? snapshot.current;
   return publishVersion({ ...input, config });
 }
@@ -1749,6 +1771,7 @@ export async function simulatePlatformAgent(input: {
   });
   return {
     id: created.id,
+    mode: "simulation_only" as const,
     status: created.status,
     input: created.input,
     output: created.output,
