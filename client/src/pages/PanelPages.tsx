@@ -1172,6 +1172,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   const [interactiveType, setInteractiveType] = useState<"text" | "button" | "list" | "poll" | "carousel">("text");
   const [interactiveOptions, setInteractiveOptions] = useState("Sim\nNão");
   const [interactiveButtonText, setInteractiveButtonText] = useState("Ver opções");
+  const [interactiveHeader, setInteractiveHeader] = useState("");
+  const [interactiveFooter, setInteractiveFooter] = useState("");
   const [carouselPayload, setCarouselPayload] = useState('{"cards":[]}');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -1333,6 +1335,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       setDraft("");
       setInteractiveType("text");
       setInteractiveOptions("Sim\nNão");
+      setInteractiveHeader("");
+      setInteractiveFooter("");
       clearAttachment();
       await refresh();
     },
@@ -1468,6 +1472,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     const interactiveMetadata =
       interactiveType === "button"
         ? {
+            ...(interactiveHeader.trim() ? { title: interactiveHeader.trim() } : {}),
+            ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
             buttons: options.slice(0, 3).map((option, index) => ({
               buttonId: `option-${index + 1}`,
               buttonText: { displayText: option },
@@ -1475,11 +1481,16 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           }
         : interactiveType === "list"
           ? {
+              ...(interactiveHeader.trim() ? { title: interactiveHeader.trim() } : {}),
+              ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
               buttonText: interactiveButtonText,
               sections: [{ title: "Opções", rows: options.slice(0, 10).map((option, index) => ({ rowId: `option-${index + 1}`, title: option })) }],
             }
             : interactiveType === "poll"
-            ? { payload: { poll: { name: draft.trim() || "Enquete", values: options.slice(0, 12), selectableCount: 1 } } }
+            ? {
+                ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
+                payload: { poll: { name: draft.trim() || "Enquete", values: options.slice(0, 12), selectableCount: 1 } },
+              }
             : undefined;
     sendMutation.mutate({
       contactId: selectedNumericId,
@@ -1833,6 +1844,14 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               {interactiveType !== "carousel" && <label>
                 <span>Opções, uma por linha</span>
                 <textarea className="textarea-control" value={interactiveOptions} onChange={event => setInteractiveOptions(event.target.value)} rows={3} />
+              </label>}
+              {interactiveType !== "poll" && <label>
+                <span>Cabeçalho (opcional)</span>
+                <input className="input-control" value={interactiveHeader} onChange={event => setInteractiveHeader(event.target.value)} placeholder="Ex.: Atendimento Forte" maxLength={120} />
+              </label>}
+              {interactiveType !== "poll" && <label>
+                <span>Rodapé (opcional)</span>
+                <input className="input-control" value={interactiveFooter} onChange={event => setInteractiveFooter(event.target.value)} placeholder="Ex.: Escolha uma opção" maxLength={200} />
               </label>}
               {interactiveType === "list" && (
                 <label>
