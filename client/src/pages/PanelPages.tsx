@@ -1172,6 +1172,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   const [interactiveType, setInteractiveType] = useState<"text" | "button" | "list" | "poll" | "carousel">("text");
   const [interactiveOptions, setInteractiveOptions] = useState("Sim\nNão");
   const [interactiveButtonText, setInteractiveButtonText] = useState("Ver opções");
+  const [interactiveHeader, setInteractiveHeader] = useState("");
+  const [interactiveFooter, setInteractiveFooter] = useState("");
   const [carouselPayload, setCarouselPayload] = useState('{"cards":[]}');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -1183,6 +1185,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     mimeType: string;
     previewUrl?: string;
     storageKey?: string;
+    mediaData?: string;
     sizeBytes?: number;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1333,8 +1336,13 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       setDraft("");
       setInteractiveType("text");
       setInteractiveOptions("Sim\nNão");
+      setInteractiveHeader("");
+      setInteractiveFooter("");
       clearAttachment();
       await refresh();
+    },
+    onError: error => {
+      setRecordingError(error.message || "Não foi possível enviar a mensagem.");
     },
   });
   if (!selected)
@@ -1379,7 +1387,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     });
   };
   const send = async () => {
-    if (!draft.trim() && !attachment) return;
+    if (!draft.trim() && !attachment && interactiveType === "text") return;
     if (platformAdmin && !sendInstanceId) {
       setRecordingError("Selecione a instância que fará o envio.");
       return;
@@ -1414,6 +1422,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
                 name: uploaded.fileName,
                 mimeType: uploaded.mimeType,
                 storageKey: uploaded.storageKey,
+                mediaData: uploaded.mediaData,
                 sizeBytes: uploaded.sizeBytes,
               }
             : current
@@ -1423,7 +1432,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           content: caption || uploaded.fileName,
           messageType: currentAttachment.type,
           metadata: {
-            mediaStorageKey: uploaded.storageKey,
+            ...(uploaded.storageKey ? { mediaStorageKey: uploaded.storageKey } : {}),
+            ...(uploaded.mediaData ? { mediaData: uploaded.mediaData } : {}),
             mediaMimeType: uploaded.mimeType,
             mediaSizeBytes: uploaded.sizeBytes,
             fileName: uploaded.fileName,
@@ -1465,6 +1475,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     const interactiveMetadata =
       interactiveType === "button"
         ? {
+            ...(interactiveHeader.trim() ? { title: interactiveHeader.trim() } : {}),
+            ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
             buttons: options.slice(0, 3).map((option, index) => ({
               buttonId: `option-${index + 1}`,
               buttonText: { displayText: option },
@@ -1472,15 +1484,28 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           }
         : interactiveType === "list"
           ? {
+              ...(interactiveHeader.trim() ? { title: interactiveHeader.trim() } : {}),
+              ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
               buttonText: interactiveButtonText,
               sections: [{ title: "Opções", rows: options.slice(0, 10).map((option, index) => ({ rowId: `option-${index + 1}`, title: option })) }],
             }
-          : interactiveType === "poll"
-            ? { payload: { poll: { name: draft.trim(), values: options.slice(0, 12), selectableCount: 1 } } }
+            : interactiveType === "poll"
+            ? {
+                ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
+                payload: { poll: { name: draft.trim() || "Enquete", values: options.slice(0, 12), selectableCount: 1 } },
+              }
             : undefined;
     sendMutation.mutate({
       contactId: selectedNumericId,
-      content: draft.trim(),
+      content:
+        draft.trim() ||
+        (interactiveType === "button"
+          ? "Escolha uma opção"
+          : interactiveType === "list"
+            ? "Selecione uma opção"
+            : interactiveType === "poll"
+              ? "Enquete"
+              : "Carrossel"),
       messageType: interactiveType,
       metadata: interactiveMetadata,
       instanceIds: outboundInstanceIds,
@@ -1527,15 +1552,21 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
       recordingChunksRef.current = [];
-      const preferredMime = [
+      const mimeCandidates = [
         "audio/webm;codecs=opus",
         "audio/ogg;codecs=opus",
         "audio/mp4",
-      ].find(type => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(
-        stream,
-        preferredMime ? { mimeType: preferredMime } : undefined
-      );
+      ].filter(type => MediaRecorder.isTypeSupported(type));
+      let recorder: MediaRecorder | undefined;
+      for (const mimeType of mimeCandidates) {
+        try {
+          recorder = new MediaRecorder(stream, { mimeType });
+          break;
+        } catch {
+          // Alguns navegadores declaram suporte, mas rejeitam o MIME no construtor.
+        }
+      }
+      if (!recorder) recorder = new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
       recorder.ondataavailable = event => {
         if (event.data.size > 0) recordingChunksRef.current.push(event.data);
@@ -1581,10 +1612,31 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           stopRecording();
         }
       }, 1000);
-    } catch {
+    } catch (error) {
       mediaStreamRef.current?.getTracks().forEach(track => track.stop());
       mediaStreamRef.current = null;
-      setRecordingError("Permita o acesso ao microfone para gravar um áudio.");
+      const name = error instanceof DOMException ? error.name : "";
+      console.warn("[inbox] microphone request failed", {
+        name,
+        origin: window.location.origin,
+        secureContext: window.isSecureContext,
+        mediaDevicesAvailable: Boolean(navigator.mediaDevices?.getUserMedia),
+      });
+      const message =
+        name === "SecurityError" || !window.isSecureContext
+          ? "O microfone só funciona em uma origem segura. Acesse exatamente http://localhost:3002 e recarregue a página."
+          : name === "NotAllowedError"
+            ? "A permissão do microfone está negada para esta origem. Abra as configurações do site ao lado do endereço, altere Microfone para Permitir e recarregue a página."
+          : name === "NotFoundError"
+            ? "Nenhum microfone foi encontrado neste computador."
+            : name === "NotReadableError"
+              ? "O microfone está ocupado por outro aplicativo. Feche-o e tente novamente."
+              : name === "OverconstrainedError"
+                ? "O microfone selecionado não está disponível. Escolha outro microfone no sistema."
+                : error instanceof Error && error.message
+                  ? `Não foi possível iniciar o microfone: ${error.message}`
+                  : "Não foi possível iniciar o microfone. Verifique o dispositivo e tente novamente.";
+      setRecordingError(message);
     }
   };
   return (
@@ -1796,6 +1848,14 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
                 <span>Opções, uma por linha</span>
                 <textarea className="textarea-control" value={interactiveOptions} onChange={event => setInteractiveOptions(event.target.value)} rows={3} />
               </label>}
+              {interactiveType !== "poll" && <label>
+                <span>Cabeçalho (opcional)</span>
+                <input className="input-control" value={interactiveHeader} onChange={event => setInteractiveHeader(event.target.value)} placeholder="Ex.: Atendimento Forte" maxLength={120} />
+              </label>}
+              {interactiveType !== "poll" && <label>
+                <span>Rodapé (opcional)</span>
+                <input className="input-control" value={interactiveFooter} onChange={event => setInteractiveFooter(event.target.value)} placeholder="Ex.: Escolha uma opção" maxLength={200} />
+              </label>}
               {interactiveType === "list" && (
                 <label>
                   <span>Texto do botão</span>
@@ -1878,7 +1938,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             <button
               className="btn-primary"
               onClick={() => void send()}
-              disabled={sendMutation.isPending || uploadAttachmentMutation.isPending || isRecording || (!draft.trim() && !attachment) || (platformAdmin && !sendInstanceId)}
+              disabled={sendMutation.isPending || uploadAttachmentMutation.isPending || isRecording || (interactiveType === "text" && !draft.trim() && !attachment) || (platformAdmin && !sendInstanceId)}
               aria-label={uploadAttachmentMutation.isPending ? "Enviando anexo para armazenamento privado" : "Enviar mensagem"}
               title={platformAdmin && !sendInstanceId ? "Selecione a instância de envio" : uploadAttachmentMutation.isPending ? "Guardando anexo com segurança…" : "Enviar mensagem"}
             >

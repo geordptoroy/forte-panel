@@ -20,6 +20,12 @@ export type AgentRouting = Record<
     model: string;
     baseUrl?: string;
     apiKey?: string;
+    fallback?: Array<{
+      provider: AgentProviderId;
+      model: string;
+      baseUrl?: string;
+      apiKey?: string;
+    }>;
   }
 >;
 
@@ -27,6 +33,24 @@ export type AgentProviderSettings = {
   providers: Record<AgentProviderId, ProviderConfig>;
   routing: AgentRouting;
 };
+
+export type LLMInvocationTelemetry = {
+  capability: AgentCapability;
+  provider: AgentProviderId | null;
+  attempts: number;
+  fallbackUsed: boolean;
+  failureCode: string | null;
+};
+
+export class LLMProviderError extends Error {
+  constructor(
+    message: string,
+    readonly telemetry: LLMInvocationTelemetry
+  ) {
+    super(message);
+    this.name = "LLMProviderError";
+  }
+}
 
 const DEFAULTS: AgentProviderSettings = {
   providers: {
@@ -161,39 +185,71 @@ export async function invokeConfiguredLLM(
   settings: AgentProviderSettings,
   capability: AgentCapability,
   params: InvokeParams
-): Promise<InvokeResult> {
+): Promise<InvokeResult & { telemetry: LLMInvocationTelemetry }> {
   const route = settings.routing[capability];
-  const provider = settings.providers[route.provider];
-  const baseUrl = route.baseUrl || provider?.baseUrl;
-  const apiKey = route.apiKey || provider?.apiKey;
-  if (
-    (!provider?.enabled && !(route.baseUrl && route.apiKey)) ||
-    !baseUrl ||
-    !apiKey
-  )
-    throw new Error(
-      `Provedor configurado para ${capability} não está disponível`
-    );
+  const candidates = [route, ...(route.fallback ?? [])];
   const timeoutMsRaw = Number(process.env.AGENT_LLM_TIMEOUT_MS ?? 45_000);
   const timeoutMs = Number.isFinite(timeoutMsRaw)
     ? Math.max(1_000, Math.min(timeoutMsRaw, 180_000))
     : 45_000;
-  const response = await fetch(`${endpoint(baseUrl)}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${decryptProviderSecret(apiKey)}`,
-    },
-    body: JSON.stringify(
-      normalizeParams({ ...params, model: route.model || params.model })
-    ),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok)
-    throw new Error(
-      `LLM ${route.provider} respondeu ${response.status}: ${await response.text()}`
-    );
-  return (await response.json()) as InvokeResult;
+  const failures: string[] = [];
+  let attempts = 0;
+  for (const candidate of candidates) {
+    attempts += 1;
+    const provider = settings.providers[candidate.provider];
+    const baseUrl = candidate.baseUrl || provider?.baseUrl;
+    const apiKey = candidate.apiKey || provider?.apiKey;
+    if (
+      (!provider?.enabled && !(candidate.baseUrl && candidate.apiKey)) ||
+      !baseUrl ||
+      !apiKey
+    ) {
+      failures.push(`${candidate.provider}:indisponível`);
+      continue;
+    }
+    try {
+      const response = await fetch(`${endpoint(baseUrl)}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${decryptProviderSecret(apiKey)}`,
+        },
+        body: JSON.stringify(
+          normalizeParams({ ...params, model: candidate.model || params.model })
+        ),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) {
+        failures.push(`${candidate.provider}:http_${response.status}`);
+        continue;
+      }
+      const result = (await response.json()) as InvokeResult;
+      return {
+        ...result,
+        telemetry: {
+          capability,
+          provider: candidate.provider,
+          attempts,
+          fallbackUsed: attempts > 1,
+          failureCode: null,
+        },
+      };
+    } catch (error) {
+      failures.push(
+        `${candidate.provider}:${error instanceof Error ? error.name : "erro"}`
+      );
+    }
+  }
+  throw new LLMProviderError(
+    `Nenhum provider disponível para ${capability}; tentativas: ${failures.join(", ")}`,
+    {
+      capability,
+      provider: null,
+      attempts,
+      fallbackUsed: attempts > 1,
+      failureCode: failures.at(-1)?.split(":").slice(1).join(":") || "unavailable",
+    }
+  );
 }
 
 export function capabilityForMessageType(

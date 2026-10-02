@@ -82,6 +82,20 @@ export async function updateBaileysInstanceSettings(
   return response.json();
 }
 
+export async function updateBaileysWebhookSecret(
+  instanceId: string,
+  secret: string
+) {
+  const id = encodeURIComponent(instanceId);
+  const response = await gatewayRequest(`/api/instances/${id}/webhook-secret`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ secret }),
+  });
+  if (!response) throw new Error("Gateway WhatsApp não está configurado");
+  return response.json();
+}
+
 export async function deleteBaileysInstance(instanceId: string) {
   const id = encodeURIComponent(instanceId);
   const response = await gatewayRequest(`/api/instances/${id}`, {

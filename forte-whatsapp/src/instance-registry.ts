@@ -160,6 +160,10 @@ export class InstanceRegistry {
     return entry.manager.getStatus();
   }
 
+  rotateWebhookSecret(instanceId: string, secret: string) {
+    return this.requireEntry(instanceId).manager.rotateWebhookSecret(secret);
+  }
+
   async connect(instanceId: string) {
     const entry = this.requireEntry(instanceId);
     await this.setAutoStart(entry, true);

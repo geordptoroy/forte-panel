@@ -4,6 +4,35 @@ export type WeeklyAvailabilityWindow = {
   endMinute: number;
 };
 
+export function validateWeeklyAvailabilityEntries(
+  entries: WeeklyAvailabilityWindow[]
+) {
+  const sorted = [...entries].sort(
+    (a, b) => a.weekday - b.weekday || a.startMinute - b.startMinute
+  );
+  for (const entry of sorted) {
+    if (
+      !Number.isInteger(entry.weekday) ||
+      entry.weekday < 0 ||
+      entry.weekday > 6 ||
+      !Number.isInteger(entry.startMinute) ||
+      !Number.isInteger(entry.endMinute) ||
+      entry.startMinute < 0 ||
+      entry.startMinute >= 1440 ||
+      entry.endMinute <= entry.startMinute ||
+      entry.endMinute > 1440
+    )
+      return "Cada intervalo precisa ter dia válido e horário final maior que o inicial";
+  }
+  for (let index = 1; index < sorted.length; index += 1) {
+    const previous = sorted[index - 1];
+    const current = sorted[index];
+    if (current.weekday === previous.weekday && current.startMinute < previous.endMinute)
+      return "Os intervalos do mesmo dia não podem se sobrepor";
+  }
+  return null;
+}
+
 export type ScheduleFailure = "invalid_period" | "schedule_not_configured" | "outside_working_hours" | "appointment_conflict" | "professional_unavailable" | "service_unavailable" | "contact_unavailable";
 
 export class ScheduleError extends Error {

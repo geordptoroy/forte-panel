@@ -20,6 +20,8 @@ Este arquivo organiza a documentação do projeto e aponta qual documento consul
 
 > **Entrega O7.14:** consulte [`O7.14-ENTREGA-PROVIDER-STORAGE.md`](./O7.14-ENTREGA-PROVIDER-STORAGE.md) para o contrato paginado e delete condicionado em dry-run.
 
+> **Entrega O7.15:** consulte [`O7.15-ENTREGA-METRICAS-RECONCILIACAO.md`](./O7.15-ENTREGA-METRICAS-RECONCILIACAO.md) para métricas redigidas, limite anti-loop e auditoria segura.
+
 > **Auditoria e proteção de ingestão WhatsApp/IA (2026-09-28):** consulte [`docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`](./docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md). A primeira fatia de proteção agora filtra `append`/backfill e texto-placeholder e verifica ownership da instância antes de salvar mídia; a importação histórica e o Console unificado de IA continuam pendentes.
 >
 > **Core ativo (2026-09-27):** consulte [`WHATSAPP-CONNECTION-FLOW-2026-09-27.md`](./WHATSAPP-CONNECTION-FLOW-2026-09-27.md) para a fase 1: CRUD de instâncias Baileys, consumo, decisões de escopo e sequência solicitada das próximas etapas. Não iniciar o console de modelos nem respostas automáticas antes da revisão do usuário.
@@ -125,3 +127,9 @@ Ao concluir um bloco técnico:
 - Auditoria de 27/09 encontrou `/kanban` sem rota, retorno administrativo inadequado, dead-end de workspace suspenso, divergência entre mensagens/contatos/unread/stages, QR abaixo da primeira dobra mobile, billing ainda com caminho demo e ausência de modelo SaaS/LGPD; o bloco P0 foi executado, mas os gates de staging continuam antes de novos convites.
 - A auditoria de melhoria contínua de 27/09 acrescentou 26 achados novos; signup inicial, convites, recuperação, limite/origem, onboarding textual owner/admin e governança de fontes já avançaram. O funil de áudio agora possui migration, upload privado, `voice.transcribe` tenant-aware, UI MediaRecorder com preview/retry, worker diário de retenção, proposta estruturada em draft, perguntas de acompanhamento para missing/conflicts, telemetria e publicação versionada com rollback; falta validação PostgreSQL/staging antes do beta. O mesmo documento planeja o financeiro operacional completo (itens, plano de pagamento, meios, ledger, recibo e conciliação).
 8. [`O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`](./O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md) — retomada, confiabilidade Baileys, recibos e anexos privados; [`O3.1-ENTREGA-LEAD-UNIFICADO.md`](./O3.1-ENTREGA-LEAD-UNIFICADO.md) — Lead/Opportunity; [`O3.2-ENTREGA-INBOX-OPERACIONAL.md`](./O3.2-ENTREGA-INBOX-OPERACIONAL.md) — assignment e próxima ação; [`O3.3-ENTREGA-FUNIL-CANONICO.md`](./O3.3-ENTREGA-FUNIL-CANONICO.md) — estágio canônico e histórico.
+
+## O5 — Console Admin, agente e governança
+- [`O5.4-ENTREGA-GOVERNANCA-METRICAS-AGENTE.md`](./O5.4-ENTREGA-GOVERNANCA-METRICAS-AGENTE.md) — permissões e períodos das métricas privadas do workspace.
+- [`O5.5-ENTREGA-AUTORIZACAO-METRICAS-AGENTE.md`](./O5.5-ENTREGA-AUTORIZACAO-METRICAS-AGENTE.md) — autorização por papel e isolamento entre workspaces.
+- [`O5.6-ENTREGA-SAude-AGREGADA-CONSOLE-ADMIN.md`](./O5.6-ENTREGA-SAude-AGREGADA-CONSOLE-ADMIN.md) — saúde agregada do agente no control-plane.
+- [`O5.7-ENTREGA-CONTRATO-PLATFORM-HEALTH.md`](./O5.7-ENTREGA-CONTRATO-PLATFORM-HEALTH.md) — contrato integrado sem serialização de dados sensíveis.

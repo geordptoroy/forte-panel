@@ -16,6 +16,15 @@ import {
   recordPasswordResetAttempt,
   recordSignupAttempt,
 } from "./_core/request-security";
+import {
+  assertLoginAllowedDistributed,
+  assertPasswordResetAllowedDistributed,
+  assertSignupAllowedDistributed,
+  clearLoginDistributed,
+  recordLoginFailureDistributed,
+  recordPasswordResetAttemptDistributed,
+  recordSignupAttemptDistributed,
+} from "./distributed-rate-limit";
 import { ScheduleError } from "./schedule";
 import {
   InboxInstanceFilterError,
@@ -39,7 +48,8 @@ import {
   confirmOnboardingStep,
   confirmOnboardingExampleReview,
   getAgendaSnapshot,
-  getUserByEmail,
+  findLocalPasswordAccount,
+  getUsersByEmail,
   getUserById,
   getUserByOpenId,
   getWorkspaceMembershipContext,
@@ -49,6 +59,10 @@ import {
   ensureBaileysChannel,
   listBaileysInstances,
   getBaileysInstance,
+  getBaileysWebhookSecret,
+  rotateBaileysWebhookSecret,
+  replaceBaileysWebhookSecret,
+  clearBaileysWebhookSecret,
   createBaileysInstance as createBaileysInstanceRecord,
   updateBaileysInstanceName as updateBaileysInstanceRecordName,
   archiveBaileysInstance,
@@ -63,10 +77,12 @@ import {
   getOnboardingProfile,
   getOnboardingPublishCandidate,
   getNativeAgentConfig,
+  getWorkspaceAgentPolicy,
   getAgentMetrics,
   getNativeAgentKillSwitch,
   getNativeAgentRuntimeConfig,
   saveNativeAgentConfig,
+  saveWorkspaceAgentPolicy,
   setNativeAgentKillSwitch,
   resetWorkspaceDevelopmentData,
   revokeWorkspaceInvite,
@@ -168,6 +184,7 @@ import {
   updateOwnProfile,
   updateProfessional,
   updateService,
+  validateAvailabilityEntries,
   type OperationalRole,
   type WorkspaceAccess,
   type WorkspaceMemberRole,
@@ -192,6 +209,7 @@ import {
   getBaileysStatus,
   updateBaileysInstanceName,
   updateBaileysInstanceSettings,
+  updateBaileysWebhookSecret,
 } from "./baileys-gateway";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
@@ -521,8 +539,10 @@ export const appRouter = router({
           });
         }
         const email = input.email.trim().toLowerCase();
-        assertLoginAllowed(ctx.req, email);
-        let account = await getUserByEmail(email);
+        if (!(await assertLoginAllowedDistributed(ctx.req, email)))
+          assertLoginAllowed(ctx.req, email);
+        const accounts = await getUsersByEmail(email);
+        let account = findLocalPasswordAccount(accounts, input.password);
         const configuredPlatformAccount = ENV.localPlatformAdminAccounts.find(
           candidate =>
             candidate.email === email && candidate.password === input.password
@@ -537,11 +557,9 @@ export const appRouter = router({
             lastSignedIn: new Date(),
           });
           account = await getUserByOpenId(configuredPlatformAccount.openId);
-        } else if (
-          !account ||
-          !verifyLocalPassword(input.password, account.passwordHash)
-        ) {
-          recordLoginFailure(ctx.req, email);
+        } else if (!account) {
+          if (!(await recordLoginFailureDistributed(ctx.req, email)))
+            recordLoginFailure(ctx.req, email);
           throw new TRPCError({
             code: "UNAUTHORIZED",
             message: "E-mail ou senha inválidos",
@@ -552,7 +570,8 @@ export const appRouter = router({
             code: "INTERNAL_SERVER_ERROR",
             message: "Conta local não pôde ser carregada",
           });
-        recordLoginSuccess(ctx.req, email);
+        if (!(await clearLoginDistributed(ctx.req, email)))
+          recordLoginSuccess(ctx.req, email);
         const membership = await getWorkspaceMembershipContext(account.id);
         const platformAdmin = await getPlatformAdminAccess(account.id);
         if (platformAdmin) {
@@ -632,8 +651,10 @@ export const appRouter = router({
           });
         }
         const email = input.email.trim().toLowerCase();
-        assertSignupAllowed(ctx.req, email);
-        recordSignupAttempt(ctx.req, email);
+        if (!(await assertSignupAllowedDistributed(ctx.req, email)))
+          assertSignupAllowed(ctx.req, email);
+        if (!(await recordSignupAttemptDistributed(ctx.req, email)))
+          recordSignupAttempt(ctx.req, email);
         try {
           const result = await createPublicSignup({
             name: input.name,
@@ -675,8 +696,10 @@ export const appRouter = router({
           });
         }
         const email = input.email.trim().toLowerCase();
-        assertPasswordResetAllowed(ctx.req, email);
-        recordPasswordResetAttempt(ctx.req, email);
+        if (!(await assertPasswordResetAllowedDistributed(ctx.req, email)))
+          assertPasswordResetAllowed(ctx.req, email);
+        if (!(await recordPasswordResetAttemptDistributed(ctx.req, email)))
+          recordPasswordResetAttempt(ctx.req, email);
         // The configured transactional provider consumes the internal token;
         // the public response intentionally never reveals whether the email exists.
         const issued = await issuePasswordResetToken(email);
@@ -757,7 +780,8 @@ export const appRouter = router({
           });
         }
       }),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      if (ctx.user) await revokeUserSessions(ctx.user.id);
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, cookieOptions);
       return { success: true } as const;
@@ -1133,13 +1157,11 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const invalid = input.entries.find(
-          entry => entry.endMinute <= entry.startMinute
-        );
-        if (invalid)
+        const validationError = validateAvailabilityEntries(input.entries);
+        if (validationError)
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "O horário final precisa ser maior que o inicial",
+            message: validationError,
           });
         const entries = await replaceAvailability(
           ctx.workspace.workspaceId,
@@ -1399,6 +1421,39 @@ export const appRouter = router({
           });
         await updateBaileysInstanceSettings(input.instanceId, input.settings);
         return getBaileysStatus(input.instanceId);
+      }),
+    rotateBaileysWebhookSecret: requireManager
+      .input(z.object({ instanceId: z.string().trim().min(1).max(160) }))
+      .mutation(async ({ input, ctx }) => {
+        const workspaceId = ctx.workspace.workspaceId;
+        const current = await getBaileysInstance(workspaceId, input.instanceId);
+        if (!current)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        const previous = await getBaileysWebhookSecret(input.instanceId);
+        const rotated = await rotateBaileysWebhookSecret(
+          workspaceId,
+          input.instanceId
+        );
+        try {
+          await updateBaileysWebhookSecret(input.instanceId, rotated.secret);
+        } catch (error) {
+          if (previous)
+            await replaceBaileysWebhookSecret(
+              workspaceId,
+              input.instanceId,
+              previous
+            ).catch(() => undefined);
+          else
+            await clearBaileysWebhookSecret(
+              workspaceId,
+              input.instanceId
+            ).catch(() => undefined);
+          throw error;
+        }
+        return { success: true, instanceId: input.instanceId } as const;
       }),
     deleteBaileysInstance: requireManager
       .input(
@@ -2256,6 +2311,30 @@ export const appRouter = router({
   }),
 
   agent: router({
+    workspaceConfig: requireAdministrator.query(({ ctx }) =>
+      getWorkspaceAgentPolicy(ctx.workspace.workspaceId)
+    ),
+    saveWorkspaceConfig: requireAdministrator
+      .input(
+        z.object({
+          enabled: z.boolean(),
+          systemPrompt: z.string().max(30_000),
+          maxSteps: z.number().int().min(1).max(8),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const result = await saveWorkspaceAgentPolicy(
+          ctx.workspace.workspaceId,
+          input
+        );
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: "workspace_agent_policy_updated",
+          summary: `Política do agente ${result.enabled ? "ativada" : "pausada"}`,
+        });
+        return result;
+      }),
     metrics: requireManager
       .input(z.object({ windowDays: z.number().int().min(1).max(90).default(30) }).optional())
       .query(({ input, ctx }) => getAgentMetrics(ctx.workspace.workspaceId, input?.windowDays ?? 30)),
@@ -2950,13 +3029,11 @@ export const appRouter = router({
             code: "FORBIDDEN",
             message: "Seu usuário não está vinculado a um profissional",
           });
-        const invalid = input.entries.find(
-          entry => entry.endMinute <= entry.startMinute
-        );
-        if (invalid)
+        const validationError = validateAvailabilityEntries(input.entries);
+        if (validationError)
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "O horário final precisa ser maior que o inicial",
+            message: validationError,
           });
         const entries = await replaceAvailability(
           ctx.workspace.workspaceId,
@@ -2994,6 +3071,13 @@ export const appRouter = router({
           });
         } catch (error) {
           const reason = error instanceof Error ? error.message : "";
+          console.error("[inbox] attachment upload failed", {
+            workspaceId: ctx.workspace.workspaceId,
+            messageType: input.messageType,
+            mimeType: input.mimeType,
+            fileName: input.fileName,
+            reason,
+          });
           if (reason === "INBOX_MEDIA_INVALID")
             throw new TRPCError({ code: "BAD_REQUEST", message: "Formato de anexo não suportado para este tipo de mensagem." });
           if (reason === "INBOX_MEDIA_TOO_LARGE")

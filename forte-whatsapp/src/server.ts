@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import { config } from "./config.js";
 import { parseBaileysInstanceSettings } from "./instance-settings.js";
 import type { InstanceRegistry } from "./instance-registry.js";
-import { isAllowedOutboundMediaUrl } from "./media-reference.js";
+import { isAllowedOutboundMediaReference } from "./media-reference.js";
 import { SendLedgerError } from "./send-ledger.js";
 
 export function createServer(registry: InstanceRegistry) {
@@ -68,6 +68,14 @@ export function createServer(registry: InstanceRegistry) {
       }
       if (action === "profile" && req.method === "GET")
         return json(res, 200, await registry.profile(instanceId));
+      if (action === "webhook-secret" && req.method === "PATCH") {
+        const body = await readJson(req);
+        const secret = typeof body.secret === "string" ? body.secret.trim() : "";
+        if (secret.length < 32 || secret.length > 256)
+          return json(res, 400, { error: "webhook_secret_length_invalid" });
+        const status = registry.rotateWebhookSecret(instanceId, secret);
+        return json(res, 200, { success: true, instanceId, status });
+      }
       if (action === "settings" && req.method === "PATCH") {
         const body = await readJson(req);
         let settings;
@@ -145,9 +153,9 @@ export function createServer(registry: InstanceRegistry) {
         if (!phone) return json(res, 400, { error: "phone_required" });
         if (
           ["image", "audio", "video", "document"].includes(messageType) &&
-          (!isAllowedOutboundMediaUrl(content) || typeof metadata.mediaData === "string")
+          !isAllowedOutboundMediaReference(content)
         )
-          return json(res, 400, { error: "private_https_media_url_required" });
+          return json(res, 400, { error: "private_media_reference_required" });
         if (body.payload && typeof body.payload === "object") {
           const externalId = await registry.sendPayload(
             instanceId,

@@ -1,9 +1,9 @@
 
 
-## 45. O7.14 — Contrato de provider de storage — 2026-09-30
+## 46. O7.15 — Métricas e auditoria do reconciliador — 2026-09-30
 
-Foi criada a interface `WorkspaceMediaStore` com listagem paginada e delete condicionado por `ifMatch`/etag. O reconciliador percorre páginas, usa a política O7.13 e mantém `dryRun` como padrão. Mesmo em modo destrutivo explícito, objetos sem etag são preservados.
+O reconciliador agora limita paginação para evitar loops, mantém dry-run padrão e retorna métricas agregadas sem chaves de storage: runId, workspace, páginas, referências, protegidos, candidatos, desconhecidos, removidos, itens sem etag e duração. O delete continua condicionado por etag.
 
-O adapter Forge configurado no projeto só oferece presign de PUT/GET; listagem e delete reais não foram inventados nem ativados. Validação local: reconciliação base 2 testes, provider 2 testes, `pnpm check` e `git diff --check` passaram.
+Validação local: política/provider 5 testes, `pnpm check` e `git diff --check` passaram. Auditoria persistida, alertas, provider Forge com list/delete e restore rehearsal real continuam pendentes.
 
-**Próximo passo:** O7.15 — métricas, auditoria e ensaio do provider.
+**Próximo passo:** O7.16 — provider real, auditoria persistida e restore rehearsal.

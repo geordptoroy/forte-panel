@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root_dir"
-compose_file="${COMPOSE_FILE:-docker-compose.yml}"
+compose_file="${COMPOSE_FILE:-docker-compose.local.yml}"
 env_file="${ENV_FILE:-.env}"
 
 cat >&2 <<'WARNING'
@@ -13,7 +13,7 @@ Ele remove recursos Docker não utilizados globalmente nesta máquina:
 - volumes do Compose local (PostgreSQL, Redis e sessão WhatsApp);
 - imagens não utilizadas e imagens dos serviços do Compose;
 - redes não utilizadas;
-- cache de build.
+- cache de build. A reinstalação posterior deve usar `docker compose pull`, sem `docker compose build`.
 Também pode afetar OUTROS projetos Docker parados/não utilizados no mesmo computador.
 Não desinstala o Docker nem apaga arquivos fora do armazenamento Docker.
 WARNING

@@ -1,9 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { assertWithinWorkingHours, getLocalDayBounds, intervalsOverlap, ScheduleError } from "./schedule";
+import { assertWithinWorkingHours, getLocalDayBounds, intervalsOverlap, ScheduleError, validateWeeklyAvailabilityEntries } from "./schedule";
 
 const weekdaySchedule = [{ weekday: 5, startMinute: 9 * 60, endMinute: 18 * 60 }]; // Friday, São Paulo time
 
 describe("weekly availability validation", () => {
+  it("accepts separate intervals on the same weekday", () => {
+    expect(validateWeeklyAvailabilityEntries([
+      { weekday: 1, startMinute: 9 * 60, endMinute: 12 * 60 },
+      { weekday: 1, startMinute: 14 * 60, endMinute: 18 * 60 },
+    ])).toBeNull();
+  });
+
+  it("rejects overlapping intervals on the same weekday", () => {
+    expect(validateWeeklyAvailabilityEntries([
+      { weekday: 1, startMinute: 9 * 60, endMinute: 13 * 60 },
+      { weekday: 1, startMinute: 12 * 60, endMinute: 18 * 60 },
+    ])).toBe("Os intervalos do mesmo dia não podem se sobrepor");
+  });
+
+  it("rejects an interval that starts at the next-day boundary", () => {
+    expect(validateWeeklyAvailabilityEntries([
+      { weekday: 1, startMinute: 1440, endMinute: 1440 },
+    ])).toContain("horário final maior");
+  });
+
   it("accepts an interval fully contained in the workspace-local window", () => {
     expect(() => assertWithinWorkingHours(
       new Date("2026-09-25T12:00:00.000Z"), // Friday 09:00 in São Paulo

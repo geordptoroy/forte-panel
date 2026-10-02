@@ -1,6 +1,15 @@
 # Handoff — Forte Panel
 
-**Atualizado:** 2026-09-30 — O4.4 validada no CI; O5.1 em andamento
+> ## CONTINUIDADE OBRIGATÓRIA — ler antes de qualquer outra seção
+>
+> **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
+> **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
+> **HEAD de base verificado:** `db51134abe5bad57bbb5e420b8047ae425746b92` — `docs: prepare inbox audit prompt for next AI`; a correção same-origin de Permissions Policy, teste e documentação estão no working tree e ainda não commitados.<br>
+> **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
+> **Próximo passo:** aplicar/reiniciar a versão com o header `microphone=(self)` em `localhost:3002` e confirmar que desaparece a violação de Permissions Policy; o agente não captou áudio. Se o erro persistir, investigar permissão OS/dispositivo. Depois, manter MIME/PTT numa fatia separada. Não mesclar PRs.<br>
+> **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
+
+**Atualizado:** 2026-10-02 — causa do microfone identificada; policy same-origin corrigida e suíte/typecheck passaram no Sandbox
 **Repositório:** `geordptoroy/forte-panel`
 **Ambiente desta execução:** Sandbox (`/home/ubuntu/forte-panel`). Revalidar branch, workspace, remotes e disponibilidade antes de reutilizar qualquer estado.
 
@@ -135,3 +144,363 @@ Pendente honesto: o gateway mostrou `webhookOutboxPending: 5` e `webhookLastErro
 ### Atualização operacional — reconexão confirmada
 
 O gateway `forte-whatsapp` foi reiniciado isoladamente, sem remover volumes. Após 15 segundos, a mesma sessão voltou como `connected`, sem novo QR Code, e o usuário confirmou novo ciclo inbound/outbound funcionando. A outbox continua com 5 arquivos pendentes e `webhookLastError: webhook_http_400`; a reconexão não limpou os eventos históricos. Portanto, marcar reconexão e continuidade WhatsApp como aprovadas, mas manter o webhook histórico pendente até investigar os 400.
+
+## Atualização 2026-09-30 — O7.16 até O7.27
+
+A execução avançou na branch atual `feat/o7.15-storage-reconciliation-observability`, sem merge automático e mantendo `CORE_ONLY_MODE` ativo.
+
+### Fatias concluídas em código
+
+- **O7.16:** métricas de reconciliação de storage redigidas e persistidas em `auditLogs`.
+- **Restore rehearsal:** `RESTORE-REHEARSAL-PLAN.md` criado e runbook O7.12 atualizado.
+- **O7.17:** anti-replay de webhooks com timestamp, nonce, janela, deduplicação persistente e migration PostgreSQL `0055_webhook_anti_replay.sql`.
+- **O7.18:** rate limiting distribuído PostgreSQL com migration `0056_security_rate_limit_buckets.sql`; fallback local não é usado em fail-closed.
+- **O7.19:** segredo de webhook por instância, rotação criptografada e atualização dinâmica no gateway.
+- **O7.20:** revogação de sessões no logout e validação por `sessionVersion`.
+- **O7.21:** política fail-closed para autenticação, rate limit e revogação.
+- **O7.22:** retenção operacional diária de webhooks, domain events e buckets de segurança; dry-run default, estados não terminais protegidos e remoção destrutiva transacional.
+- **O7.23:** runner de reconciliação de mídia no worker, provider abstrato, métricas redigidas e no-op seguro sem provider real.
+- **O7.24:** `pnpm check:production-config`, verificação fail-closed de produção adicionada ao CI PostgreSQL e publicação; zero skips obrigatório no job PostgreSQL.
+- **O7.25:** `pnpm verify:restore-rehearsal BACKUP_DIR`, validação offline de dump PostgreSQL, sessão Baileys e inventário de mídia hashado.
+- **O7.26:** `pnpm report:restore-rehearsal EVIDENCE.json REPORT.json`, relatório redigido com RPO/RTO e decisões `approved`, `inconclusive` ou `blocked`; não existe aprovação parcial.
+- **O7.27:** `pnpm check:restore-rehearsal-isolation EVIDENCE.json`, gate de `CORE_ONLY_MODE`, tráfego bloqueado, outbound desligado, endpoints não produtivos, sessão separada, rollback e readiness.
+
+### Arquivos principais novos
+
+- `scripts/validate-production-config.ts`
+- `scripts/verify-restore-rehearsal.ts`
+- `scripts/build-restore-rehearsal-report.ts`
+- `scripts/validate-restore-rehearsal-isolation.ts`
+- `server/webhook-anti-replay.ts`
+- `server/distributed-rate-limit.ts`
+- `server/storage-reconciliation-runner.ts`
+- `server/storage-reconciliation-audit.ts`
+- `server/_core/security-mode.ts`
+- `drizzle-pg/0055_webhook_anti_replay.sql`
+- `drizzle-pg/0056_security_rate_limit_buckets.sql`
+
+### Validação desta pilha
+
+Typecheck, testes focados, Prettier e `git diff --check` passaram nas fatias. O Sandbox não possui `DATABASE_URL`; os testes PostgreSQL permanecem dependentes do workflow `PostgreSQL integration`. Nenhum restore destrutivo, provider real de mídia, endpoint real ou segredo real foi usado.
+
+O workflow PostgreSQL falha se reportar skips; o workflow de publicação executa `check:production-config` com valores sintéticos. A cadeia real de CI deve ser reexecutada após este commit.
+
+### Próximo passo recomendado
+
+Integrar os comandos O7.25–O7.27 em um orquestrador único de preflight do rehearsal, na ordem: verificar pacote, validar isolamento, preparar/validar evidências, gerar relatório e bloquear fail-closed antes de qualquer restore. Depois executar os gates externos na máquina do usuário: PostgreSQL/Docker, provider de mídia, Redis isolado, sessão Baileys separada, browser smoke e WhatsApp físico.
+
+Não declarar MVP SaaS público nem desligar `CORE_ONLY_MODE`. Não mesclar PRs automaticamente. Para continuar, primeiro revalidar branch, status, remoto e o hash do commit deste handoff.
+
+## Atualização 2026-09-30 — O7.28
+
+Foi criado o preflight único `pnpm preflight:restore-rehearsal BACKUP_DIR EVIDENCE.json PREFLIGHT.json`. Ele executa na ordem pacote → isolamento → relatório, sem rede e sem mutações. Pacote inválido interrompe o fluxo; endpoint produtivo, outbound ligado, sessão reutilizada, rollback ausente, readiness falha ou decisão não aprovada deixam o processo com código diferente de zero.
+
+Entrega: `O7.28-ENTREGA-PREFLIGHT-RESTORE-REHEARSAL.md`. O plano, runbook, rastreio e auditoria foram atualizados. Testes do slice: 10 passaram; typecheck e `git diff --check` passaram.
+
+Depois desta atualização, criar commit e push da branch atual. O próximo chat deve revalidar `git status`, branch, remoto e o hash mais recente antes de continuar. Próxima fatia recomendada: executar o preflight em um fixture completo no Sandbox e, depois, preparar somente o gate externo Docker/staging; não executar restore destrutivo, não desligar `CORE_ONLY_MODE` e não mesclar a PR.
+
+### Atualização posterior — preparação do pacote
+
+Foi adicionado `pnpm prepare:restore-rehearsal BACKUP_DIR MEDIA_INVENTORY.json`. O comando anexa um inventário de mídia fornecido pelo operador, calcula seu SHA-256, atualiza o manifesto com modo privado e revalida o pacote inteiro. Ele não acessa provider, não executa restore e não apaga volumes. Como o provider atual só oferece presign de PUT/GET, a exportação física dos blobs e seus hashes continua sendo gate externo; não declarar o rehearsal aprovado sem essa evidência.
+
+Foi criado `scripts/start-restore-rehearsal.ps1`, que valida a presença do pacote e sobe somente uma segunda stack Compose (`forte-rehearsal`) com containers, volumes, redes internas e portas separadas. O script não executa restore, não remove volumes, mantém a API pública desligada e não deve receber um QR real. O Sandbox validou typecheck/diff/documentação; a execução do Compose deve ser feita na máquina Windows com Docker Desktop.
+
+### Decisão de continuidade — depois do rehearsal
+
+Oracle/OCI, deploy público e a preparação ARM64 ficam **adiados**. O próximo trabalho deve voltar ao MVP visível: executar e fechar o fluxo autenticado de onboarding → conexão WhatsApp → Inbox → inbound/outbound → estado comercial, corrigindo somente as falhas observadas no Docker/browser do usuário. O `ROADMAP-EXECUCAO-FORTE-PANEL.md` é a fonte canônica; as seções históricas deste handoff não devem reabrir O3.4/O5.1.
+
+### Atualização posterior — MVP.1: estabilização de sidebar, sessão e Inbox
+
+Implementada a primeira correção da aceitação MVP, mantendo `CORE_ONLY_MODE = true`:
+
+- rotas já expostas na sidebar operacional (`dashboard`, `kanban`, `agenda`, `contacts`, `billing`, `integrations`, `team`, `services`, `professionals`, `my-work` e `settings`) agora passam pelo catálogo core; planos/consumo e governança técnica de IA continuam bloqueados;
+- a sidebar usa o catálogo operacional inteiro, sem liberar automaticamente Console Admin ou rotas internas;
+- erro transitório de `auth.me` (por exemplo, PostgreSQL saturado durante sincronização) não é mais interpretado como sessão encerrada: o usuário recebe retry, sem redirecionamento indevido para login;
+- webhooks `historySync` do Baileys agora recebem `202` e são descartados antes de resolver ownership ou gravar no PostgreSQL; o segredo por instância tem cache curto de 5 segundos com deduplicação de requests concorrentes;
+- testes novos cobrem o admission concorrente; contratos de core/acessibilidade, typecheck, Prettier e `git diff --check` passaram;
+- a suíte completa local ainda falha somente na camada já conhecida de dependências ausentes do subprojeto `forte-whatsapp` (`baileys`, `pino`, `qrcode`) e no teste do patch pinned; 73 arquivos passaram, 18 foram pulados e 1 teste do patch falhou por arquivo ausente.
+
+Próximo passo na máquina Windows: atualizar a branch, iniciar com `scripts/start-docker.ps1`, criar uma conta via `/signup` (não usar a conta de console admin), confirmar que login permanece na sessão, percorrer a sidebar e repetir inbound/outbound com a instância pareada. Se a Inbox ainda vier vazia, coletar somente status/logs sanitizados e contagens tenant-scoped; não apagar volumes nem parear um número real adicional sem instrução.
+
+### Atualização posterior — aceite manual MVP.1
+
+O operador confirmou o fluxo principal com conta criada em `/signup`: autenticação, sidebar, conexão WhatsApp, inbound/outbound na Inbox, refresh da conversa, Kanban com mudança de etapa persistida, Contatos, Serviços, Profissionais, Agenda e Integrações. O aceite manual é parcial por três gaps concretos: áudio recebido não reproduz dentro do painel, o composer tem controles sobrepostos de gravação/anexo e Profissionais ainda não possui intervalos intradiários.
+
+O núcleo operacional não deve ser chamado de MVP completo sem IA. A próxima fatia passa a ser o aceite end-to-end da resposta automática no WhatsApp, transcrição de áudio, visão/análise de documento e moderação; também devem ser provados fallback, proteção contra prompt injection, transferência para humano e kill switch. Só depois ficam reprodução de áudio na Inbox, consolidação do composer e intervalos/disponibilidade dos profissionais. Não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle neste momento.
+
+
+### Atualização posterior — MVP.2: política do agente por workspace
+
+Implementada a primeira fatia da configuração de IA do MVP. `agent.workspaceConfig` e `agent.saveWorkspaceConfig` permitem que owner/admin leia e altere apenas `enabled`, `systemPrompt` e `maxSteps` do próprio workspace. Providers, modelos, roteamento técnico e API keys continuam fora da tela do cliente e protegidos por `requirePlatformAdministrator`.
+
+A nova rota `/ai-agent` foi adicionada à sidebar operacional e ao catálogo core, mantendo `CORE_ONLY_MODE = true`. A tela deixa explícito que API keys não devem ser colocadas no prompt e que moderação e providers são governados pela plataforma. Nenhuma chave ou credencial é retornada pelo novo contrato de workspace. Typecheck, contratos de core/acessibilidade, contrato do agente e `git diff --check` passaram.
+
+Próximo passo: iniciar a stack com o código atual, abrir `/ai-agent` usando a conta criada via `/signup`, salvar uma política sintética sem secrets e então validar o runtime da IA em texto. Depois seguir para áudio/transcrição, visão/documento, moderação, prompt injection, fallback, handoff humano e kill switch. Não repetir backup/restore, não parear número real adicional, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+
+### Atualização posterior — MVP.1: intervalos intradiários dos profissionais
+
+Implementados múltiplos intervalos semanais por profissional, preservando a tabela `availability` existente e o isolamento por workspace. A tela de Profissionais, o onboarding e a autoedição em Configurações agora permitem adicionar, editar e remover intervalos separados no mesmo dia, por exemplo `09:00–12:00` e `14:00–18:00`.
+
+O backend valida dia, limites, horário final maior que o inicial e sobreposição entre intervalos do mesmo dia; entradas válidas são normalizadas por dia e início. A validação da Agenda já consumia todas as janelas e continua rejeitando agendamentos que não estejam totalmente cobertos por uma delas. Foram adicionados testes para intervalos separados, sobreposição e limites. Typecheck, testes de schedule, build e `git diff --check` passaram. Os testes de isolamento que dependem de PostgreSQL ficaram pulados por ausência de banco no Sandbox.
+
+Próximo passo: publicar esta fatia e, na máquina Windows, testar um profissional com `09:00–12:00` e `14:00–18:00`, confirmar persistência após refresh e tentar criar um agendamento no intervalo da pausa para confirmar o bloqueio. Não repetir backup/restore, não parear número real adicional, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+
+### Atualização posterior — MVP.2: gate de segurança do agente
+
+Implementado o primeiro gate runtime antes do provider de IA. A política pura em `server/agent-safety.ts` identifica tentativas de prompt injection, exfiltração de credenciais, sinais de autoagressão, violência e conteúdo sexual envolvendo menores. O gate é executado antes de consultas de contexto, carregamento de histórico, mídia, provider ou ferramentas.
+
+Quando sinalizado, o fluxo não chama o LLM: desliga a IA do contato, envia uma mensagem neutra de encaminhamento para humano e registra a execução como `transferred` com modelo `safety-gate:<reason>`. O sinal técnico não é exposto ao cliente. Foram adicionados contratos unitários do gate. `pnpm check`, testes focados e `git diff --check` passaram.
+
+Próximo slice: validar e endurecer a resposta automática normal de texto end-to-end, incluindo fallback de provider e observabilidade; depois implementar transcrição de áudio e análise de imagem/documento. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+
+### Atualização posterior — MVP.2: fallback explícito de providers
+
+O runtime de IA agora tenta a rota primária e, em caso de indisponibilidade, HTTP não-2xx ou timeout, percorre somente os fallbacks explicitamente configurados. No Console Admin, a primeira conexão ativa de uma capability é primária e as seguintes da mesma capability viram fallback em ordem de criação, limitadas a três secundárias. Não há fallback implícito para providers não configurados.
+
+As chaves de fallback seguem o mesmo tratamento da primária: armazenamento criptografado e retorno mascarado. O erro final informa apenas provider/status técnico resumido, sem retornar chave ou corpo potencialmente sensível. Foi adicionado contrato unitário para primário indisponível, fallback bem-sucedido e ausência de fallback implícito. `pnpm check` e testes focados passaram.
+
+Próximo slice: adicionar observabilidade de provider/capability na execução normal de texto e fechar a política de erro/fallback antes de entrar em transcrição de áudio. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+
+### Atualização posterior — MVP.2: observabilidade de provider e capability
+
+O runtime agora propaga telemetria sanitizada da chamada LLM: capability (`text`, `vision`, `audio` ou `document`), provider efetivamente usado, quantidade de tentativas, uso de fallback e código resumido de falha. `agentRuns` passa a persistir esses dados por workspace, além de `fallbackRuns` nas métricas agregadas. Falhas não armazenam corpo de resposta nem secrets.
+
+Foi criada a migration PostgreSQL `0057_agent_runs_provider_observability.sql`, registrada no journal, com índice por workspace/provider/data. A execução normal, transferência pelo gate e erro de provider usam o mesmo contrato de observabilidade. `pnpm check`, build, migration journal e testes focados passaram.
+
+Próximo slice: avançar para transcrição de áudio no fluxo de mensagem recebida, usando a capability `audio`, preservando mídia privada, fallback e telemetria. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+### Atualização posterior — publicação GitHub/GHCR e transferência
+
+A branch `feat/o7.15-storage-reconciliation-observability` está sincronizada com o remoto no commit `78a8487` (`feat: add AI provider execution observability`), incluindo os commits anteriores `df7dfdc` (fallback explícito) e `eabf067` (gate de segurança). A PR #39 permanece aberta e **não foi mesclada**.
+
+O workflow manual `Publish Forte Panel image` foi executado com sucesso no GitHub Actions: run `36798527753`. O job `verify` passou por typecheck, configuração de produção sintética, suíte completa, build de produção, testes/build do gateway WhatsApp e verificação de secrets. O job `publish` passou pelo Buildx multi-arch e publicou as imagens do Panel e do gateway WhatsApp no GHCR com tags `dev` e `sha-78a8487`, para `linux/amd64` e `linux/arm64`.
+
+A tag `latest` continua reservada ao workflow executado na branch padrão `main`; não foi sobrescrita a partir desta branch de feature e nenhuma merge automática foi feita. Para o próximo chat, revalidar branch/status/hash e continuar pelo slice de transcrição de áudio usando a imagem `ghcr.io/geordptoroy/forte-panel:dev` somente quando a operação local exigir a imagem publicada. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+### Atualização posterior — MVP.2: transcrição de áudio inbound
+
+Implementado o adaptador `server/audio-transcription.ts`. Quando uma mensagem inbound tem `messageType=audio`, o agente resolve a mídia privada (URL assinada ou data URL interna), chama a capability `audio` com prompt de transcrição literal, aplica o fallback configurado e injeta o texto transcrito no contexto textual do agente. A chamada principal seguinte usa a capability `text`, mantendo ferramentas, confirmação humana e regras de segurança.
+
+A transcrição não publica a mídia, limita a saída a 12.000 caracteres e registra telemetria separada de provider/tentativas em `agentRuns`. A migration `0057_agent_runs_provider_observability.sql` inclui `transcriptionProvider` e `transcriptionAttempts`. Foram adicionados testes do adaptador, incluindo MIME privado, payload multimodal e telemetria.
+
+Validação no Sandbox: `pnpm check`, testes focados de transcrição/fallback/agente/migration journal e `git diff --check` passaram. Ainda falta o aceite manual com áudio real ou fixture controlado na stack local: confirmar áudio recebido → transcrição → resposta automática textual → registro de execução. Não usar secrets reais, não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+### Atualização posterior — MVP.2: análise de imagem e documento
+
+Implementado `server/media-analysis.ts`. Mensagens inbound de imagem e documento agora resolvem a mídia privada, chamam explicitamente as capabilities `vision` ou `document`, aplicam fallback configurado e transformam o resultado factual em contexto textual antes da resposta do agente. A mídia não é repassada desnecessariamente à chamada textual seguinte.
+
+A análise limita a saída, instrui o provider a preservar texto/números/datas e sinalizar incertezas, e registra provider/tentativas separados em `agentRuns` (`mediaAnalysisProvider` e `mediaAnalysisAttempts`). Foram adicionados testes de payload e telemetria para visão e documento. A validação técnica passou sem teste manual local, conforme orientação do operador.
+
+Próximo slice: fechar o kill switch e o aceite técnico integrado das quatro capacidades (text, audio, vision, document), podendo usar fixtures sintéticos no CI/Sandbox. Não repetir backup/restore, não parear outro número real, não desligar `CORE_ONLY_MODE` e não iniciar Oracle.
+
+### Prompt operacional de transferência
+
+O fluxo de trabalho, as regras do usuário, o estado técnico atual, os commits, as tags GHCR, os comandos, os critérios de validação e o próximo slice foram consolidados em `PROMPT-PROXIMO-CHAT-IA.md`. A próxima IA deve ler esse prompt junto com este handoff e o roadmap antes de executar qualquer ação.
+
+
+### Atualização posterior — O4.3: contrato integrado do kill switch — 2026-10-01
+
+A auditoria confirmou que o kill switch já era tenant-scoped, exigia manager/owner, devolvia eventos para `pending` durante a pausa e não permitia reativação pelo modelo. Para fechar o contrato sem duplicar a implementação, foi criado `server/agent-runtime-gate.ts`, que centraliza as decisões `execute`, `requeue` e `deliver` do worker. O worker agora usa esse contrato antes de importar/executar `runNativeAgent`; a pausa sempre reencaminha o evento para `pending` e o motivo é sanitizado, limitado e livre de caracteres de controle antes de persistir no estado/auditoria operacional.
+
+Foram adicionados contratos sintéticos para as quatro capabilities (`text`, `audio`, `vision`, `document`), para o bloqueio fail-closed durante a pausa, para a não reativação por configuração e para a sanitização do motivo. Nenhum provider real, secret real ou número WhatsApp real foi usado.
+
+Gates locais: `pnpm check` passou; `pnpm exec vitest run server/agent-runtime-gate.test.ts server/agent-confirmation.contract.test.ts server/agent-safety.test.ts server/audio-transcription.test.ts server/media-analysis.test.ts server/llm-providers.test.ts server/migration-journal.test.ts` passou com 7 arquivos/21 testes; `pnpm build` passou; o aviso conhecido de chunk frontend acima de 500 kB permanece. A integração PostgreSQL/worker e o aceite end-to-end com provider real continuam pendentes para CI/ambiente controlado.
+
+Próximo slice: executar a prova integrada PostgreSQL/worker das quatro capabilities com provider sintético, confirmando `pending` durante pausa, ausência de chamada ao provider e retomada após reativação autorizada. Manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar a PR #39.
+
+
+### Atualização posterior — prova integrada PostgreSQL/worker — 2026-10-01
+
+A prova integrada foi adicionada em `server/agent-runtime.integration.test.ts`. Ela cria um workspace isolado, pausa o kill switch com motivo contendo caracteres de controle, enfileira eventos `message.received` de `text`, `audio`, `image` e `document`, executa o worker filtrado por `workspaceId` e verifica que todos permanecem `pending`, com `attemptCount=1`, sem worker lease, motivo sanitizado e nenhum `agentRun`. O terceiro argumento opcional de `processDomainEventsOnce` existe apenas para permitir a prova tenant-scoped sem alterar o processamento normal do worker.
+
+O Sandbox não possui `DATABASE_URL`: os contratos unitários passaram (13 testes) e a prova PostgreSQL foi corretamente marcada como skipped localmente. `pnpm check`, `pnpm build` e `git diff --check` passaram. O commit funcional publicado é `db243df` (`test: prove paused agent events remain reprocessable`).
+
+Próximo gate: o workflow PostgreSQL da PR #39 deve executar essa prova contra migrations reais; somente após CI verde considerar fechado o bloqueio/reprocessamento integrado. O aceite end-to-end com provider sintético/real e retomada autorizada continua separado e pendente. Manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar a PR.
+
+
+### Resultado do CI PostgreSQL — prova integrada verde — 2026-10-01
+
+O workflow PostgreSQL da PR #39 passou no run [`36894222761`](https://github.com/geordptoroy/forte-panel/actions/runs/36894222761), no head `d668365`: inicialização do PostgreSQL, migrations versionadas, typecheck do gateway, configuração de produção, suíte completa contra PostgreSQL e journal de migrations passaram sem skips. A prova `server/agent-runtime.integration.test.ts` foi executada contra banco real do CI e confirmou o requeue tenant-scoped de `text`, `audio`, `vision` e `document`, sem `agentRuns` durante a pausa.
+
+O bloqueio/reprocessamento integrado está validado em código + CI PostgreSQL. O próximo gate separado é o aceite controlado do runtime após reativação autorizada, com provider sintético ou ambiente de teste aprovado, cobrindo resposta textual, transcrição, visão/documento e telemetria. Não declarar aceite end-to-end real nem usar secrets reais.
+
+
+### Atualização posterior — aceite controlado de retomada — 2026-10-01
+
+Foi criado `server/native-agent.integration.test.ts` para provar a retomada autorizada sem provider real. A fixture cria um workspace e quatro contatos/conversas isolados; pausa o kill switch, confirma o estado, reativa com motivo controlado, instala um `fetch` sintético local e executa `runNativeAgent` para `text`, `audio`, `image` e `document`. O teste verifica sete chamadas sintéticas (uma para texto e duas para cada mídia: pré-processamento + resposta), ausência de rede externa, respostas resolvidas, e telemetria de provider/capability em `agentRuns`, incluindo `transcriptionProvider` e `mediaAnalysisProvider`.
+
+Gates locais desta fatia: `pnpm check`, `pnpm build` e contratos focados passaram; os dois testes PostgreSQL foram skipped no Sandbox por ausência de `DATABASE_URL`. Commit funcional publicado: `3866a96` (`test: prove controlled native agent resume`). O CI PostgreSQL ainda deve executar esta nova prova contra migrations reais.
+
+Próximo slice depois do CI verde: provar fallback por capability e falha controlada/telemetria, sem secrets reais. Manter `CORE_ONLY_MODE = true`, não usar providers externos, não repetir backup/restore, não parear número real adicional e não mesclar a PR.
+
+### Correção do CI PostgreSQL — modelo canônico de capability — 2026-10-01
+
+O primeiro CI da retomada (`36901328653`) falhou somente no harness: a asserção esperava que `config.model` substituísse o modelo da rota, mas `invokeConfiguredLLM` corretamente prioriza o modelo canônico da capability. A correção `28723f3` ajusta a prova para esperar quatro chamadas `synthetic-text` (respostas finais), uma `synthetic-audio`, uma `synthetic-vision` e uma `synthetic-document` (pré-processamentos). Typecheck, contratos unitários e `git diff --check` passaram localmente. Reexecutar o CI PostgreSQL sobre o novo head antes de declarar esta fatia verde.
+
+### Resultado do retry PostgreSQL — retomada controlada verde — 2026-10-01
+
+O primeiro run `36901328653` falhou no harness por expectativa incorreta de modelo. Após a correção `28723f3`, o retry [`36901572012`](https://github.com/geordptoroy/forte-panel/actions/runs/36901572012) passou contra PostgreSQL real: migrations, gateway, configuração de produção e suíte completa passaram sem skips. A prova de retomada controlada das quatro capabilities está verde no CI. O head documental atual é `2de7029`.
+
+Esta fatia prova kill switch pausado → reativação autorizada → execução com provider sintético local → `agentRuns` resolvidos e telemetria de `text`, `audio`, `vision` e `document`. Não é aceite com provider externo nem autorização para desligar `CORE_ONLY_MODE`.
+
+### Atualização posterior — fallback por capability e falhas controladas — 2026-10-01
+
+A fatia `O5.2` foi concluída no commit `6d7583c` e documentada em `O5.2-ENTREGA-FALLBACK-FALHAS-CONTROLADAS.md`. Foram adicionados contratos para `text`, `vision`, `audio` e `document`, cobrindo fallback explícito, ausência de fallback e telemetria limitada. A prova PostgreSQL também confirma fallback persistido como `resolved` com `providerAttempts = 2` e falha fail-closed persistida como `failed`, com `providerAttempts = 1`, `provider = null` e `failureCode = Error`.
+
+O CI PostgreSQL [`36908513533`](https://github.com/geordptoroy/forte-panel/actions/runs/36908513533) passou sem skips. Gates locais `pnpm check`, `pnpm build` e suíte focada passaram. O próximo slice é expor métricas de fallback/falha no painel/admin com isolamento por `workspaceId` e sem dados sensíveis.
+
+### Atualização posterior — métricas operacionais do agente — 2026-10-01
+
+A fatia `O5.3` foi concluída no commit `2c1ae37` e documentada em `O5.3-ENTREGA-METRICAS-AGENTE.md`. `getAgentMetrics` continua tenant-scoped por `workspaceId` e agora retorna breakdown agregado por capability e os códigos de falha mais recorrentes, sem provider, modelo, URL, prompt, conteúdo ou secret. A tela **Agente de IA** exibe execuções, taxa de resolução, fallbacks, falhas, estado do kill switch, capability breakdown e incidentes resumidos.
+
+O CI PostgreSQL [`36933812864`](https://github.com/geordptoroy/forte-panel/actions/runs/36933812864) passou sem skips. Gates locais `pnpm check`, `pnpm build` e suíte focada passaram. O próximo slice é fechar governança operacional de visualização/período/estados, mantendo a separação entre operador do workspace e Console Admin.
+
+### Atualização posterior — governança das métricas do agente — 2026-10-01
+
+A fatia `O5.4` foi concluída no commit `5235360` e documentada em `O5.4-ENTREGA-GOVERNANCA-METRICAS-AGENTE.md`. A UI consulta `auth.access` antes de habilitar `agent.metrics` e `agent.killSwitch`; somente proprietário, administrador ou gerente com `canManageCatalog` veem os dados. Usuários sem permissão recebem estado restrito sem chamada protegida. O período agora é selecionável entre 7, 30 e 90 dias, com estados separados de permissão, carregamento, erro e vazio.
+
+Gates locais passaram: `pnpm check`, `pnpm build` e 20 testes focados. O próximo slice é criar contrato explícito de autorização do router para provar manager/admin/owner permitidos, agent/professional bloqueados e isolamento do `workspaceId` no read model.
+
+### Atualização posterior — autorização e isolamento das métricas — 2026-10-01
+
+A fatia `O5.5` foi concluída no commit `9ce527c` e documentada em `O5.5-ENTREGA-AUTORIZACAO-METRICAS-AGENTE.md`. O teste integrado `server/agent-metrics-authorization.integration.test.ts` prova no boundary do router que owner/admin/manager podem consultar métricas e kill switch, enquanto agent/professional recebem `FORBIDDEN`. A mesma prova semeia dois workspaces e confirma que o caller de A nunca recebe a execução ou capability de B.
+
+O CI PostgreSQL [`36939301972`](https://github.com/geordptoroy/forte-panel/actions/runs/36939301972) passou sem skips. Gates locais `pnpm check`, `pnpm build` e testes de contexto/agente passaram. O próximo slice é consolidar a experiência do Console Admin com métricas agregadas de plataforma sem expor conteúdo operacional ou credenciais de workspace.
+
+### Atualização posterior — saúde agregada no Console Admin — 2026-10-01
+
+A fatia `O5.6` foi concluída no commit `ba265d8` e documentada em `O5.6-ENTREGA-SAude-AGREGADA-CONSOLE-ADMIN.md`. `platform.health` agora agrega apenas execuções, falhas e fallbacks do agente nos últimos 30 dias, sem serializar workspaceId, contactId, eventId, conteúdo, prompt, modelo, provider, tokens ou credenciais. A tela do Console Admin exibe esses sinais sob a fronteira `platformAdmins`.
+
+O CI PostgreSQL [`36939807435`](https://github.com/geordptoroy/forte-panel/actions/runs/36939807435) passou sem skips. Gates locais `pnpm check`, `pnpm build` e testes focados passaram. O próximo slice é criar o contrato integrado específico de `platform.health` para garantir que nenhuma coluna sensível de `agentRuns` atravesse o boundary do router.
+
+### Atualização posterior — O5.7 contrato de `platform.health` — 2026-10-01
+
+O contrato integrado foi concluído em `server/platform-health.contract.integration.test.ts`. A primeira execução do CI (`36941001842`) falhou somente porque a expectativa do teste ordenava `fallbackRuns30d` antes de `failures30d`; a implementação estava correta. A correção pontual foi publicada em `32e074c` e o retry PostgreSQL [`36941127598`](https://github.com/geordptoroy/forte-panel/actions/runs/36941127598) passou sem skips.
+
+O boundary real do `appRouter` agora é provado com dois workspaces e execuções sintéticas contendo dados sensíveis. A resposta de `platform.health` retorna somente o agregado `status`, `runs30d`, `failures30d` e `fallbackRuns30d`, além dos componentes operacionais já existentes. Acesso sem `platformAdmins` recebe `FORBIDDEN`.
+
+Documentação canônica: `O5.7-ENTREGA-CONTRATO-PLATFORM-HEALTH.md`. O roadmap, índice e `todo.md` foram atualizados. Próxima ação autorizada: revisar/aceitar a PR #39 sem merge automático e preparar a Onda O6 com infraestrutura persistente; não repetir backup/restore, pareamento real ou aceite manual já concluídos.
+
+
+### Atualização posterior — contrato integrado do kill switch — 2026-10-01
+A auditoria da branch `feat/o7.15-storage-reconciliation-observability` confirmou que o gate tenant-scoped já bloqueava o runtime pausado antes de qualquer provider para `text`, `audio`, `vision` e `document`, mantendo os eventos `pending` e reprocessáveis e impedindo reativação pelo modelo. A lacuna fechada nesta fatia foi a auditoria por evento: o worker agora registra `native_agent_kill_switch_blocked` com capability derivada do `messageType`, event key truncado e motivo sanitizado, sem conteúdo, URL ou secret; `agentRuns` continua vazio durante a pausa.
+
+O contrato `server/agent-runtime.integration.test.ts` agora prova as quatro capabilities, as quatro auditorias sanitizadas e a ausência de `agentRuns`. No Sandbox passaram `pnpm check`, `pnpm build`, `git diff --check`, `server/agent-runtime-gate.test.ts` e `server/migration-journal.test.ts`; `server/agent-runtime.integration.test.ts` foi coletado e marcado skip por ausência de `DATABASE_URL`. O check global de Prettier ainda acusa formatação histórica preexistente nos dois arquivos, sem reformatar o legado.
+
+**Próxima ação:** executar/acompanhar o CI PostgreSQL sem skips para esta alteração. Se verde, revisar/aceitar a PR #39 sem merge automático e preparar a Onda O6 de infraestrutura persistente. Manter `CORE_ONLY_MODE = true`, não repetir backup/restore, pareamento real ou aceite manual.
+
+
+### Atualização posterior — revisão da PR #39 e transição para O6 — 2026-10-01
+O preflight confirmou a branch limpa no head `2cbc5c4`. O CI PostgreSQL [`36941988050`](https://github.com/geordptoroy/forte-panel/actions/runs/36941988050) passou sem skips no mesmo head, e o workflow GHCR [`36941988213`](https://github.com/geordptoroy/forte-panel/actions/runs/36941988213) concluiu Verify e Publish com sucesso. A PR [#39](https://github.com/geordptoroy/forte-panel/pull/39) está `OPEN` e `CLEAN`; não foi feito merge.
+
+A revisão técnica foi concluída, mas a aprovação formal não pôde ser registrada porque a conta autora não pode aprovar a própria PR (`Review Can not approve your own pull request`). Não contornar essa proteção. O próximo trabalho é obter revisão de outro mantenedor ou deixar a PR aguardando revisão e preparar a Onda O6 em PostgreSQL persistente/staging com dois ou mais workspaces, migrations limpas, provas negativas, browser smoke e evidência operacional. Não repetir backup/restore, pareamento real ou aceite manual já concluídos; manter `CORE_ONLY_MODE = true`.
+
+
+### Atualização posterior — preparação da Onda O6 — 2026-10-01
+O preflight de dispositivos encontrou somente o Manus Sandbox online; não há Cloud Computer, workspace persistente, URL de staging ou secrets de staging autorizados nesta sessão. Portanto, não foi executado `staging-e2e`, browser smoke, tráfego WhatsApp ou provisionamento fictício.
+
+Foi criado `docs/O6-PROVA-PERSISTENTE-RUNBOOK.md`, com a topologia mínima persistente, configuração fail-closed, gates A–D, uso seguro de `.github/workflows/staging-e2e.yml`, matriz de isolamento para dois workspaces e lista de evidências. A execução da O6 permanece bloqueada até existir ambiente descartável/persistente autorizado. Não repetir backup/restore, pareamento real ou aceite manual; manter `CORE_ONLY_MODE = true`.
+
+
+### Atualização posterior — validação por conta da UI e requisito do Console Admin — 2026-10-01
+O `scripts/validate-flow.mjs` foi adaptado para autenticar a conta criada pelo `/signup` com `VALIDATION_EMAIL` e `VALIDATION_PASSWORD`; as variáveis `LOCAL_ADMIN_EMAIL` e `LOCAL_ADMIN_PASSWORD` permanecem como fallback legado. O script agora falha cedo quando o login retorna 401, evitando interpretar chamadas subsequentes como falhas independentes. `node --check scripts/validate-flow.mjs` e `git diff --check` passaram.
+
+Entendimento confirmado para o próximo slice de produto: o Console Admin não deve ser apenas uma tela administrativa. Ele deve ter um workspace operacional administrativo próprio, separado do workspace público, com Inbox, instância(s) WhatsApp, Agenda, Serviços, Profissionais e IA para suporte pela própria plataforma. Somente as contas do Console Admin terão acesso a esse workspace; seus dados, instâncias, histórico e permissões devem permanecer isolados do workspace público. Não implementar isso nesta fatia de teste.
+
+
+## Regra operacional permanente — stack local usa imagens publicadas
+
+Para os próximos chats de IA e para a operação local do usuário:
+
+- A stack local deve usar as imagens publicadas no GHCR na tag de desenvolvimento: `ghcr.io/geordptoroy/forte-panel:dev` e `ghcr.io/geordptoroy/forte-whatsapp:dev`.
+- Antes de iniciar, executar `docker compose pull`; não executar `docker compose build` no PC do usuário.
+- Para reset destrutivo no Windows, usar `.\scripts\start-docker.ps1 -Reset -ResetConfirmation APAGAR-TUDO` a partir da raiz do repositório.
+- Esse reset apaga containers, volumes, imagens, redes e cache Docker local; só usar quando o usuário confirmar que os dados locais podem ser apagados.
+- O `docker-compose.local.yml` não deve voltar a declarar builds locais; as imagens podem ser substituídas por `FORTE_PANEL_IMAGE` e `FORTE_WHATSAPP_IMAGE` no `.env` quando necessário.
+
+
+## Correção de autenticação local — 2026-10-01
+O login local deixou de usar uma única conta arbitrária por email. Ele agora carrega todas as contas com o email normalizado e seleciona a conta cujo hash corresponde à senha informada; a conta administrativa configurada continua sendo priorizada quando suas credenciais explícitas coincidem. Foi adicionado teste para o caso da conta histórica `local_admin` sem workspace e da conta owner criada pelo signup.
+
+
+### Atualização posterior — providers IA e simulação controlada — 2026-10-01
+A branch agora permite múltiplas conexões ativas por capability para suportar fallback real; a migration `0058_platform_ai_connection_fallbacks.sql` remove o índice único conflitante, sem apagar conexões. O runtime já aplica as conexões ativas por capability com chaves criptografadas e o Console Admin continua exibindo apenas máscaras.
+
+O modo simulado foi endurecido: as rotas retornam `mode: simulation_only`, não chamam provider externo, não usam Baileys e registram auditoria/resultado com `providerCalled=false`. A publicação de um rascunho passa a exigir uma simulação concluída depois do último salvamento daquele rascunho. Não foram usados secrets reais nem infraestrutura do usuário.
+
+**Próximo passo:** o usuário deve configurar as credenciais do provider no Console Admin quando decidir fazê-lo; depois executar os testes reais de provider/WhatsApp. Não liberar resposta automática antes desse aceite.
+
+
+### Atualização posterior — workspace operacional do Console Admin — 2026-10-02
+A rota `/platform-admin/support-workspace` agora apresenta o tenant interno `forte-platform-support` com métricas e dados tenant-scoped de instâncias WhatsApp, catálogo de serviços, profissionais e agenda. Os atalhos levam à Inbox de suporte, instâncias, prompts e providers, mantendo as ações sensíveis sob as proteções já existentes do Console Admin.
+
+Esta fatia é somente a base operacional de leitura e não executa provider real, pareamento ou resposta automática. O próximo slice autorizado é adicionar criação/edição de serviços, profissionais, disponibilidade e agenda dentro desse tenant interno, com auditoria e permissão de operador.
+
+### Atualização — mutações do workspace operacional interno — 2026-10-02
+As procedures `platform.createSupportService`, `platform.updateSupportService`, `platform.createSupportProfessional`, `platform.updateSupportProfessional`, `platform.setSupportProfessionalServices`, `platform.setSupportAvailability`, `platform.createSupportAppointment`, `platform.updateSupportAppointmentStatus`, `platform.rescheduleSupportAppointment` e `platform.cancelSupportAppointment` foram adicionadas ao tenant interno. Todas exigem operador do Console Admin e registram motivo, ação e resumo em `platformAuditLogs`. O snapshot continua tenant-scoped por `ensurePlatformSupportWorkspace`.
+
+Validações executadas: `pnpm check`, `pnpm build`, `git diff --check` e testes focados de autorização/Console Admin. A próxima fatia é construir a tela operacional de edição para consumir essas procedures; nenhum teste na máquina do usuário é necessário nesta etapa.
+
+### Atualização — UI operacional do workspace interno — 2026-10-02
+A rota `/platform-admin/support-workspace` agora tem formulários auditados para criar/editar serviços, criar/editar profissionais, vincular serviços, configurar disponibilidade semanal, reservar atendimentos e avançar/cancelar status da agenda. O snapshot tenant-scoped passou a incluir disponibilidade, descrição e tipo de preço. A UI usa exclusivamente as procedures `platform.*Support` já protegidas por operador; não há provider real, pareamento automático ou teste na máquina do usuário.
+
+Validações executadas: `pnpm check`, `pnpm build`, `pnpm vitest run server/platform-admin.test.ts server/professional-isolation.test.ts server/agenda-workspace-isolation.test.ts` (4 passaram; 12 foram pulados por dependências de ambiente) e `git diff --check`. Próximo passo: publicar a branch e acompanhar o CI; depois executar Gates A-D do runbook O6 em ambiente persistente.
+
+### Atualização — outbound interativo nativo — 2026-10-02
+O gateway deixou de usar os campos legados `buttons` e `sections` diretamente em `sendMessage` para os tipos `button` e `list`. Esses tipos agora são convertidos para `interactiveMessage.nativeFlowMessage`: `quick_reply` para botões e `single_select` para listas, com envio por `relayMessage`. O endpoint e os contratos de validação existentes foram preservados; carrosséis e payloads nativos explícitos continuam usando o caminho `sendPayload`.
+
+Validações executadas: `pnpm check`, `pnpm build`, `tsc --noEmit -p forte-whatsapp/tsconfig.json`, 26 testes focados do gateway (payload interativo e normalização) e `git diff --check`. O teste via WhatsApp real continua pendente de ambiente persistente/número de teste autorizado.
+
+### Atualização — agente do suporte em modo somente simulação — 2026-10-02
+O tenant `forte-platform-support` agora tem uma trava server-side: vínculos por instância, rascunhos e publicações persistem `enabled=false`, mesmo que um cliente tente enviar ativação. A UI passou a exibir “somente simulação” e não promete resposta automática. A simulação local permanece disponível, auditada, determinística e sem provider externo/Baileys.
+
+Validações executadas: `pnpm check`, `pnpm build`, `pnpm vitest run server/platform-admin.test.ts` (5 passaram) e `git diff --check`. O próximo passo depende de ambiente persistente autorizado para os Gates A-D; provider real e respostas automáticas continuam bloqueados.
+
+### Atualização — auditoria operacional ampliada da PAPI 1.5.1 — 2026-10-02
+A auditoria reversa foi ampliada além do envio de mensagens. O inventário cobre instâncias e reconexão, contatos e JIDs, grupos e participantes, perfil e privacidade, presença e leitura, mensagens editadas/apagadas, reações, etiquetas, catálogo WhatsApp, Webhook/WebSocket, histórico sincronizado, fila/retry e integrações específicas da PAPI.
+
+A conclusão arquitetural é que a PAPI é uma referência de comportamento do Baileys, não uma dependência do Forte. O Forte deve absorver somente capacidades necessárias, mantendo seu próprio gateway, contratos, isolamento por `workspaceId`, auditoria, `CORE_ONLY_MODE = true` e modo de suporte `simulation_only`. Typebot, Chatwoot, licenciamento e painel proprietário da PAPI ficam fora do escopo.
+
+O relatório completo está em `docs/AUDITORIA-API-OPERACIONAL-PAPI-1.5.1.md`. O próximo slice autorizado é auditar a matriz de cobertura dos eventos de conversas e histórico (`messages.upsert`, `messages.update`, `messaging-history.set`, `chats.update`, `contacts.update`, `presence.update` e reações) no Forte, sem liberar provider/resposta automática e sem exigir teste na máquina do usuário.
+
+### Atualização — prompt para auditoria completa da Inbox — 2026-10-02
+O usuário solicitou interromper a auditoria em andamento e preparar o escopo para a próxima IA. O prompt completo está em `docs/PROMPT-PROXIMA-IA-AUDITORIA-INBOX-BAILEYS.md`.
+
+O prompt exige auditoria separada de: permissão e gravação de microfone; upload e envio de áudio; anexos; editor de botões, listas e enquetes; versão e payloads do Baileys; diferenças com a PAPI 1.5.1; normalização, persistência e tenancy dos eventos inbound; e documentação de um plano de correção em fatias pequenas.
+
+A auditoria completa **não foi declarada como executada**. O próximo agente deve produzir os relatórios técnicos antes de alterar código, mantendo `CORE_ONLY_MODE = true`, sem secrets reais, sem provider real, sem merge e sem testes na máquina do usuário.
+
+
+## Estado atual — auditoria completa da Inbox/Baileys — 2026-10-02
+
+A auditoria foi feita no Sandbox, branch `feat/o7.15-storage-reconciliation-observability`, a partir de `db51134abe5bad57bbb5e420b8047ae425746b92`; o HEAD local e `origin/feat/o7.15-storage-reconciliation-observability` coincidiam. As alterações desta execução são documentais; não houve alteração de provider/lógica, uso de secrets reais, teste na máquina do utilizador, envio a número real, commit ou merge. `CORE_ONLY_MODE` continua ativo.
+
+**Entregáveis:**
+
+- `docs/AUDITORIA-COMPLETA-INBOX-BAILEYS.md` — relatório principal.
+- `docs/AUDITORIA-BAILEYS-INTERACTIVE-AUDIO.md` — payloads Native Flow, PAPI/Baileys, áudio e anexos.
+- `docs/MATRIZ-COBERTURA-INBOX-EVENTOS.md` — dez eventos analisados com evidências por etapa.
+- `docs/PLANO-CORRECAO-INBOX-BAILEYS.md` — fatias pequenas, ordem, riscos e testes.
+- `docs/PROMPT-PROXIMA-IA-AUDITORIA-INBOX-BAILEYS.md` — prompt original preservado e atualizado com addendum.
+- Este handoff e `ROADMAP-EXECUCAO-FORTE-PANEL.md` foram atualizados.
+
+**Conclusões operacionais importantes:** Forte está em `baileys@7.0.0-rc14`; a causa do `NotAllowedError` na origem real e a entrega/renderização física dos interativos permanecem não confirmadas. Foi confirmada uma divergência `mediaMimeType`/`mimetype`, com OGG fallback e `ptt=true` no gateway; a lista tem `rowId` no editor e `id` na fixture, e usa `single_select`, ao contrário de `listMessage` legado descrito na auditoria PAPI. A versão Baileys embutida na PAPI 1.5.1 também permanece não confirmada. O estado `queued`/`sent` e o echo local não equivalem a receipt/renderização.
+
+**Eventos:** `messages.upsert` e `messages.update` têm implementação extensa e estado na Inbox; não há teste E2E único do socket até UI. `messaging-history.set` é aceito pelo endpoint como `ignored` e não persistido, apesar da função DB e documentação de importação. `messages.reaction` é parcial como `reactionMessage` dentro de upsert, mas o payload é descartado pelo adaptador e não foi provada associação à mensagem alvo. Handlers dedicados para chats/contacts/presence/groups/participants/labels não foram encontrados no caminho auditado. Ver matriz antes de declarar ausência fora deste checkout.
+
+**Validação realmente executada:** suite geral no Sandbox — 336 testes passaram, 62 foram ignorados; 46 testes focados de gateway passaram; `pnpm check` da raiz e `tsc --noEmit` do gateway passaram. Não foi executado CI PostgreSQL, browser do utilizador, envio/receipt/read num telefone nem teste no segundo cliente WhatsApp Web.
+
+**Próximo passo proposto, ainda sem autorização de código:** escolher uma única fatia. Para problema de captura, primeiro recolher diagnóstico de origem, contexto seguro, APIs, Permissions API e erro sem gravar áudio. Para a correção de áudio, priorizar contrato MIME/PTT com testes de worker/adaptador/gateway. Lista/Native Flow, histórico/eventos e hardening de anexos permanecem separados. Não implementar até haver autorização explícita; não desligar `CORE_ONLY_MODE` nem declarar prova real sem a executar.
+
+
+## Follow-up — Permissions Policy do microfone — 2026-10-02
+
+O utilizador forneceu logs de Chrome e Edge com `Permissions policy violation: microphone is not allowed in this document`, seguido de `NotAllowedError`, em `http://localhost:3002`; informou que a permissão do site está em «Permitir». Os logs reportam `secureContext=true` e `mediaDevicesAvailable=true`. A causa foi encontrada no header global `Permissions-Policy: camera=(), microphone=(), geolocation=()` (`server/_core/http-security.ts`, aplicado em `server/_core/index.ts:36-40`).
+
+A alteração no working tree permite `microphone=(self)` e conserva câmera/geolocalização bloqueadas; o teste correspondente foi atualizado. A suíte passou (336 testes; 62 ignorados), `pnpm check` e `git diff --check` passaram. Nada foi commitado ou mesclado e o agente não captou áudio. A correção ainda não foi carregada/verificada na app local do utilizador.
+
+**Próxima ação:** reiniciar/atualizar `localhost:3002`, verificar o response header e confirmar que desaparece a violação de Permissions Policy. Se persistir `NotAllowedError`, investigar permissões do sistema operativo/dispositivo; não alterar MIME/PTT como se fosse a mesma causa. O warning `unload` corresponde ao debug collector em `client/public/__manus__/debug-collector.js:759-760` e é independente.

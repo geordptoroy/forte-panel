@@ -3,6 +3,10 @@ import {
   type MediaReconciliationResult,
   type StorageObjectCandidate,
 } from "./media-reconciliation";
+import {
+  summarizeStorageReconciliation,
+  type StorageReconciliationMetrics,
+} from "./storage-reconciliation-observability";
 
 export type StoragePage = {
   objects: StorageObjectCandidate[];
@@ -17,6 +21,7 @@ export interface WorkspaceMediaStore {
 export type ReconcileStorageResult = MediaReconciliationResult & {
   deleted: string[];
   skippedWithoutEtag: string[];
+  metrics: StorageReconciliationMetrics;
 };
 
 export async function reconcileWorkspaceMedia(input: {
@@ -26,11 +31,18 @@ export async function reconcileWorkspaceMedia(input: {
   dryRun?: boolean;
   now?: Date;
   protectionWindowMs?: number;
+  maxPages?: number;
+  onMetrics?: (metrics: StorageReconciliationMetrics) => Promise<void>;
 }): Promise<ReconcileStorageResult> {
+  const startedAt = Date.now();
+  const maxPages = Math.max(1, Math.min(Math.floor(input.maxPages ?? 1000), 10_000));
   const prefix = `workspaces/${input.workspaceId}/`;
   const objects: StorageObjectCandidate[] = [];
   let cursor: string | undefined;
+  let pages = 0;
   do {
+    pages += 1;
+    if (pages > maxPages) throw new Error("STORAGE_RECONCILIATION_PAGE_LIMIT");
     const page = await input.store.list(prefix, cursor);
     objects.push(...page.objects);
     cursor = page.nextCursor;
@@ -59,5 +71,17 @@ export async function reconcileWorkspaceMedia(input: {
     }
   }
 
-  return { ...classified, deleted, skippedWithoutEtag };
+  const result = { ...classified, deleted, skippedWithoutEtag };
+  const metrics = summarizeStorageReconciliation({
+    workspaceId: input.workspaceId,
+    dryRun: input.dryRun !== false,
+    pages,
+    durationMs: Date.now() - startedAt,
+    result,
+  });
+  if (input.onMetrics) await input.onMetrics(metrics);
+  return {
+    ...result,
+    metrics,
+  };
 }

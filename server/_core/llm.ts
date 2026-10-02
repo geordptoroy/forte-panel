@@ -19,7 +19,7 @@ export type FileContent = {
   type: "file_url";
   file_url: {
     url: string;
-    mime_type?: "audio/mpeg" | "audio/wav" | "application/pdf" | "audio/mp4" | "video/mp4" ;
+    mime_type?: "audio/mpeg" | "audio/wav" | "audio/ogg" | "audio/webm" | "audio/aac" | "audio/x-wav" | "application/pdf" | "audio/mp4" | "video/mp4";
   };
 };
 

@@ -2,15 +2,19 @@
  * End-to-end validation of the operational catalog and the professional
  * isolation. Run it against a live server:
  *
- *   node scripts/validate-flow.mjs http://localhost:3000
+ *   VALIDATION_EMAIL=owner@example.local VALIDATION_PASSWORD='senha-local' \
+ *     node scripts/validate-flow.mjs http://localhost:3000
+ *
+ * VALIDATION_EMAIL/VALIDATION_PASSWORD devem ser da conta criada pelo /signup.
+ * LOCAL_ADMIN_EMAIL/LOCAL_ADMIN_PASSWORD continuam aceitos como fallback legado.
  *
  * The script uses only public HTTP routes (tRPC + versioned API), so it proves
  * the same behavior a real deployment would expose.
  */
 const base = process.argv[2] ?? "http://localhost:3000";
 const apiKey = process.env.FORTE_API_KEY ?? "chave-api-de-teste";
-const adminEmail = process.env.LOCAL_ADMIN_EMAIL ?? "admin@fortepanel.local";
-const adminPassword = process.env.LOCAL_ADMIN_PASSWORD ?? "senha-forte-12345";
+const validationEmail = process.env.VALIDATION_EMAIL ?? process.env.LOCAL_ADMIN_EMAIL ?? "admin@fortepanel.local";
+const validationPassword = process.env.VALIDATION_PASSWORD ?? process.env.LOCAL_ADMIN_PASSWORD ?? "senha-forte-12345";
 
 let failures = 0;
 const check = (label, condition, detail = "") => {
@@ -47,12 +51,15 @@ async function trpcQuery(path, cookie, json = null) {
 const run = async () => {
   console.log(`\nForte Panel — validação end-to-end em ${base}`);
   const suffix = Date.now().toString().slice(-6);
-
-  console.log("\n1. Login do proprietário");
-  const login = await trpc("auth.localLogin", { email: adminEmail, password: adminPassword });
+  console.log("\n1. Login da conta de validação criada pela UI");
+  const login = await trpc("auth.localLogin", { email: validationEmail, password: validationPassword });
   check("login responde 200", login.status === 200, `status=${login.status}`);
   const adminCookie = login.cookie;
   check("cookie de sessão emitido", Boolean(adminCookie));
+  if (login.status !== 200 || !adminCookie) {
+    console.error("\nValidação interrompida: use VALIDATION_EMAIL e VALIDATION_PASSWORD da conta criada no /signup.");
+    process.exit(1);
+  }
 
   console.log("\n2. Catálogo de serviços e profissionais");
   const service = await trpc("workspace.createService", { name: `Instalação ${suffix}`, description: "Serviço de validação", durationMinutes: 90, priceCents: 25000 }, adminCookie);
@@ -77,13 +84,13 @@ const run = async () => {
   console.log("\n3. Acesso do profissional");
   const accountA = await trpc("workspace.createMember", {
     name: `Acesso A ${suffix}`, email: `prof_a_${suffix}@teste.local`, password: "senha-teste-12345",
-    role: "agent", operationalRole: "professional", professionalId: professionalAId,
+    role: "agent", operationalRole: "professional", professionalId: professionalAId, jobTitle: "Profissional executor",
   }, adminCookie);
   check("acesso do executor A criado", Boolean(accountA.payload?.result?.data?.json?.id), JSON.stringify(accountA.payload).slice(0, 200));
 
   const accountB = await trpc("workspace.createMember", {
     name: `Acesso B ${suffix}`, email: `prof_b_${suffix}@teste.local`, password: "senha-teste-12345",
-    role: "agent", operationalRole: "professional", professionalId: professionalBId,
+    role: "agent", operationalRole: "professional", professionalId: professionalBId, jobTitle: "Profissional executor",
   }, adminCookie);
   check("acesso do executor B criado", Boolean(accountB.payload?.result?.data?.json?.id));
 

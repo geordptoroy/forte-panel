@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowLeft,
   Bot,
+  CalendarDays,
   CheckCircle2,
   Clock3,
   FileText,
@@ -15,6 +16,9 @@ import {
   LifeBuoy,
   LockKeyhole,
   MessageSquareText,
+  Plus,
+  Save,
+  Pencil,
   Pause,
   Play,
   PlugZap,
@@ -29,7 +33,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
-const fmtDate = (value: string | null | undefined) =>
+const fmtDate = (value: string | Date | null | undefined) =>
   value
     ? new Date(value).toLocaleString("pt-BR", {
         dateStyle: "short",
@@ -60,6 +64,12 @@ const statusTone = (value: string) =>
     : ["suspended", "degraded", "stale", "paused", "disconnected"].includes(value)
       ? "red"
       : "amber";
+const supportWeekdays = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+const minuteToTime = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+const timeToMinute = (value: string) => {
+  const [hours, minutes] = value.split(":").map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+};
 const workspaceKanbanColumns = [
   { status: "onboarding" as const, label: "Onboarding", helper: "Configuração inicial" },
   { status: "active" as const, label: "Ativos", helper: "Operação liberada" },
@@ -130,6 +140,13 @@ export function PlatformShell({
           </button>
           <button
             type="button"
+            className={active === "support-workspace" ? "is-active" : ""}
+            onClick={() => navigate("/platform-admin/support-workspace")}
+          >
+            <LayoutDashboard size={15} /> Workspace operacional
+          </button>
+          <button
+            type="button"
             className={active === "support-instances" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/support-instances")}
           >
@@ -190,6 +207,8 @@ export function PlatformShell({
                     ? "Suporte"
                     : active === "support-instances"
                       ? "Instâncias de suporte"
+                      : active === "support-workspace"
+                        ? "Workspace operacional"
                       : active === "support-inbox"
                         ? "Inbox de suporte"
                     : active === "audit"
@@ -288,7 +307,7 @@ function AiConnectionsCard({ canMutate }: { canMutate: boolean }) {
         </div>
         <KeyRound size={18} />
       </div>
-      <p className="platform-muted">Cadastre a URL, modelo e chave do provedor para uma função específica. A chave fica criptografada no servidor e nunca retorna ao navegador em texto aberto.</p>
+      <p className="platform-muted">Cadastre a URL, modelo e chave do provedor para uma função específica. A primeira conexão ativa é primária; as seguintes da mesma função são usadas como fallback em ordem de criação. A chave fica criptografada no servidor e nunca retorna ao navegador em texto aberto.</p>
       <div className="platform-form-grid">
         <label className="platform-field"><span>Nome da conexão</span><input className="input-control" value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} placeholder="Ex.: Gemini para atendimento" /></label>
         <label className="platform-field"><span>Função do sistema</span><select className="select-control" value={form.capability} onChange={event => setForm(current => ({ ...current, capability: event.target.value as AiCapability }))}>{Object.entries(aiCapabilityLabels).map(([key, value]) => <option key={key} value={key}>{value.title}</option>)}</select></label>
@@ -403,6 +422,7 @@ function PlatformAdminOverview() {
     { search },
     { refetchInterval: 30_000 }
   );
+  const health = trpc.platform.health.useQuery(undefined, { refetchInterval: 30_000 });
   const start = trpc.platform.startSupportSession.useMutation({
     onSuccess: (session, input) =>
       navigate(
@@ -447,6 +467,24 @@ function PlatformAdminOverview() {
           </span>
         </div>
       </div>
+      <section className="platform-card platform-agent-overview">
+        <div className="platform-card-title">
+          <div>
+            <span className="eyebrow">Control-plane · últimos 30 dias</span>
+            <h2>Saúde agregada do agente</h2>
+          </div>
+          <Bot size={18} />
+        </div>
+        <p className="platform-muted">Somente contagens operacionais de todos os workspaces. Conteúdo de mensagens, prompts, modelos, providers e credenciais não é exibido neste console.</p>
+        {health.isLoading ? <PlatformState icon={RefreshCw} title="Consultando saúde agregada" description="Lendo somente sinais operacionais da plataforma." loading /> : health.error ? <PlatformState icon={XCircle} title="Saúde indisponível" description="Não foi possível consultar o read model agregado." /> : (
+          <div className="platform-metric-grid platform-agent-metrics">
+            <MetricCard label="Estado do agente" value={statusLabel[health.data?.components.agent.status ?? "unknown"]} helper="Sinal agregado da plataforma" icon={Activity} tone={statusTone(health.data?.components.agent.status ?? "unknown")} />
+            <MetricCard label="Execuções" value={health.data?.components.agent.runs30d ?? 0} helper="Todos os workspaces" icon={Bot} tone="blue" />
+            <MetricCard label="Falhas" value={health.data?.components.agent.failures30d ?? 0} helper="Sem conteúdo operacional" icon={ShieldAlert} tone={health.data?.components.agent.failures30d ? "red" : "green"} />
+            <MetricCard label="Fallbacks" value={health.data?.components.agent.fallbackRuns30d ?? 0} helper="Troca de provider registrada" icon={RefreshCw} tone="amber" />
+          </div>
+        )}
+      </section>
       <div className="platform-metric-grid">
         <MetricCard
           label="Contas monitoradas"
@@ -1675,7 +1713,7 @@ function AgentTab({
           {simulate.data && (
             <div className="platform-simulation-result">
               <small>
-                providerCalled: {String(simulate.data.providerCalled)}
+                modo: {simulate.data.mode} · providerCalled: {String(simulate.data.providerCalled)}
               </small>
               <p>{simulate.data.output}</p>
             </div>
@@ -1853,6 +1891,133 @@ export function PlatformSupportPage() {
   );
 }
 
+export function PlatformSupportWorkspacePage() {
+  const [, navigate] = useLocation();
+  const snapshot = trpc.platform.supportWorkspace.useQuery(undefined, {
+    refetchInterval: 10_000,
+  });
+  const access = trpc.platform.access.useQuery();
+  const utils = trpc.useUtils();
+  const canMutate = Boolean(access.data?.canMutate);
+  const data = snapshot.data;
+  const [reason, setReason] = useState("Atualização operacional do workspace de suporte");
+  const [serviceId, setServiceId] = useState<number | null>(null);
+  const [serviceName, setServiceName] = useState("");
+  const [serviceDescription, setServiceDescription] = useState("");
+  const [serviceDuration, setServiceDuration] = useState("60");
+  const [servicePrice, setServicePrice] = useState("0");
+  const [servicePriceType, setServicePriceType] = useState<"fixed" | "starting_at" | "quote">("fixed");
+  const [professionalId, setProfessionalId] = useState<number | null>(null);
+  const [professionalName, setProfessionalName] = useState("");
+  const [professionalSpecialty, setProfessionalSpecialty] = useState("");
+  const [professionalColor, setProfessionalColor] = useState("#62d68a");
+  const [professionalServiceIds, setProfessionalServiceIds] = useState<number[]>([]);
+  const [availabilityDraft, setAvailabilityDraft] = useState<{ weekday: number; startMinute: number; endMinute: number }[]>([]);
+  const [appointmentServiceId, setAppointmentServiceId] = useState("");
+  const [appointmentProfessionalId, setAppointmentProfessionalId] = useState("");
+  const [appointmentDate, setAppointmentDate] = useState("");
+  const [appointmentTime, setAppointmentTime] = useState("09:00");
+  const [appointmentNotes, setAppointmentNotes] = useState("");
+  const refresh = () => { void snapshot.refetch(); void utils.platform.supportWorkspace.invalidate(); };
+  const mutationOptions = { onSuccess: () => { refresh(); toast.success("Workspace atualizado"); }, onError: (error: { message: string }) => toast.error(error.message) };
+  const createService = trpc.platform.createSupportService.useMutation(mutationOptions);
+  const updateService = trpc.platform.updateSupportService.useMutation(mutationOptions);
+  const createProfessional = trpc.platform.createSupportProfessional.useMutation(mutationOptions);
+  const updateProfessional = trpc.platform.updateSupportProfessional.useMutation(mutationOptions);
+  const saveProfessionalServices = trpc.platform.setSupportProfessionalServices.useMutation(mutationOptions);
+  const saveAvailability = trpc.platform.setSupportAvailability.useMutation(mutationOptions);
+  const createAppointment = trpc.platform.createSupportAppointment.useMutation(mutationOptions);
+  const updateAppointmentStatus = trpc.platform.updateSupportAppointmentStatus.useMutation(mutationOptions);
+  const cancelAppointment = trpc.platform.cancelSupportAppointment.useMutation(mutationOptions);
+  const selectedProfessional = data?.catalog.professionals.find(item => item.id === professionalId);
+  useEffect(() => {
+    if (!selectedProfessional) return;
+    setProfessionalName(selectedProfessional.name);
+    setProfessionalSpecialty(selectedProfessional.specialty ?? "");
+    setProfessionalServiceIds(selectedProfessional.serviceIds);
+    setAvailabilityDraft(selectedProfessional.availability.map(item => ({ ...item })));
+  }, [professionalId, selectedProfessional?.name, selectedProfessional?.specialty, selectedProfessional?.serviceIds.join(","), selectedProfessional?.availability.map(item => `${item.weekday}-${item.startMinute}-${item.endMinute}`).join(",")]);
+  useEffect(() => {
+    if (!appointmentServiceId && data?.catalog.services[0]) setAppointmentServiceId(String(data.catalog.services[0].id));
+    if (!appointmentProfessionalId && data?.catalog.professionals[0]) setAppointmentProfessionalId(String(data.catalog.professionals[0].id));
+  }, [data?.catalog.services, data?.catalog.professionals, appointmentServiceId, appointmentProfessionalId]);
+  const selectService = (service: { id: number; name: string; description: string | null; durationMinutes: number; priceCents: number; priceType: "fixed" | "starting_at" | "quote" }) => {
+    setServiceId(service.id); setServiceName(service.name); setServiceDescription(service.description ?? ""); setServiceDuration(String(service.durationMinutes)); setServicePrice(String(service.priceCents / 100)); setServicePriceType(service.priceType);
+  };
+  const clearService = () => { setServiceId(null); setServiceName(""); setServiceDescription(""); setServiceDuration("60"); setServicePrice("0"); setServicePriceType("fixed"); };
+  const clearProfessional = () => { setProfessionalId(null); setProfessionalName(""); setProfessionalSpecialty(""); setProfessionalColor("#62d68a"); setProfessionalServiceIds([]); setAvailabilityDraft([]); };
+  const saveServiceForm = () => {
+    const payload = { name: serviceName.trim(), description: serviceDescription.trim() || undefined, durationMinutes: Number(serviceDuration), priceCents: Math.round(Number(servicePrice.replace(",", ".")) * 100), priceType: servicePriceType, reason };
+    if (serviceId) updateService.mutate({ serviceId, ...payload }); else createService.mutate(payload);
+  };
+  const saveProfessionalForm = () => {
+    const payload = { name: professionalName.trim(), specialty: professionalSpecialty.trim() || undefined, color: professionalColor, reason };
+    if (professionalId) updateProfessional.mutate({ professionalId, ...payload }); else createProfessional.mutate(payload);
+  };
+  const saveAppointment = () => {
+    const service = data?.catalog.services.find(item => item.id === Number(appointmentServiceId));
+    const startsAt = new Date(`${appointmentDate}T${appointmentTime}:00`);
+    const endsAt = new Date(startsAt.getTime() + (service?.durationMinutes ?? 60) * 60_000);
+    createAppointment.mutate({ serviceId: Number(appointmentServiceId), professionalId: Number(appointmentProfessionalId), startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), notes: appointmentNotes.trim() || undefined, reason });
+  };
+  return (
+    <PlatformAccessGate>
+      <PlatformShell
+        title="Workspace operacional"
+        description="Tenant interno do Console Admin para suporte, atendimento, catálogo, agenda e agente, separado dos workspaces clientes."
+        active="support-workspace"
+      >
+        <div className="platform-banner">
+          <ShieldCheck size={17} />
+          <div>
+            <strong>{data?.workspace.name ?? "Suporte Forte Platform"}</strong>
+            <span>Os dados exibidos nesta visão pertencem exclusivamente ao tenant interno da plataforma.</span>
+          </div>
+        </div>
+        {snapshot.isLoading ? (
+          <PlatformState icon={RefreshCw} title="Carregando workspace" description="Consultando Inbox, WhatsApp, catálogo, agenda e IA." loading />
+        ) : snapshot.error ? (
+          <PlatformState icon={XCircle} title="Workspace indisponível" description={snapshot.error.message} />
+        ) : (
+          <>
+            <div className="platform-metric-grid">
+              <MetricCard label="Instâncias WhatsApp" value={data?.instances.length ?? 0} helper="Conexões próprias do suporte" icon={PlugZap} />
+              <MetricCard label="Serviços" value={data?.catalog.services.length ?? 0} helper="Catálogo interno" icon={Activity} />
+              <MetricCard label="Profissionais" value={data?.catalog.professionals.length ?? 0} helper="Executores internos" icon={Users} />
+              <MetricCard label="Agendamentos" value={data?.agenda.appointments.length ?? 0} helper={`Fuso ${data?.agenda.timezone ?? "—"}`} icon={Clock3} />
+            </div>
+            <section className="platform-card">
+              <div className="platform-card-title"><div><span className="eyebrow">Operação isolada</span><h2>Capacidades do workspace</h2></div><ShieldCheck size={18} /></div>
+              <p className="platform-muted">A operação de suporte usa o mesmo contrato tenant-scoped do workspace público, mas com identidade e dados próprios. O pareamento WhatsApp e a publicação do agente continuam ações explícitas. Toda alteração abaixo exige operador e motivo auditável.</p>
+              <div className="platform-quick-actions">
+                <button className="btn-secondary" onClick={() => navigate("/platform-admin/support-instances")}><PlugZap size={14} /> WhatsApp</button>
+                <button className="btn-secondary" onClick={() => navigate("/platform-admin/support-inbox")}><MessageSquareText size={14} /> Inbox</button>
+                <button className="btn-secondary" onClick={() => navigate("/platform-admin/prompts")}><Bot size={14} /> IA e prompts</button>
+                <button className="btn-secondary" onClick={() => navigate("/platform-admin/ai")}><Sparkles size={14} /> Providers</button>
+              </div>
+            </section>
+            <section className="platform-card">
+              <div className="platform-card-title"><div><span className="eyebrow">Catálogo operacional</span><h2>{serviceId ? "Editar serviço" : "Novo serviço"}</h2></div><Activity size={18} /></div>
+              <div className="platform-form-grid"><label className="platform-field"><span>Nome</span><input className="input-control" value={serviceName} onChange={event => setServiceName(event.target.value)} placeholder="Ex.: Diagnóstico inicial" /></label><label className="platform-field"><span>Duração (minutos)</span><input className="input-control" type="number" min="5" value={serviceDuration} onChange={event => setServiceDuration(event.target.value)} /></label><label className="platform-field"><span>Preço</span><input className="input-control" inputMode="decimal" value={servicePrice} onChange={event => setServicePrice(event.target.value)} /></label><label className="platform-field"><span>Tipo de preço</span><select className="select-control" value={servicePriceType} onChange={event => setServicePriceType(event.target.value as typeof servicePriceType)}><option value="fixed">Fixo</option><option value="starting_at">A partir de</option><option value="quote">Sob consulta</option></select></label><label className="platform-field full"><span>Descrição</span><textarea className="textarea-control" rows={2} value={serviceDescription} onChange={event => setServiceDescription(event.target.value)} /></label></div>
+              <div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || serviceName.trim().length < 2 || createService.isPending || updateService.isPending} onClick={saveServiceForm}><Save size={13} /> {serviceId ? "Salvar serviço" : "Criar serviço"}</button>{serviceId && <button className="btn-secondary" onClick={clearService}>Novo serviço</button>}<span className="platform-muted">Motivo: {reason}</span></div>
+              <div className="platform-table-wrap" style={{ marginTop: 18 }}><table className="platform-table"><thead><tr><th>Serviço</th><th>Preço</th><th>Status</th><th /></tr></thead><tbody>{(data?.catalog.services ?? []).map(service => <tr key={service.id}><td><strong>{service.name}</strong><small>{service.durationMinutes} min</small></td><td>{service.priceCents === 0 ? "Sob consulta" : `R$ ${(service.priceCents / 100).toFixed(2).replace(".", ",")}`}</td><td><WorkspaceStatus value={service.active ? "active" : "suspended"} /></td><td><button className="btn-ghost" onClick={() => selectService(service)}><Pencil size={12} /> Editar</button>{service.active && <button className="btn-ghost" disabled={!canMutate || updateService.isPending} onClick={() => updateService.mutate({ serviceId: service.id, active: false, reason })}>Desativar</button>}</td></tr>)}</tbody></table></div>
+            </section>
+            <div className="platform-two-columns">
+              <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Equipe operacional</span><h2>{professionalId ? "Editar profissional" : "Novo profissional"}</h2></div><Users size={18} /></div><div className="platform-form-grid"><label className="platform-field"><span>Nome</span><input className="input-control" value={professionalName} onChange={event => setProfessionalName(event.target.value)} placeholder="Nome do executor" /></label><label className="platform-field"><span>Especialidade</span><input className="input-control" value={professionalSpecialty} onChange={event => setProfessionalSpecialty(event.target.value)} placeholder="Ex.: Suporte técnico" /></label><label className="platform-field"><span>Cor</span><input className="input-control" type="color" value={professionalColor} onChange={event => setProfessionalColor(event.target.value)} /></label></div><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || professionalName.trim().length < 2 || createProfessional.isPending || updateProfessional.isPending} onClick={saveProfessionalForm}><Save size={13} /> {professionalId ? "Salvar profissional" : "Criar profissional"}</button>{professionalId && <button className="btn-secondary" onClick={clearProfessional}>Novo profissional</button>}</div><div className="platform-member-list" style={{ marginTop: 18 }}>{(data?.catalog.professionals ?? []).map(person => <button type="button" className={`platform-member ${professionalId === person.id ? "is-active" : ""}`} key={person.id} onClick={() => setProfessionalId(person.id)}><div className="platform-channel-icon"><Users size={14} /></div><div><strong>{person.name}</strong><small>{person.specialty || "Sem especialidade"} · {person.serviceIds.length} serviço(s)</small></div><WorkspaceStatus value={person.active ? "active" : "suspended"} /></button>)}</div></section>
+              <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Configuração do executor</span><h2>Serviços e disponibilidade</h2></div><Clock3 size={18} /></div>{!professionalId ? <PlatformState icon={Users} title="Selecione um profissional" description="Escolha um executor ao lado para configurar vínculos e jornada." /> : <><div className="platform-field"><span>Serviços executados</span>{(data?.catalog.services ?? []).map(service => <label key={service.id} className="platform-session-options"><input type="checkbox" checked={professionalServiceIds.includes(service.id)} onChange={event => setProfessionalServiceIds(current => event.target.checked ? [...current, service.id] : current.filter(id => id !== service.id))} /> {service.name}</label>)}</div><button className="btn-secondary" disabled={!canMutate || saveProfessionalServices.isPending} onClick={() => saveProfessionalServices.mutate({ professionalId, serviceIds: professionalServiceIds, reason })}><Save size={13} /> Salvar serviços</button><div className="platform-field" style={{ marginTop: 18 }}><span>Jornada semanal</span>{supportWeekdays.map((label, weekday) => { const entry = availabilityDraft.find(item => item.weekday === weekday); return <div key={weekday} className="platform-member"><div style={{ flex: 1 }}><strong>{label}</strong></div>{entry ? <><input className="input-control" type="time" value={minuteToTime(entry.startMinute)} onChange={event => setAvailabilityDraft(current => current.map(item => item === entry ? { ...item, startMinute: timeToMinute(event.target.value) } : item))} /><span className="platform-muted">até</span><input className="input-control" type="time" value={minuteToTime(entry.endMinute)} onChange={event => setAvailabilityDraft(current => current.map(item => item === entry ? { ...item, endMinute: timeToMinute(event.target.value) } : item))} /><button className="btn-ghost" onClick={() => setAvailabilityDraft(current => current.filter(item => item !== entry))}>Remover</button></> : <button className="btn-ghost" onClick={() => setAvailabilityDraft(current => [...current, { weekday, startMinute: 9 * 60, endMinute: 18 * 60 }])}><Plus size={12} /> Adicionar</button>}</div>; })}</div><button className="btn-primary" disabled={!canMutate || saveAvailability.isPending} onClick={() => saveAvailability.mutate({ professionalId, entries: availabilityDraft, reason })}><CalendarDays size={13} /> Salvar disponibilidade</button></>}</section>
+            </div>
+            <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Agenda operacional</span><h2>Novo atendimento</h2></div><CalendarDays size={18} /></div><div className="platform-form-grid"><label className="platform-field"><span>Serviço</span><select className="select-control" value={appointmentServiceId} onChange={event => setAppointmentServiceId(event.target.value)}>{(data?.catalog.services ?? []).map(service => <option key={service.id} value={service.id}>{service.name} · {service.durationMinutes} min</option>)}</select></label><label className="platform-field"><span>Profissional</span><select className="select-control" value={appointmentProfessionalId} onChange={event => setAppointmentProfessionalId(event.target.value)}>{(data?.catalog.professionals ?? []).map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><label className="platform-field"><span>Data</span><input className="input-control" type="date" value={appointmentDate} onChange={event => setAppointmentDate(event.target.value)} /></label><label className="platform-field"><span>Horário</span><input className="input-control" type="time" value={appointmentTime} onChange={event => setAppointmentTime(event.target.value)} /></label><label className="platform-field full"><span>Observações</span><input className="input-control" value={appointmentNotes} onChange={event => setAppointmentNotes(event.target.value)} placeholder="Contexto do atendimento" /></label></div><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || !appointmentDate || !appointmentServiceId || !appointmentProfessionalId || createAppointment.isPending} onClick={saveAppointment}><CalendarDays size={13} /> Reservar atendimento</button></div><div className="platform-table-wrap" style={{ marginTop: 18 }}><table className="platform-table"><thead><tr><th>Atendimento</th><th>Quando</th><th>Status</th><th /></tr></thead><tbody>{(data?.agenda.appointments ?? []).map(appointment => <tr key={appointment.id}><td><strong>{appointment.serviceName ?? "Atendimento"}</strong><small>{appointment.professionalName ?? "Profissional"} · {appointment.contactName ?? "Contato sem cadastro"}</small></td><td>{fmtDate(appointment.startsAt)}<small>até {fmtDate(appointment.endsAt)}</small></td><td><WorkspaceStatus value={appointment.status} /></td><td className="platform-row-actions">{appointment.status === "requested" && <button className="btn-ghost" disabled={!canMutate || updateAppointmentStatus.isPending} onClick={() => updateAppointmentStatus.mutate({ appointmentId: appointment.id, status: "confirmed", reason })}>Confirmar</button>}{appointment.status === "confirmed" && <button className="btn-ghost" disabled={!canMutate || updateAppointmentStatus.isPending} onClick={() => updateAppointmentStatus.mutate({ appointmentId: appointment.id, status: "completed", reason })}>Concluir</button>}{!["completed", "cancelled", "canceled", "no_show"].includes(appointment.status) && <button className="btn-ghost" disabled={!canMutate || cancelAppointment.isPending} onClick={() => cancelAppointment.mutate({ appointmentId: appointment.id, reason })}>Cancelar</button>}</td></tr>)}</tbody></table></div></section>
+            <div className="platform-two-columns">
+              <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Catálogo interno</span><h2>Serviços e profissionais</h2></div><Users size={17} /></div>{data?.catalog.services.length ? <div className="platform-member-list">{data.catalog.services.map(service => <div className="platform-member" key={service.id}><div><strong>{service.name}</strong><small>{service.durationMinutes} min · {service.active ? "ativo" : "inativo"}</small></div><WorkspaceStatus value={service.active ? "active" : "suspended"} /></div>)}</div> : <PlatformState icon={Activity} title="Catálogo vazio" description="Nenhum serviço foi cadastrado no tenant interno." />}</section>
+              <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Agenda interna</span><h2>Próximos atendimentos</h2></div><Clock3 size={17} /></div>{data?.agenda.appointments.length ? <div className="platform-member-list">{data.agenda.appointments.slice(0, 8).map(appointment => <div className="platform-member" key={appointment.id}><div><strong>{appointment.serviceName ?? "Atendimento"}</strong><small>{appointment.professionalName ?? "Profissional"} · {appointment.contactName ?? "Contato"}</small></div><WorkspaceStatus value={appointment.status} /></div>)}</div> : <PlatformState icon={Clock3} title="Agenda vazia" description="Nenhum atendimento foi registrado no tenant interno." />}</section>
+            </div>
+          </>
+        )}
+      </PlatformShell>
+    </PlatformAccessGate>
+  );
+}
+
 export function PlatformSupportInstancesPage() {
   const [name, setName] = useState("WhatsApp Suporte");
   const [phone, setPhone] = useState("");
@@ -1876,7 +2041,7 @@ export function PlatformSupportInstancesPage() {
         <div className="platform-banner"><ShieldCheck size={17} /><div><strong>Tenant interno: {snapshot.data?.workspace.name ?? "Suporte Forte Platform"}</strong><span>Estas instâncias pertencem ao Console Admin e não a uma conta de cliente.</span></div></div>
         <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Nova conexão</span><h2>Adicionar instância de suporte</h2></div><PlugZap size={18} /></div><div className="platform-form-grid"><label className="platform-field"><span>Nome</span><input className="input-control" value={name} onChange={event => setName(event.target.value)} /></label><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || create.isPending || name.trim().length < 2} onClick={() => create.mutate({ name })}><PlugZap size={13} /> {create.isPending ? "Criando…" : "Criar instância"}</button></div></div></section>
         <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Conexões do console</span><h2>WhatsApp de suporte</h2></div><Activity size={18} /></div>{snapshot.isLoading ? <PlatformState icon={RefreshCw} title="Carregando instâncias" description="Consultando o tenant interno do suporte." loading /> : (snapshot.data?.instances ?? []).length === 0 ? <PlatformState icon={PlugZap} title="Nenhuma instância criada" description="Crie a primeira conexão própria do Console Admin." /> : <div className="platform-table-wrap"><table className="platform-table"><thead><tr><th>Instância</th><th>Status</th><th>Pairing</th><th /></tr></thead><tbody>{(snapshot.data?.instances ?? []).map(instance => <tr key={instance.instanceId}><td><strong>{instance.name}</strong><small>{instance.instanceId}</small></td><td><WorkspaceStatus value={instance.status} /></td><td><div className="platform-form-actions"><input className="input-control" placeholder="DDD + número" value={phone} onChange={event => setPhone(event.target.value)} /><button className="btn-secondary" disabled={!canMutate || pair.isPending || phone.length < 8} onClick={() => pair.mutate({ instanceId: instance.instanceId, phone })}><KeyRound size={13} /> Código</button></div></td><td><button className="btn-ghost" disabled={!canMutate || disconnect.isPending} onClick={() => disconnect.mutate({ instanceId: instance.instanceId, logout: false })}>Desconectar</button></td></tr>)}</tbody></table></div>}</section>
-        <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Prompt global por conexão</span><h2>Parear prompt à instância</h2></div><Bot size={18} /></div><p className="platform-muted">A edição completa, leitura e ativação por instância também estão disponíveis na aba <strong>Prompts por instância</strong>.</p><div className="platform-form-grid"><label className="platform-field"><span>Instância</span><select className="input-control" value={promptInstanceId} onChange={event => setPromptInstanceId(event.target.value)}><option value="">Selecione uma instância</option>{(snapshot.data?.instances ?? []).map(instance => <option key={instance.instanceId} value={instance.instanceId}>{instance.name}</option>)}</select></label><label className="platform-field"><span>System prompt</span><textarea className="input-control agent-prompt-editor" value={promptText} onChange={event => setPromptText(event.target.value)} disabled={!promptInstanceId} placeholder="Prompt global de suporte desta instância" /></label></div><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || !promptInstanceId || !promptText.trim() || savePromptBinding.isPending} onClick={() => savePromptBinding.mutate({ instanceId: promptInstanceId, enabled: true, model: globalAi.data?.model ?? "gpt-5-mini", systemPrompt: promptText, maxSteps: globalAi.data?.maxSteps ?? 6, reason: "Pareamento e ativação do prompt global à instância de suporte" })}>Salvar e ativar prompt</button>{selectedPromptBinding && <span className="platform-muted">v{selectedPromptBinding.version} salvo; agente ativo nesta instância</span>}</div></section>
+        <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Prompt global por conexão</span><h2>Parear prompt à instância</h2></div><Bot size={18} /></div><p className="platform-muted">A edição completa, leitura e ativação por instância também estão disponíveis na aba <strong>Prompts por instância</strong>.</p><div className="platform-form-grid"><label className="platform-field"><span>Instância</span><select className="input-control" value={promptInstanceId} onChange={event => setPromptInstanceId(event.target.value)}><option value="">Selecione uma instância</option>{(snapshot.data?.instances ?? []).map(instance => <option key={instance.instanceId} value={instance.instanceId}>{instance.name}</option>)}</select></label><label className="platform-field"><span>System prompt</span><textarea className="input-control agent-prompt-editor" value={promptText} onChange={event => setPromptText(event.target.value)} disabled={!promptInstanceId} placeholder="Prompt global de suporte desta instância" /></label></div><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || !promptInstanceId || !promptText.trim() || savePromptBinding.isPending} onClick={() => savePromptBinding.mutate({ instanceId: promptInstanceId, enabled: false, model: globalAi.data?.model ?? "gpt-5-mini", systemPrompt: promptText, maxSteps: globalAi.data?.maxSteps ?? 6, reason: "Pareamento do prompt global em modo de simulação" })}>Salvar vínculo de simulação</button>{selectedPromptBinding && <span className="platform-muted">v{selectedPromptBinding.version} salvo; respostas automáticas bloqueadas</span>}</div></section>
       </PlatformShell>
     </PlatformAccessGate>
   );
@@ -1924,6 +2089,7 @@ export function PlatformPromptsPage() {
     output: string;
     model: string;
     enabled: boolean;
+    mode: "simulation_only";
     promptSource: string;
     bindingVersion: number | null;
     providerCalled: boolean;
@@ -1975,12 +2141,12 @@ export function PlatformPromptsPage() {
         description="Biblioteca global de prompts do suporte e vínculo explícito com cada conexão WhatsApp."
         active="prompts"
       >
-        <div className="platform-banner">
-          <Sparkles size={17} />
-          <div>
-            <strong>IA do Console Admin</strong>
-            <span>
-              O agente responde no chat somente quando a IA global e o vínculo da instância estão ativos.
+          <div className="platform-banner">
+            <Sparkles size={17} />
+            <div>
+              <strong>IA do Console Admin · somente simulação</strong>
+              <span>
+                O agente do tenant de suporte não responde automaticamente. As simulações são locais, auditadas e não chamam provider externo.
             </span>
           </div>
         </div>
@@ -2043,8 +2209,7 @@ export function PlatformPromptsPage() {
                 onChange={event => setInstanceEnabled(event.target.value === "enabled")}
                 disabled={!instanceId}
               >
-                <option value="enabled">Ativo — responder no chat</option>
-                <option value="paused">Pausado</option>
+                <option value="paused">Somente simulação — resposta automática bloqueada</option>
               </select>
             </label>
             <label className="platform-field full">
@@ -2068,14 +2233,14 @@ export function PlatformPromptsPage() {
               disabled={!canMutate || !instanceId || !instancePrompt.trim() || bindingSave.isPending}
               onClick={() => bindingSave.mutate({
                 instanceId,
-                enabled: instanceEnabled,
+                enabled: false,
                 model: globalAi.data?.model ?? "gpt-5-mini",
                 systemPrompt: instancePrompt,
                 maxSteps: globalAi.data?.maxSteps ?? 6,
                 reason,
               })}
             >
-              <Sparkles size={14} /> Salvar e ativar vínculo
+              <Sparkles size={14} /> Salvar vínculo de simulação
             </button>
             {selectedBinding && <span className="platform-muted">Versão {selectedBinding.version} · atualizado {fmtDate(selectedBinding.updatedAt)}</span>}
           </div>
@@ -2123,7 +2288,7 @@ export function PlatformPromptsPage() {
               <div>
                 <strong>{testResult.enabled ? "Agente ativo" : "Agente pausado"}</strong>
                 <p>{testResult.output}</p>
-                <small>Provider externo chamado: {testResult.providerCalled ? "sim" : "não"} · status da instância: {testResult.instance.status}</small>
+                <small>Modo: {testResult.mode} · provider externo chamado: {testResult.providerCalled ? "sim" : "não"} · status da instância: {testResult.instance.status}</small>
               </div>
             </div>
           )}

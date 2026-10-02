@@ -16,12 +16,20 @@ const weekdays = [
 ];
 
 type AvailabilityEntry = { weekday: number; startMinute: number; endMinute: number };
-
 const minuteToTime = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 const timeToMinute = (value: string) => {
   const [hours, minutes] = value.split(":").map((part) => Number(part));
   if (Number.isNaN(hours) || Number.isNaN(minutes)) return 0;
   return hours * 60 + minutes;
+};
+const entriesForDay = (entries: AvailabilityEntry[], weekday: number) => entries.filter((entry) => entry.weekday === weekday);
+const updateDayEntry = (entries: AvailabilityEntry[], weekday: number, index: number, patch: Partial<AvailabilityEntry>) => {
+  let dayIndex = -1;
+  return entries.map((entry) => {
+    if (entry.weekday !== weekday) return entry;
+    dayIndex += 1;
+    return dayIndex === index ? { ...entry, ...patch } : entry;
+  });
 };
 /** Administrative catalog screen: services, professionals, links and weekly availability. */
 export function ServicesPage() {
@@ -249,7 +257,7 @@ export function ProfessionalsPage() {
           <div className="detail-stats">
             <div className="detail-stat"><span>Especialidade</span><strong>{selected.specialty ?? "Não informada"}</strong></div>
             <div className="detail-stat"><span>Serviços vinculados</span><strong>{selected.serviceIds.length}</strong></div>
-            <div className="detail-stat"><span>Faixas semanais</span><strong>{selected.availability.length}</strong></div>
+            <div className="detail-stat"><span>Intervalos semanais</span><strong>{selected.availability.length}</strong></div>
             <div className="detail-stat"><span>Logins vinculados</span><strong>{selected.linkedMembers.length}</strong></div>
           </div>
 
@@ -271,21 +279,24 @@ export function ProfessionalsPage() {
 
           <div style={{ marginTop: 30 }}>
             <SectionTitle eyebrow="Jornada" title="Disponibilidade semanal" />
+            <p className="muted" style={{ margin: "-5px 0 12px", fontSize: 10 }}>Adicione intervalos separados para pausas, como 09:00–12:00 e 14:00–18:00.</p>
             <div className="team-table">{weekdays.map((day) => {
-              const entry = availabilityDraft.find((item) => item.weekday === day.value);
+              const dayEntries = entriesForDay(availabilityDraft, day.value);
               return <div className="team-row" key={day.value}>
                 <div className="time-block" style={{ width: 52 }}>{day.short}</div>
                 <div className="row-copy">
                   <small>{day.label}</small>
-                  {entry
-                    ? <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
-                      <input className="input-control" style={{ maxWidth: 110 }} type="time" value={minuteToTime(entry.startMinute)} onChange={(event) => setAvailabilityDraft((current) => current.map((item) => item.weekday === day.value ? { ...item, startMinute: timeToMinute(event.target.value) } : item))} />
-                      <span className="muted" style={{ fontSize: 10 }}>até</span>
-                      <input className="input-control" style={{ maxWidth: 110 }} type="time" value={minuteToTime(entry.endMinute)} onChange={(event) => setAvailabilityDraft((current) => current.map((item) => item.weekday === day.value ? { ...item, endMinute: timeToMinute(event.target.value) } : item))} />
-                    </div>
-                    : <small className="muted" style={{ marginTop: 4, display: "block" }}>Não trabalha neste dia</small>}
+                  {dayEntries.length > 0 ? dayEntries.map((entry, index) => <div key={`${day.value}-${index}`} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                    <input aria-label={`${day.label} intervalo ${index + 1} início`} className="input-control" style={{ maxWidth: 110 }} type="time" value={minuteToTime(entry.startMinute)} onChange={(event) => setAvailabilityDraft((current) => updateDayEntry(current, day.value, index, { startMinute: timeToMinute(event.target.value) }))} />
+                    <span className="muted" style={{ fontSize: 10 }}>até</span>
+                    <input aria-label={`${day.label} intervalo ${index + 1} fim`} className="input-control" style={{ maxWidth: 110 }} type="time" value={minuteToTime(entry.endMinute)} onChange={(event) => setAvailabilityDraft((current) => updateDayEntry(current, day.value, index, { endMinute: timeToMinute(event.target.value) }))} />
+                    {canManage && <button className="btn-ghost" type="button" onClick={() => setAvailabilityDraft((current) => {
+                      let dayIndex = -1;
+                      return current.filter((item) => item.weekday !== day.value || (++dayIndex !== index));
+                    })}>Remover</button>}
+                  </div>) : <small className="muted" style={{ marginTop: 4, display: "block" }}>Não trabalha neste dia</small>}
                 </div>
-                {canManage && <button className="btn-ghost" onClick={() => setAvailabilityDraft((current) => entry ? current.filter((item) => item.weekday !== day.value) : [...current, { weekday: day.value, startMinute: 9 * 60, endMinute: 18 * 60 }])}>{entry ? "Remover" : "Adicionar"}</button>}
+                {canManage && <button className="btn-ghost" type="button" onClick={() => setAvailabilityDraft((current) => [...current, { weekday: day.value, startMinute: dayEntries.length ? 14 * 60 : 9 * 60, endMinute: dayEntries.length ? 18 * 60 : 18 * 60 }])}>Adicionar intervalo</button>}
               </div>;
             })}</div>
             {canManage && <button className="btn-primary" style={{ marginTop: 14 }} disabled={setProfessionalAvailability.isPending} onClick={() => setProfessionalAvailability.mutate({ professionalId: selected.id, entries: availabilityDraft })}>{setProfessionalAvailability.isPending ? "Salvando..." : "Salvar disponibilidade"}</button>}

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { decodeMediaDataUrl } from "./media-storage";
 import { storagePut } from "./storage";
 
+export { decodeMediaDataUrl } from "./media-storage";
+
 export const INBOX_MEDIA_MAX_BYTES = 8 * 1024 * 1024;
 export const INBOX_MEDIA_MAX_DATA_URL_CHARS = Math.ceil(INBOX_MEDIA_MAX_BYTES * 4 / 3) + 512;
 
@@ -82,6 +84,14 @@ export async function uploadPrivateInboxAttachment(input: {
       sizeBytes: decoded.buffer.length,
     };
   } catch {
-    throw new Error("INBOX_MEDIA_STORAGE_FAILED");
+    // O anexo já foi validado e permanece pequeno o suficiente para atravessar
+    // a fila de envio. O storage privado continua sendo preferido, mas não
+    // deve impedir o envio transitório em ambientes locais sem Forge/S3.
+    return {
+      mediaData: input.dataUrl,
+      fileName: safeFileName,
+      mimeType: declaredMimeType,
+      sizeBytes: decoded.buffer.length,
+    };
   }
 }

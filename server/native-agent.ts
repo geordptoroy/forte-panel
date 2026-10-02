@@ -20,9 +20,13 @@ import {
 import {
   capabilityForMessageType,
   invokeConfiguredLLM,
+  type LLMInvocationTelemetry,
   type AgentProviderSettings,
 } from "./llm-providers";
 import { resolvePrivateMediaUrl } from "./media-storage";
+import { inspectAgentInput, safetyHandoffMessage } from "./agent-safety";
+import { transcribeAudio } from "./audio-transcription";
+import { analyzeMedia } from "./media-analysis";
 
 export type NativeAgentEvent = {
   eventId: string;
@@ -202,6 +206,50 @@ async function runNativeAgentCore(
   event: NativeAgentEvent,
   config: AgentConfig
 ) {
+  const safety = inspectAgentInput({
+    content: event.content,
+    messages: event.messages,
+  });
+  if (safety.decision === "handoff" && safety.reason) {
+    await setContactAi(event.workspaceId, event.contactId, false);
+    const response = safetyHandoffMessage(safety.reason);
+    await queueOutboundMessage(
+      event.workspaceId,
+      event.contactId,
+      response,
+      undefined,
+      "ai",
+      "text",
+      {
+        agent: true,
+        safetyGate: true,
+        safetyReason: safety.reason,
+        eventId: event.eventId,
+        ...(event.instanceId ? { instanceId: event.instanceId } : {}),
+      }
+    );
+    return {
+      response,
+      steps: 0,
+      model: `safety-gate:${safety.reason}`,
+      toolCalls: 0,
+      transferred: true,
+      pendingConfirmation: false,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      latencyMs: 0,
+      telemetry: {
+        capability: capabilityForMessageType(event.messageType),
+        provider: null,
+        attempts: 0,
+        fallbackUsed: false,
+        failureCode: `safety_${safety.reason}`,
+      },
+      transcriptionTelemetry: undefined,
+      mediaAnalysisTelemetry: undefined,
+    };
+  }
   const contact = await getContactById(event.workspaceId, event.contactId);
   if (!contact) throw new Error("Contato do evento não encontrado");
   const thread = await listMessagesForContact(
@@ -230,7 +278,38 @@ async function runNativeAgentCore(
     typeof event.metadata?.mediaMimeType === "string"
       ? event.metadata.mediaMimeType
       : undefined;
-  const entryText = `Nova entrada (${event.messageType ?? "text"}) de ${contact.name} (${contact.externalPhone}):\n${event.content}`;
+  const isAudio = event.messageType === "audio";
+  const mediaAnalysisCapability =
+    event.messageType === "image"
+      ? "vision"
+      : event.messageType === "document"
+        ? "document"
+        : undefined;
+  if ((isAudio || mediaAnalysisCapability) && !mediaData)
+    throw new Error(`${isAudio ? "audio" : mediaAnalysisCapability}_media_unavailable`);
+  let normalizedContent = event.content;
+  let transcriptionTelemetry: LLMInvocationTelemetry | undefined;
+  let mediaAnalysisTelemetry: LLMInvocationTelemetry | undefined;
+  if (isAudio && mediaData) {
+    const transcription = await transcribeAudio(config.llm, {
+      mediaUrl: mediaData,
+      mimeType: mediaMimeType,
+      model: config.model || defaultModel,
+    });
+    normalizedContent = `[Transcrição do áudio]\n${transcription.text}`;
+    transcriptionTelemetry = transcription.telemetry;
+  }
+  if (mediaAnalysisCapability && mediaData) {
+    const analysis = await analyzeMedia(config.llm, {
+      capability: mediaAnalysisCapability,
+      mediaUrl: mediaData,
+      mimeType: mediaMimeType,
+      model: config.model || defaultModel,
+    });
+    normalizedContent = `[Análise de ${mediaAnalysisCapability === "vision" ? "imagem" : "documento"}]\n${analysis.text}`;
+    mediaAnalysisTelemetry = analysis.telemetry;
+  }
+  const entryText = `Nova entrada (${event.messageType ?? "text"}) de ${contact.name} (${contact.externalPhone}):\n${normalizedContent}`;
   const entryContent: Message["content"] =
     mediaData && event.messageType === "image"
       ? [
@@ -238,6 +317,8 @@ async function runNativeAgentCore(
           { type: "image_url", image_url: { url: mediaData, detail: "auto" } },
         ]
       : mediaData &&
+          !isAudio &&
+          !mediaAnalysisCapability &&
           ["audio", "document", "video"].includes(event.messageType ?? "")
         ? [
             { type: "text", text: entryText },
@@ -269,10 +350,23 @@ async function runNativeAgentCore(
   let inputTokens = 0;
   let outputTokens = 0;
   let totalTokens = 0;
+  const capability =
+    isAudio || mediaAnalysisCapability
+      ? "text"
+      : capabilityForMessageType(event.messageType);
+  let telemetry: LLMInvocationTelemetry = {
+    capability,
+    provider: null,
+    attempts: 0,
+    fallbackUsed: false,
+    failureCode: null,
+  };
+  if (transcriptionTelemetry) telemetry = transcriptionTelemetry;
+  if (mediaAnalysisTelemetry) telemetry = mediaAnalysisTelemetry;
   for (let step = 0; step < maxSteps; step += 1) {
     const response = await invokeConfiguredLLM(
       config.llm,
-      capabilityForMessageType(event.messageType),
+      capability,
       {
         model: config.model || defaultModel,
         messages,
@@ -281,6 +375,7 @@ async function runNativeAgentCore(
         maxTokens: 1800,
       }
     );
+    telemetry = response.telemetry;
     inputTokens += response.usage?.prompt_tokens ?? 0;
     outputTokens += response.usage?.completion_tokens ?? 0;
     totalTokens += response.usage?.total_tokens ?? 0;
@@ -309,7 +404,7 @@ async function runNativeAgentCore(
             ...(event.instanceId ? { instanceId: event.instanceId } : {}),
           }
         );
-      return { response: text, steps: step + 1, model: response.model, toolCalls, transferred, pendingConfirmation, inputTokens, outputTokens, totalTokens, latencyMs: Date.now() - startedAt };
+      return { response: text, steps: step + 1, model: response.model, toolCalls, transferred, pendingConfirmation, inputTokens, outputTokens, totalTokens, latencyMs: Date.now() - startedAt, telemetry, transcriptionTelemetry, mediaAnalysisTelemetry };
     }
     for (const call of assistant.tool_calls) {
       toolCalls += 1;
@@ -351,10 +446,27 @@ export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfi
       outputTokens: result.outputTokens,
       totalTokens: result.totalTokens,
       latencyMs: result.latencyMs,
+      provider: result.telemetry.provider,
+      capability: result.telemetry.capability,
+      providerAttempts: result.telemetry.attempts,
+      failureCode: result.telemetry.failureCode,
+      transcriptionProvider: result.transcriptionTelemetry?.provider,
+      transcriptionAttempts: result.transcriptionTelemetry?.attempts,
+      mediaAnalysisProvider: result.mediaAnalysisTelemetry?.provider,
+      mediaAnalysisAttempts: result.mediaAnalysisTelemetry?.attempts,
     });
     return result;
   } catch (error) {
-    await recordAgentRun({ workspaceId: event.workspaceId, eventId: event.eventId, contactId: event.contactId, outcome: "failed", steps: 0, toolCalls: 0, transferred: false, pendingConfirmation: false, latencyMs: Date.now() - startedAt });
+    const telemetry = error && typeof error === "object" && "telemetry" in error
+      ? (error as { telemetry: LLMInvocationTelemetry }).telemetry
+      : {
+          capability: capabilityForMessageType(event.messageType),
+          provider: null,
+          attempts: 0,
+          fallbackUsed: false,
+          failureCode: "agent_runtime_error",
+        };
+    await recordAgentRun({ workspaceId: event.workspaceId, eventId: event.eventId, contactId: event.contactId, outcome: "failed", steps: 0, toolCalls: 0, transferred: false, pendingConfirmation: false, latencyMs: Date.now() - startedAt, provider: telemetry.provider, capability: telemetry.capability, providerAttempts: telemetry.attempts, failureCode: telemetry.failureCode });
     throw error;
   }
 }

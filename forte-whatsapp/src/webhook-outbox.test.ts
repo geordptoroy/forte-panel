@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -34,6 +35,14 @@ describe("durable webhook outbox", () => {
       });
       expect(init?.body).toContain('"eventId":"event-1"');
       expect(init?.headers).toHaveProperty("x-webhook-signature");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers["x-webhook-timestamp"]).toMatch(/^\d{10}$/);
+      expect(headers["x-webhook-nonce"]).toMatch(/^[A-Za-z0-9._:-]{16,180}$/);
+      const expected = `sha256=${crypto
+        .createHmac("sha256", "secret")
+        .update(`${headers["x-webhook-timestamp"]}.${headers["x-webhook-nonce"]}.${String(init?.body)}`)
+        .digest("hex")}`;
+      expect(headers["x-webhook-signature"]).toBe(expected);
       return new Response("ok", { status: 202 });
     });
     const outbox = new WebhookOutbox({

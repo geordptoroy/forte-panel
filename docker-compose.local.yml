@@ -12,7 +12,11 @@ services:
     volumes:
       - forte_postgres_panel_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${PANEL_POSTGRES_USER:-forte_panel} -d $${PANEL_POSTGRES_DB:-forte_panel}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${PANEL_POSTGRES_USER:-forte_panel} -d $${PANEL_POSTGRES_DB:-forte_panel}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -33,8 +37,7 @@ services:
     networks: [panel-network]
 
   forte-panel-migrations:
-    image: ghcr.io/geordptoroy/forte-panel:dev
-    pull_policy: always
+    image: ${FORTE_PANEL_IMAGE:-ghcr.io/geordptoroy/forte-panel:dev}
     container_name: forte_panel_migrations
     restart: "no"
     command: ["./docker-entrypoint.sh", "migrate"]
@@ -47,8 +50,7 @@ services:
     networks: [panel-network]
 
   forte-panel:
-    image: ghcr.io/geordptoroy/forte-panel:dev
-    pull_policy: always
+    image: ${FORTE_PANEL_IMAGE:-ghcr.io/geordptoroy/forte-panel:dev}
     container_name: forte_panel
     restart: unless-stopped
     environment:
@@ -94,8 +96,7 @@ services:
     networks: [panel-network, whatsapp-network]
 
   forte-panel-worker:
-    image: ghcr.io/geordptoroy/forte-panel:dev
-    pull_policy: always
+    image: ${FORTE_PANEL_IMAGE:-ghcr.io/geordptoroy/forte-panel:dev}
     container_name: forte_panel_worker
     restart: unless-stopped
     command: ["./docker-entrypoint.sh", "worker"]
@@ -134,8 +135,7 @@ services:
     networks: [panel-network, whatsapp-network]
 
   forte-whatsapp:
-    image: ghcr.io/geordptoroy/forte-whatsapp:dev
-    pull_policy: always
+    image: ${FORTE_WHATSAPP_IMAGE:-ghcr.io/geordptoroy/forte-whatsapp:dev}
     container_name: forte_whatsapp
     restart: unless-stopped
     environment:

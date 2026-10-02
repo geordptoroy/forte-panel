@@ -8,7 +8,7 @@ import { isRouteEnabledInCore } from "./release-catalog";
  * responsible for protecting every procedure.
  */
 export const CORE_ONLY_MODE = true;
-export const CORE_ROUTE = "/whatsapp-connection";
+export const CORE_ROUTE = "/onboarding";
 export const CORE_USAGE_ROUTE = "/plans-usage";
 export const PLATFORM_ADMIN_ROUTE = "/platform-admin";
 

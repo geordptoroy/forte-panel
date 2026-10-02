@@ -55,6 +55,7 @@ import {
   quotePayments,
   quoteReceipts,
   services,
+  securityRateLimitBuckets,
   users,
   webhookEvents,
   workerHeartbeats,
@@ -77,6 +78,7 @@ import {
   shouldUpsertLeadFromInbound,
 } from "../shared/lead-opportunity";
 import {
+  decodeMediaDataUrl,
   isSupportedInboxMimeType,
   isWorkspaceInboxMediaKey,
 } from "./inbox-media-upload";
@@ -122,6 +124,7 @@ import {
   type NotificationEvent,
 } from "./notification-contract";
 import {
+  capabilityForMessageType,
   decryptProviderSecret,
   encryptProviderSecret,
   maskProviderSecret,
@@ -131,6 +134,14 @@ import {
 import { persistInboundMedia, resolvePrivateMediaUrl } from "./media-storage";
 import { onboardingFollowUpFieldKeys } from "./onboarding-followups";
 import { fingerprintOnboardingProfile } from "./onboarding-review";
+import {
+  SecurityBackendUnavailableError,
+  securityFailClosed,
+} from "./_core/security-mode";
+import {
+  decideAgentRuntimeGate,
+  sanitizeAgentPauseReason,
+} from "./agent-runtime-gate";
 
 const DOMAIN_EVENT_WORKER_ID =
   process.env.WORKER_ID?.trim() || `worker-${crypto.randomUUID()}`;
@@ -317,6 +328,13 @@ export function verifyLocalPassword(password: string, stored: string | null) {
   );
 }
 
+export function findLocalPasswordAccount<T extends { passwordHash: string | null }>(
+  accounts: readonly T[],
+  password: string
+) {
+  return accounts.find(account => verifyLocalPassword(password, account.passwordHash));
+}
+
 export async function getUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -326,6 +344,16 @@ export async function getUserByEmail(email: string) {
     .where(eq(users.email, email.trim().toLowerCase()))
     .limit(1);
   return result[0];
+}
+
+export async function getUsersByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(users)
+    .where(eq(users.email, email.trim().toLowerCase()))
+    .orderBy(asc(users.id));
 }
 
 export async function getUserById(userId: number) {
@@ -637,7 +665,10 @@ export async function resetPasswordWithToken(tokenInput: string, password: strin
 
 export async function revokeUserSessions(userId: number) {
   const db = await getDb();
-  if (!db) throw new Error("Database unavailable");
+  if (!db) {
+    if (securityFailClosed()) throw new SecurityBackendUnavailableError();
+    return;
+  }
   await db
     .update(users)
     .set({
@@ -1892,6 +1923,91 @@ export async function findBaileysInstanceOwner(instanceId: string) {
     workspaceId: instance.workspaceId,
     active: instance.active === 1 && Boolean(workspace),
   };
+}
+
+export async function getBaileysWebhookSecret(instanceId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const rows = await db
+    .select({ encryptedWebhookSecret: whatsappInstances.encryptedWebhookSecret })
+    .from(whatsappInstances)
+    .where(
+      and(
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
+      )
+    )
+    .limit(1);
+  const encrypted = rows[0]?.encryptedWebhookSecret;
+  const secret = encrypted ? decryptProviderSecret(encrypted) : "";
+  return secret.trim() || undefined;
+}
+
+export async function rotateBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const secret = crypto.randomBytes(32).toString("base64url");
+  await setBaileysWebhookSecret(workspaceId, instanceId, secret, db);
+  return { instanceId, secret };
+}
+
+async function setBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string,
+  secret: string,
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>
+) {
+  const rows = await db
+    .update(whatsappInstances)
+    .set({
+      encryptedWebhookSecret: encryptProviderSecret(secret),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(whatsappInstances.workspaceId, workspaceId),
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
+      )
+    )
+    .returning({ id: whatsappInstances.id });
+  if (!rows[0]) throw new Error("Instância Baileys não encontrada neste workspace");
+}
+
+export async function replaceBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string,
+  secret: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  await setBaileysWebhookSecret(workspaceId, instanceId, secret, db);
+}
+
+export async function clearBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const rows = await db
+    .update(whatsappInstances)
+    .set({ encryptedWebhookSecret: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(whatsappInstances.workspaceId, workspaceId),
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
+      )
+    )
+    .returning({ id: whatsappInstances.id });
+  if (!rows[0]) throw new Error("Instância Baileys não encontrada neste workspace");
 }
 
 export type OnboardingProfile = {
@@ -3589,8 +3705,30 @@ export async function getNativeAgentKillSwitch(workspaceId: number) {
 
 export async function setNativeAgentKillSwitch(input: { workspaceId: number; paused: boolean; reason: string; actorUserId: number }) {
   const changedAt = new Date().toISOString();
-  await upsertWorkspaceSetting(input.workspaceId, NATIVE_AGENT_KILL_SWITCH_KEY, JSON.stringify({ paused: input.paused, reason: input.reason.trim(), changedAt, changedBy: input.actorUserId }));
+  await upsertWorkspaceSetting(input.workspaceId, NATIVE_AGENT_KILL_SWITCH_KEY, JSON.stringify({ paused: input.paused, reason: sanitizeAgentPauseReason(input.reason), changedAt, changedBy: input.actorUserId }));
   return getNativeAgentKillSwitch(input.workspaceId);
+}
+
+export async function recordNativeAgentKillSwitchBlock(input: {
+  workspaceId: number;
+  eventId: string;
+  messageType?: string;
+  reason: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const capability = capabilityForMessageType(input.messageType);
+  const reason = sanitizeAgentPauseReason(input.reason);
+  const eventId = input.eventId.replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 120);
+  await db.insert(auditLogs).values({
+    workspaceId: input.workspaceId,
+    action: "native_agent_kill_switch_blocked",
+    summary:
+      `Agente pausado: capability ${capability}; evento ${eventId}; motivo ${reason}`.slice(
+        0,
+        500
+      ),
+  });
 }
 
 async function readStoredNativeAgentConfig(workspaceId?: number) {
@@ -3621,7 +3759,11 @@ async function readStoredNativeAgentConfig(workspaceId?: number) {
 async function applyPlatformAiConnections(settings: AgentProviderSettings) {
   const db = await getDb();
   if (!db) return settings;
-  const rows = await db.select().from(platformAiConnections).where(eq(platformAiConnections.active, 1));
+  const rows = await db
+    .select()
+    .from(platformAiConnections)
+    .where(eq(platformAiConnections.active, 1))
+    .orderBy(asc(platformAiConnections.id));
   const capabilityRoutes = {
     whatsapp_reply: "text",
     admin_support: "text",
@@ -3629,24 +3771,41 @@ async function applyPlatformAiConnections(settings: AgentProviderSettings) {
     image_analysis: "vision",
     document_analysis: "document",
   } as const;
+  const grouped = new Map<string, typeof rows>();
   for (const row of rows) {
     const routeKey = capabilityRoutes[row.capability as keyof typeof capabilityRoutes];
     if (!routeKey || !["nvidia_nim", "google_gemini", "openai_compatible"].includes(row.provider)) continue;
-    const provider = row.provider as keyof AgentProviderSettings["providers"];
-    settings.routing[routeKey] = {
-      ...settings.routing[routeKey],
-      provider,
-      baseUrl: row.baseUrl,
-      apiKey: row.encryptedApiKey,
-      model: row.model,
-    };
-    settings.providers[provider] = {
-      ...settings.providers[provider],
-      enabled: true,
-      baseUrl: row.baseUrl,
-      apiKey: row.encryptedApiKey,
-    };
+    const current = grouped.get(routeKey) ?? [];
+    current.push(row);
+    grouped.set(routeKey, current);
   }
+  grouped.forEach((connections, routeKey) => {
+    const [primary, ...fallbacks] = connections;
+    if (!primary) return;
+    const provider = primary.provider as keyof AgentProviderSettings["providers"];
+    settings.routing[routeKey as keyof AgentProviderSettings["routing"]] = {
+      ...settings.routing[routeKey as keyof AgentProviderSettings["routing"]],
+      provider,
+      baseUrl: primary.baseUrl,
+      apiKey: primary.encryptedApiKey,
+      model: primary.model,
+      fallback: fallbacks.slice(0, 3).map(fallback => ({
+        provider: fallback.provider as keyof AgentProviderSettings["providers"],
+        baseUrl: fallback.baseUrl,
+        apiKey: fallback.encryptedApiKey,
+        model: fallback.model,
+      })),
+    };
+    for (const connection of connections) {
+      const connectionProvider = connection.provider as keyof AgentProviderSettings["providers"];
+      settings.providers[connectionProvider] = {
+        ...settings.providers[connectionProvider],
+        enabled: true,
+        baseUrl: connection.baseUrl,
+        apiKey: connection.encryptedApiKey,
+      };
+    }
+  });
   return settings;
 }
 
@@ -3659,6 +3818,9 @@ async function readNativeAgentConfig(
     provider.apiKey = maskProviderSecret(provider.apiKey);
   for (const route of Object.values(llm.routing))
     if (route.apiKey) route.apiKey = maskProviderSecret(route.apiKey);
+  for (const route of Object.values(llm.routing))
+    for (const fallback of route.fallback ?? [])
+      if (fallback.apiKey) fallback.apiKey = maskProviderSecret(fallback.apiKey);
   return {
     enabled: stored.enabled !== false,
     model: stored.model?.trim() || process.env.AGENT_MODEL || "gpt-5-mini",
@@ -3673,6 +3835,40 @@ export async function getNativeAgentConfig(
   workspaceId: number
 ): Promise<NativeAgentConfig> {
   return readNativeAgentConfig(await getActiveWorkspaceById(workspaceId));
+}
+
+export type WorkspaceAgentPolicy = {
+  enabled: boolean;
+  systemPrompt: string;
+  maxSteps: number;
+};
+
+export async function getWorkspaceAgentPolicy(
+  workspaceId: number
+): Promise<WorkspaceAgentPolicy> {
+  const config = await getNativeAgentConfig(workspaceId);
+  return {
+    enabled: config.enabled,
+    systemPrompt: config.systemPrompt,
+    maxSteps: config.maxSteps,
+  };
+}
+
+export async function saveWorkspaceAgentPolicy(
+  workspaceId: number,
+  input: Partial<WorkspaceAgentPolicy>
+): Promise<WorkspaceAgentPolicy> {
+  const current = await getNativeAgentConfig(workspaceId);
+  const updated = await saveNativeAgentConfig(workspaceId, {
+    enabled: input.enabled ?? current.enabled,
+    systemPrompt: input.systemPrompt ?? current.systemPrompt,
+    maxSteps: input.maxSteps ?? current.maxSteps,
+  });
+  return {
+    enabled: updated.enabled,
+    systemPrompt: updated.systemPrompt,
+    maxSteps: updated.maxSteps,
+  };
 }
 
 export async function getPlatformNativeAgentConfig(
@@ -3805,6 +4001,14 @@ export async function saveNativeAgentConfig(
       incoming.apiKey && !incoming.apiKey.startsWith("••••")
         ? encryptProviderSecret(incoming.apiKey)
         : previous.apiKey;
+    for (let index = 0; index < (incoming.fallback ?? []).length; index += 1) {
+      const fallback = incoming.fallback![index];
+      const previousFallback = previous.fallback?.[index];
+      fallback.apiKey =
+        fallback.apiKey && !fallback.apiKey.startsWith("••••")
+          ? encryptProviderSecret(fallback.apiKey)
+          : previousFallback?.apiKey;
+    }
   }
   await upsertWorkspaceSetting(
     workspace.id,
@@ -3816,6 +4020,9 @@ export async function saveNativeAgentConfig(
     provider.apiKey = maskProviderSecret(provider.apiKey);
   for (const route of Object.values(response.llm.routing))
     if (route.apiKey) route.apiKey = maskProviderSecret(route.apiKey);
+  for (const route of Object.values(response.llm.routing))
+    for (const fallback of route.fallback ?? [])
+      if (fallback.apiKey) fallback.apiKey = maskProviderSecret(fallback.apiKey);
   return response;
 }
 
@@ -3859,6 +4066,14 @@ export async function savePlatformGlobalNativeAgentConfig(
       incoming.apiKey && !incoming.apiKey.startsWith("••••")
         ? encryptProviderSecret(incoming.apiKey)
         : previous.apiKey;
+    for (let index = 0; index < (incoming.fallback ?? []).length; index += 1) {
+      const fallback = incoming.fallback![index];
+      const previousFallback = previous.fallback?.[index];
+      fallback.apiKey =
+        fallback.apiKey && !fallback.apiKey.startsWith("••••")
+          ? encryptProviderSecret(fallback.apiKey)
+          : previousFallback?.apiKey;
+    }
   }
   await upsertWorkspaceSetting(
     PLATFORM_GLOBAL_AGENT_WORKSPACE_ID,
@@ -4198,6 +4413,90 @@ export async function cleanupWorkspaceUsageBuckets(
     skipped: false,
     retentionDays: days,
   };
+}
+
+export type OperationalRetentionCleanupResult = {
+  skipped: boolean;
+  dryRun: boolean;
+  limit: number;
+  retentionDays: number;
+  webhookEvents: number;
+  domainEvents: number;
+  securityRateLimitBuckets: number;
+  workspaces: Record<string, { webhookEvents: number; domainEvents: number }>;
+};
+
+export async function cleanupOperationalRetention(options: {
+  dryRun?: boolean;
+  limit?: number;
+  retentionDays?: number;
+  now?: Date;
+} = {}): Promise<OperationalRetentionCleanupResult> {
+  const db = await getDb();
+  const dryRun = options.dryRun !== false;
+  const limit = Number.isFinite(options.limit)
+    ? Math.max(1, Math.min(Math.floor(options.limit as number), 10_000))
+    : 1_000;
+  const retentionDays = Number.isFinite(options.retentionDays)
+    ? Math.max(7, Math.min(Math.floor(options.retentionDays as number), 730))
+    : Math.max(7, Number(process.env.FORTE_OPERATIONAL_RETENTION_DAYS ?? 90));
+  const result = {
+    skipped: !db,
+    dryRun,
+    limit,
+    retentionDays,
+    webhookEvents: 0,
+    domainEvents: 0,
+    securityRateLimitBuckets: 0,
+    workspaces: {} as Record<string, { webhookEvents: number; domainEvents: number }>,
+  };
+  if (!db) return result;
+
+  const now = options.now ?? new Date();
+  const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+  const [webhookRows, domainRows, bucketRows] = await Promise.all([
+    db
+      .select({ id: webhookEvents.id, workspaceId: webhookEvents.workspaceId })
+      .from(webhookEvents)
+      .where(and(lt(webhookEvents.createdAt, cutoff), ne(webhookEvents.status, "received")))
+      .orderBy(asc(webhookEvents.id))
+      .limit(limit),
+    db
+      .select({ id: domainEvents.id, workspaceId: domainEvents.workspaceId })
+      .from(domainEvents)
+      .where(and(lt(domainEvents.createdAt, cutoff), ne(domainEvents.status, "pending"), ne(domainEvents.status, "processing")))
+      .orderBy(asc(domainEvents.id))
+      .limit(limit),
+    db
+      .select({ id: securityRateLimitBuckets.id })
+      .from(securityRateLimitBuckets)
+      .where(lt(securityRateLimitBuckets.updatedAt, cutoff))
+      .orderBy(asc(securityRateLimitBuckets.id))
+      .limit(limit),
+  ]);
+
+  const addWorkspace = (workspaceId: number, kind: "webhookEvents" | "domainEvents") => {
+    const key = String(workspaceId);
+    result.workspaces[key] ??= { webhookEvents: 0, domainEvents: 0 };
+    result.workspaces[key][kind] += 1;
+  };
+  webhookRows.forEach(row => addWorkspace(row.workspaceId, "webhookEvents"));
+  domainRows.forEach(row => addWorkspace(row.workspaceId, "domainEvents"));
+  result.webhookEvents = webhookRows.length;
+  result.domainEvents = domainRows.length;
+  result.securityRateLimitBuckets = bucketRows.length;
+
+  if (!dryRun) {
+    await db.transaction(async tx => {
+      if (webhookRows.length)
+        await tx.delete(webhookEvents).where(inArray(webhookEvents.id, webhookRows.map(row => row.id)));
+      if (domainRows.length)
+        await tx.delete(domainEvents).where(inArray(domainEvents.id, domainRows.map(row => row.id)));
+      if (bucketRows.length)
+        await tx.delete(securityRateLimitBuckets).where(inArray(securityRateLimitBuckets.id, bucketRows.map(row => row.id)));
+    });
+  }
+  return result;
 }
 
 export type OnboardingAudioRetentionCleanupResult = {
@@ -4951,7 +5250,7 @@ export async function getAgendaSnapshot(
                 : [])
             )
           )
-          .orderBy(availability.weekday)
+          .orderBy(asc(availability.weekday), asc(availability.startMinute))
       : [];
   return {
     timezone: workspace.timezone,
@@ -5726,21 +6025,31 @@ export async function sendManualMessage(
   const mediaMessageTypes = ["image", "audio", "video", "document"];
   if (mediaMessageTypes.includes(messageType)) {
     const mediaStorageKey = messageMetadata?.mediaStorageKey;
+    const mediaData = messageMetadata?.mediaData;
     const mediaMimeType = messageMetadata?.mediaMimeType;
     const mediaSizeBytes = messageMetadata?.mediaSizeBytes;
+    const decodedMediaData =
+      typeof mediaData === "string" ? decodeMediaDataUrl(mediaData) : null;
+    const hasPrivateStorage =
+      typeof mediaStorageKey === "string" &&
+      isWorkspaceInboxMediaKey(workspaceId, mediaStorageKey);
+    const hasTransientMedia =
+      typeof mediaData === "string" &&
+      decodedMediaData !== null &&
+      decodedMediaData.buffer.length > 0 &&
+      decodedMediaData.buffer.length <= 8 * 1024 * 1024;
     if (
-      typeof mediaStorageKey !== "string" ||
-      !isWorkspaceInboxMediaKey(workspaceId, mediaStorageKey) ||
       typeof mediaMimeType !== "string" ||
       !isSupportedInboxMimeType(messageType as "image" | "audio" | "video" | "document", mediaMimeType) ||
       typeof mediaSizeBytes !== "number" ||
       !Number.isInteger(mediaSizeBytes) ||
       mediaSizeBytes < 1 ||
       mediaSizeBytes > 8 * 1024 * 1024 ||
-      typeof messageMetadata?.mediaData === "string" ||
+      (!hasPrivateStorage && !hasTransientMedia) ||
+      (hasTransientMedia && decodedMediaData?.mimeType.split(";", 1)[0].toLowerCase() !== mediaMimeType.split(";", 1)[0].toLowerCase()) ||
       typeof messageMetadata?.mediaUrl === "string"
     )
-      throw new Error("Invalid or non-private outbound media reference");
+      throw new Error("Invalid outbound media reference");
   }
   const createdAt = new Date();
   const metadata = {
@@ -6586,8 +6895,16 @@ export async function recordAgentRun(input: {
   workspaceId: number;
   eventId: string;
   contactId: number;
+  provider?: string | null;
+  capability?: string | null;
   model?: string;
   outcome: "resolved" | "transferred" | "pending_confirmation" | "failed";
+  providerAttempts?: number;
+  failureCode?: string | null;
+  transcriptionProvider?: string | null;
+  transcriptionAttempts?: number;
+  mediaAnalysisProvider?: string | null;
+  mediaAnalysisAttempts?: number;
   steps: number;
   toolCalls: number;
   transferred: boolean;
@@ -6609,24 +6926,36 @@ export async function recordAgentRun(input: {
 export async function getAgentMetrics(workspaceId: number, windowDays: number) {
   const db = await getDb();
   if (!db) return {
-    windowDays, runs: 0, resolved: 0, transferred: 0, pendingConfirmation: 0, failed: 0,
+    windowDays, runs: 0, resolved: 0, transferred: 0, pendingConfirmation: 0, failed: 0, fallbackRuns: 0,
     resolutionRate: 0, transferRate: 0, avgLatencyMs: 0, totalTokens: 0, inputTokens: 0, outputTokens: 0,
     receivedRevenueCents: 0, revenueAttribution: "workspace_total_not_attributed" as const,
+    capabilities: [], failures: [],
   };
   const since = new Date(Date.now() - windowDays * 86_400_000);
-  const [runRows, revenueRows] = await Promise.all([
+  const [runRows, revenueRows, capabilityRows, failureRows] = await Promise.all([
     db.select({
       runs: sql<number>`count(*)`,
       resolved: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'resolved' then 1 else 0 end), 0)`,
       transferred: sql<number>`coalesce(sum(${agentRuns.transferred}), 0)`,
       pendingConfirmation: sql<number>`coalesce(sum(${agentRuns.pendingConfirmation}), 0)`,
       failed: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'failed' then 1 else 0 end), 0)`,
+      fallbackRuns: sql<number>`coalesce(sum(case when ${agentRuns.providerAttempts} > 1 then 1 else 0 end), 0)`,
       avgLatencyMs: sql<number>`coalesce(avg(${agentRuns.latencyMs}), 0)`,
       totalTokens: sql<number>`coalesce(sum(${agentRuns.totalTokens}), 0)`,
       inputTokens: sql<number>`coalesce(sum(${agentRuns.inputTokens}), 0)`,
       outputTokens: sql<number>`coalesce(sum(${agentRuns.outputTokens}), 0)`,
     }).from(agentRuns).where(and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since))),
     db.select({ received: sql<number>`coalesce(sum(${quotePayments.amountCents}), 0)` }).from(quotePayments).where(and(eq(quotePayments.workspaceId, workspaceId), gte(quotePayments.receivedAt, since))),
+    db.select({
+      capability: agentRuns.capability,
+      runs: sql<number>`count(*)`,
+      failed: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'failed' then 1 else 0 end), 0)`,
+      fallbackRuns: sql<number>`coalesce(sum(case when ${agentRuns.providerAttempts} > 1 then 1 else 0 end), 0)`,
+    }).from(agentRuns).where(and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since))).groupBy(agentRuns.capability),
+    db.select({
+      failureCode: agentRuns.failureCode,
+      occurrences: sql<number>`count(*)`,
+    }).from(agentRuns).where(and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since), eq(agentRuns.outcome, "failed"))).groupBy(agentRuns.failureCode).orderBy(sql`count(*) desc`).limit(10),
   ]);
   const row = runRows[0];
   const runs = Number(row?.runs ?? 0);
@@ -6637,6 +6966,7 @@ export async function getAgentMetrics(workspaceId: number, windowDays: number) {
     transferred: Number(row?.transferred ?? 0),
     pendingConfirmation: Number(row?.pendingConfirmation ?? 0),
     failed: Number(row?.failed ?? 0),
+    fallbackRuns: Number(row?.fallbackRuns ?? 0),
     resolutionRate: runs ? Number(row?.resolved ?? 0) / runs : 0,
     transferRate: runs ? Number(row?.transferred ?? 0) / runs : 0,
     avgLatencyMs: Math.round(Number(row?.avgLatencyMs ?? 0)),
@@ -6645,6 +6975,16 @@ export async function getAgentMetrics(workspaceId: number, windowDays: number) {
     outputTokens: Number(row?.outputTokens ?? 0),
     receivedRevenueCents: Number(revenueRows[0]?.received ?? 0),
     revenueAttribution: "workspace_total_not_attributed" as const,
+    capabilities: capabilityRows.map(row => ({
+      capability: row.capability ?? "unknown",
+      runs: Number(row.runs ?? 0),
+      failed: Number(row.failed ?? 0),
+      fallbackRuns: Number(row.fallbackRuns ?? 0),
+    })),
+    failures: failureRows.map(row => ({
+      failureCode: row.failureCode ?? "unknown",
+      occurrences: Number(row.occurrences ?? 0),
+    })),
   };
 }
 
@@ -6771,6 +7111,9 @@ export async function registerWebhookEvent(input: {
   provider: string;
   payload: unknown;
   workspaceId: number;
+  instanceId?: string;
+  webhookNonce?: string;
+  webhookTimestamp?: Date;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -6783,15 +7126,16 @@ export async function registerWebhookEvent(input: {
     .values({
       eventId: input.eventId,
       provider: input.provider,
+      instanceId: input.instanceId,
+      webhookNonce: input.webhookNonce,
+      webhookTimestamp: input.webhookTimestamp,
       payload,
       workspaceId: input.workspaceId,
       status: "received",
       leaseToken,
       leaseUntil,
     })
-    .onConflictDoNothing({
-      target: [webhookEvents.workspaceId, webhookEvents.eventId],
-    })
+    .onConflictDoNothing()
     .returning();
   if (inserted[0])
     return { duplicate: false, conflict: false, event: inserted[0], leaseToken };
@@ -6805,6 +7149,20 @@ export async function registerWebhookEvent(input: {
       )
     )
     .limit(1);
+  if (!existing[0] && input.webhookNonce) {
+    const replay = await db
+      .select()
+      .from(webhookEvents)
+      .where(
+        and(
+          eq(webhookEvents.workspaceId, input.workspaceId),
+          eq(webhookEvents.provider, input.provider),
+          eq(webhookEvents.webhookNonce, input.webhookNonce)
+        )
+      )
+      .limit(1);
+    if (replay[0]) return { duplicate: true, conflict: false, replay: true, event: replay[0] };
+  }
   if (existing[0]) {
     if (existing[0].payload !== payload)
       return { duplicate: true, conflict: true, event: existing[0] };
@@ -6817,6 +7175,9 @@ export async function registerWebhookEvent(input: {
         .set({
           status: "received",
           payload,
+          instanceId: input.instanceId,
+          webhookNonce: input.webhookNonce,
+          webhookTimestamp: input.webhookTimestamp,
           processedAt: null,
           leaseToken,
           leaseUntil,
@@ -7722,12 +8083,22 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
       let sendContent = item.message.content;
       let sendMetadata = item.message.metadata ?? undefined;
       if (["image", "audio", "video", "document"].includes(item.message.messageType)) {
-        const mediaUrl = await resolvePrivateMediaUrl(sendMetadata);
-        if (!mediaUrl)
-          throw new Error("Private outbound attachment is missing or unavailable");
-        sendContent = mediaUrl;
-        const { mediaStorageKey: _key, mediaSizeBytes: _size, ...providerMetadata } =
-          sendMetadata ?? {};
+        const transientMediaData =
+          typeof sendMetadata?.mediaData === "string"
+            ? sendMetadata.mediaData
+            : undefined;
+        const mediaUrl = transientMediaData
+          ? undefined
+          : await resolvePrivateMediaUrl(sendMetadata);
+        if (!transientMediaData && !mediaUrl)
+          throw new Error("Outbound attachment is missing or unavailable");
+        sendContent = transientMediaData ?? mediaUrl!;
+        const {
+          mediaStorageKey: _key,
+          mediaSizeBytes: _size,
+          mediaData: _data,
+          ...providerMetadata
+        } = sendMetadata ?? {};
         sendMetadata = providerMetadata;
       }
       const result = await adapter.sendMessage({
@@ -7746,6 +8117,15 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
           externalId: result.externalId,
           sentAt: new Date(),
           lastError: null,
+          ...(item.message.metadata?.mediaData
+            ? {
+                metadata: Object.fromEntries(
+                  Object.entries(item.message.metadata).filter(
+                    ([key]) => key !== "mediaData"
+                  )
+                ),
+              }
+            : {}),
         })
         .where(eq(messages.id, item.message.id));
       await db.insert(auditLogs).values({
@@ -8187,7 +8567,11 @@ export async function recoverProcessingDomainEvents() {
   return recovered.length;
 }
 
-export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
+export async function processDomainEventsOnce(
+  limit = 10,
+  maxAttempts = 5,
+  workspaceId?: number
+) {
   const db = await getDb();
   if (!db) return { processed: 0, delivered: 0, failed: 0, skipped: true };
   const now = new Date();
@@ -8195,15 +8579,20 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
     .select()
     .from(domainEvents)
     .where(
-      or(
-        and(
-          eq(domainEvents.status, "pending"),
-          lte(domainEvents.availableAt, now)
+      and(
+        or(
+          and(
+            eq(domainEvents.status, "pending"),
+            lte(domainEvents.availableAt, now)
+          ),
+          and(
+            eq(domainEvents.status, "processing"),
+            or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, now))
+          )
         ),
-        and(
-          eq(domainEvents.status, "processing"),
-          or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, now))
-        )
+        ...(workspaceId !== undefined
+          ? [eq(domainEvents.workspaceId, workspaceId)]
+          : [])
       )
     )
     .orderBy(asc(domainEvents.availableAt), asc(domainEvents.id))
@@ -8430,8 +8819,15 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
           item.workspaceId,
           eventInstanceId
         );
-        if (!config.enabled) {
-          if (config.killSwitch?.paused) {
+        const runtimeGate = decideAgentRuntimeGate(config);
+        if (runtimeGate.action !== "execute") {
+          if (runtimeGate.action === "requeue") {
+            await recordNativeAgentKillSwitchBlock({
+              workspaceId: item.workspaceId,
+              eventId: item.eventKey,
+              messageType: String(eventPayload.messageType ?? "text"),
+              reason: runtimeGate.reason,
+            });
             await db
               .update(domainEvents)
               .set({
@@ -8440,7 +8836,7 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
                 claimedAt: null,
                 leaseUntil: null,
                 availableAt: new Date(Date.now() + 30_000),
-                lastError: `native_agent_kill_switch:${config.killSwitch.reason ?? "manual"}`,
+                lastError: `native_agent_kill_switch:${runtimeGate.reason}`,
                 updatedAt: new Date(),
               })
               .where(

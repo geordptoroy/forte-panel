@@ -359,7 +359,7 @@ describe("Baileys gateway HTTP contract", () => {
     });
   });
 
-  it("rejects embedded media data URLs before calling the manager", async () => {
+  it("accepts a validated embedded media data URL", async () => {
     sentMessageInstance = "";
     const response = await fetch(`${baseUrl}/api/instances/test-instance/send`, {
       method: "POST",
@@ -375,7 +375,7 @@ describe("Baileys gateway HTTP contract", () => {
         metadata: { mediaMimeType: "image/png" },
       }),
     });
-    expect(response.status).toBe(400);
-    expect(sentMessageInstance).toBe("");
+    expect(response.status).toBe(200);
+    expect(sentMessageInstance).toBe("test-instance");
   });
 });

@@ -22,13 +22,13 @@ Isso não equivale ainda a um **MVP SaaS público pronto para convidar clientes 
 | Prioridade | Gap | Situação | Evidência/critério de fechamento |
 |---|---|---|---|
 | P0 | Staging PostgreSQL persistente com dois ou mais workspaces | Aberto | Migrations limpas, testes negativos e nenhum acesso cruzado em ambiente persistente |
-| P0 | Restore completo | O7.12 corrigiu verificação prévia e alvo de sessão; restore completo ainda aberto | Restaurar banco, blobs/mídia e sessão Baileys em ambiente limpo; validar health, tenancy e pareamento |
+| P0 | Restore completo | O7.12 corrigiu verificação prévia; O7.25–O7.28 cobrem pacote, relatório, isolamento e preflight único; restore completo ainda aberto | Restaurar banco, blobs/mídia e sessão Baileys em ambiente limpo; validar health, tenancy e pareamento |
 | P0 | Browser smoke real desktop/mobile | Aberto | Login, onboarding, conexão, Inbox, envio, estados de erro e acessibilidade em navegador autenticado |
 | P0 | Segurança de sessão e secrets | O7.11 iniciado; headers/CSRF/origem/bearer cobertos, secrets e staging pendentes | Chave de auth Baileys obrigatória, rotação, revogação de sessão, ownership de storage, headers e CSRF verificados |
 | P0 | Efeito externo idempotente no gateway | Código O7.9 concluído; prova externa pendente | Ledger/single-flight por instância e chave; timeout/restart não pode duplicar envio |
 | P0 | Inbound transacional | Código O7.10 concluído; crash/restore persistente ainda pendente | Crash em qualquer etapa resulta em commit completo ou nenhum efeito; retry não duplica mensagem/unread/contato |
-| P0 | Quality gate sem skips críticos | Aberto | PostgreSQL, migrations, policy, gateway, E2E, browser e staging precisam ser gates obrigatórios, não apenas testes opcionais |
-| P0 | Runbook operacional | O7.12 iniciado com sequência de backup/verify/restore; incidente, RPO/RTO e rollback real ainda abertos | Pareamento, troca de número, logout, reconnect, DLQ, replay, restore, incidente, RPO/RTO e rollback |
+| P0 | Quality gate sem skips críticos | Parcial — O7.24 | PostgreSQL integration agora falha com skips e os workflows validam configuração fail-closed; E2E, browser e staging continuam gates externos |
+| P0 | Runbook operacional | O7.12 iniciado e O7.27–O7.28 adicionaram isolamento e preflight fail-closed; incidente, RPO/RTO e rollback real ainda abertos | Pareamento, troca de número, logout, reconnect, DLQ, replay, restore, incidente, RPO/RTO e rollback |
 | P0 | Revisão legal e de risco Baileys | Aberto | Termos, privacidade, retenção, exclusão, consentimento e aviso de uso de WhatsApp não oficial |
 
 ## 3. Gaps de produto — o núcleo de negócio ainda não está completo
@@ -52,6 +52,9 @@ Isso não equivale ainda a um **MVP SaaS público pronto para convidar clientes 
 
 ### 3.3 IA
 
+- resposta automática real no WhatsApp ainda não foi validada com provider configurado, prompt publicado, envio outbound e registro de `agentRun` completos;
+- transcrição de áudio, visão de imagem e análise de documento existem como contratos/roteamento parcial, mas ainda não têm prova end-to-end na conversa real;
+- moderação de entrada/saída e proteção operacional contra prompt injection não estão implementadas como gate independente antes do agente responder ou executar ferramentas;
 - fallback explícito entre models/capabilities, nunca silencioso;
 - transcrição dedicada quando o endpoint não aceita áudio;
 - OCR/document extraction com limite e retenção;
@@ -68,17 +71,17 @@ Isso não equivale ainda a um **MVP SaaS público pronto para convidar clientes 
 
 ## 4. Gaps de segurança, dados e confiabilidade
 
-- webhook precisa de proteção anti-replay completa: timestamp, nonce/janela e revogação por instância/workspace;
-- logout e troca de senha precisam invalidar sessões/JWT antigos;
-- rate limit distribuído, não apenas `Map` local por processo;
+- webhook: O7.17 adicionou timestamp, nonce/janela e deduplicação persistente por workspace/provider; O7.19 adicionou segredo criptografado por instância, rotação dinâmica no gateway e rollback; corrida distribuída e staging ainda precisam de fechamento;
+- logout e troca de senha: O7.20 agora incrementa `users.sessionVersion` no logout autenticado; cookies/JWT antigos são rejeitados pelo contexto autenticado; browser smoke e PostgreSQL real ainda faltam;
+- rate limit distribuído: O7.18 adicionou buckets PostgreSQL com lock de linha e O7.21 removeu o fallback permissivo em produção; CI concorrente e staging ainda precisam de fechamento;
 - CSP, HSTS, CORS, `frame-ancestors`, Referrer-Policy e Permissions-Policy;
-- limites de payload/body e retenção formal de eventos, mídia e logs;
+- limites de payload/body e retenção formal de eventos, mídia e logs; O7.22 adicionou sweep operacional dry-run com limites para eventos e buckets, mas a execução em staging permanece como gate;
 - backup off-host criptografado e restauração periódica automatizada;
-- blob de mídia, Redis, sessão Baileys e chave de criptografia precisam estar incluídos no plano de restore; O7.14 definiu interface paginada e delete por etag, mas o provider Forge disponível ainda não oferece list/delete;
-- FKs/checks/chaves compostas e reconciliação persistente de órfãos/cross-tenant ainda precisam de prova; O7.13 já classifica candidatos sem apagar prefixos desconhecidos;
+- blob de mídia, Redis, sessão Baileys e chave de criptografia precisam estar incluídos no plano de restore; O7.25 agora rejeita pacotes sem inventário de mídia, enquanto o provider Forge disponível ainda não oferece list/delete;
+- FKs/checks/chaves compostas e prova externa de reconciliação de órfãos/cross-tenant ainda precisam de fechamento; O7.13 classifica candidatos sem apagar prefixos desconhecidos e O7.16 já persiste o resumo redigido da execução;
 - concorrência de agenda, idempotência de fila e leases precisa de testes dedicados;
 - correlação estruturada e redaction em logs;
-- alertas externos para worker, gateway, DB, fila e storage;
+- alertas externos para worker, gateway, DB, fila e storage; O7.15 produz métricas agregadas sem chaves e O7.16 persiste auditoria redigida, mas ainda não há alertas/provider real conectado;
 - imagens devem ser promovidas por digest imutável com rollback operacional.
 
 ## 5. Gaps de escala e performance
@@ -89,7 +92,7 @@ Isso não equivale ainda a um **MVP SaaS público pronto para convidar clientes 
 - avaliar fila PostgreSQL com claim robusto ou Redis Streams/BullMQ;
 - paginação do Inbox e índices compostos de mensagens, notes e audit logs;
 - orçamento explícito de CPU/memória/disco por processo gateway;
-- retenção e limpeza de `webhookEvents`, `domainEvents` e objetos órfãos.
+- retenção e limpeza de `webhookEvents`, `domainEvents` e objetos órfãos; O7.22 cobre os dois primeiros e buckets de segurança, e O7.23 codificou o runner dry-run de mídia, mas a execução depende do gate de list/delete do provider.
 
 ## 6. Itens já resolvidos e que não devem voltar para a fila
 

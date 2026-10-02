@@ -7,14 +7,27 @@ import {
 } from "./core-mode";
 
 describe("core-only routes", () => {
-  it("allows only the WhatsApp connection page", () => {
+  it("allows the onboarding-to-WhatsApp core journey", () => {
     expect(isCoreAllowedRoute(CORE_ROUTE)).toBe(true);
+    expect(isCoreAllowedRoute("/onboarding")).toBe(true);
+    expect(isCoreAllowedRoute("/whatsapp-connection")).toBe(true);
+    expect(isCoreAllowedRoute("/inbox")).toBe(true);
     expect(isCoreAllowedRoute(CORE_USAGE_ROUTE)).toBe(false);
   });
 
-  it("keeps other product pages frozen", () => {
-    expect(isCoreAllowedRoute("/dashboard")).toBe(false);
-    expect(isCoreAllowedRoute("/billing")).toBe(false);
+  it("allows the operational sidebar while keeping platform IA governance frozen", () => {
+    expect(isCoreAllowedRoute("/dashboard")).toBe(true);
+    expect(isCoreAllowedRoute("/billing")).toBe(true);
+    expect(isCoreAllowedRoute("/agenda")).toBe(true);
+    expect(isCoreAllowedRoute("/contacts")).toBe(true);
+    expect(isCoreAllowedRoute("/integrations")).toBe(true);
+    expect(isCoreAllowedRoute("/team")).toBe(true);
+    expect(isCoreAllowedRoute("/services")).toBe(true);
+    expect(isCoreAllowedRoute("/professionals")).toBe(true);
+    expect(isCoreAllowedRoute("/settings")).toBe(true);
+    expect(isCoreAllowedRoute("/ai-agent")).toBe(true);
+    expect(isCoreAllowedRoute(CORE_USAGE_ROUTE)).toBe(false);
+    expect(isCoreAllowedRoute("/ai-config")).toBe(false);
   });
 
   it("keeps the platform admin console available during the core freeze", () => {

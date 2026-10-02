@@ -1,21 +1,29 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CORE_ONLY_MODE, CORE_ROUTE, CORE_USAGE_ROUTE, isCoreAllowedRoute } from "./core-mode";
+import {
+  CORE_ONLY_MODE,
+  CORE_ROUTE,
+  CORE_USAGE_ROUTE,
+  isCoreAllowedRoute,
+} from "./core-mode";
 
-const source = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
+const source = (path: string) =>
+  readFileSync(join(process.cwd(), path), "utf8");
 
 describe("O6.3 browser and accessibility contracts", () => {
   it("keeps CORE_ONLY_MODE explicit and routes blocked paths back to the core journey", () => {
     const app = source("client/src/App.tsx");
     expect(CORE_ONLY_MODE).toBe(true);
-    expect(CORE_ROUTE).toBe("/whatsapp-connection");
+    expect(CORE_ROUTE).toBe("/onboarding");
     expect(isCoreAllowedRoute(CORE_ROUTE)).toBe(true);
+    expect(isCoreAllowedRoute("/whatsapp-connection")).toBe(true);
+    expect(isCoreAllowedRoute("/inbox")).toBe(true);
     expect(isCoreAllowedRoute(CORE_USAGE_ROUTE)).toBe(false);
-    expect(isCoreAllowedRoute("/dashboard")).toBe(false);
+    expect(isCoreAllowedRoute("/dashboard")).toBe(true);
     expect(app).toContain("!isCoreAllowedRoute(location)");
     expect(app).toContain("<Redirect to={CORE_ROUTE} />");
-    expect(app).toContain("CORE_ONLY_MODE ? CORE_ROUTE : \"/dashboard\"");
+    expect(app).toContain('CORE_ONLY_MODE ? CORE_ROUTE : "/dashboard"');
   });
 
   it("keeps critical navigation operable by keyboard and screen readers", () => {

@@ -4,6 +4,8 @@
 **Fase de código atual:** O1.4–O2.4 e O3.1–O3.3 concluídas em código; a PR [#9](https://github.com/geordptoroy/forte-panel/pull/9) passou CI PostgreSQL (run `36710769990`, 72 arquivos/285 testes, zero skips). O3.4 é a próxima fatia; prova persistente/staging e WhatsApp real seguem pendentes, manter o core contido.
 **Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
 
+> **Nota de continuidade (2026-09-30):** este arquivo preserva o checklist/histórico antigo. A fila canônica e a próxima fatia estão em `ROADMAP-EXECUCAO-FORTE-PANEL.md`; não voltar para O3.4 apenas por causa das linhas históricas acima. Oracle/OCI e deploy ARM64 ficam adiados até o MVP controlado estar demonstrável.
+
 ## Direção registrada — 2026-09-27: core antes do restante
 
 ## Continuidade registrada — 2026-09-29: onboarding público em seis passos
@@ -569,3 +571,13 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Adicionar Inbox própria com leitura, resposta e auditoria.
 - [x] Adicionar prompt próprio do agente de suporte com salvar/publicar.
 - [ ] Executar smoke test real no Docker: parear número do suporte, inbound, resposta outbound e agente.
+
+## O5.7 — Contrato final do Console Admin — 2026-10-01
+- [x] Criar `platform-health.contract.integration.test.ts` com caller real do router.
+- [x] Provar `platformAdmins` permitido e usuário não registrado bloqueado.
+- [x] Provar shape agregado sem `workspaceId`, `contactId`, `eventId`, provider, modelo, failure code ou tokens.
+- [x] Corrigir expectativa lexicográfica identificada pelo primeiro CI e publicar `32e074c`.
+- [x] Passar CI PostgreSQL sem skips no run `36941127598`.
+- [x] Documentar O5.7, atualizar handoff, prompt e índice.
+- [ ] Revisar/aceitar PR #39 sem merge automático.
+- [ ] Iniciar Onda O6 somente com infraestrutura persistente e aceite manual autorizado; não repetir backup/restore ou pareamento real.

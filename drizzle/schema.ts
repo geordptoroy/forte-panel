@@ -852,9 +852,6 @@ export const platformAiConnections = pgTable(
   table => [
     index("platform_ai_connections_capability_idx").on(table.capability, table.active),
     uniqueIndex("platform_ai_connections_name_unique_idx").on(table.name),
-    uniqueIndex("platform_ai_connections_active_capability_unique_idx")
-      .on(table.capability)
-      .where(sql`${table.active} = 1`),
   ]
 );
 export const workspaceUsageBuckets = pgTable(
@@ -1029,8 +1026,16 @@ export const agentRuns = pgTable(
     workspaceId: integer("workspaceId").notNull(),
     eventId: varchar("eventId", { length: 180 }).notNull(),
     contactId: integer("contactId").notNull(),
+    provider: varchar("provider", { length: 80 }),
+    capability: varchar("capability", { length: 32 }),
     model: varchar("model", { length: 180 }),
     outcome: varchar("outcome", { length: 40 }).notNull(),
+    providerAttempts: integer("providerAttempts").default(0).notNull(),
+    failureCode: varchar("failureCode", { length: 80 }),
+    transcriptionProvider: varchar("transcriptionProvider", { length: 80 }),
+    transcriptionAttempts: integer("transcriptionAttempts").default(0).notNull(),
+    mediaAnalysisProvider: varchar("mediaAnalysisProvider", { length: 80 }),
+    mediaAnalysisAttempts: integer("mediaAnalysisAttempts").default(0).notNull(),
     steps: integer("steps").default(0).notNull(),
     toolCalls: integer("toolCalls").default(0).notNull(),
     transferred: integer("transferred").default(0).notNull(),
@@ -1054,6 +1059,9 @@ export const webhookEvents = pgTable(
     workspaceId: integer("workspaceId").notNull(),
     eventId: varchar("eventId", { length: 180 }).notNull(),
     provider: varchar("provider", { length: 60 }).default("whatsapp").notNull(),
+    instanceId: varchar("instanceId", { length: 160 }),
+    webhookNonce: varchar("webhookNonce", { length: 180 }),
+    webhookTimestamp: timestamp("webhookTimestamp"),
     payload: text("payload").notNull(),
     status: webhookStatusEnum("status").default("received").notNull(),
     leaseToken: varchar("leaseToken", { length: 64 }),
@@ -1066,7 +1074,32 @@ export const webhookEvents = pgTable(
       table.workspaceId,
       table.eventId
     ),
+    uniqueIndex("webhook_events_workspace_provider_nonce_unique_idx").on(
+      table.workspaceId,
+      table.provider,
+      table.webhookNonce
+    ),
     index("webhook_events_status_lease_idx").on(table.status, table.leaseUntil),
+  ]
+);
+
+export const securityRateLimitBuckets = pgTable(
+  "securityRateLimitBuckets",
+  {
+    id: serial("id").primaryKey(),
+    bucketType: varchar("bucketType", { length: 40 }).notNull(),
+    scopeKey: varchar("scopeKey", { length: 320 }).notNull(),
+    failures: integer("failures").default(0).notNull(),
+    firstFailureAt: timestamp("firstFailureAt").notNull(),
+    blockedUntil: timestamp("blockedUntil"),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("security_rate_limit_bucket_unique_idx").on(
+      table.bucketType,
+      table.scopeKey
+    ),
+    index("security_rate_limit_bucket_updated_idx").on(table.updatedAt),
   ]
 );
 

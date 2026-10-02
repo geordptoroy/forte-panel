@@ -42,7 +42,7 @@ const isEnvelope = (value: unknown): value is OutboxEnvelope => {
 export class WebhookOutbox {
   private readonly directory: string;
   private readonly url: string;
-  private readonly secret: string;
+  private secret: string;
   private readonly maxAttempts: number;
   private readonly initialBackoffMs: number;
   private readonly maxBackoffMs: number;
@@ -50,6 +50,7 @@ export class WebhookOutbox {
   private readonly logger: NonNullable<WebhookOutboxOptions["logger"]>;
   private readonly inFlight = new Set<string>();
   private timer?: ReturnType<typeof setInterval>;
+  private flushPromise?: Promise<void>;
   private pending = 0;
   private deadLetter = 0;
   private lastError?: string;
@@ -73,6 +74,13 @@ export class WebhookOutbox {
     };
   }
 
+  setSecret(secret: string) {
+    const normalized = secret.trim();
+    if (normalized.length < 32 || normalized.length > 256)
+      throw new Error("webhook_secret_length_invalid");
+    this.secret = normalized;
+  }
+
   async start() {
     await fs.mkdir(this.directory, { recursive: true });
     await this.refreshPending();
@@ -94,6 +102,7 @@ export class WebhookOutbox {
   async stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    await this.flushPromise;
   }
 
   async enqueue(payload: WebhookOutboxPayload) {
@@ -124,6 +133,14 @@ export class WebhookOutbox {
   }
 
   async flush() {
+    if (this.flushPromise) return this.flushPromise;
+    this.flushPromise = this.flushInternal().finally(() => {
+      this.flushPromise = undefined;
+    });
+    return this.flushPromise;
+  }
+
+  private async flushInternal() {
     if (!this.url) return;
     await fs.mkdir(this.directory, { recursive: true });
     const entries = await fs.readdir(this.directory, { withFileTypes: true });
@@ -179,9 +196,11 @@ export class WebhookOutbox {
       for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
         try {
           const body = JSON.stringify(envelope.payload);
+          const timestamp = String(Math.floor(Date.now() / 1000));
+          const nonce = crypto.randomBytes(18).toString("base64url");
           const signature = `sha256=${crypto
             .createHmac("sha256", this.secret)
-            .update(body)
+            .update(`${timestamp}.${nonce}.${body}`)
             .digest("hex")}`;
           const response = await this.fetchImpl(this.url, {
             method: "POST",
@@ -189,6 +208,8 @@ export class WebhookOutbox {
               "content-type": "application/json",
               "x-webhook-secret": this.secret,
               "x-webhook-signature": signature,
+              "x-webhook-timestamp": timestamp,
+              "x-webhook-nonce": nonce,
             },
             body,
           });
