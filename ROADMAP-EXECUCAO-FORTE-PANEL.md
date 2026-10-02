@@ -361,3 +361,9 @@ Este quadro deve ser atualizado a cada fatia. O documento canônico continua sen
 - [ ] Executar O6 em ambiente persistente autorizado; bloqueado até existir staging/Cloud Computer ou ambiente equivalente com autorização explícita.
 - [ ] Não executar `staging-e2e`, browser smoke ou tráfego WhatsApp contra URL desconhecida.
 **Próxima fatia:** quando houver ambiente persistente autorizado, executar os gates A–D do runbook; até lá, manter O6 como `BLOQUEADA`, não inventar evidência e não repetir backup/restore ou pareamento real.
+
+
+## Atualização de estado — validação com conta criada pela UI — 2026-10-01
+O script `scripts/validate-flow.mjs` agora aceita `VALIDATION_EMAIL` e `VALIDATION_PASSWORD`, correspondentes à conta criada pelo `/signup`, mantendo `LOCAL_ADMIN_EMAIL`/`LOCAL_ADMIN_PASSWORD` apenas como fallback legado. Se o login falhar, o fluxo encerra imediatamente em vez de produzir uma cascata de falsos erros de autorização.
+
+O requisito de produto para o próximo slice ficou registrado: o Console Admin deve possuir um workspace operacional administrativo próprio, separado do workspace público, com as capacidades de workspace (instância WhatsApp, Inbox, Agenda, Serviços, Profissionais e IA) para suporte real pela plataforma. O acesso deve ser exclusivo às contas do Console Admin, com isolamento explícito de dados, instâncias e permissões; não implementar essa mudança junto com a adaptação do teste.

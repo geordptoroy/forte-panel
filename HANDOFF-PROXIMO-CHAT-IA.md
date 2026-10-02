@@ -404,3 +404,9 @@ A revisão técnica foi concluída, mas a aprovação formal não pôde ser regi
 O preflight de dispositivos encontrou somente o Manus Sandbox online; não há Cloud Computer, workspace persistente, URL de staging ou secrets de staging autorizados nesta sessão. Portanto, não foi executado `staging-e2e`, browser smoke, tráfego WhatsApp ou provisionamento fictício.
 
 Foi criado `docs/O6-PROVA-PERSISTENTE-RUNBOOK.md`, com a topologia mínima persistente, configuração fail-closed, gates A–D, uso seguro de `.github/workflows/staging-e2e.yml`, matriz de isolamento para dois workspaces e lista de evidências. A execução da O6 permanece bloqueada até existir ambiente descartável/persistente autorizado. Não repetir backup/restore, pareamento real ou aceite manual; manter `CORE_ONLY_MODE = true`.
+
+
+### Atualização posterior — validação por conta da UI e requisito do Console Admin — 2026-10-01
+O `scripts/validate-flow.mjs` foi adaptado para autenticar a conta criada pelo `/signup` com `VALIDATION_EMAIL` e `VALIDATION_PASSWORD`; as variáveis `LOCAL_ADMIN_EMAIL` e `LOCAL_ADMIN_PASSWORD` permanecem como fallback legado. O script agora falha cedo quando o login retorna 401, evitando interpretar chamadas subsequentes como falhas independentes. `node --check scripts/validate-flow.mjs` e `git diff --check` passaram.
+
+Entendimento confirmado para o próximo slice de produto: o Console Admin não deve ser apenas uma tela administrativa. Ele deve ter um workspace operacional administrativo próprio, separado do workspace público, com Inbox, instância(s) WhatsApp, Agenda, Serviços, Profissionais e IA para suporte pela própria plataforma. Somente as contas do Console Admin terão acesso a esse workspace; seus dados, instâncias, histórico e permissões devem permanecer isolados do workspace público. Não implementar isso nesta fatia de teste.
