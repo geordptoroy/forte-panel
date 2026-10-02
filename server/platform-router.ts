@@ -265,6 +265,13 @@ export const platformRouter = router({
           });
         } catch (error) {
           const reason = error instanceof Error ? error.message : "";
+          console.error("[support-inbox] attachment upload failed", {
+            workspaceId: workspace.id,
+            messageType: input.messageType,
+            mimeType: input.mimeType,
+            fileName: input.fileName,
+            reason,
+          });
           if (reason === "INBOX_MEDIA_INVALID")
             throw new TRPCError({ code: "BAD_REQUEST", message: "Formato de anexo não suportado para este tipo de mensagem." });
           if (reason === "INBOX_MEDIA_TOO_LARGE")

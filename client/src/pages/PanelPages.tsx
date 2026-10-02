@@ -1336,6 +1336,9 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       clearAttachment();
       await refresh();
     },
+    onError: error => {
+      setRecordingError(error.message || "Não foi possível enviar a mensagem.");
+    },
   });
   if (!selected)
     return (
@@ -1379,7 +1382,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     });
   };
   const send = async () => {
-    if (!draft.trim() && !attachment) return;
+    if (!draft.trim() && !attachment && interactiveType === "text") return;
     if (platformAdmin && !sendInstanceId) {
       setRecordingError("Selecione a instância que fará o envio.");
       return;
@@ -1475,12 +1478,20 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               buttonText: interactiveButtonText,
               sections: [{ title: "Opções", rows: options.slice(0, 10).map((option, index) => ({ rowId: `option-${index + 1}`, title: option })) }],
             }
-          : interactiveType === "poll"
-            ? { payload: { poll: { name: draft.trim(), values: options.slice(0, 12), selectableCount: 1 } } }
+            : interactiveType === "poll"
+            ? { payload: { poll: { name: draft.trim() || "Enquete", values: options.slice(0, 12), selectableCount: 1 } } }
             : undefined;
     sendMutation.mutate({
       contactId: selectedNumericId,
-      content: draft.trim(),
+      content:
+        draft.trim() ||
+        (interactiveType === "button"
+          ? "Escolha uma opção"
+          : interactiveType === "list"
+            ? "Selecione uma opção"
+            : interactiveType === "poll"
+              ? "Enquete"
+              : "Carrossel"),
       messageType: interactiveType,
       metadata: interactiveMetadata,
       instanceIds: outboundInstanceIds,
