@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowLeft,
   Bot,
+  CalendarDays,
   CheckCircle2,
   Clock3,
   FileText,
@@ -15,6 +16,9 @@ import {
   LifeBuoy,
   LockKeyhole,
   MessageSquareText,
+  Plus,
+  Save,
+  Pencil,
   Pause,
   Play,
   PlugZap,
@@ -29,7 +33,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
-const fmtDate = (value: string | null | undefined) =>
+const fmtDate = (value: string | Date | null | undefined) =>
   value
     ? new Date(value).toLocaleString("pt-BR", {
         dateStyle: "short",
@@ -60,6 +64,12 @@ const statusTone = (value: string) =>
     : ["suspended", "degraded", "stale", "paused", "disconnected"].includes(value)
       ? "red"
       : "amber";
+const supportWeekdays = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+const minuteToTime = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+const timeToMinute = (value: string) => {
+  const [hours, minutes] = value.split(":").map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+};
 const workspaceKanbanColumns = [
   { status: "onboarding" as const, label: "Onboarding", helper: "Configuração inicial" },
   { status: "active" as const, label: "Ativos", helper: "Operação liberada" },
@@ -1886,7 +1896,70 @@ export function PlatformSupportWorkspacePage() {
   const snapshot = trpc.platform.supportWorkspace.useQuery(undefined, {
     refetchInterval: 10_000,
   });
+  const access = trpc.platform.access.useQuery();
+  const utils = trpc.useUtils();
+  const canMutate = Boolean(access.data?.canMutate);
   const data = snapshot.data;
+  const [reason, setReason] = useState("Atualização operacional do workspace de suporte");
+  const [serviceId, setServiceId] = useState<number | null>(null);
+  const [serviceName, setServiceName] = useState("");
+  const [serviceDescription, setServiceDescription] = useState("");
+  const [serviceDuration, setServiceDuration] = useState("60");
+  const [servicePrice, setServicePrice] = useState("0");
+  const [servicePriceType, setServicePriceType] = useState<"fixed" | "starting_at" | "quote">("fixed");
+  const [professionalId, setProfessionalId] = useState<number | null>(null);
+  const [professionalName, setProfessionalName] = useState("");
+  const [professionalSpecialty, setProfessionalSpecialty] = useState("");
+  const [professionalColor, setProfessionalColor] = useState("#62d68a");
+  const [professionalServiceIds, setProfessionalServiceIds] = useState<number[]>([]);
+  const [availabilityDraft, setAvailabilityDraft] = useState<{ weekday: number; startMinute: number; endMinute: number }[]>([]);
+  const [appointmentServiceId, setAppointmentServiceId] = useState("");
+  const [appointmentProfessionalId, setAppointmentProfessionalId] = useState("");
+  const [appointmentDate, setAppointmentDate] = useState("");
+  const [appointmentTime, setAppointmentTime] = useState("09:00");
+  const [appointmentNotes, setAppointmentNotes] = useState("");
+  const refresh = () => { void snapshot.refetch(); void utils.platform.supportWorkspace.invalidate(); };
+  const mutationOptions = { onSuccess: () => { refresh(); toast.success("Workspace atualizado"); }, onError: (error: { message: string }) => toast.error(error.message) };
+  const createService = trpc.platform.createSupportService.useMutation(mutationOptions);
+  const updateService = trpc.platform.updateSupportService.useMutation(mutationOptions);
+  const createProfessional = trpc.platform.createSupportProfessional.useMutation(mutationOptions);
+  const updateProfessional = trpc.platform.updateSupportProfessional.useMutation(mutationOptions);
+  const saveProfessionalServices = trpc.platform.setSupportProfessionalServices.useMutation(mutationOptions);
+  const saveAvailability = trpc.platform.setSupportAvailability.useMutation(mutationOptions);
+  const createAppointment = trpc.platform.createSupportAppointment.useMutation(mutationOptions);
+  const updateAppointmentStatus = trpc.platform.updateSupportAppointmentStatus.useMutation(mutationOptions);
+  const cancelAppointment = trpc.platform.cancelSupportAppointment.useMutation(mutationOptions);
+  const selectedProfessional = data?.catalog.professionals.find(item => item.id === professionalId);
+  useEffect(() => {
+    if (!selectedProfessional) return;
+    setProfessionalName(selectedProfessional.name);
+    setProfessionalSpecialty(selectedProfessional.specialty ?? "");
+    setProfessionalServiceIds(selectedProfessional.serviceIds);
+    setAvailabilityDraft(selectedProfessional.availability.map(item => ({ ...item })));
+  }, [professionalId, selectedProfessional?.name, selectedProfessional?.specialty, selectedProfessional?.serviceIds.join(","), selectedProfessional?.availability.map(item => `${item.weekday}-${item.startMinute}-${item.endMinute}`).join(",")]);
+  useEffect(() => {
+    if (!appointmentServiceId && data?.catalog.services[0]) setAppointmentServiceId(String(data.catalog.services[0].id));
+    if (!appointmentProfessionalId && data?.catalog.professionals[0]) setAppointmentProfessionalId(String(data.catalog.professionals[0].id));
+  }, [data?.catalog.services, data?.catalog.professionals, appointmentServiceId, appointmentProfessionalId]);
+  const selectService = (service: { id: number; name: string; description: string | null; durationMinutes: number; priceCents: number; priceType: "fixed" | "starting_at" | "quote" }) => {
+    setServiceId(service.id); setServiceName(service.name); setServiceDescription(service.description ?? ""); setServiceDuration(String(service.durationMinutes)); setServicePrice(String(service.priceCents / 100)); setServicePriceType(service.priceType);
+  };
+  const clearService = () => { setServiceId(null); setServiceName(""); setServiceDescription(""); setServiceDuration("60"); setServicePrice("0"); setServicePriceType("fixed"); };
+  const clearProfessional = () => { setProfessionalId(null); setProfessionalName(""); setProfessionalSpecialty(""); setProfessionalColor("#62d68a"); setProfessionalServiceIds([]); setAvailabilityDraft([]); };
+  const saveServiceForm = () => {
+    const payload = { name: serviceName.trim(), description: serviceDescription.trim() || undefined, durationMinutes: Number(serviceDuration), priceCents: Math.round(Number(servicePrice.replace(",", ".")) * 100), priceType: servicePriceType, reason };
+    if (serviceId) updateService.mutate({ serviceId, ...payload }); else createService.mutate(payload);
+  };
+  const saveProfessionalForm = () => {
+    const payload = { name: professionalName.trim(), specialty: professionalSpecialty.trim() || undefined, color: professionalColor, reason };
+    if (professionalId) updateProfessional.mutate({ professionalId, ...payload }); else createProfessional.mutate(payload);
+  };
+  const saveAppointment = () => {
+    const service = data?.catalog.services.find(item => item.id === Number(appointmentServiceId));
+    const startsAt = new Date(`${appointmentDate}T${appointmentTime}:00`);
+    const endsAt = new Date(startsAt.getTime() + (service?.durationMinutes ?? 60) * 60_000);
+    createAppointment.mutate({ serviceId: Number(appointmentServiceId), professionalId: Number(appointmentProfessionalId), startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), notes: appointmentNotes.trim() || undefined, reason });
+  };
   return (
     <PlatformAccessGate>
       <PlatformShell
@@ -1915,7 +1988,7 @@ export function PlatformSupportWorkspacePage() {
             </div>
             <section className="platform-card">
               <div className="platform-card-title"><div><span className="eyebrow">Operação isolada</span><h2>Capacidades do workspace</h2></div><ShieldCheck size={18} /></div>
-              <p className="platform-muted">A operação de suporte usa o mesmo contrato tenant-scoped do workspace público, mas com identidade e dados próprios. O pareamento WhatsApp e a publicação do agente continuam ações explícitas.</p>
+              <p className="platform-muted">A operação de suporte usa o mesmo contrato tenant-scoped do workspace público, mas com identidade e dados próprios. O pareamento WhatsApp e a publicação do agente continuam ações explícitas. Toda alteração abaixo exige operador e motivo auditável.</p>
               <div className="platform-quick-actions">
                 <button className="btn-secondary" onClick={() => navigate("/platform-admin/support-instances")}><PlugZap size={14} /> WhatsApp</button>
                 <button className="btn-secondary" onClick={() => navigate("/platform-admin/support-inbox")}><MessageSquareText size={14} /> Inbox</button>
@@ -1923,6 +1996,17 @@ export function PlatformSupportWorkspacePage() {
                 <button className="btn-secondary" onClick={() => navigate("/platform-admin/ai")}><Sparkles size={14} /> Providers</button>
               </div>
             </section>
+            <section className="platform-card">
+              <div className="platform-card-title"><div><span className="eyebrow">Catálogo operacional</span><h2>{serviceId ? "Editar serviço" : "Novo serviço"}</h2></div><Activity size={18} /></div>
+              <div className="platform-form-grid"><label className="platform-field"><span>Nome</span><input className="input-control" value={serviceName} onChange={event => setServiceName(event.target.value)} placeholder="Ex.: Diagnóstico inicial" /></label><label className="platform-field"><span>Duração (minutos)</span><input className="input-control" type="number" min="5" value={serviceDuration} onChange={event => setServiceDuration(event.target.value)} /></label><label className="platform-field"><span>Preço</span><input className="input-control" inputMode="decimal" value={servicePrice} onChange={event => setServicePrice(event.target.value)} /></label><label className="platform-field"><span>Tipo de preço</span><select className="select-control" value={servicePriceType} onChange={event => setServicePriceType(event.target.value as typeof servicePriceType)}><option value="fixed">Fixo</option><option value="starting_at">A partir de</option><option value="quote">Sob consulta</option></select></label><label className="platform-field full"><span>Descrição</span><textarea className="textarea-control" rows={2} value={serviceDescription} onChange={event => setServiceDescription(event.target.value)} /></label></div>
+              <div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || serviceName.trim().length < 2 || createService.isPending || updateService.isPending} onClick={saveServiceForm}><Save size={13} /> {serviceId ? "Salvar serviço" : "Criar serviço"}</button>{serviceId && <button className="btn-secondary" onClick={clearService}>Novo serviço</button>}<span className="platform-muted">Motivo: {reason}</span></div>
+              <div className="platform-table-wrap" style={{ marginTop: 18 }}><table className="platform-table"><thead><tr><th>Serviço</th><th>Preço</th><th>Status</th><th /></tr></thead><tbody>{(data?.catalog.services ?? []).map(service => <tr key={service.id}><td><strong>{service.name}</strong><small>{service.durationMinutes} min</small></td><td>{service.priceCents === 0 ? "Sob consulta" : `R$ ${(service.priceCents / 100).toFixed(2).replace(".", ",")}`}</td><td><WorkspaceStatus value={service.active ? "active" : "suspended"} /></td><td><button className="btn-ghost" onClick={() => selectService(service)}><Pencil size={12} /> Editar</button>{service.active && <button className="btn-ghost" disabled={!canMutate || updateService.isPending} onClick={() => updateService.mutate({ serviceId: service.id, active: false, reason })}>Desativar</button>}</td></tr>)}</tbody></table></div>
+            </section>
+            <div className="platform-two-columns">
+              <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Equipe operacional</span><h2>{professionalId ? "Editar profissional" : "Novo profissional"}</h2></div><Users size={18} /></div><div className="platform-form-grid"><label className="platform-field"><span>Nome</span><input className="input-control" value={professionalName} onChange={event => setProfessionalName(event.target.value)} placeholder="Nome do executor" /></label><label className="platform-field"><span>Especialidade</span><input className="input-control" value={professionalSpecialty} onChange={event => setProfessionalSpecialty(event.target.value)} placeholder="Ex.: Suporte técnico" /></label><label className="platform-field"><span>Cor</span><input className="input-control" type="color" value={professionalColor} onChange={event => setProfessionalColor(event.target.value)} /></label></div><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || professionalName.trim().length < 2 || createProfessional.isPending || updateProfessional.isPending} onClick={saveProfessionalForm}><Save size={13} /> {professionalId ? "Salvar profissional" : "Criar profissional"}</button>{professionalId && <button className="btn-secondary" onClick={clearProfessional}>Novo profissional</button>}</div><div className="platform-member-list" style={{ marginTop: 18 }}>{(data?.catalog.professionals ?? []).map(person => <button type="button" className={`platform-member ${professionalId === person.id ? "is-active" : ""}`} key={person.id} onClick={() => setProfessionalId(person.id)}><div className="platform-channel-icon"><Users size={14} /></div><div><strong>{person.name}</strong><small>{person.specialty || "Sem especialidade"} · {person.serviceIds.length} serviço(s)</small></div><WorkspaceStatus value={person.active ? "active" : "suspended"} /></button>)}</div></section>
+              <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Configuração do executor</span><h2>Serviços e disponibilidade</h2></div><Clock3 size={18} /></div>{!professionalId ? <PlatformState icon={Users} title="Selecione um profissional" description="Escolha um executor ao lado para configurar vínculos e jornada." /> : <><div className="platform-field"><span>Serviços executados</span>{(data?.catalog.services ?? []).map(service => <label key={service.id} className="platform-session-options"><input type="checkbox" checked={professionalServiceIds.includes(service.id)} onChange={event => setProfessionalServiceIds(current => event.target.checked ? [...current, service.id] : current.filter(id => id !== service.id))} /> {service.name}</label>)}</div><button className="btn-secondary" disabled={!canMutate || saveProfessionalServices.isPending} onClick={() => saveProfessionalServices.mutate({ professionalId, serviceIds: professionalServiceIds, reason })}><Save size={13} /> Salvar serviços</button><div className="platform-field" style={{ marginTop: 18 }}><span>Jornada semanal</span>{supportWeekdays.map((label, weekday) => { const entry = availabilityDraft.find(item => item.weekday === weekday); return <div key={weekday} className="platform-member"><div style={{ flex: 1 }}><strong>{label}</strong></div>{entry ? <><input className="input-control" type="time" value={minuteToTime(entry.startMinute)} onChange={event => setAvailabilityDraft(current => current.map(item => item === entry ? { ...item, startMinute: timeToMinute(event.target.value) } : item))} /><span className="platform-muted">até</span><input className="input-control" type="time" value={minuteToTime(entry.endMinute)} onChange={event => setAvailabilityDraft(current => current.map(item => item === entry ? { ...item, endMinute: timeToMinute(event.target.value) } : item))} /><button className="btn-ghost" onClick={() => setAvailabilityDraft(current => current.filter(item => item !== entry))}>Remover</button></> : <button className="btn-ghost" onClick={() => setAvailabilityDraft(current => [...current, { weekday, startMinute: 9 * 60, endMinute: 18 * 60 }])}><Plus size={12} /> Adicionar</button>}</div>; })}</div><button className="btn-primary" disabled={!canMutate || saveAvailability.isPending} onClick={() => saveAvailability.mutate({ professionalId, entries: availabilityDraft, reason })}><CalendarDays size={13} /> Salvar disponibilidade</button></>}</section>
+            </div>
+            <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Agenda operacional</span><h2>Novo atendimento</h2></div><CalendarDays size={18} /></div><div className="platform-form-grid"><label className="platform-field"><span>Serviço</span><select className="select-control" value={appointmentServiceId} onChange={event => setAppointmentServiceId(event.target.value)}>{(data?.catalog.services ?? []).map(service => <option key={service.id} value={service.id}>{service.name} · {service.durationMinutes} min</option>)}</select></label><label className="platform-field"><span>Profissional</span><select className="select-control" value={appointmentProfessionalId} onChange={event => setAppointmentProfessionalId(event.target.value)}>{(data?.catalog.professionals ?? []).map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><label className="platform-field"><span>Data</span><input className="input-control" type="date" value={appointmentDate} onChange={event => setAppointmentDate(event.target.value)} /></label><label className="platform-field"><span>Horário</span><input className="input-control" type="time" value={appointmentTime} onChange={event => setAppointmentTime(event.target.value)} /></label><label className="platform-field full"><span>Observações</span><input className="input-control" value={appointmentNotes} onChange={event => setAppointmentNotes(event.target.value)} placeholder="Contexto do atendimento" /></label></div><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || !appointmentDate || !appointmentServiceId || !appointmentProfessionalId || createAppointment.isPending} onClick={saveAppointment}><CalendarDays size={13} /> Reservar atendimento</button></div><div className="platform-table-wrap" style={{ marginTop: 18 }}><table className="platform-table"><thead><tr><th>Atendimento</th><th>Quando</th><th>Status</th><th /></tr></thead><tbody>{(data?.agenda.appointments ?? []).map(appointment => <tr key={appointment.id}><td><strong>{appointment.serviceName ?? "Atendimento"}</strong><small>{appointment.professionalName ?? "Profissional"} · {appointment.contactName ?? "Contato sem cadastro"}</small></td><td>{fmtDate(appointment.startsAt)}<small>até {fmtDate(appointment.endsAt)}</small></td><td><WorkspaceStatus value={appointment.status} /></td><td className="platform-row-actions">{appointment.status === "requested" && <button className="btn-ghost" disabled={!canMutate || updateAppointmentStatus.isPending} onClick={() => updateAppointmentStatus.mutate({ appointmentId: appointment.id, status: "confirmed", reason })}>Confirmar</button>}{appointment.status === "confirmed" && <button className="btn-ghost" disabled={!canMutate || updateAppointmentStatus.isPending} onClick={() => updateAppointmentStatus.mutate({ appointmentId: appointment.id, status: "completed", reason })}>Concluir</button>}{!["completed", "cancelled", "canceled", "no_show"].includes(appointment.status) && <button className="btn-ghost" disabled={!canMutate || cancelAppointment.isPending} onClick={() => cancelAppointment.mutate({ appointmentId: appointment.id, reason })}>Cancelar</button>}</td></tr>)}</tbody></table></div></section>
             <div className="platform-two-columns">
               <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Catálogo interno</span><h2>Serviços e profissionais</h2></div><Users size={17} /></div>{data?.catalog.services.length ? <div className="platform-member-list">{data.catalog.services.map(service => <div className="platform-member" key={service.id}><div><strong>{service.name}</strong><small>{service.durationMinutes} min · {service.active ? "ativo" : "inativo"}</small></div><WorkspaceStatus value={service.active ? "active" : "suspended"} /></div>)}</div> : <PlatformState icon={Activity} title="Catálogo vazio" description="Nenhum serviço foi cadastrado no tenant interno." />}</section>
               <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Agenda interna</span><h2>Próximos atendimentos</h2></div><Clock3 size={17} /></div>{data?.agenda.appointments.length ? <div className="platform-member-list">{data.agenda.appointments.slice(0, 8).map(appointment => <div className="platform-member" key={appointment.id}><div><strong>{appointment.serviceName ?? "Atendimento"}</strong><small>{appointment.professionalName ?? "Profissional"} · {appointment.contactName ?? "Contato"}</small></div><WorkspaceStatus value={appointment.status} /></div>)}</div> : <PlatformState icon={Clock3} title="Agenda vazia" description="Nenhum atendimento foi registrado no tenant interno." />}</section>

@@ -1245,9 +1245,11 @@ export async function getPlatformSupportSnapshot() {
       services: services.map(service => ({
         id: service.id,
         name: service.name,
+        description: service.description,
         active: service.active === 1,
         durationMinutes: service.durationMinutes,
         priceCents: service.priceCents,
+        priceType: service.priceType,
       })),
       professionals: professionals.map(professional => ({
         id: professional.id,
@@ -1255,6 +1257,7 @@ export async function getPlatformSupportSnapshot() {
         specialty: professional.specialty,
         active: professional.active === 1,
         serviceIds: professional.serviceIds,
+        availability: professional.availability,
       })),
     },
     agenda: {

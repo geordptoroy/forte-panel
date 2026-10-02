@@ -389,4 +389,12 @@ Typecheck, testes focados de autorização/tenancy e `git diff --check` passaram
 - [x] Procedures para criar, confirmar, concluir, marcar no-show, reagendar e cancelar agendamentos internos.
 - [x] Cada mutação registra `platformAuditLogs` com operador, motivo e resumo sanitizado.
 - [x] `pnpm check`, build de produção e testes focados do Console Admin executados com sucesso.
-- [ ] Próximo slice: tela operacional de edição usando essas procedures.
+
+## Atualização de estado — UI operacional do workspace interno — 2026-10-02
+- [x] A rota `/platform-admin/support-workspace` agora permite criar/editar serviços e desativar serviços internos.
+- [x] A tela permite criar/editar profissionais, vincular serviços e configurar jornada semanal.
+- [x] A tela permite reservar atendimentos e avançar/cancelar status da agenda interna.
+- [x] Todas as ações usam as procedures protegidas e exibem o motivo auditável no contexto do operador.
+- [x] O snapshot inclui disponibilidade, descrição e tipo de preço para edição fiel.
+- [x] `pnpm check`, build de produção, testes focados e `git diff --check` passaram.
+- [ ] Próximo slice: publicar a branch e acompanhar o CI; depois executar as provas O6 em ambiente persistente, sem usar a máquina do usuário.
