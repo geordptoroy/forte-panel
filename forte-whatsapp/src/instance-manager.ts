@@ -49,6 +49,20 @@ function instanceScopedEventId(instanceId: string, sourceId: string) {
     .digest("hex")}`;
 }
 
+function isNativeInteractivePayload(payload: AnyMessageContent) {
+  const record = payload as Record<string, unknown>;
+  const viewOnce = record.viewOnceMessage;
+  if (viewOnce && typeof viewOnce === "object") {
+    const message = (viewOnce as Record<string, unknown>).message;
+    return Boolean(
+      message &&
+        typeof message === "object" &&
+        "interactiveMessage" in (message as Record<string, unknown>)
+    );
+  }
+  return "interactiveMessage" in record;
+}
+
 export type InstanceStatus =
   | "idle"
   | "connecting"
@@ -640,7 +654,7 @@ export class InstanceManager {
       echo.echoContent
     );
     try {
-      const externalId = "interactiveMessage" in (message as Record<string, unknown>)
+      const externalId = isNativeInteractivePayload(message)
         ? await this.socket.relayMessage(jid, message as never, { messageId: crypto.randomUUID() })
         : (await this.socket.sendMessage(jid, message))?.key?.id ?? crypto.randomUUID();
       this.panelMessageEchoes.rememberSentMessage(
@@ -690,7 +704,7 @@ export class InstanceManager {
       echo.echoContent
     );
     try {
-      if ("interactiveMessage" in (payload as Record<string, unknown>)) {
+      if (isNativeInteractivePayload(payload)) {
         const externalId = await this.socket.relayMessage(
           jid,
           payload as never,

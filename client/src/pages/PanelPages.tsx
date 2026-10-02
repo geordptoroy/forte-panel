@@ -1602,9 +1602,17 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       mediaStreamRef.current?.getTracks().forEach(track => track.stop());
       mediaStreamRef.current = null;
       const name = error instanceof DOMException ? error.name : "";
+      console.warn("[inbox] microphone request failed", {
+        name,
+        origin: window.location.origin,
+        secureContext: window.isSecureContext,
+        mediaDevicesAvailable: Boolean(navigator.mediaDevices?.getUserMedia),
+      });
       const message =
-        name === "NotAllowedError" || name === "SecurityError"
-          ? "O navegador bloqueou o microfone. Libere a permissão para localhost:3002 e recarregue a página."
+        name === "SecurityError" || !window.isSecureContext
+          ? "O microfone só funciona em uma origem segura. Acesse exatamente http://localhost:3002 e recarregue a página."
+          : name === "NotAllowedError"
+            ? "A permissão do microfone está negada para esta origem. Abra as configurações do site ao lado do endereço, altere Microfone para Permitir e recarregue a página."
           : name === "NotFoundError"
             ? "Nenhum microfone foi encontrado neste computador."
             : name === "NotReadableError"

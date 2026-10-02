@@ -27,6 +27,7 @@ export function buildNativeInteractivePayload(
   if (messageType === "button") {
     const buttons = Array.isArray(metadata.buttons) ? (metadata.buttons as ButtonDefinition[]) : [];
     interactive.nativeFlowMessage = {
+      messageVersion: 1,
       buttons: buttons.map((button) => ({
         name: "quick_reply",
         buttonParamsJson: JSON.stringify({
@@ -38,6 +39,7 @@ export function buildNativeInteractivePayload(
   } else {
     const sections = Array.isArray(metadata.sections) ? (metadata.sections as ListSection[]) : [];
     interactive.nativeFlowMessage = {
+      messageVersion: 1,
       buttons: [{
         name: "single_select",
         buttonParamsJson: JSON.stringify({
@@ -48,5 +50,15 @@ export function buildNativeInteractivePayload(
     };
   }
 
-  return { interactiveMessage: interactive } as unknown as AnyMessageContent;
+  return {
+    viewOnceMessage: {
+      message: {
+        messageContextInfo: {
+          deviceListMetadata: {},
+          deviceListMetadataVersion: 2,
+        },
+        interactiveMessage: interactive,
+      },
+    },
+  } as unknown as AnyMessageContent;
 }
