@@ -50,15 +50,8 @@ export function buildNativeInteractivePayload(
     };
   }
 
-  return {
-    viewOnceMessage: {
-      message: {
-        messageContextInfo: {
-          deviceListMetadata: {},
-          deviceListMetadataVersion: 2,
-        },
-        interactiveMessage: interactive,
-      },
-    },
-  } as unknown as AnyMessageContent;
+  // A implementação de referência envia o InteractiveMessage diretamente
+  // para relayMessage. O wrapper viewOnceMessage/contextInfo fazia o painel
+  // marcar como enviado, mas alguns clientes não renderizavam a mensagem.
+  return { interactiveMessage: interactive } as unknown as AnyMessageContent;
 }

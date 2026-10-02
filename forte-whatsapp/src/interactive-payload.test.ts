@@ -10,8 +10,7 @@ describe("native interactive payloads", () => {
         { buttonId: "no", buttonText: { displayText: "Não" } },
       ],
     }) as any;
-    const interactive = payload.viewOnceMessage.message.interactiveMessage;
-    expect(payload.viewOnceMessage.message.messageContextInfo).toMatchObject({ deviceListMetadataVersion: 2 });
+    const interactive = payload.interactiveMessage;
     expect(interactive.body).toEqual({ text: "Escolha" });
     expect(interactive.nativeFlowMessage.messageVersion).toBe(1);
     expect(interactive.nativeFlowMessage.buttons).toHaveLength(2);
@@ -22,7 +21,7 @@ describe("native interactive payloads", () => {
   it("builds a single-select native flow for lists", () => {
     const sections = [{ title: "Serviços", rows: [{ id: "support", title: "Suporte" }] }];
     const payload = buildNativeInteractivePayload("list", "Selecione", { buttonText: "Abrir", sections }) as any;
-    const button = payload.viewOnceMessage.message.interactiveMessage.nativeFlowMessage.buttons[0];
+    const button = payload.interactiveMessage.nativeFlowMessage.buttons[0];
     expect(button.name).toBe("single_select");
     expect(JSON.parse(button.buttonParamsJson)).toEqual({ title: "Abrir", sections });
   });
