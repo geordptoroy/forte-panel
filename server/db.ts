@@ -327,6 +327,13 @@ export function verifyLocalPassword(password: string, stored: string | null) {
   );
 }
 
+export function findLocalPasswordAccount<T extends { passwordHash: string | null }>(
+  accounts: readonly T[],
+  password: string
+) {
+  return accounts.find(account => verifyLocalPassword(password, account.passwordHash));
+}
+
 export async function getUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -336,6 +343,16 @@ export async function getUserByEmail(email: string) {
     .where(eq(users.email, email.trim().toLowerCase()))
     .limit(1);
   return result[0];
+}
+
+export async function getUsersByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(users)
+    .where(eq(users.email, email.trim().toLowerCase()))
+    .orderBy(asc(users.id));
 }
 
 export async function getUserById(userId: number) {

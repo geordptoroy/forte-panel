@@ -48,7 +48,8 @@ import {
   confirmOnboardingStep,
   confirmOnboardingExampleReview,
   getAgendaSnapshot,
-  getUserByEmail,
+  findLocalPasswordAccount,
+  getUsersByEmail,
   getUserById,
   getUserByOpenId,
   getWorkspaceMembershipContext,
@@ -540,7 +541,8 @@ export const appRouter = router({
         const email = input.email.trim().toLowerCase();
         if (!(await assertLoginAllowedDistributed(ctx.req, email)))
           assertLoginAllowed(ctx.req, email);
-        let account = await getUserByEmail(email);
+        const accounts = await getUsersByEmail(email);
+        let account = findLocalPasswordAccount(accounts, input.password);
         const configuredPlatformAccount = ENV.localPlatformAdminAccounts.find(
           candidate =>
             candidate.email === email && candidate.password === input.password
@@ -555,10 +557,7 @@ export const appRouter = router({
             lastSignedIn: new Date(),
           });
           account = await getUserByOpenId(configuredPlatformAccount.openId);
-        } else if (
-          !account ||
-          !verifyLocalPassword(input.password, account.passwordHash)
-        ) {
+        } else if (!account) {
           if (!(await recordLoginFailureDistributed(ctx.req, email)))
             recordLoginFailure(ctx.req, email);
           throw new TRPCError({

@@ -421,3 +421,7 @@ Para os próximos chats de IA e para a operação local do usuário:
 - Para reset destrutivo no Windows, usar `.\scripts\start-docker.ps1 -Reset -ResetConfirmation APAGAR-TUDO` a partir da raiz do repositório.
 - Esse reset apaga containers, volumes, imagens, redes e cache Docker local; só usar quando o usuário confirmar que os dados locais podem ser apagados.
 - O `docker-compose.local.yml` não deve voltar a declarar builds locais; as imagens podem ser substituídas por `FORTE_PANEL_IMAGE` e `FORTE_WHATSAPP_IMAGE` no `.env` quando necessário.
+
+
+## Correção de autenticação local — 2026-10-01
+O login local deixou de usar uma única conta arbitrária por email. Ele agora carrega todas as contas com o email normalizado e seleciona a conta cujo hash corresponde à senha informada; a conta administrativa configurada continua sendo priorizada quando suas credenciais explícitas coincidem. Foi adicionado teste para o caso da conta histórica `local_admin` sem workspace e da conta owner criada pelo signup.
