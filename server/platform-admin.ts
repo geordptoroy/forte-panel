@@ -40,6 +40,7 @@ import {
   getOnboardingGovernance,
   saveOnboardingRetentionPolicy,
   listBaileysInstances,
+  getAgendaSnapshot,
   listInboxContacts,
   getContactById,
   getConversationByContact,
@@ -53,6 +54,7 @@ import {
   getWorkspaceSetting,
   upsertWorkspaceSetting,
 } from "./db";
+import { listProfessionalsDetailed, listServices } from "./workspace";
 import type { NativeAgentConfig } from "./db";
 import {
   createBaileysInstance as createBaileysGatewayInstance,
@@ -1215,14 +1217,45 @@ export async function getPlatformOperationalHealth() {
 }
 export async function getPlatformSupportSnapshot() {
   const workspace = await ensurePlatformSupportWorkspace();
-  const [instances, agent] = await Promise.all([
+  const [instances, agent, services, professionals, agenda] = await Promise.all([
     listBaileysInstances(workspace.id),
     getPlatformAgentSnapshot(workspace.id),
+    listServices(workspace.id, { includeInactive: true }),
+    listProfessionalsDetailed(workspace.id, { includeInactive: true }),
+    getAgendaSnapshot(workspace.id),
   ]);
   return {
     workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug },
     instances,
     agent,
+    catalog: {
+      services: services.map(service => ({
+        id: service.id,
+        name: service.name,
+        active: service.active === 1,
+        durationMinutes: service.durationMinutes,
+        priceCents: service.priceCents,
+      })),
+      professionals: professionals.map(professional => ({
+        id: professional.id,
+        name: professional.name,
+        specialty: professional.specialty,
+        active: professional.active === 1,
+        serviceIds: professional.serviceIds,
+      })),
+    },
+    agenda: {
+      timezone: agenda.timezone,
+      appointments: agenda.appointments.map(appointment => ({
+        id: appointment.id,
+        startsAt: appointment.startsAt,
+        endsAt: appointment.endsAt,
+        status: appointment.status,
+        serviceName: appointment.serviceName,
+        professionalName: appointment.professionalName,
+        contactName: appointment.contactName,
+      })),
+    },
   };
 }
 

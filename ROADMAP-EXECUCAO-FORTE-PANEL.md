@@ -376,3 +376,9 @@ O requisito de produto para o próximo slice ficou registrado: o Console Admin d
 - [x] Exigir uma simulação concluída depois do último salvamento do rascunho antes de publicar uma versão do agente.
 - [ ] Configurar credenciais reais de provider e executar testes externos; fica para depois, conforme solicitado.
 **Próxima fatia:** validar os fluxos reais de provider/WhatsApp no ambiente do usuário e, somente após aceite, discutir liberação supervisionada de respostas automáticas.
+
+
+## Atualização de estado — workspace operacional do Console Admin — 2026-10-02
+Foi criada a rota interna `/platform-admin/support-workspace`, separada da operação dos workspaces clientes. O snapshot tenant-scoped do suporte agora inclui instâncias WhatsApp, catálogo de serviços, profissionais e agenda, além do agente já existente. A página oferece atalhos para Inbox, instâncias, prompts e providers e deixa explícito que o tenant interno não mistura dados públicos.
+
+Typecheck, testes focados de autorização/tenancy e `git diff --check` passaram. A próxima fatia do mesmo escopo é expor mutações de catálogo e agenda para o operador autorizado; não envolve provider real nem pareamento automático.

@@ -433,3 +433,9 @@ A branch agora permite múltiplas conexões ativas por capability para suportar 
 O modo simulado foi endurecido: as rotas retornam `mode: simulation_only`, não chamam provider externo, não usam Baileys e registram auditoria/resultado com `providerCalled=false`. A publicação de um rascunho passa a exigir uma simulação concluída depois do último salvamento daquele rascunho. Não foram usados secrets reais nem infraestrutura do usuário.
 
 **Próximo passo:** o usuário deve configurar as credenciais do provider no Console Admin quando decidir fazê-lo; depois executar os testes reais de provider/WhatsApp. Não liberar resposta automática antes desse aceite.
+
+
+### Atualização posterior — workspace operacional do Console Admin — 2026-10-02
+A rota `/platform-admin/support-workspace` agora apresenta o tenant interno `forte-platform-support` com métricas e dados tenant-scoped de instâncias WhatsApp, catálogo de serviços, profissionais e agenda. Os atalhos levam à Inbox de suporte, instâncias, prompts e providers, mantendo as ações sensíveis sob as proteções já existentes do Console Admin.
+
+Esta fatia é somente a base operacional de leitura e não executa provider real, pareamento ou resposta automática. O próximo slice autorizado é adicionar criação/edição de serviços, profissionais, disponibilidade e agenda dentro desse tenant interno, com auditoria e permissão de operador.

@@ -130,6 +130,13 @@ export function PlatformShell({
           </button>
           <button
             type="button"
+            className={active === "support-workspace" ? "is-active" : ""}
+            onClick={() => navigate("/platform-admin/support-workspace")}
+          >
+            <LayoutDashboard size={15} /> Workspace operacional
+          </button>
+          <button
+            type="button"
             className={active === "support-instances" ? "is-active" : ""}
             onClick={() => navigate("/platform-admin/support-instances")}
           >
@@ -190,6 +197,8 @@ export function PlatformShell({
                     ? "Suporte"
                     : active === "support-instances"
                       ? "Instâncias de suporte"
+                      : active === "support-workspace"
+                        ? "Workspace operacional"
                       : active === "support-inbox"
                         ? "Inbox de suporte"
                     : active === "audit"
@@ -1867,6 +1876,59 @@ export function PlatformSupportPage() {
             <div className="platform-table-wrap"><table className="platform-table"><thead><tr><th>Workspace</th><th>Status</th><th>Canal</th><th>Worker</th><th /></tr></thead><tbody>{(workspaces.data?.items ?? []).map(item => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.slug}</small></td><td><WorkspaceStatus value={item.status} /></td><td><WorkspaceStatus value={item.health.channel} /></td><td><WorkspaceStatus value={item.health.worker} /></td><td><button className="btn-secondary" disabled={start.isPending} onClick={() => start.mutate({ workspaceId: item.id, mode: "read_only", reason: "Triagem operacional pelo console da plataforma", expiresInMinutes: 30 })}><LifeBuoy size={13} /> Abrir read-only</button></td></tr>)}</tbody></table></div>
           )}
         </section>
+      </PlatformShell>
+    </PlatformAccessGate>
+  );
+}
+
+export function PlatformSupportWorkspacePage() {
+  const [, navigate] = useLocation();
+  const snapshot = trpc.platform.supportWorkspace.useQuery(undefined, {
+    refetchInterval: 10_000,
+  });
+  const data = snapshot.data;
+  return (
+    <PlatformAccessGate>
+      <PlatformShell
+        title="Workspace operacional"
+        description="Tenant interno do Console Admin para suporte, atendimento, catálogo, agenda e agente, separado dos workspaces clientes."
+        active="support-workspace"
+      >
+        <div className="platform-banner">
+          <ShieldCheck size={17} />
+          <div>
+            <strong>{data?.workspace.name ?? "Suporte Forte Platform"}</strong>
+            <span>Os dados exibidos nesta visão pertencem exclusivamente ao tenant interno da plataforma.</span>
+          </div>
+        </div>
+        {snapshot.isLoading ? (
+          <PlatformState icon={RefreshCw} title="Carregando workspace" description="Consultando Inbox, WhatsApp, catálogo, agenda e IA." loading />
+        ) : snapshot.error ? (
+          <PlatformState icon={XCircle} title="Workspace indisponível" description={snapshot.error.message} />
+        ) : (
+          <>
+            <div className="platform-metric-grid">
+              <MetricCard label="Instâncias WhatsApp" value={data?.instances.length ?? 0} helper="Conexões próprias do suporte" icon={PlugZap} />
+              <MetricCard label="Serviços" value={data?.catalog.services.length ?? 0} helper="Catálogo interno" icon={Activity} />
+              <MetricCard label="Profissionais" value={data?.catalog.professionals.length ?? 0} helper="Executores internos" icon={Users} />
+              <MetricCard label="Agendamentos" value={data?.agenda.appointments.length ?? 0} helper={`Fuso ${data?.agenda.timezone ?? "—"}`} icon={Clock3} />
+            </div>
+            <section className="platform-card">
+              <div className="platform-card-title"><div><span className="eyebrow">Operação isolada</span><h2>Capacidades do workspace</h2></div><ShieldCheck size={18} /></div>
+              <p className="platform-muted">A operação de suporte usa o mesmo contrato tenant-scoped do workspace público, mas com identidade e dados próprios. O pareamento WhatsApp e a publicação do agente continuam ações explícitas.</p>
+              <div className="platform-quick-actions">
+                <button className="btn-secondary" onClick={() => navigate("/platform-admin/support-instances")}><PlugZap size={14} /> WhatsApp</button>
+                <button className="btn-secondary" onClick={() => navigate("/platform-admin/support-inbox")}><MessageSquareText size={14} /> Inbox</button>
+                <button className="btn-secondary" onClick={() => navigate("/platform-admin/prompts")}><Bot size={14} /> IA e prompts</button>
+                <button className="btn-secondary" onClick={() => navigate("/platform-admin/ai")}><Sparkles size={14} /> Providers</button>
+              </div>
+            </section>
+            <div className="platform-two-columns">
+              <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Catálogo interno</span><h2>Serviços e profissionais</h2></div><Users size={17} /></div>{data?.catalog.services.length ? <div className="platform-member-list">{data.catalog.services.map(service => <div className="platform-member" key={service.id}><div><strong>{service.name}</strong><small>{service.durationMinutes} min · {service.active ? "ativo" : "inativo"}</small></div><WorkspaceStatus value={service.active ? "active" : "suspended"} /></div>)}</div> : <PlatformState icon={Activity} title="Catálogo vazio" description="Nenhum serviço foi cadastrado no tenant interno." />}</section>
+              <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Agenda interna</span><h2>Próximos atendimentos</h2></div><Clock3 size={17} /></div>{data?.agenda.appointments.length ? <div className="platform-member-list">{data.agenda.appointments.slice(0, 8).map(appointment => <div className="platform-member" key={appointment.id}><div><strong>{appointment.serviceName ?? "Atendimento"}</strong><small>{appointment.professionalName ?? "Profissional"} · {appointment.contactName ?? "Contato"}</small></div><WorkspaceStatus value={appointment.status} /></div>)}</div> : <PlatformState icon={Clock3} title="Agenda vazia" description="Nenhum atendimento foi registrado no tenant interno." />}</section>
+            </div>
+          </>
+        )}
       </PlatformShell>
     </PlatformAccessGate>
   );

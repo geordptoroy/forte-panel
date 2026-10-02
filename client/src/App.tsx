@@ -45,6 +45,7 @@ import {
   PlatformGlobalAiPage,
   PlatformPromptsPage,
   PlatformSupportPage,
+  PlatformSupportWorkspacePage,
   PlatformWorkspacePage,
 } from "./pages/PlatformAdminPage";
 import { PlatformSupportInstancesPage } from "./pages/PlatformSupportInstancesPage";
@@ -89,6 +90,10 @@ function Router() {
       <Route path="/platform-admin/ai" component={PlatformGlobalAiPage} />
       <Route path="/platform-admin/prompts" component={PlatformPromptsPage} />
       <Route path="/platform-admin/support" component={PlatformSupportPage} />
+      <Route
+        path="/platform-admin/support-workspace"
+        component={PlatformSupportWorkspacePage}
+      />
       <Route
         path="/platform-admin/support-instances"
         component={PlatformSupportInstancesPage}
