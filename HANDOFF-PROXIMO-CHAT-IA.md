@@ -454,3 +454,8 @@ Validações executadas: `pnpm check`, `pnpm build`, `pnpm vitest run server/pla
 O gateway deixou de usar os campos legados `buttons` e `sections` diretamente em `sendMessage` para os tipos `button` e `list`. Esses tipos agora são convertidos para `interactiveMessage.nativeFlowMessage`: `quick_reply` para botões e `single_select` para listas, com envio por `relayMessage`. O endpoint e os contratos de validação existentes foram preservados; carrosséis e payloads nativos explícitos continuam usando o caminho `sendPayload`.
 
 Validações executadas: `pnpm check`, `pnpm build`, `tsc --noEmit -p forte-whatsapp/tsconfig.json`, 26 testes focados do gateway (payload interativo e normalização) e `git diff --check`. O teste via WhatsApp real continua pendente de ambiente persistente/número de teste autorizado.
+
+### Atualização — agente do suporte em modo somente simulação — 2026-10-02
+O tenant `forte-platform-support` agora tem uma trava server-side: vínculos por instância, rascunhos e publicações persistem `enabled=false`, mesmo que um cliente tente enviar ativação. A UI passou a exibir “somente simulação” e não promete resposta automática. A simulação local permanece disponível, auditada, determinística e sem provider externo/Baileys.
+
+Validações executadas: `pnpm check`, `pnpm build`, `pnpm vitest run server/platform-admin.test.ts` (5 passaram) e `git diff --check`. O próximo passo depende de ambiente persistente autorizado para os Gates A-D; provider real e respostas automáticas continuam bloqueados.

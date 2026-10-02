@@ -404,3 +404,10 @@ Typecheck, testes focados de autorização/tenancy e `git diff --check` passaram
 - [x] O caminho de payload nativo explícito existente foi preservado para carrosséis e extensões futuras.
 - [x] Foram adicionados testes unitários para os payloads nativos; gateway check e 26 testes focados passaram.
 - [ ] Próximo slice: publicar a branch e acompanhar o CI; depois executar as provas O6 em ambiente persistente, sem usar a máquina do usuário.
+
+## Atualização de estado — agente do suporte em somente simulação — 2026-10-02
+- [x] O tenant `forte-platform-support` agora força `enabled=false` em vínculos, rascunhos e publicações do agente.
+- [x] A UI identifica explicitamente o modo somente simulação e bloqueia a promessa de resposta automática.
+- [x] A simulação local continua auditada, determinística e sem provider externo ou Baileys.
+- [x] `pnpm check`, build e testes de plataforma passaram.
+- [ ] Próximo slice: aguardar ambiente persistente autorizado e executar Gates A-D do O6; não liberar provider/resposta automática antes do aceite explícito.

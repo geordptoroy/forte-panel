@@ -2041,7 +2041,7 @@ export function PlatformSupportInstancesPage() {
         <div className="platform-banner"><ShieldCheck size={17} /><div><strong>Tenant interno: {snapshot.data?.workspace.name ?? "Suporte Forte Platform"}</strong><span>Estas instâncias pertencem ao Console Admin e não a uma conta de cliente.</span></div></div>
         <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Nova conexão</span><h2>Adicionar instância de suporte</h2></div><PlugZap size={18} /></div><div className="platform-form-grid"><label className="platform-field"><span>Nome</span><input className="input-control" value={name} onChange={event => setName(event.target.value)} /></label><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || create.isPending || name.trim().length < 2} onClick={() => create.mutate({ name })}><PlugZap size={13} /> {create.isPending ? "Criando…" : "Criar instância"}</button></div></div></section>
         <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Conexões do console</span><h2>WhatsApp de suporte</h2></div><Activity size={18} /></div>{snapshot.isLoading ? <PlatformState icon={RefreshCw} title="Carregando instâncias" description="Consultando o tenant interno do suporte." loading /> : (snapshot.data?.instances ?? []).length === 0 ? <PlatformState icon={PlugZap} title="Nenhuma instância criada" description="Crie a primeira conexão própria do Console Admin." /> : <div className="platform-table-wrap"><table className="platform-table"><thead><tr><th>Instância</th><th>Status</th><th>Pairing</th><th /></tr></thead><tbody>{(snapshot.data?.instances ?? []).map(instance => <tr key={instance.instanceId}><td><strong>{instance.name}</strong><small>{instance.instanceId}</small></td><td><WorkspaceStatus value={instance.status} /></td><td><div className="platform-form-actions"><input className="input-control" placeholder="DDD + número" value={phone} onChange={event => setPhone(event.target.value)} /><button className="btn-secondary" disabled={!canMutate || pair.isPending || phone.length < 8} onClick={() => pair.mutate({ instanceId: instance.instanceId, phone })}><KeyRound size={13} /> Código</button></div></td><td><button className="btn-ghost" disabled={!canMutate || disconnect.isPending} onClick={() => disconnect.mutate({ instanceId: instance.instanceId, logout: false })}>Desconectar</button></td></tr>)}</tbody></table></div>}</section>
-        <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Prompt global por conexão</span><h2>Parear prompt à instância</h2></div><Bot size={18} /></div><p className="platform-muted">A edição completa, leitura e ativação por instância também estão disponíveis na aba <strong>Prompts por instância</strong>.</p><div className="platform-form-grid"><label className="platform-field"><span>Instância</span><select className="input-control" value={promptInstanceId} onChange={event => setPromptInstanceId(event.target.value)}><option value="">Selecione uma instância</option>{(snapshot.data?.instances ?? []).map(instance => <option key={instance.instanceId} value={instance.instanceId}>{instance.name}</option>)}</select></label><label className="platform-field"><span>System prompt</span><textarea className="input-control agent-prompt-editor" value={promptText} onChange={event => setPromptText(event.target.value)} disabled={!promptInstanceId} placeholder="Prompt global de suporte desta instância" /></label></div><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || !promptInstanceId || !promptText.trim() || savePromptBinding.isPending} onClick={() => savePromptBinding.mutate({ instanceId: promptInstanceId, enabled: true, model: globalAi.data?.model ?? "gpt-5-mini", systemPrompt: promptText, maxSteps: globalAi.data?.maxSteps ?? 6, reason: "Pareamento e ativação do prompt global à instância de suporte" })}>Salvar e ativar prompt</button>{selectedPromptBinding && <span className="platform-muted">v{selectedPromptBinding.version} salvo; agente ativo nesta instância</span>}</div></section>
+        <section className="platform-card"><div className="platform-card-title"><div><span className="eyebrow">Prompt global por conexão</span><h2>Parear prompt à instância</h2></div><Bot size={18} /></div><p className="platform-muted">A edição completa, leitura e ativação por instância também estão disponíveis na aba <strong>Prompts por instância</strong>.</p><div className="platform-form-grid"><label className="platform-field"><span>Instância</span><select className="input-control" value={promptInstanceId} onChange={event => setPromptInstanceId(event.target.value)}><option value="">Selecione uma instância</option>{(snapshot.data?.instances ?? []).map(instance => <option key={instance.instanceId} value={instance.instanceId}>{instance.name}</option>)}</select></label><label className="platform-field"><span>System prompt</span><textarea className="input-control agent-prompt-editor" value={promptText} onChange={event => setPromptText(event.target.value)} disabled={!promptInstanceId} placeholder="Prompt global de suporte desta instância" /></label></div><div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || !promptInstanceId || !promptText.trim() || savePromptBinding.isPending} onClick={() => savePromptBinding.mutate({ instanceId: promptInstanceId, enabled: false, model: globalAi.data?.model ?? "gpt-5-mini", systemPrompt: promptText, maxSteps: globalAi.data?.maxSteps ?? 6, reason: "Pareamento do prompt global em modo de simulação" })}>Salvar vínculo de simulação</button>{selectedPromptBinding && <span className="platform-muted">v{selectedPromptBinding.version} salvo; respostas automáticas bloqueadas</span>}</div></section>
       </PlatformShell>
     </PlatformAccessGate>
   );
@@ -2141,12 +2141,12 @@ export function PlatformPromptsPage() {
         description="Biblioteca global de prompts do suporte e vínculo explícito com cada conexão WhatsApp."
         active="prompts"
       >
-        <div className="platform-banner">
-          <Sparkles size={17} />
-          <div>
-            <strong>IA do Console Admin</strong>
-            <span>
-              O agente responde no chat somente quando a IA global e o vínculo da instância estão ativos.
+          <div className="platform-banner">
+            <Sparkles size={17} />
+            <div>
+              <strong>IA do Console Admin · somente simulação</strong>
+              <span>
+                O agente do tenant de suporte não responde automaticamente. As simulações são locais, auditadas e não chamam provider externo.
             </span>
           </div>
         </div>
@@ -2209,8 +2209,7 @@ export function PlatformPromptsPage() {
                 onChange={event => setInstanceEnabled(event.target.value === "enabled")}
                 disabled={!instanceId}
               >
-                <option value="enabled">Ativo — responder no chat</option>
-                <option value="paused">Pausado</option>
+                <option value="paused">Somente simulação — resposta automática bloqueada</option>
               </select>
             </label>
             <label className="platform-field full">
@@ -2234,14 +2233,14 @@ export function PlatformPromptsPage() {
               disabled={!canMutate || !instanceId || !instancePrompt.trim() || bindingSave.isPending}
               onClick={() => bindingSave.mutate({
                 instanceId,
-                enabled: instanceEnabled,
+                enabled: false,
                 model: globalAi.data?.model ?? "gpt-5-mini",
                 systemPrompt: instancePrompt,
                 maxSteps: globalAi.data?.maxSteps ?? 6,
                 reason,
               })}
             >
-              <Sparkles size={14} /> Salvar e ativar vínculo
+              <Sparkles size={14} /> Salvar vínculo de simulação
             </button>
             {selectedBinding && <span className="platform-muted">Versão {selectedBinding.version} · atualizado {fmtDate(selectedBinding.updatedAt)}</span>}
           </div>

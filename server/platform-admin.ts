@@ -108,6 +108,9 @@ export type SafeAgentConfig = {
 };
 export const PLATFORM_SUPPORT_WORKSPACE_SLUG = "forte-platform-support";
 export const PLATFORM_SUPPORT_WORKSPACE_NAME = "Suporte Forte Platform";
+export function isPlatformSupportWorkspace(workspace: { slug?: string } | null | undefined) {
+  return workspace?.slug === PLATFORM_SUPPORT_WORKSPACE_SLUG;
+}
 
 export async function ensurePlatformSupportWorkspace() {
   const db = await getDb();
@@ -391,7 +394,7 @@ export async function savePlatformInstancePromptBinding(input: {
     systemPrompt: input.systemPrompt,
     model: input.model.trim(),
     maxSteps: Math.max(1, Math.min(8, input.maxSteps)),
-    enabled: input.enabled,
+    enabled: false,
     version: (previous?.version ?? 0) + 1,
     updatedAt: new Date().toISOString(),
   };
@@ -1627,7 +1630,11 @@ export async function savePlatformAgentDraft(input: {
     model: input.draft.model,
   });
   if (!validation.valid) throw new Error(validation.reason);
-  const next = draftToSafeConfig(current, input.draft);
+  const workspace = await getActiveWorkspaceById(input.workspaceId);
+  const next = draftToSafeConfig(current, {
+    ...input.draft,
+    enabled: isPlatformSupportWorkspace(workspace) ? false : input.draft.enabled,
+  });
   const existing = (
     await db
       .select()
@@ -1802,7 +1809,11 @@ export async function publishPlatformAgentDraft(input: {
     }
   }
   const config = snapshot.draft?.config ?? snapshot.current;
-  return publishVersion({ ...input, config });
+  const workspace = await getActiveWorkspaceById(input.workspaceId);
+  return publishVersion({
+    ...input,
+    config: isPlatformSupportWorkspace(workspace) ? { ...config, enabled: false } : config,
+  });
 }
 
 export async function rollbackPlatformAgentVersion(input: {
