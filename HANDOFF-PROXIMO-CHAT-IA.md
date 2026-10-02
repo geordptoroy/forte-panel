@@ -6,7 +6,7 @@
 > **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
 > **Último commit funcional publicado:** `26ef21b` — `docs: inventory PAPI operational API`.<br>
 > **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
-> **Próxima fatia autorizada:** matriz de cobertura dos eventos de conversas/histórico da PAPI no Forte (`messages.upsert`, `messages.update`, `messaging-history.set`, `chats.update`, `contacts.update`, `presence.update` e reações), sem alterar o provedor e sem executar testes na máquina do usuário.<br>
+> **Próxima fatia autorizada:** executar `docs/PROMPT-PROXIMA-IA-AUDITORIA-INBOX-BAILEYS.md`; a auditoria completa foi preparada, mas pausada a pedido do usuário. Não alterar o provedor e não executar testes na máquina do usuário.<br>
 > **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
 
 **Atualizado:** 2026-09-30 — O4.4 validada no CI; O5.1 em andamento
@@ -466,3 +466,10 @@ A auditoria reversa foi ampliada além do envio de mensagens. O inventário cobr
 A conclusão arquitetural é que a PAPI é uma referência de comportamento do Baileys, não uma dependência do Forte. O Forte deve absorver somente capacidades necessárias, mantendo seu próprio gateway, contratos, isolamento por `workspaceId`, auditoria, `CORE_ONLY_MODE = true` e modo de suporte `simulation_only`. Typebot, Chatwoot, licenciamento e painel proprietário da PAPI ficam fora do escopo.
 
 O relatório completo está em `docs/AUDITORIA-API-OPERACIONAL-PAPI-1.5.1.md`. O próximo slice autorizado é auditar a matriz de cobertura dos eventos de conversas e histórico (`messages.upsert`, `messages.update`, `messaging-history.set`, `chats.update`, `contacts.update`, `presence.update` e reações) no Forte, sem liberar provider/resposta automática e sem exigir teste na máquina do usuário.
+
+### Atualização — prompt para auditoria completa da Inbox — 2026-10-02
+O usuário solicitou interromper a auditoria em andamento e preparar o escopo para a próxima IA. O prompt completo está em `docs/PROMPT-PROXIMA-IA-AUDITORIA-INBOX-BAILEYS.md`.
+
+O prompt exige auditoria separada de: permissão e gravação de microfone; upload e envio de áudio; anexos; editor de botões, listas e enquetes; versão e payloads do Baileys; diferenças com a PAPI 1.5.1; normalização, persistência e tenancy dos eventos inbound; e documentação de um plano de correção em fatias pequenas.
+
+A auditoria completa **não foi declarada como executada**. O próximo agente deve produzir os relatórios técnicos antes de alterar código, mantendo `CORE_ONLY_MODE = true`, sem secrets reais, sem provider real, sem merge e sem testes na máquina do usuário.

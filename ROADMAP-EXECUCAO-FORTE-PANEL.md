@@ -413,4 +413,6 @@ Typecheck, testes focados de autorização/tenancy e `git diff --check` passaram
 - [x] A auditoria reversa da PAPI 1.5.1 foi ampliada para além do envio: instâncias, eventos de mensagens e histórico, contatos/JIDs, grupos, perfil, presença, leitura, webhooks/WebSocket, fila, catálogo e integrações específicas.
 - [x] A auditoria concluiu que a PAPI deve ser referência comportamental do Baileys, não dependência do Forte; Typebot, Chatwoot, licenciamento e painel proprietário não serão copiados.
 - [x] O inventário foi registrado em `docs/AUDITORIA-API-OPERACIONAL-PAPI-1.5.1.md` e publicado na branch.
-- [ ] Próximo slice: matriz de cobertura dos eventos `messages.upsert`, `messages.update`, `messaging-history.set`, `chats.update`, `contacts.update`, `presence.update` e reações no Forte, sem liberar provider/resposta automática e sem teste na máquina do usuário.
+- [x] O escopo da auditoria completa da Inbox foi preparado em `docs/PROMPT-PROXIMA-IA-AUDITORIA-INBOX-BAILEYS.md`, incluindo microfone, áudio, anexos, botões, listas, Baileys, PAPI e eventos.
+- [ ] A auditoria completa da Inbox ainda não foi executada; foi interrompida a pedido do usuário e deve ser iniciada pela próxima IA usando o prompt dedicado.
+- [ ] Próximo slice: executar o prompt de auditoria e produzir os relatórios, sem liberar provider/resposta automática e sem teste na máquina do usuário.
