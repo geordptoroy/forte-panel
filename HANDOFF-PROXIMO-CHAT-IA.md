@@ -449,3 +449,8 @@ Validações executadas: `pnpm check`, `pnpm build`, `git diff --check` e testes
 A rota `/platform-admin/support-workspace` agora tem formulários auditados para criar/editar serviços, criar/editar profissionais, vincular serviços, configurar disponibilidade semanal, reservar atendimentos e avançar/cancelar status da agenda. O snapshot tenant-scoped passou a incluir disponibilidade, descrição e tipo de preço. A UI usa exclusivamente as procedures `platform.*Support` já protegidas por operador; não há provider real, pareamento automático ou teste na máquina do usuário.
 
 Validações executadas: `pnpm check`, `pnpm build`, `pnpm vitest run server/platform-admin.test.ts server/professional-isolation.test.ts server/agenda-workspace-isolation.test.ts` (4 passaram; 12 foram pulados por dependências de ambiente) e `git diff --check`. Próximo passo: publicar a branch e acompanhar o CI; depois executar Gates A-D do runbook O6 em ambiente persistente.
+
+### Atualização — outbound interativo nativo — 2026-10-02
+O gateway deixou de usar os campos legados `buttons` e `sections` diretamente em `sendMessage` para os tipos `button` e `list`. Esses tipos agora são convertidos para `interactiveMessage.nativeFlowMessage`: `quick_reply` para botões e `single_select` para listas, com envio por `relayMessage`. O endpoint e os contratos de validação existentes foram preservados; carrosséis e payloads nativos explícitos continuam usando o caminho `sendPayload`.
+
+Validações executadas: `pnpm check`, `pnpm build`, `tsc --noEmit -p forte-whatsapp/tsconfig.json`, 26 testes focados do gateway (payload interativo e normalização) e `git diff --check`. O teste via WhatsApp real continua pendente de ambiente persistente/número de teste autorizado.

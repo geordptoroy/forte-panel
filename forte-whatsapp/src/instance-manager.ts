@@ -34,6 +34,7 @@ import { normalizeBaileysMessageStatus, type DeliveryStatus } from "./delivery-s
 import { isAllowedOutboundMediaUrl } from "./media-reference.js";
 import { SendLedger, stableFingerprint } from "./send-ledger.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
+import { buildNativeInteractivePayload } from "./interactive-payload.js";
 import {
   normalizeBaileysMessage,
   normalizeBaileysOutgoingMessage,
@@ -600,23 +601,12 @@ export class InstanceManager {
       const buttons = Array.isArray(metadata.buttons) ? metadata.buttons : [];
       if (buttons.length < 1 || buttons.length > 3)
         throw new Error("Mensagem de botões exige de 1 a 3 opções");
-      message = {
-        text: content,
-        buttons,
-        footer: typeof metadata.footer === "string" ? metadata.footer : "",
-      } as unknown as AnyMessageContent;
+      message = buildNativeInteractivePayload("button", content, metadata);
     } else if (messageType === "list") {
       const sections = Array.isArray(metadata.sections) ? metadata.sections : [];
       if (sections.length < 1)
         throw new Error("Mensagem de lista exige ao menos uma seção");
-      message = {
-        text: content,
-        title: typeof metadata.title === "string" ? metadata.title : "",
-        footer: typeof metadata.footer === "string" ? metadata.footer : "",
-        buttonText:
-          typeof metadata.buttonText === "string" ? metadata.buttonText : "Ver opções",
-        sections,
-      } as unknown as AnyMessageContent;
+      message = buildNativeInteractivePayload("list", content, metadata);
     } else if (messageType === "poll") {
       const payload =
         metadata.payload && typeof metadata.payload === "object"
@@ -650,8 +640,9 @@ export class InstanceManager {
       echo.echoContent
     );
     try {
-      const result = await this.socket.sendMessage(jid, message);
-      const externalId = result?.key?.id ?? crypto.randomUUID();
+      const externalId = "interactiveMessage" in (message as Record<string, unknown>)
+        ? await this.socket.relayMessage(jid, message as never, { messageId: crypto.randomUUID() })
+        : (await this.socket.sendMessage(jid, message))?.key?.id ?? crypto.randomUUID();
       this.panelMessageEchoes.rememberSentMessage(
         externalId,
         jid,

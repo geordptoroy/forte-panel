@@ -397,4 +397,10 @@ Typecheck, testes focados de autorização/tenancy e `git diff --check` passaram
 - [x] Todas as ações usam as procedures protegidas e exibem o motivo auditável no contexto do operador.
 - [x] O snapshot inclui disponibilidade, descrição e tipo de preço para edição fiel.
 - [x] `pnpm check`, build de produção, testes focados e `git diff --check` passaram.
+
+## Atualização de estado — outbound interativo nativo — 2026-10-02
+- [x] Botões agora são convertidos para `nativeFlowMessage` com `quick_reply` e enviados por `relayMessage`.
+- [x] Listas agora são convertidas para `nativeFlowMessage` com `single_select` e enviados por `relayMessage`.
+- [x] O caminho de payload nativo explícito existente foi preservado para carrosséis e extensões futuras.
+- [x] Foram adicionados testes unitários para os payloads nativos; gateway check e 26 testes focados passaram.
 - [ ] Próximo slice: publicar a branch e acompanhar o CI; depois executar as provas O6 em ambiente persistente, sem usar a máquina do usuário.
