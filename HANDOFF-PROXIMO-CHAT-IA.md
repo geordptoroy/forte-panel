@@ -4,9 +4,9 @@
 >
 > **Branch única de trabalho:** `feat/o7.15-storage-reconciliation-observability`<br>
 > **PR:** [#39](https://github.com/geordptoroy/forte-panel/pull/39), base `feat/o7.14-storage-provider-contract`, não fazer merge automático.<br>
-> **Último commit funcional publicado:** `b4ae056` — `docs: close platform health contract continuity`.<br>
+> **Último commit funcional publicado:** `26ef21b` — `docs: inventory PAPI operational API`.<br>
 > **Regra:** executar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v` e `git fetch origin` antes de ler ou editar; depois conferir o commit remoto da mesma branch. Nunca continuar pelo `main` por engano.<br>
-> **Próxima fatia autorizada:** auditoria/fechamento do kill switch e contrato integrado das capabilities `text`, `audio`, `vision` e `document`.<br>
+> **Próxima fatia autorizada:** matriz de cobertura dos eventos de conversas/histórico da PAPI no Forte (`messages.upsert`, `messages.update`, `messaging-history.set`, `chats.update`, `contacts.update`, `presence.update` e reações), sem alterar o provedor e sem executar testes na máquina do usuário.<br>
 > **Restrições:** manter `CORE_ONLY_MODE = true`, não usar secrets reais, não repetir backup/restore, não parear número real adicional e não mesclar PRs.
 
 **Atualizado:** 2026-09-30 — O4.4 validada no CI; O5.1 em andamento
@@ -459,3 +459,10 @@ Validações executadas: `pnpm check`, `pnpm build`, `tsc --noEmit -p forte-what
 O tenant `forte-platform-support` agora tem uma trava server-side: vínculos por instância, rascunhos e publicações persistem `enabled=false`, mesmo que um cliente tente enviar ativação. A UI passou a exibir “somente simulação” e não promete resposta automática. A simulação local permanece disponível, auditada, determinística e sem provider externo/Baileys.
 
 Validações executadas: `pnpm check`, `pnpm build`, `pnpm vitest run server/platform-admin.test.ts` (5 passaram) e `git diff --check`. O próximo passo depende de ambiente persistente autorizado para os Gates A-D; provider real e respostas automáticas continuam bloqueados.
+
+### Atualização — auditoria operacional ampliada da PAPI 1.5.1 — 2026-10-02
+A auditoria reversa foi ampliada além do envio de mensagens. O inventário cobre instâncias e reconexão, contatos e JIDs, grupos e participantes, perfil e privacidade, presença e leitura, mensagens editadas/apagadas, reações, etiquetas, catálogo WhatsApp, Webhook/WebSocket, histórico sincronizado, fila/retry e integrações específicas da PAPI.
+
+A conclusão arquitetural é que a PAPI é uma referência de comportamento do Baileys, não uma dependência do Forte. O Forte deve absorver somente capacidades necessárias, mantendo seu próprio gateway, contratos, isolamento por `workspaceId`, auditoria, `CORE_ONLY_MODE = true` e modo de suporte `simulation_only`. Typebot, Chatwoot, licenciamento e painel proprietário da PAPI ficam fora do escopo.
+
+O relatório completo está em `docs/AUDITORIA-API-OPERACIONAL-PAPI-1.5.1.md`. O próximo slice autorizado é auditar a matriz de cobertura dos eventos de conversas e histórico (`messages.upsert`, `messages.update`, `messaging-history.set`, `chats.update`, `contacts.update`, `presence.update` e reações) no Forte, sem liberar provider/resposta automática e sem exigir teste na máquina do usuário.

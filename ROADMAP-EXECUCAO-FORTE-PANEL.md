@@ -410,4 +410,7 @@ Typecheck, testes focados de autorização/tenancy e `git diff --check` passaram
 - [x] A UI identifica explicitamente o modo somente simulação e bloqueia a promessa de resposta automática.
 - [x] A simulação local continua auditada, determinística e sem provider externo ou Baileys.
 - [x] `pnpm check`, build e testes de plataforma passaram.
-- [ ] Próximo slice: aguardar ambiente persistente autorizado e executar Gates A-D do O6; não liberar provider/resposta automática antes do aceite explícito.
+- [x] A auditoria reversa da PAPI 1.5.1 foi ampliada para além do envio: instâncias, eventos de mensagens e histórico, contatos/JIDs, grupos, perfil, presença, leitura, webhooks/WebSocket, fila, catálogo e integrações específicas.
+- [x] A auditoria concluiu que a PAPI deve ser referência comportamental do Baileys, não dependência do Forte; Typebot, Chatwoot, licenciamento e painel proprietário não serão copiados.
+- [x] O inventário foi registrado em `docs/AUDITORIA-API-OPERACIONAL-PAPI-1.5.1.md` e publicado na branch.
+- [ ] Próximo slice: matriz de cobertura dos eventos `messages.upsert`, `messages.update`, `messaging-history.set`, `chats.update`, `contacts.update`, `presence.update` e reações no Forte, sem liberar provider/resposta automática e sem teste na máquina do usuário.
