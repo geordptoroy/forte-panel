@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { getWorkspaceMembershipContext } from "../db";
+import { consumeWorkspaceUsage, getWorkspaceMembershipContext } from "../db";
 import { ENV } from "./env";
 import { sdk } from "./sdk";
 
@@ -56,8 +56,26 @@ export function registerStorageProxy(app: Express) {
       return;
     }
     const workspacePrefix = `workspaces/${membership.workspaceId}/`;
-    if (!key.startsWith(workspacePrefix) || key.length === workspacePrefix.length) {
+    if (
+      !key.startsWith(workspacePrefix) ||
+      key.length === workspacePrefix.length
+    ) {
       res.status(404).send("Storage object not found");
+      return;
+    }
+
+    const usage = await consumeWorkspaceUsage(
+      membership.workspaceId,
+      "apiRequests"
+    );
+    res.setHeader("X-RateLimit-Limit", String(usage.limit));
+    res.setHeader("X-RateLimit-Remaining", String(usage.remaining));
+    if (!usage.allowed) {
+      res.setHeader(
+        "Retry-After",
+        String(Math.ceil(usage.retryAfterMs / 1000))
+      );
+      res.status(429).send("Storage request rate limit exceeded");
       return;
     }
 
@@ -69,7 +87,7 @@ export function registerStorageProxy(app: Express) {
     try {
       const forgeUrl = new URL(
         "v1/storage/presign/get",
-        ENV.forgeApiUrl.replace(/\/+$/, "") + "/",
+        ENV.forgeApiUrl.replace(/\/+$/, "") + "/"
       );
       forgeUrl.searchParams.set("path", key);
 

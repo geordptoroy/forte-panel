@@ -4,10 +4,12 @@ import type { Express } from "express";
 const mocks = vi.hoisted(() => ({
   authenticateRequest: vi.fn(),
   getWorkspaceMembershipContext: vi.fn(),
+  consumeWorkspaceUsage: vi.fn(),
 }));
 
 vi.mock("../db", () => ({
   getWorkspaceMembershipContext: mocks.getWorkspaceMembershipContext,
+  consumeWorkspaceUsage: mocks.consumeWorkspaceUsage,
 }));
 vi.mock("./env", () => ({
   ENV: {
@@ -40,6 +42,7 @@ function createResponse() {
     status: vi.fn(),
     send: vi.fn(),
     set: vi.fn(),
+    setHeader: vi.fn(),
     redirect: vi.fn(),
   };
   response.status.mockReturnValue(response);
@@ -57,6 +60,12 @@ describe("storage proxy tenant authorization", () => {
     vi.clearAllMocks();
     mocks.authenticateRequest.mockResolvedValue({ id: 101 });
     mocks.getWorkspaceMembershipContext.mockResolvedValue({ workspaceId: 42 });
+    mocks.consumeWorkspaceUsage.mockResolvedValue({
+      allowed: true,
+      limit: 100,
+      remaining: 99,
+      retryAfterMs: 60_000,
+    });
     forgeFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ url: "https://signed.example/private-object" }),
@@ -71,7 +80,10 @@ describe("storage proxy tenant authorization", () => {
   it("does not presign a key owned by another workspace", async () => {
     const response = createResponse();
 
-    await handler({ params: { 0: "workspaces/43/outbound/private.ogg" } }, response);
+    await handler(
+      { params: { 0: "workspaces/43/outbound/private.ogg" } },
+      response
+    );
 
     expect(response.status).toHaveBeenCalledWith(404);
     expect(forgeFetch).not.toHaveBeenCalled();
@@ -80,7 +92,10 @@ describe("storage proxy tenant authorization", () => {
   it("presigns an object under the authenticated workspace prefix", async () => {
     const response = createResponse();
 
-    await handler({ params: { 0: "workspaces/42/outbound/private.ogg" } }, response);
+    await handler(
+      { params: { 0: "workspaces/42/outbound/private.ogg" } },
+      response
+    );
 
     expect(mocks.getWorkspaceMembershipContext).toHaveBeenCalledWith(101);
     expect(forgeFetch).toHaveBeenCalledTimes(1);
@@ -95,9 +110,31 @@ describe("storage proxy tenant authorization", () => {
     mocks.getWorkspaceMembershipContext.mockResolvedValueOnce(null);
     const response = createResponse();
 
-    await handler({ params: { 0: "workspaces/42/outbound/private.ogg" } }, response);
+    await handler(
+      { params: { 0: "workspaces/42/outbound/private.ogg" } },
+      response
+    );
 
     expect(response.status).toHaveBeenCalledWith(404);
+    expect(forgeFetch).not.toHaveBeenCalled();
+  });
+
+  it("does not presign media after the workspace API quota is exhausted", async () => {
+    mocks.consumeWorkspaceUsage.mockResolvedValueOnce({
+      allowed: false,
+      limit: 100,
+      remaining: 0,
+      retryAfterMs: 30_000,
+    });
+    const response = createResponse();
+
+    await handler(
+      { params: { 0: "workspaces/42/outbound/private.ogg" } },
+      response
+    );
+
+    expect(response.status).toHaveBeenCalledWith(429);
+    expect(response.setHeader).toHaveBeenCalledWith("Retry-After", "30");
     expect(forgeFetch).not.toHaveBeenCalled();
   });
 
