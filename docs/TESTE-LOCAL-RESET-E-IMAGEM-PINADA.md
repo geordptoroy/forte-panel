@@ -5,10 +5,10 @@
 **SHA da candidata no início deste procedimento:**
 
 ```text
-236c44dad2ad4cc8d1a42634c2d9ab344c1f0935
+06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa
 ```
 
-> **Estado importante:** este SHA existe no Sandbox local, mas ainda **não tem imagens GHCR publicadas**. Os comandos abaixo são fail-closed: verificam/puxam as imagens antes de apagar dados. Se a tag não existir, o reset é abortado.
+> **Estado:** este SHA passou o workflow autorizado `37149496087` e tem as duas imagens GHCR publicadas. Os comandos abaixo continuam fail-closed: verificam/puxam as imagens antes de apagar dados. Se a tag não existir, o reset é abortado.
 
 ## 1. Limites de acesso
 
@@ -33,8 +33,8 @@ O clone local precisa conter a versão candidata. Como o SHA acima ainda não fo
 No `.env` local, não no repositório, definir:
 
 ```dotenv
-FORTE_PANEL_IMAGE=ghcr.io/geordptoroy/forte-panel:sha-236c44dad2ad4cc8d1a42634c2d9ab344c1f0935
-FORTE_WHATSAPP_IMAGE=ghcr.io/geordptoroy/forte-whatsapp:sha-236c44dad2ad4cc8d1a42634c2d9ab344c1f0935
+FORTE_PANEL_IMAGE=ghcr.io/geordptoroy/forte-panel:sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa
+FORTE_WHATSAPP_IMAGE=ghcr.io/geordptoroy/forte-whatsapp:sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa
 ```
 
 Confirmar que o `.env` contém também, com valores apenas locais:
@@ -60,9 +60,9 @@ Não copiar segredos de produção para este ficheiro.
 
 ```powershell
 $ErrorActionPreference = "Stop"
-$panelImage = "ghcr.io/geordptoroy/forte-panel:sha-236c44dad2ad4cc8d1a42634c2d9ab344c1f0935"
+$panelImage = "ghcr.io/geordptoroy/forte-panel:sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa"
 # O tag do Gateway deve usar exactamente o mesmo SHA completo:
-$whatsappImage = "ghcr.io/geordptoroy/forte-whatsapp:sha-236c44dad2ad4cc8d1a42634c2d9ab344c1f0935"
+$whatsappImage = "ghcr.io/geordptoroy/forte-whatsapp:sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa"
 
 docker manifest inspect $panelImage
 docker manifest inspect $whatsappImage
@@ -146,11 +146,12 @@ Para apagar apenas os dados da execução descartável:
   -ResetConfirmation APAGAR-TUDO
 ```
 
-## 9. O que falta para este procedimento funcionar no SHA acima
+## 9. Estado de publicação
 
-1. Disponibilizar o commit candidato no PC.
-2. Publicar imagens `sha-236c44...` no GHCR através do fluxo autorizado.
-3. Confirmar que os dois manifests existem.
-4. Só então executar o reset destrutivo.
+- Commit publicado na branch candidata: `06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa`.
+- Workflow: `37149496087`.
+- Gate de verificação: verde, sem testes skipped.
+- Imagens Panel e Gateway: publicadas com tag `sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa`.
+- `main`: não alterada.
 
-Sem a etapa 2, o procedimento aborta deliberadamente antes de remover qualquer volume.
+Se qualquer `docker manifest inspect` falhar no PC, parar antes do reset e confirmar autenticação/visibilidade do GHCR.
