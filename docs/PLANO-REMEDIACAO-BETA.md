@@ -143,21 +143,23 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 | Fase 1.5 — SSRF de base URL LLM | HTTPS e hosts exactos permitidos, resolução DNS pública fixada no dispatcher, redirects bloqueados, timeout e resposta limitada; validação também nas gravações tRPC/admin. | Fechado localmente |
 | Fase 1.6 — lease de idempotência REST | `claimToken` aleatório; complete/fail condicionados por token + `processing`; claims expiradas e handlers com erro passam a `indeterminate` em vez de reexecutarem efeitos. Migration `0060` converte linhas legadas `processing/failed`; testes cobrem lease expirada e stale completion/failure. | Fencing fechado localmente; reconciliação manual pendente |
 | Fase 1.7 — erros async Express 4 | As 17 callbacks async do router REST são envolvidas por `asyncRoute`; middleware devolve JSON 500 genérico; os seis `return idempotent(...)` sem await foram corrigidos. Oito testes provam respostas 500/sem leak e claim failed nas sete rotas idempotentes auditadas. | Fechado localmente |
+| Fase 1.7 — limites de body/media e rate | Parser global reduzido a 1 MiB; webhook Baileys autenticado e limitado antes do parse (12 MiB), uploads existentes mantêm limites explícitos; media inbound limitada a 8 MiB no gateway por stream e na API; webhooks e receipts consomem quota `apiRequests` por workspace. Testes cobrem `413`, autenticação, 8 MiB e `429`. | Fechado localmente; sem smoke externo |
 | Fase 2.1 — migration `0017` | Removido fallback `forte-demo`; inferência apenas com ownership determinística e falha diagnóstica em ambiguidade. Testes cobrem backfill single-tenant e bloqueio sem atribuição arbitrária. | Fechado localmente |
 | Fase 2.2 — transição `0043` | Migration mantém fail-closed. Novo teste PostgreSQL exercita channels, instances, messages e default provider; cada blocker aborta sem alterar rows ou enum. Inventário read-only acrescenta counts exactos, referência a credenciais e próximos passos sem expor valores. | Protegido, resolução pendente |
 
 ## Validação da remediação local (2026-10-03)
 
 - `pnpm check`: passou.
-- Suite Vitest root contra PostgreSQL 16 local: **120 ficheiros / 442 testes passaram; sem skips**.
+- Suite Vitest root contra PostgreSQL 16 local: **122 ficheiros / 449 testes passaram; sem skips**.
 - `pnpm build` do painel: passou; permanece o aviso conhecido de bundle JavaScript principal com cerca de 1,1 MB minificado.
-- Gateway Baileys: typecheck e build via `tsc` local passaram; a invocação pnpm isolada foi bloqueada pela política `ERR_PNPM_IGNORED_BUILDS`, sem aprovar nem executar scripts de dependências.
+- Gateway Baileys: **17 ficheiros / 86 testes passaram, sem skips**; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico.
+- Body/media/rate: testes focados de ingress, media e quota passaram (**3 ficheiros / 15 testes**); o parser global deixou 50 MiB e passou a 1 MiB, com webhook Baileys pré-autenticado a 12 MiB e media inbound limitada a 8 MiB descodificados.
 - Migration `0043`: quatro casos legados foram testados numa base temporária local, depois removida; PostgreSQL continua disponível e não ficou base temporária.
 - Inventário WhatsApp: executado em `BEGIN READ ONLY` na base local, mostrando zero blockers nesse snapshot de teste; isto **não** é inventário da instalação do utilizador.
 - YAML Compose analisado; a CLI Docker não está instalada. Nenhum container ou volume Docker foi iniciado, parado, resetado ou alterado.
 
 ## Pendências e limite de segurança
 
-Continuam abertos os itens restantes da Fase 1 (limites de body/rate e revisão de demais endpoints), a ferramenta operacional para reconciliar claims `indeterminate`, as outras migrations/dados, o transporte Baileys e os gates de operação listados acima. O parser JSON global de 50 MB não foi reduzido ainda: o webhook Baileys transporta media base64 e o limite correcto deve ser definido junto de um bound explícito no gateway, sem quebrar attachments funcionais. O inventário local e o teste da `0043` demonstram comportamento fail-closed; não provam que a base real do utilizador esteja livre de legado.
+Continuam abertos os itens restantes da Fase 1 (revisão dos demais endpoints), a ferramenta operacional para reconciliar claims `indeterminate`, as outras migrations/dados, o transporte Baileys e os gates de operação listados acima. O parser JSON global foi reduzido para 1 MiB; o webhook Baileys usa 12 MiB apenas após pré-autenticação, a media descodificada fica limitada a 8 MiB e os anexos existentes têm excepções explícitas sem o antigo limite global de 50 MB. O inventário local e o teste da `0043` demonstram comportamento fail-closed; não provam que a base real do utilizador esteja livre de legado.
 
 A transformação/arquivo ou eliminação de dados PAPI/Meta históricos **não foi escolhida nem executada**. Antes de alterar `0043` para arquivar ou apagar rows/segredos, obter decisão explícita sobre retenção e tratamento de mensagens pendentes; até lá, manter o gate e não aplicar upgrades a bases reais. Nenhuma publicação fica autorizada por este documento.

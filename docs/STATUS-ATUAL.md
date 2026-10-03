@@ -29,6 +29,9 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Criados `AGENTS.md` e o procedimento único de desenvolvimento/release.
 - Removidas variáveis Meta dos exemplos de ambiente, atualizado o contrato/escopo para Baileys-only e generalizada a deteção de nomes de credenciais.
 - Normalizados avisos de documento histórico nos planos, prompts, handoffs e auditorias antigas. As menções remanescentes à PAPI estão limitadas à regra explícita de escopo e a referências de engenharia; não há uso no runtime nem nos exemplos de ambiente.
+- Reduzido o parser JSON global para 1 MiB, com limites de rota explícitos para o webhook Baileys (12 MiB), voz de onboarding (24 MiB) e uploads de anexos (12 MiB), preservando os contratos de anexos existentes.
+- Adicionado pré-parser do webhook Baileys que rejeita `Content-Length` excessivo e exige segredo/API key antes de materializar o JSON; o gateway envia também `X-Webhook-Instance-Id` para resolver o segredo por instância antes do parse, mantendo a assinatura HMAC após o parse.
+- Limitada a media inbound Baileys a 8 MiB descodificados: o gateway lê por stream com bound, o schema limita a data URL/base64 e o storage não aceita configuração acima desse tecto. Webhooks de eventos Baileys e receipts passam a consumir a quota `apiRequests` do workspace e devolvem `429`/`Retry-After` quando esgotada.
 
 ## Autoridade documental
 
@@ -51,10 +54,10 @@ Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8f
 | Segurança P0 e regressões de tenancy | Storage proxy, REST/queue e SSRF têm guards; `setWorkspaceLifecycleStatus`, `setWorkspacePlan` e mutations de incidentes exigem sessão operadora do admin/workspace correctos e registam `supportSessionId`; o Kanban inicia sessão curta antes de suspender/reativar. O delete Baileys prova ownership; `0017` remove o fallback `forte-demo`; `0060` aplica fencing REST fail-closed. |
 | Migration 0043 e preflight | **4 superfícies legadas bloqueiam sem mutação** e preservam rows/enum; inventário read-only reporta os quatro counts e referências a credenciais sem revelar valores. |
 | Express 4 async REST | 17 callbacks async protegidos por `asyncRoute`; erros não tratados devolvem JSON 500 genérico; as 6 rotas idempotentes passaram a `return await`; 8 regressões cobrem 7 endpoints e claim failed. |
-| Suite root com `DATABASE_URL` local | **120 ficheiros / 442 testes passaram** na execução completa após esta remediação; sem skips nesta execução. |
+| Suite root com `DATABASE_URL` local | **122 ficheiros / 449 testes passaram** na execução completa após esta remediação; sem skips nesta execução. |
 | Validator de configuração de produção | Passou com configuração sintética segura; sem credenciais reais. |
 | `pnpm build` do painel | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
-| Gateway Baileys | Suite completa incluída nos 442 testes; typecheck e build `tsc` directos passaram. O comando pnpm isolado foi travado pela política de scripts de dependências; nenhum script foi aprovado/executado. |
+| Gateway Baileys | Suite isolada: **17 ficheiros / 86 testes passaram**, sem skips; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico; não houve alteração do lockfile nem do patch. |
 | Compose | YAML analisado com Prettier; `docker compose config` não pôde ser executado porque a CLI Docker não está instalada neste sandbox. Nenhum container/volume foi iniciado ou alterado. |
 | Workflow de publicação | YAML validado; `main` apenas, migrations PostgreSQL e zero-skips antes de `publish`. Ainda não executado no GitHub. |
 
@@ -62,13 +65,13 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Pendências antes de promover
 
-1. Completar a Fase 1: o tratamento async Express 4 está implementado; seguem-se limites de body/rate e revisão dos restantes endpoints. O gate de supportSession para status/plano/incidentes está implementado e testado. O fencing REST da `0060` falha fechado em resultado ambíguo; a reconciliação operacional continua pendente.
+1. Completar a Fase 1: o tratamento async Express 4 e os limites de body/rate estão implementados e testados; segue-se a revisão dos restantes endpoints. O gate de supportSession para status/plano/incidentes está implementado e testado. O fencing REST da `0060` falha fechado em resultado ambíguo; a reconciliação operacional continua pendente.
 2. A `0017` foi corrigida e testada. A `0043` continua fail-closed; inventário e teste protegem a transição, mas a política de arquivo/resolução dos dados PAPI/Meta históricos precisa de decisão explícita antes de qualquer upgrade com esses dados.
-3. Resolver os demais high de segurança e transporte Baileys, inclusive encriptação de auth state, limites de media/body e semântica real de queued/sent/failed.
+3. Resolver os demais high de segurança e transporte Baileys, inclusive encriptação de auth state e semântica real de queued/sent/failed; os limites de media/body desta fase estão fechados localmente, sem smoke de imagem ou WhatsApp real.
 4. Fechar os gates de dados e operação: backup/restore completo, readiness, shutdown, email real ou promessa removida, observabilidade e staging controlado.
 5. Repetir typecheck, testes root/gateway, suite PostgreSQL sem skips, builds e workflow no mesmo SHA/digest quando as correções estiverem concluídas.
 6. Manter `publicSignup` fechado até as oito evidências do controlled release estarem comprovadas. Nenhum commit de promoção em `main`, publicação GHCR ou alteração da instalação Docker foi feito.
 
 ## Próxima ação
 
-**Continuar pela Fase 1 (limites de body/rate e revisão dos restantes endpoints) e decidir a política de preservação para a 0043**, sempre em PostgreSQL local descartável. O wrapper Express 4 foi validado em 7 rotas idempotentes; a `0060` impede replays automáticos de resultados ambíguos, mas a ferramenta de reconciliação ainda falta. A prova actual da `0043` demonstra bloqueio sem mutação, não resolve nem autoriza limpar/arquivar dados históricos; a candidata não é release beta pública e não deve ser instalada no ambiente do utilizador.
+**Continuar pela revisão dos restantes endpoints e decidir a política de preservação para a 0043**, sempre em PostgreSQL local descartável. O wrapper Express 4 e os limites body/rate foram validados; a `0060` impede replays automáticos de resultados ambíguos, mas a ferramenta de reconciliação ainda falta. A prova actual da `0043` demonstra bloqueio sem mutação, não resolve nem autoriza limpar/arquivar dados históricos; a candidata não é release beta pública e não deve ser instalada no ambiente do utilizador.

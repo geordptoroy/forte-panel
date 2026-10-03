@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { decodeMediaDataUrl } from "./media-storage";
 import { storagePut } from "./storage";
+import {
+  INBOX_MEDIA_MAX_BYTES,
+  INBOX_MEDIA_MAX_DATA_URL_CHARS,
+} from "./media-limits";
 
 export { decodeMediaDataUrl } from "./media-storage";
-
-export const INBOX_MEDIA_MAX_BYTES = 8 * 1024 * 1024;
-export const INBOX_MEDIA_MAX_DATA_URL_CHARS = Math.ceil(INBOX_MEDIA_MAX_BYTES * 4 / 3) + 512;
+export { INBOX_MEDIA_MAX_BYTES, INBOX_MEDIA_MAX_DATA_URL_CHARS } from "./media-limits";
 
 export type InboxAttachmentType = "image" | "audio" | "video" | "document";
 

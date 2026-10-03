@@ -32,6 +32,7 @@ describe("durable webhook outbox", () => {
     const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
       expect(init?.headers).toMatchObject({
         "x-webhook-secret": "secret",
+        "x-webhook-instance-id": "instance-1",
       });
       expect(init?.body).toContain('"eventId":"event-1"');
       expect(init?.headers).toHaveProperty("x-webhook-signature");
@@ -54,7 +55,7 @@ describe("durable webhook outbox", () => {
     });
 
     await outbox.start();
-    await outbox.enqueue({ eventId: "event-1", content: "Olá" });
+    await outbox.enqueue({ eventId: "event-1", instanceId: "instance-1", content: "Olá" });
     await waitFor(() => fetchImpl.mock.calls.length === 1);
     await waitFor(async () => (await fs.readdir(directory)).every(file => !file.endsWith(".json")));
     await outbox.flush();

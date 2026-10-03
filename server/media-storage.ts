@@ -1,15 +1,24 @@
 import { storageGetSignedUrl, storagePut } from "./storage";
+import {
+  INBOX_MEDIA_MAX_BYTES,
+  INBOX_MEDIA_MAX_DATA_URL_CHARS,
+} from "./media-limits";
 
 type MediaMetadata = Record<string, unknown>;
 
 const DATA_URL_PATTERN = /^data:([^;,]+)(?:;[^;,]*)*;base64,([A-Za-z0-9+/=]+)$/i;
 
 export function decodeMediaDataUrl(value: string) {
+  if (value.length > INBOX_MEDIA_MAX_DATA_URL_CHARS) return null;
   const match = DATA_URL_PATTERN.exec(value);
   if (!match) return null;
+  const encoded = match[2];
+  if (encoded.length > INBOX_MEDIA_MAX_DATA_URL_CHARS) return null;
+  const buffer = Buffer.from(encoded, "base64");
+  if (buffer.length < 1 || buffer.length > INBOX_MEDIA_MAX_BYTES) return null;
   return {
     mimeType: match[1],
-    buffer: Buffer.from(match[2], "base64"),
+    buffer,
   };
 }
 
@@ -29,16 +38,17 @@ export async function persistInboundMedia(
   eventId: string,
   metadata: MediaMetadata | undefined
 ): Promise<MediaMetadata | undefined> {
-  if (!metadata || process.env.FORTE_MEDIA_PRIVATE_STORAGE_ENABLED !== "true")
-    return metadata;
+  if (!metadata) return metadata;
   const mediaData = metadata.mediaData;
   if (typeof mediaData !== "string") return metadata;
   const decoded = decodeMediaDataUrl(mediaData);
   if (!decoded)
-    throw new Error("Mídia inbound não está em data URL base64 válida");
-  const maxBytes = Number(
-    process.env.FORTE_MEDIA_MAX_BYTES ?? 15 * 1024 * 1024
-  );
+    throw new Error("Mídia inbound inválida ou excede o limite de 8 MiB");
+  if (process.env.FORTE_MEDIA_PRIVATE_STORAGE_ENABLED !== "true") return metadata;
+  const configuredMaxBytes = Number(process.env.FORTE_MEDIA_MAX_BYTES);
+  const maxBytes = Number.isFinite(configuredMaxBytes)
+    ? Math.max(1, Math.min(Math.floor(configuredMaxBytes), INBOX_MEDIA_MAX_BYTES))
+    : INBOX_MEDIA_MAX_BYTES;
   if (decoded.buffer.length > maxBytes)
     throw new Error(`Mídia inbound excede o limite de ${maxBytes} bytes`);
   const fileName =

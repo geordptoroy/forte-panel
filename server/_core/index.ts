@@ -7,6 +7,8 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { registerApiRoutes } from "../api";
+import { baileysWebhookAuthenticationGuard } from "../baileys-webhook-ingress";
+import { BAILEYS_WEBHOOK_MAX_BODY_BYTES } from "../media-limits";
 import { createContext } from "./context";
 import { securityHeadersForRequest } from "./http-security";
 import { serveStatic, setupVite } from "./vite";
@@ -38,9 +40,21 @@ async function startServer() {
       res.setHeader(name, value);
     next();
   });
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  // Keep the default parser small. Large JSON payloads are isolated to the
+  // routes whose contracts explicitly carry bounded base64 attachments.
+  app.use(
+    "/api/v1/webhooks/providers/baileys",
+    baileysWebhookAuthenticationGuard,
+    express.json({ limit: BAILEYS_WEBHOOK_MAX_BODY_BYTES })
+  );
+  app.use("/api/trpc/voice.upload", express.json({ limit: "24mb" }));
+  app.use("/api/trpc/inbox.uploadAttachment", express.json({ limit: "12mb" }));
+  app.use(
+    "/api/trpc/platform.uploadAttachment",
+    express.json({ limit: "12mb" })
+  );
+  app.use(express.json({ limit: "1mb" }));
+  app.use(express.urlencoded({ limit: "1mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerApiRoutes(app);

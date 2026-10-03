@@ -44,6 +44,10 @@ import {
   PanelMessageEchoTracker,
   shouldForwardLiveUpsert,
 } from "./message-normalization.js";
+import {
+  INBOUND_MEDIA_MAX_BYTES,
+  readMediaStreamWithLimit,
+} from "./media-download.js";
 
 function instanceScopedEventId(instanceId: string, sourceId: string) {
   return `baileys-${crypto
@@ -968,7 +972,17 @@ export class InstanceManager {
       };
       if (media && !historical) {
         try {
-          const buffer = await downloadMediaMessage(message, "buffer", {});
+          const declaredLength = Number(media.fileLength ?? 0);
+          if (
+            Number.isSafeInteger(declaredLength) &&
+            declaredLength > INBOUND_MEDIA_MAX_BYTES
+          )
+            throw new Error("inbound_media_too_large");
+          const stream = await downloadMediaMessage(message, "stream", {});
+          const buffer = await readMediaStreamWithLimit(
+            stream,
+            INBOUND_MEDIA_MAX_BYTES
+          );
           const mimeType =
             media.mimetype ??
             (image

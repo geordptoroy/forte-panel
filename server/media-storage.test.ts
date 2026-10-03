@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decodeMediaDataUrl, persistInboundMedia } from "./media-storage";
+import { INBOX_MEDIA_MAX_BYTES } from "./media-limits";
 
 describe("private media storage contract", () => {
   it("decodes valid base64 data URLs and rejects malformed values", () => {
@@ -12,6 +13,13 @@ describe("private media storage contract", () => {
     expect(
       decodeMediaDataUrl("data:audio/webm;codecs=opus;base64,SGk=")
     )?.toMatchObject({ mimeType: "audio/webm", buffer: Buffer.from("Hi") });
+  });
+
+  it("rejects a data URL whose decoded media exceeds 8 MiB", () => {
+    const oversized = `data:image/png;base64,${Buffer.alloc(
+      INBOX_MEDIA_MAX_BYTES + 1
+    ).toString("base64")}`;
+    expect(decodeMediaDataUrl(oversized)).toBeNull();
   });
 
   it("keeps metadata unchanged when private storage is disabled", async () => {

@@ -47,6 +47,7 @@ import {
   validateWebhookReplay,
   type WebhookReplayValidation,
 } from "./webhook-anti-replay";
+import { INBOX_MEDIA_MAX_DATA_URL_CHARS } from "./media-limits";
 
 const api = express.Router();
 function asyncRoute(handler: RequestHandler): RequestHandler {
@@ -135,7 +136,7 @@ const webhookSchema = z.object({
   metadata: z
     .object({
       instanceId: z.string().max(160).optional(),
-      mediaData: z.string().max(50_000_000).optional(),
+      mediaData: z.string().max(INBOX_MEDIA_MAX_DATA_URL_CHARS).optional(),
       mediaUrl: z.string().max(4000).optional(),
       mediaMimeType: z.string().max(180).optional(),
       fileName: z.string().max(255).optional(),
@@ -355,6 +356,24 @@ async function requireApiWorkspaceId(
     return undefined;
   }
   return workspaceId;
+}
+
+async function enforceBaileysWebhookRateLimit(
+  res: Response,
+  workspaceId: number
+) {
+  const usage = await consumeWorkspaceUsage(workspaceId, "apiRequests");
+  res.setHeader("X-RateLimit-Limit", String(usage.limit));
+  res.setHeader("X-RateLimit-Remaining", String(usage.remaining));
+  if (usage.allowed) return true;
+  res.setHeader("Retry-After", String(Math.ceil(usage.retryAfterMs / 1000)));
+  fail(
+    res,
+    429,
+    "Limite de requisições do workspace atingido",
+    "workspace_rate_limited"
+  );
+  return false;
 }
 
 function webhookReplayFor(
@@ -1387,6 +1406,7 @@ async function handleBaileysDeliveryStatusWebhook(
         "unknown_baileys_instance"
       );
     workspaceId = owner.workspaceId;
+    if (!(await enforceBaileysWebhookRateLimit(res, workspaceId))) return;
     const registered = await registerWebhookEvent({
       eventId: parsed.data.eventId,
       provider: "baileys",
@@ -1542,6 +1562,8 @@ async function handleBaileysWebhook(req: Request, res: Response) {
           : "O evento não identifica uma instância Baileys",
         instanceId ? "unknown_baileys_instance" : "instance_id_required"
       );
+    if (instanceOwner?.active && !(await enforceBaileysWebhookRateLimit(res, workspaceId)))
+      return;
     const isGroup = normalized.metadata?.isGroup === true;
     const groupJid =
       typeof normalized.metadata?.groupJid === "string"

@@ -222,4 +222,31 @@ describe("Express 4 async REST error handling", () => {
       consoleError.mockRestore();
     }
   });
+
+  it("rejects an authenticated Baileys webhook when the workspace quota is exhausted", async () => {
+    dbMocks.consumeWorkspaceUsage.mockResolvedValueOnce({
+      allowed: false,
+      limit: 1,
+      remaining: 0,
+      retryAfterMs: 30_000,
+    });
+    const response = await fetch(`${baseUrl}/api/v1/webhooks/providers/baileys`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer express4-test-api-key",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        eventId: "rate-limited-baileys-event",
+        phone: "5511999999999",
+        content: "Olá",
+        messageType: "text",
+      }),
+    });
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "workspace_rate_limited",
+    });
+    expect(dbMocks.claimApiIdempotency).not.toHaveBeenCalled();
+  });
 });

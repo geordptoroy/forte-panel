@@ -237,6 +237,9 @@ export class WebhookOutbox {
               "x-webhook-signature": signature,
               "x-webhook-timestamp": timestamp,
               "x-webhook-nonce": nonce,
+              ...(typeof envelope.payload.instanceId === "string"
+                ? { "x-webhook-instance-id": envelope.payload.instanceId }
+                : {}),
             },
             body,
           });
