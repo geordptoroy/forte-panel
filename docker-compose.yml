@@ -86,6 +86,12 @@ services:
       BAILEYS_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:?BAILEYS_WEBHOOK_SECRET is required}
       BAILEYS_INSTANCE_ID: ${BAILEYS_INSTANCE_ID:-default}
     ports: ["${PANEL_PORT:-3002}:3000"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     depends_on:
       postgres_panel: { condition: service_healthy }
       redis_panel: { condition: service_healthy }
@@ -128,7 +134,7 @@ services:
       postgres_panel: { condition: service_healthy }
       redis_panel: { condition: service_healthy }
       forte-panel-migrations: { condition: service_completed_successfully }
-      forte-whatsapp: { condition: service_started }
+      forte-whatsapp: { condition: service_healthy }
     networks: [panel-network, whatsapp-network]
 
   forte-whatsapp:
@@ -150,6 +156,12 @@ services:
       WHATSAPP_WEBHOOK_INITIAL_BACKOFF_MS: ${WHATSAPP_WEBHOOK_INITIAL_BACKOFF_MS:-1000}
       WHATSAPP_WEBHOOK_MAX_BACKOFF_MS: ${WHATSAPP_WEBHOOK_MAX_BACKOFF_MS:-60000}
     ports: ["127.0.0.1:${BAILEYS_PORT_PUBLIC:-3010}:3010"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     volumes: ["forte_whatsapp_sessions:/app/sessions"]
     depends_on:
       forte-panel: { condition: service_started }

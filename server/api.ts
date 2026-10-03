@@ -11,6 +11,7 @@ import { isContactStage } from "@shared/contact-stage";
 import {
   cancelAgendaAppointment,
   checkDatabaseHealth,
+  checkWorkerHealth,
   createAgendaAppointment,
   getAgendaSnapshot,
   claimApiIdempotency,
@@ -483,12 +484,21 @@ api.get("/health", (_req, res) =>
 );
 
 api.get("/ready", asyncRoute(async (_req, res) => {
-  const database = await checkDatabaseHealth();
-  const ready = database.status === "ok";
+  const [database, worker, gateway] = await Promise.all([
+    checkDatabaseHealth(),
+    checkWorkerHealth(),
+    getWhatsappAdapter(OPERATIONAL_WHATSAPP_PROVIDER).health(),
+  ]);
+  const ready =
+    database.status === "ok" && worker.status === "ok" && gateway.ok;
   return res.status(ready ? 200 : 503).json({
     status: ready ? "ready" : "not_ready",
     service: "forte-panel-api",
-    checks: { database: database.status },
+    checks: {
+      database: database.status,
+      worker: worker.status,
+      gateway: gateway.ok ? "ok" : "error",
+    },
     timestamp: new Date().toISOString(),
   });
 }));

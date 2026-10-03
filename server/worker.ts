@@ -19,6 +19,7 @@ let nextMediaReconciliationAt = 0;
 let nextHeartbeatAt = 0;
 let tickCount = 0;
 let lastError: string | null = null;
+let wakeup: (() => void) | undefined;
 async function tick() {
   try {
     tickCount += 1;
@@ -129,12 +130,27 @@ async function main() {
   console.log(`[forte-worker] iniciado; intervalo=${intervalMs}ms lote=${batchSize} tentativas=${maxAttempts} eventosLote=${eventBatchSize} eventosTentativas=${eventMaxAttempts} recuperadas=${recovered} eventosRecuperados=${recoveredEvents}`);
   while (!stopping) {
     await tick();
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    if (stopping) break;
+    await new Promise<void>(resolve => {
+      const timer = setTimeout(resolve, intervalMs);
+      wakeup = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+    wakeup = undefined;
   }
+  console.log("[forte-worker] shutdown gracioso concluído");
 }
 
-const stop = () => { stopping = true; };
+const stop = () => {
+  stopping = true;
+  wakeup?.();
+};
 process.on("SIGTERM", stop);
 process.on("SIGINT", stop);
 
-void main();
+void main().catch(error => {
+  console.error("[forte-worker] falha fatal", error);
+  process.exitCode = 1;
+});

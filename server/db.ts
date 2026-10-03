@@ -196,6 +196,33 @@ export async function checkDatabaseHealth() {
   }
 }
 
+export async function checkWorkerHealth() {
+  const db = await getDb();
+  if (!db) return { status: "not_configured" as const };
+  try {
+    const [heartbeat] = await db
+      .select({
+        status: workerHeartbeats.status,
+        observedAt: workerHeartbeats.observedAt,
+        intervalMs: workerHeartbeats.intervalMs,
+        lastError: workerHeartbeats.lastError,
+      })
+      .from(workerHeartbeats)
+      .where(eq(workerHeartbeats.service, "forte-panel-worker"))
+      .limit(1);
+    if (!heartbeat) return { status: "missing" as const };
+    const stale =
+      Date.now() - heartbeat.observedAt.getTime() >
+      Math.max(heartbeat.intervalMs * 3, 180_000);
+    if (stale) return { status: "stale" as const };
+    if (heartbeat.status !== "healthy" || heartbeat.lastError)
+      return { status: "degraded" as const };
+    return { status: "ok" as const };
+  } catch {
+    return { status: "error" as const };
+  }
+}
+
 export function shouldAssignBootstrapOwnerMembership(input: {
   openId: string;
   role?: InsertUser["role"];

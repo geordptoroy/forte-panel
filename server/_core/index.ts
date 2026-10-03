@@ -83,6 +83,30 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
   });
+
+  let stopping = false;
+  const shutdown = (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    console.log(
+      `[forte-panel] ${signal} recebido; a aguardar ligações HTTP terminar`
+    );
+    const forceExit = setTimeout(() => {
+      console.error("[forte-panel] shutdown excedeu 10s; a terminar à força");
+      process.exit(1);
+    }, 10_000);
+    forceExit.unref();
+    server.close(error => {
+      clearTimeout(forceExit);
+      if (error) {
+        console.error("[forte-panel] erro no shutdown", error);
+        process.exitCode = 1;
+      }
+      process.exit();
+    });
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
 }
 
 startServer().catch(console.error);

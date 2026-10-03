@@ -78,7 +78,11 @@ describe("versioned API", () => {
     expect([200, 503]).toContain(response.status);
     expect(body).toMatchObject({
       service: "forte-panel-api",
-      checks: { database: expect.any(String) },
+      checks: {
+        database: expect.any(String),
+        worker: expect.any(String),
+        gateway: expect.any(String),
+      },
     });
     if (!process.env.DATABASE_URL) expect(response.status).toBe(503);
   });
