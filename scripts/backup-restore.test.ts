@@ -26,6 +26,7 @@ describe("backup/restore contract", () => {
     expect(source).toContain('verify "$dir" >/dev/null');
     expect(source).toContain('RESTORE_SESSION_DIR não pode ser a sessão ativa');
     expect(source).toContain('tar -czf "$session_archive" -T /dev/null');
+    expect(source).toContain("session_key_sha256");
   });
 
   it("verifies a manifest and rejects a tampered PostgreSQL artifact", () => {
@@ -45,6 +46,7 @@ describe("backup/restore contract", () => {
       `postgres_sha256=${sha(join(backup, "postgres-test.dump"))}`,
       "session_file=whatsapp-sessions-test.tar.gz",
       `session_sha256=${sha(join(backup, "whatsapp-sessions-test.tar.gz"))}`,
+      `session_key_sha256=${"e".repeat(64)}`,
       "",
     ].join("\n"));
     chmodSync(join(backup, "manifest-test.txt"), 0o600);
