@@ -3,7 +3,7 @@
 **Atualizado:** 3 de outubro de 2026, 08:57 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
-**Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound) e `8e8c1bd` (contrato MIME/PTT); sem push nesta sessão.
+**Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only) e `eeaa6d5` (reconciliação idempotente auditável); sem push nesta sessão.
 
 ## Git e decisão de integração
 
@@ -36,6 +36,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Encerrado permanentemente com `404` o endpoint REST genérico `/api/v1/webhooks/inbound/whatsapp`; o único contrato de inbound activo é o callback autenticado `/api/v1/webhooks/providers/baileys`, eliminando a segunda superfície de ingestão fora da policy Baileys-only.
 - Fechado o bypass de media no endpoint gateway `/send`: o ramo `payload` arbitrário agora inspecciona recursivamente campos `image`/`audio`/`video`/`document`/`sticker`, rejeita referências privadas e formas binárias não limitadas antes de chamar o manager, preservando URLs HTTPS permitidas e data URLs bounded.
 - Corrigido o contrato MIME/PTT outbound: `mediaMimeType` é a fonte canónica (com `mimetype` apenas como compatibilidade), ficheiros áudio normais usam `ptt: false` e gravações do microfone usam `ptt: true`; testes cobrem WebM/Opus, OGG e fallback MIME.
+- Adicionada ferramenta `pnpm db:reconcile:idempotency`: listar claims `indeterminate` é sempre read-only; reabrir como `failed` exige workspace/chave exactos, razão, `--confirm`, verificação externa prévia e escreve audit log. A ferramenta não marca `completed` automaticamente.
 
 ## Autoridade documental
 
@@ -58,7 +59,7 @@ Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8f
 | Segurança P0 e regressões de tenancy | Storage proxy, REST/queue e SSRF têm guards; `setWorkspaceLifecycleStatus`, `setWorkspacePlan` e mutations de incidentes exigem sessão operadora do admin/workspace correctos e registam `supportSessionId`; o Kanban inicia sessão curta antes de suspender/reativar. O delete Baileys prova ownership; `0017` remove o fallback `forte-demo`; `0060` aplica fencing REST fail-closed. |
 | Migration 0043 e preflight | **Purge explícito de superfícies não-Baileys**; teste PostgreSQL confirma remoção de channels/instances/messages/settings/webhookEvents não-Baileys, preservação Baileys, enum/check/default Baileys-only e inventário read-only reporta candidatos sem revelar valores. |
 | Express 4 async REST | 17 callbacks async protegidos por `asyncRoute`; erros não tratados devolvem JSON 500 genérico; as 6 rotas idempotentes passaram a `return await`; 8 regressões cobrem 7 endpoints e claim failed. |
-| Suite root com `DATABASE_URL` local | **123 ficheiros / 451 testes passaram** na execução completa após esta remediação; sem skips nesta execução. |
+| Suite root com `DATABASE_URL` local | **124 ficheiros / 453 testes passaram** na execução completa após esta remediação; sem skips nesta execução. |
 | Validator de configuração de produção | Passou com configuração sintética segura; sem credenciais reais. |
 | `pnpm build` do painel | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
 | Gateway Baileys | Suite isolada: **17 ficheiros / 86 testes passaram**, sem skips; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico; não houve alteração do lockfile nem do patch. |
@@ -70,7 +71,7 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Pendências antes de promover
 
-1. Completar a Fase 1: o tratamento async Express 4, os limites de body/rate e o encerramento do endpoint REST genérico estão implementados e testados; segue-se a revisão dos restantes endpoints. O gate de supportSession para status/plano/incidentes está implementado e testado. O fencing REST da `0060` falha fechado em resultado ambíguo; a reconciliação operacional continua pendente.
+1. Completar a Fase 1: o tratamento async Express 4, os limites de body/rate, o encerramento do endpoint REST genérico e a ferramenta de reconciliação idempotente estão implementados e testados; segue-se a revisão dos restantes endpoints. O gate de supportSession para status/plano/incidentes está implementado e testado. O fencing REST da `0060` falha fechado em resultado ambíguo.
 2. A `0017` foi corrigida e testada. A `0043` agora aplica a decisão explícita Baileys-only: elimina rows/configuração/eventos/mensagens tagged com provider não-Baileys durante o upgrade. O inventário read-only deve ser guardado antes de aplicar a migration real; não executar este upgrade no ambiente do utilizador sem backup/rollback validado.
 3. Resolver os demais high de segurança e transporte Baileys, inclusive encriptação de auth state e semântica real de queued/sent/failed; o guard de media outbound e os limites de media/body estão fechados localmente, sem smoke de imagem ou WhatsApp real.
 4. Fechar os gates de dados e operação: backup/restore completo, readiness, shutdown, email real ou promessa removida, observabilidade e staging controlado.
@@ -79,4 +80,4 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Próxima ação
 
-**Continuar pela revisão dos restantes endpoints e pela ferramenta de reconciliação de claims**, sempre em PostgreSQL local descartável. O wrapper Express 4, os limites body/rate, o `404` permanente do inbound genérico e a purge Baileys-only da `0043` foram validados; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
+**Continuar pela revisão dos restantes endpoints e dos gates de transporte/operação**, sempre em PostgreSQL local descartável. O wrapper Express 4, os limites body/rate, o `404` permanente do inbound genérico, a purge Baileys-only da `0043` e a reconciliação idempotente auditável foram validados; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
