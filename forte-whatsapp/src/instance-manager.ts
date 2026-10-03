@@ -35,6 +35,10 @@ import {
   decodeAllowedOutboundMediaData,
   isAllowedOutboundMediaReference,
 } from "./media-reference.js";
+import {
+  outboundAudioPtt,
+  outboundMediaMimeType,
+} from "./outbound-media-contract.js";
 import { SendLedger, stableFingerprint } from "./send-ledger.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
 import { buildNativeInteractivePayload } from "./interactive-payload.js";
@@ -587,36 +591,28 @@ export class InstanceManager {
     } else if (messageType === "audio") {
       message = {
         audio: mediaSource,
-        mimetype:
-          typeof metadata.mimetype === "string"
-            ? metadata.mimetype
-            : "audio/ogg; codecs=opus",
-        ptt: metadata.ptt !== false,
+        mimetype: outboundMediaMimeType(metadata, "audio/ogg; codecs=opus"),
+        ptt: outboundAudioPtt(metadata),
       };
     } else if (messageType === "image") {
       message = {
         image: mediaSource,
         caption:
           typeof metadata.caption === "string" ? metadata.caption : undefined,
-        mimetype:
-          typeof metadata.mimetype === "string" ? metadata.mimetype : undefined,
+        mimetype: outboundMediaMimeType(metadata),
       };
     } else if (messageType === "video") {
       message = {
         video: mediaSource,
         caption:
           typeof metadata.caption === "string" ? metadata.caption : undefined,
-        mimetype:
-          typeof metadata.mimetype === "string" ? metadata.mimetype : undefined,
+        mimetype: outboundMediaMimeType(metadata),
         ptv: metadata.ptv === true,
       };
     } else if (messageType === "document") {
       message = {
         document: mediaSource,
-        mimetype:
-          typeof metadata.mimetype === "string"
-            ? metadata.mimetype
-            : "application/octet-stream",
+        mimetype: outboundMediaMimeType(metadata, "application/octet-stream"),
         fileName:
           typeof metadata.fileName === "string"
             ? metadata.fileName

@@ -1183,6 +1183,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     name: string;
     type: "image" | "audio" | "video" | "document";
     mimeType: string;
+    ptt?: boolean;
     previewUrl?: string;
     storageKey?: string;
     mediaData?: string;
@@ -1437,6 +1438,9 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             mediaMimeType: uploaded.mimeType,
             mediaSizeBytes: uploaded.sizeBytes,
             fileName: uploaded.fileName,
+            ...(currentAttachment.ptt !== undefined
+              ? { ptt: currentAttachment.ptt }
+              : {}),
             ...(caption ? { caption } : {}),
           },
           instanceIds: outboundInstanceIds,
@@ -1511,7 +1515,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       instanceIds: outboundInstanceIds,
     });
   };
-  const selectAttachment = (file?: File) => {
+  const selectAttachment = (file?: File, options?: { ptt?: boolean }) => {
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
       setRecordingError("O áudio/anexo excede o limite de 8 MB.");
@@ -1534,6 +1538,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       name: file.name,
       type,
       mimeType: file.type || "application/octet-stream",
+      ...(options?.ptt !== undefined ? { ptt: options.ptt } : {}),
       previewUrl,
     });
     setRecordingError("");
@@ -1597,7 +1602,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             ? "m4a"
             : "webm";
         selectAttachment(
-          new File([blob], `gravacao-whatsapp.${extension}`, { type: mimeType })
+          new File([blob], `gravacao-whatsapp.${extension}`, { type: mimeType }),
+          { ptt: true }
         );
       };
       recorder.start();
