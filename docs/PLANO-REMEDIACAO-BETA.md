@@ -154,11 +154,12 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 - `pnpm check`: passou.
 - Suite Vitest root contra PostgreSQL 16 local: **124 ficheiros / 453 testes passaram; sem skips**.
 - `pnpm build` do painel: passou; permanece o aviso conhecido de bundle JavaScript principal com cerca de 1,1 MB minificado.
-- Gateway Baileys: **18 ficheiros / 91 testes passaram, sem skips**; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico.
+- Gateway Baileys: **18 ficheiros / 92 testes passaram, sem skips**; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico.
 - Body/media/rate: testes focados de ingress, media e quota passaram (**3 ficheiros / 15 testes**); o parser global deixou 50 MiB e passou a 1 MiB, com webhook Baileys pré-autenticado a 12 MiB e media inbound limitada a 8 MiB descodificados.
 - Migration `0043`: fixture temporário local com rows Baileys + não-Baileys confirmou purge das superfícies operacionais não-Baileys e preservação Baileys; a base temporária foi removida.
 - Inventário WhatsApp: executado em `BEGIN READ ONLY`; agora reporta `purgeCandidates`/`purgeRequired` e nunca altera a base. Isto **não** é inventário da instalação do utilizador.
 - Reconciliação idempotente: teste PostgreSQL cobre listagem workspace-scoped, transição única `indeterminate→failed`, bloqueio de segunda transição e audit log; CLI read-only devolveu zero claims na base local e recusou mutação sem `--confirm`.
+- Gateway endpoint hardening: `/ready` anónimo devolve apenas estado mínimo, enquanto o inventário de instâncias exige API key; o parser JSON interno rejeita bodies acima de 1 MiB com `413` e não chama o manager. Regressões cobrem ambos os comportamentos.
 - YAML Compose analisado; a CLI Docker não está instalada. Nenhum container ou volume Docker foi iniciado, parado, resetado ou alterado.
 
 ## Pendências e limite de segurança
