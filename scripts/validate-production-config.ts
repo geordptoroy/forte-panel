@@ -41,6 +41,7 @@ export function validateProductionConfig(env: NodeJS.ProcessEnv = process.env) {
   if (env.BAILEYS_BASE_URL?.trim()) {
     requiredSecret(env, "BAILEYS_API_KEY", errors);
     requiredSecret(env, "BAILEYS_WEBHOOK_SECRET", errors);
+    requiredSecret(env, "WHATSAPP_SESSION_ENCRYPTION_KEY", errors);
   }
   if (env.FORTE_PUBLIC_API_ENABLED === "true") {
     requiredSecret(env, "FORTE_API_KEY", errors);

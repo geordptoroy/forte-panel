@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { useEncryptedAuthState } from "./encrypted-auth-state.js";
+import {
+  useEncryptedAuthState,
+  validateSessionEncryptionKey,
+} from "./encrypted-auth-state.js";
 
 const temporaryPaths: string[] = [];
 afterEach(async () => {
@@ -22,6 +25,14 @@ async function createFolder() {
 const key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 describe("encrypted Baileys auth state", () => {
+  it("accepts exactly 32-byte hex/base64 keys and rejects other lengths", () => {
+    expect(validateSessionEncryptionKey(key)).toBe(key);
+    expect(validateSessionEncryptionKey(Buffer.alloc(32, 7).toString("base64"))).toBe(
+      Buffer.alloc(32, 7).toString("base64")
+    );
+    expect(() => validateSessionEncryptionKey("too-short")).toThrow();
+  });
+
   it("persists credentials and signal keys encrypted, then restores them", async () => {
     const folder = await createFolder();
     const first = await useEncryptedAuthState(folder, key);

@@ -24,6 +24,11 @@ function parseKey(value: string): Buffer {
   return key;
 }
 
+export function validateSessionEncryptionKey(value: string) {
+  parseKey(value);
+  return value.trim();
+}
+
 function encrypt(value: string, key: Buffer): string {
   const iv = crypto.randomBytes(IV_BYTES);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);

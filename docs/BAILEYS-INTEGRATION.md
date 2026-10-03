@@ -120,7 +120,7 @@ BAILEYS_REQUEST_TIMEOUT_MS=8000
 ```env
 WHATSAPP_API_KEY=<chave-interna-do-gateway>
 WHATSAPP_SESSION_DIR=/app/sessions
-WHATSAPP_SESSION_ENCRYPTION_KEY=32-bytes-em-hex-opcional
+WHATSAPP_SESSION_ENCRYPTION_KEY=32-bytes-em-hex-ou-base64-obrigatoria-em-producao
 # Opcional: ID e nome de uma sessão antiga; o registry não cria esse ID sozinho
 WHATSAPP_INSTANCE_ID=default
 WHATSAPP_WEBHOOK_URL=http://forte-panel:3000/api/v1/webhooks/providers/baileys
@@ -149,7 +149,7 @@ No Compose local:
 - `WHATSAPP_WEBHOOK_SECRET` deve ser igual a `BAILEYS_WEBHOOK_SECRET`;
 - se `WHATSAPP_WEBHOOK_URL` estiver configurada, o segredo é obrigatório;
 - a sessão não deve ser armazenada dentro do container sem volume persistente;
-- a chave de criptografia deve ser preservada: perdê-la pode impedir a leitura da sessão.
+- a chave de criptografia deve ser preservada: perdê-la pode impedir a leitura da sessão; em produção, o gateway falha no arranque se faltar ou não tiver 32 bytes.
 
 ---
 
@@ -171,7 +171,7 @@ Sem a chave correta:
 
 Status HTTP esperado: `401`.
 
-Os endpoints `/health` e `/ready` são públicos para health checks internos. Em uma exposição pública, devem ser protegidos por rede/firewall ou proxy.
+Os endpoints `/health` e `/ready` são públicos para health checks internos. `/ready` devolve apenas estado mínimo sem autenticação; detalhes das instâncias exigem Bearer API key. Em uma exposição pública, devem ser protegidos por rede/firewall ou proxy.
 
 ---
 
@@ -218,7 +218,7 @@ Uso: verificar se o processo HTTP está vivo. Isso não significa que o WhatsApp
 GET /ready
 ```
 
-O endpoint é público no gateway atual para permitir probes do Docker/orquestrador. Em exposição fora da rede interna, deve ser protegido por firewall ou proxy. Resposta `200` quando o processo está em estado aceitável:
+O endpoint é público no gateway atual para permitir probes do Docker/orquestrador. Sem autenticação devolve apenas `status` e `service`; com Bearer API key inclui o inventário operacional. Em exposição fora da rede interna, deve ser protegido por firewall ou proxy. Resposta `200` quando o processo está em estado aceitável:
 
 ```json
 {

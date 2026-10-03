@@ -10,7 +10,7 @@ Novas instâncias não conectam ao serem criadas. O usuário deve escolher **Con
 
 ## Variáveis
 
-Copie `.env.example` somente para ambiente local. Nunca versione chaves ou a pasta de sessões. `WHATSAPP_API_KEY` protege as chamadas internas. `WHATSAPP_WEBHOOK_URL` e `WHATSAPP_WEBHOOK_SECRET` ativam o callback assinado. `WHATSAPP_SESSION_ENCRYPTION_KEY` ativa AES-256-GCM para o auth state; preserve essa chave para manter as sessões. `WHATSAPP_MAX_INSTANCES` limita novas sessões (padrão: 10; máximo: 25).
+Copie `.env.example` somente para ambiente local. Nunca versione chaves ou a pasta de sessões. `WHATSAPP_API_KEY` protege as chamadas internas. `WHATSAPP_WEBHOOK_URL` e `WHATSAPP_WEBHOOK_SECRET` ativam o callback assinado. `WHATSAPP_SESSION_ENCRYPTION_KEY` contém uma chave de 32 bytes em hex ou base64 para AES-256-GCM; é obrigatória em produção e deve ser preservada para manter as sessões. `WHATSAPP_MAX_INSTANCES` limita novas sessões (padrão: 10; máximo: 25).
 
 ## Endpoints
 

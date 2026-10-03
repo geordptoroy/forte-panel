@@ -11,6 +11,7 @@ const valid = {
   BAILEYS_BASE_URL: "http://forte-whatsapp:3010",
   BAILEYS_API_KEY: "a".repeat(40),
   BAILEYS_WEBHOOK_SECRET: "w".repeat(40),
+  WHATSAPP_SESSION_ENCRYPTION_KEY: "e".repeat(64),
 } as NodeJS.ProcessEnv;
 
 describe("production configuration gate", () => {

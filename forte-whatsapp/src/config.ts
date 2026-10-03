@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { validateSessionEncryptionKey } from "./encrypted-auth-state.js";
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -36,6 +37,22 @@ export const config = {
     Math.min(25, Number(process.env.WHATSAPP_MAX_INSTANCES ?? "10") || 10)
   ),
 };
+
+if (process.env.NODE_ENV === "production") {
+  if (!config.sessionEncryptionKey)
+    throw new Error(
+      "WHATSAPP_SESSION_ENCRYPTION_KEY é obrigatória em produção"
+    );
+  try {
+    validateSessionEncryptionKey(config.sessionEncryptionKey);
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? error.message
+        : "WHATSAPP_SESSION_ENCRYPTION_KEY inválida"
+    );
+  }
+}
 
 if (config.webhookUrl && !config.webhookSecret)
   throw new Error(
