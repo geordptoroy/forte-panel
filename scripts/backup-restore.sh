@@ -6,6 +6,7 @@ usage() {
 Uso:
   scripts/backup-restore.sh backup
   scripts/backup-restore.sh verify BACKUP_DIR
+  scripts/backup-restore.sh retention BACKUP_DIR
   CONFIRM_RESTORE=YES RESTORE_SESSION_DIR=/path scripts/backup-restore.sh restore BACKUP_DIR
 
 Variáveis:
@@ -13,6 +14,7 @@ Variáveis:
   WHATSAPP_SESSION_DIR  diretório atual das sessões (padrão: /app/sessions)
   WHATSAPP_SESSION_ENCRYPTION_KEY chave AES de 32 bytes; nunca é escrita no backup
   BACKUP_DIR            destino do backup (padrão: ./backups)
+  BACKUP_RETENTION_DAYS retenção pretendida para o dry-run (padrão: 30)
   RESTORE_SESSION_DIR   diretório de destino da sessão restaurada
   CONFIRM_RESTORE=YES   confirmação obrigatória para operação destrutiva
 EOF
@@ -94,6 +96,31 @@ verify() {
   echo "Backup verificável: $(basename "$manifest")"
 }
 
+retention() {
+  require_command date
+  local dir=${1:-}
+  local days=${BACKUP_RETENTION_DAYS:-30}
+  [[ -n "$dir" && -d "$dir" ]] || { echo "Informe um diretório de backup existente" >&2; exit 1; }
+  [[ "$days" =~ ^[1-9][0-9]*$ ]] || { echo "BACKUP_RETENTION_DAYS deve ser um inteiro positivo" >&2; exit 1; }
+  local cutoff now manifest created created_epoch
+  now=$(date -u +%s)
+  cutoff=$((now - days * 86400))
+  echo "RETENTION_DRY_RUN=1"
+  echo "RETENTION_DAYS=$days"
+  echo "RETENTION_CANDIDATES_BEGIN"
+  while IFS= read -r manifest; do
+    created=$(sed -n 's/^created_at=//p' "$manifest")
+    if [[ "$created" =~ ^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z$ ]]; then
+      created="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}T${BASH_REMATCH[4]}:${BASH_REMATCH[5]}:${BASH_REMATCH[6]}Z"
+    fi
+    created_epoch=$(date -u -d "$created" +%s 2>/dev/null || true)
+    [[ -n "$created_epoch" && "$created_epoch" -lt "$cutoff" ]] || continue
+    printf '%s\n' "$(basename "$manifest")"
+  done < <(find "$dir" -maxdepth 1 -name 'manifest-*.txt' -type f -print | sort)
+  echo "RETENTION_CANDIDATES_END"
+  echo "Nenhum ficheiro foi removido; a aplicação da retenção exige decisão operacional separada."
+}
+
 restore() {
   [[ "${CONFIRM_RESTORE:-}" == "YES" ]] || { echo "Restore exige CONFIRM_RESTORE=YES" >&2; exit 1; }
   require_command pg_restore
@@ -128,6 +155,7 @@ restore() {
 case "$command" in
   backup) backup ;;
   verify) verify "${2:-}" ;;
+  retention) retention "${2:-}" ;;
   restore) restore "${2:-}" ;;
   -h|--help|help) usage ;;
   *) usage >&2; exit 2 ;;

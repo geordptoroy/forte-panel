@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -61,5 +61,21 @@ describe("backup/restore contract", () => {
     const backup = join(root, "backup");
     mkdirSync(backup);
     expect(() => run(["restore", backup], { DATABASE_URL: "postgresql://not-used" })).toThrow(/CONFIRM_RESTORE=YES/);
+  });
+
+  it("lists only expired manifests in retention dry-run and never removes files", () => {
+    const root = mkdtempSync(join(tmpdir(), "forte-retention-contract-"));
+    const oldManifest = join(root, "manifest-old.txt");
+    const freshManifest = join(root, "manifest-fresh.txt");
+    writeFileSync(oldManifest, "created_at=20200101T000000Z\n");
+    writeFileSync(freshManifest, "created_at=20990101T000000Z\n");
+
+    const output = run(["retention", root], { BACKUP_RETENTION_DAYS: "30" });
+
+    expect(output).toContain("RETENTION_DRY_RUN=1");
+    expect(output).toContain("manifest-old.txt");
+    expect(output).not.toContain("manifest-fresh.txt");
+    expect(existsSync(oldManifest)).toBe(true);
+    expect(existsSync(freshManifest)).toBe(true);
   });
 });
