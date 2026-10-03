@@ -29,12 +29,35 @@ describe("production configuration gate", () => {
       BAILEYS_API_KEY: "CHANGE_ME_BAILEYS_API_KEY",
     });
     expect(result.ok).toBe(false);
-    expect(result.errors).toEqual(expect.arrayContaining([
-      "DATABASE_URL must be a PostgreSQL URL",
-      "FORTE_SECURITY_FAIL_CLOSED=true is required explicitly",
-      "DEMO_MODE must be false",
-    ]));
-    expect(result.errors.some(error => error.startsWith("JWT_SECRET"))).toBe(true);
-    expect(result.errors.some(error => error.startsWith("BAILEYS_API_KEY"))).toBe(true);
+    expect(result.errors).toEqual(
+      expect.arrayContaining([
+        "DATABASE_URL must be a PostgreSQL URL",
+        "FORTE_SECURITY_FAIL_CLOSED=true is required explicitly",
+        "DEMO_MODE must be false",
+      ])
+    );
+    expect(result.errors.some(error => error.startsWith("JWT_SECRET"))).toBe(
+      true
+    );
+    expect(
+      result.errors.some(error => error.startsWith("BAILEYS_API_KEY"))
+    ).toBe(true);
+  });
+
+  it("requires an authenticated HTTPS sink when external observability is enabled", () => {
+    const result = validateProductionConfig({
+      ...valid,
+      FORTE_OBSERVABILITY_WEBHOOK_URL: "http://observer.internal/events",
+      FORTE_OBSERVABILITY_WEBHOOK_TOKEN: "short",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toEqual(
+      expect.arrayContaining(["FORTE_OBSERVABILITY_WEBHOOK_URL must use HTTPS"])
+    );
+    expect(
+      result.errors.some(error =>
+        error.startsWith("FORTE_OBSERVABILITY_WEBHOOK_TOKEN")
+      )
+    ).toBe(true);
   });
 });

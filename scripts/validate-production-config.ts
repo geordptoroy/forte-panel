@@ -50,6 +50,17 @@ export function validateProductionConfig(env: NodeJS.ProcessEnv = process.env) {
         "FORTE_API_WORKSPACE_ID is required when public API is enabled"
       );
   }
+  const observabilityUrl = env.FORTE_OBSERVABILITY_WEBHOOK_URL?.trim() ?? "";
+  if (observabilityUrl) {
+    try {
+      const parsed = new URL(observabilityUrl);
+      if (parsed.protocol !== "https:")
+        errors.push("FORTE_OBSERVABILITY_WEBHOOK_URL must use HTTPS");
+    } catch {
+      errors.push("FORTE_OBSERVABILITY_WEBHOOK_URL must be a valid URL");
+    }
+    requiredSecret(env, "FORTE_OBSERVABILITY_WEBHOOK_TOKEN", errors);
+  }
   return { ok: errors.length === 0, errors };
 }
 

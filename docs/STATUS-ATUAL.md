@@ -1,6 +1,6 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 3 de outubro de 2026, 08:58 (UTC−3)
+**Atualizado:** 3 de outubro de 2026, 09:18 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
 **Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only), `eeaa6d5` (reconciliação idempotente auditável), `a896dbd` (readiness/body do gateway), `bdeff4b` (evidência fail-closed de backup de media) e `0a190fb` (documentação de operação); sem push nesta sessão.
@@ -46,6 +46,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Endurecido o caminho de blobs: o adapter rejeita traversal, separadores/bytes de controlo, encoding de traversal e chaves acima de 512 caracteres; o proxy de media não regista corpos de erro do backend e inclui apenas `requestId`, nome do erro e status.
 - Adicionado `X-Request-Id` validado ou gerado no arranque HTTP do Panel, permitindo correlação segura sem aceitar newline/header injection; o worker já mantém heartbeat JSON com estado redigido por nome de erro.
 - Adicionado `pnpm verify:media-backup INVENTORY.json`: valida o inventário tenant-scoped, exige exportação de conteúdo e prova de restore com hashes SHA-256 reais para declarar `restore_proven`; com o adapter Forge actual, o resultado explícito é `inventory_only` e exit code não-zero.
+- Adicionado transporte opcional `FORTE_OBSERVABILITY_WEBHOOK_URL`/`FORTE_OBSERVABILITY_WEBHOOK_TOKEN`: exporta apenas heartbeat/falhas agregadas do worker, com payload allowlisted, limites, timeout de 2 s, autenticação Bearer e redacção; fica inactivo sem configuração e exige HTTPS/token no validator de produção.
 
 ## Autoridade documental
 
