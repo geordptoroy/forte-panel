@@ -1,32 +1,27 @@
--- Replace the historical multi-provider enum with a Baileys-only enum.
--- This migration intentionally refuses to rewrite legacy rows. Run the
--- read-only inventory first and resolve any non-Baileys provider before retrying.
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM "whatsappChannels" WHERE "provider"::text <> 'baileys'
-  ) THEN
-    RAISE EXCEPTION 'Baileys-only migration blocked: legacy whatsappChannels provider rows exist';
-  END IF;
-  IF EXISTS (
-    SELECT 1 FROM "whatsappInstances" WHERE "provider"::text <> 'baileys'
-  ) THEN
-    RAISE EXCEPTION 'Baileys-only migration blocked: legacy whatsappInstances provider rows exist';
-  END IF;
-  IF EXISTS (
-    SELECT 1 FROM "messages" WHERE "provider"::text <> 'baileys'
-  ) THEN
-    RAISE EXCEPTION 'Baileys-only migration blocked: legacy messages provider rows exist';
-  END IF;
-  IF EXISTS (
-    SELECT 1
-      FROM "workspaceSettings"
-     WHERE "key" = 'default_whatsapp_provider'
-       AND COALESCE("value", '') <> 'baileys'
-  ) THEN
-    RAISE EXCEPTION 'Baileys-only migration blocked: legacy default provider settings exist';
-  END IF;
-END $$;
+-- Remove the historical multi-provider boundary in favour of Baileys-only.
+-- The product decision is explicit: PAPI/Meta/generic WhatsApp providers are
+-- not supported or migrated. Their provider rows, queued messages, settings
+-- and webhook records are deleted in this transaction; Baileys rows remain.
+DELETE FROM "messages" WHERE "provider"::text <> 'baileys';
+--> statement-breakpoint
+DELETE FROM "whatsappInstances" WHERE "provider"::text <> 'baileys';
+--> statement-breakpoint
+DELETE FROM "whatsappChannels" WHERE "provider"::text <> 'baileys';
+--> statement-breakpoint
+DELETE FROM "webhookEvents" WHERE "provider" <> 'baileys';
+--> statement-breakpoint
+DELETE FROM "workspaceSettings"
+ WHERE "key" = 'default_whatsapp_provider'
+   AND COALESCE("value", '') <> 'baileys';
+--> statement-breakpoint
+ALTER TABLE "webhookEvents"
+  DROP CONSTRAINT IF EXISTS "webhook_events_operational_provider_check";
+--> statement-breakpoint
+ALTER TABLE "webhookEvents"
+  ADD CONSTRAINT "webhook_events_operational_provider_check"
+  CHECK ("provider" = 'baileys');
+--> statement-breakpoint
+ALTER TABLE "webhookEvents" ALTER COLUMN "provider" SET DEFAULT 'baileys';
 --> statement-breakpoint
 ALTER TABLE "whatsappChannels"
   DROP CONSTRAINT IF EXISTS "whatsapp_channels_operational_provider_check";

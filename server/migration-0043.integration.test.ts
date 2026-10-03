@@ -19,35 +19,9 @@ const migrationSql = readFileSync(
   new URL("../drizzle-pg/0043_baileys_only_provider_enum.sql", import.meta.url),
   "utf8"
 );
-const blockers = [
-  {
-    surface: "whatsappChannels",
-    seedSql: `INSERT INTO "whatsappChannels" ("provider") VALUES ('meta')`,
-    verifySql: `SELECT "provider"::text AS provider FROM "whatsappChannels"`,
-    expectedError: "legacy whatsappChannels provider rows exist",
-  },
-  {
-    surface: "whatsappInstances",
-    seedSql: `INSERT INTO "whatsappInstances" ("provider") VALUES ('papi')`,
-    verifySql: `SELECT "provider"::text AS provider FROM "whatsappInstances"`,
-    expectedError: "legacy whatsappInstances provider rows exist",
-  },
-  {
-    surface: "messages",
-    seedSql: `INSERT INTO "messages" ("provider") VALUES ('meta')`,
-    verifySql: `SELECT "provider"::text AS provider FROM "messages"`,
-    expectedError: "legacy messages provider rows exist",
-  },
-  {
-    surface: "workspaceSettings",
-    seedSql: `INSERT INTO "workspaceSettings" ("key", "value") VALUES ('default_whatsapp_provider', 'papi')`,
-    verifySql: `SELECT "value" FROM "workspaceSettings" WHERE "key" = 'default_whatsapp_provider'`,
-    expectedError: "legacy default provider settings exist",
-  },
-] as const;
 
-describe.skipIf(!localDatabaseUrl)("migration 0043 legacy provider gate", () => {
-  const databaseName = `forte_panel_0043_guard_${process.pid}_${Date.now()}`;
+describe.skipIf(!localDatabaseUrl)("migration 0043 Baileys-only purge", () => {
+  const databaseName = `forte_panel_0043_purge_${process.pid}_${Date.now()}`;
   let adminClient: Client | undefined;
   let testClient: Client | undefined;
 
@@ -65,10 +39,31 @@ describe.skipIf(!localDatabaseUrl)("migration 0043 legacy provider gate", () => 
     await testClient.connect();
     await testClient.query(`
       CREATE TYPE public.whatsapp_provider AS ENUM ('baileys', 'papi', 'meta');
-      CREATE TABLE public."whatsappChannels" ("provider" public.whatsapp_provider NOT NULL);
-      CREATE TABLE public."whatsappInstances" ("provider" public.whatsapp_provider NOT NULL);
-      CREATE TABLE public."messages" ("provider" public.whatsapp_provider NOT NULL);
-      CREATE TABLE public."workspaceSettings" ("key" text NOT NULL, "value" text);
+      CREATE TABLE public."whatsappChannels" (
+        "id" serial PRIMARY KEY,
+        "provider" public.whatsapp_provider NOT NULL
+      );
+      CREATE TABLE public."whatsappInstances" (
+        "id" serial PRIMARY KEY,
+        "workspaceId" integer NOT NULL DEFAULT 1,
+        "instanceId" text NOT NULL DEFAULT 'fixture-instance',
+        "active" integer NOT NULL DEFAULT 1,
+        "isDefault" integer NOT NULL DEFAULT 1,
+        "provider" public.whatsapp_provider NOT NULL
+      );
+      CREATE TABLE public."messages" (
+        "id" serial PRIMARY KEY,
+        "provider" public.whatsapp_provider NOT NULL
+      );
+      CREATE TABLE public."webhookEvents" (
+        "id" serial PRIMARY KEY,
+        "provider" text NOT NULL DEFAULT 'whatsapp'
+      );
+      CREATE TABLE public."workspaceSettings" (
+        "id" serial PRIMARY KEY,
+        "key" text NOT NULL,
+        "value" text
+      );
     `);
   });
 
@@ -82,26 +77,36 @@ describe.skipIf(!localDatabaseUrl)("migration 0043 legacy provider gate", () => 
     }
   });
 
-  it.each(blockers)("blocks $surface legacy rows without changing their data", async blocker => {
+  it("purges non-Baileys provider rows and leaves the schema Baileys-only", async () => {
     const client = testClient;
     if (!client) throw new Error("isolated local test database unavailable");
+
     await client.query(`
-      DELETE FROM public."whatsappChannels";
-      DELETE FROM public."whatsappInstances";
-      DELETE FROM public."messages";
-      DELETE FROM public."workspaceSettings";
+      INSERT INTO public."whatsappChannels" ("provider") VALUES ('baileys'), ('meta');
+      INSERT INTO public."whatsappInstances" ("provider") VALUES ('baileys'), ('papi');
+      INSERT INTO public."messages" ("provider") VALUES ('baileys'), ('meta');
+      INSERT INTO public."webhookEvents" ("provider") VALUES ('baileys'), ('whatsapp');
+      INSERT INTO public."workspaceSettings" ("key", "value")
+        VALUES ('default_whatsapp_provider', 'papi'), ('notification_preferences', '{}');
     `);
-    await client.query(blocker.seedSql);
 
-    await client.query("BEGIN");
-    await expect(client.query(migrationSql)).rejects.toThrow(blocker.expectedError);
-    await client.query("ROLLBACK");
+    await client.query(migrationSql);
 
-    const preserved = await client.query(blocker.verifySql);
-    expect(preserved.rows).toHaveLength(1);
-    if (blocker.surface === "workspaceSettings")
-      expect(preserved.rows[0]?.value).toBe("papi");
-    else expect(preserved.rows[0]?.provider).toMatch(/^(meta|papi)$/);
+    await expect(
+      client.query(`SELECT "provider"::text AS provider FROM public."whatsappChannels"`)
+    ).resolves.toMatchObject({ rows: [{ provider: "baileys" }] });
+    await expect(
+      client.query(`SELECT "provider"::text AS provider FROM public."whatsappInstances"`)
+    ).resolves.toMatchObject({ rows: [{ provider: "baileys" }] });
+    await expect(
+      client.query(`SELECT "provider"::text AS provider FROM public."messages"`)
+    ).resolves.toMatchObject({ rows: [{ provider: "baileys" }] });
+    await expect(
+      client.query(`SELECT "provider" FROM public."webhookEvents"`)
+    ).resolves.toMatchObject({ rows: [{ provider: "baileys" }] });
+    await expect(
+      client.query(`SELECT "key" FROM public."workspaceSettings" ORDER BY "key"`)
+    ).resolves.toMatchObject({ rows: [{ key: "notification_preferences" }] });
 
     const enumLabels = await client.query<{ enumlabel: string }>(`
       SELECT enumlabel
@@ -109,10 +114,13 @@ describe.skipIf(!localDatabaseUrl)("migration 0043 legacy provider gate", () => 
        WHERE enumtypid = 'public.whatsapp_provider'::regtype
        ORDER BY enumsortorder
     `);
-    expect(enumLabels.rows.map(row => row.enumlabel)).toEqual([
-      "baileys",
-      "papi",
-      "meta",
-    ]);
+    expect(enumLabels.rows.map(row => row.enumlabel)).toEqual(["baileys"]);
+
+    const webhookConstraint = await client.query(`
+      SELECT 1
+        FROM pg_constraint
+       WHERE conname = 'webhook_events_operational_provider_check'
+    `);
+    expect(webhookConstraint.rowCount).toBe(1);
   });
 });

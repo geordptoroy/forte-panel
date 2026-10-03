@@ -1059,7 +1059,7 @@ export const webhookEvents = pgTable(
     id: serial("id").primaryKey(),
     workspaceId: integer("workspaceId").notNull(),
     eventId: varchar("eventId", { length: 180 }).notNull(),
-    provider: varchar("provider", { length: 60 }).default("whatsapp").notNull(),
+    provider: varchar("provider", { length: 60 }).default("baileys").notNull(),
     instanceId: varchar("instanceId", { length: 160 }),
     webhookNonce: varchar("webhookNonce", { length: 180 }),
     webhookTimestamp: timestamp("webhookTimestamp"),
@@ -1081,6 +1081,10 @@ export const webhookEvents = pgTable(
       table.webhookNonce
     ),
     index("webhook_events_status_lease_idx").on(table.status, table.leaseUntil),
+    check(
+      "webhook_events_operational_provider_check",
+      sql`${table.provider} = 'baileys'`
+    ),
   ]
 );
 

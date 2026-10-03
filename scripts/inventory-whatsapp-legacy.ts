@@ -175,7 +175,7 @@ try {
       params
     );
 
-    const legacyProviderBlockers = {
+    const legacyProviderPurgeCandidates = {
       channels: sumCount(channelProviders.rows.filter(row => row.provider !== "baileys")),
       instances: sumCount(instanceProviders.rows.filter(row => row.provider !== "baileys")),
       messages: sumCount(messageProviders.rows.filter(row => row.provider !== "baileys")),
@@ -184,7 +184,7 @@ try {
         0
       ),
     };
-    const migration0043BlockerCount = Object.values(legacyProviderBlockers).reduce(
+    const migration0043PurgeCandidateCount = Object.values(legacyProviderPurgeCandidates).reduce(
       (total, count) => total + count,
       0
     );
@@ -219,9 +219,9 @@ try {
       legacySettings: settings.rows,
       duplicateInstanceIds: duplicateInstanceIds.rows,
       migration0043: {
-        blocked: migration0043BlockerCount > 0,
-        blockers: legacyProviderBlockers,
-        totalBlockerRows: migration0043BlockerCount,
+        purgeRequired: migration0043PurgeCandidateCount > 0,
+        purgeCandidates: legacyProviderPurgeCandidates,
+        totalPurgeCandidateRows: migration0043PurgeCandidateCount,
         legacyCredentialReferences: legacyCredentialReferenceCount,
       },
       totals: {
@@ -238,9 +238,9 @@ try {
         duplicateInstanceIds: duplicateInstanceIds.rowCount ?? duplicateInstanceIds.rows.length,
       },
       nextAction:
-        migration0043BlockerCount > 0
-          ? "A migration 0043 ficaria bloqueada. Preservar a base, guardar este inventário e obter aprovação explícita para resolver/arquivar cada categoria; nunca renomear provider legado para baileys."
-          : "Os quatro gates de dados da migration 0043 estão sem blockers neste snapshot. Guardar este inventário e confirmar backup/rollback antes de qualquer migration.",
+        migration0043PurgeCandidateCount > 0
+          ? "A migration 0043 purgará estes candidatos não-Baileys. Guardar este inventário e confirmar backup/rollback antes de aplicar a migration; nunca renomear provider legado para baileys."
+          : "Não há candidatos de purge não-Baileys neste snapshot. Guardar este inventário e confirmar backup/rollback antes de qualquer migration.",
     };
 
     await client.query("ROLLBACK");
@@ -256,7 +256,7 @@ try {
       console.log(`Settings potencialmente legados: ${report.totals.legacySettingRows}`);
       console.log(`IDs de instância duplicados entre workspaces: ${report.totals.duplicateInstanceIds}`);
       console.log(
-        `Blockers 0043 (channels/instances/messages/default provider): ${legacyProviderBlockers.channels}/${legacyProviderBlockers.instances}/${legacyProviderBlockers.messages}/${legacyProviderBlockers.defaultProviderSettings}`
+        `Purge candidates 0043 (channels/instances/messages/default provider): ${legacyProviderPurgeCandidates.channels}/${legacyProviderPurgeCandidates.instances}/${legacyProviderPurgeCandidates.messages}/${legacyProviderPurgeCandidates.defaultProviderSettings}`
       );
       console.log(`Referências credenciais ligadas a providers legados: ${legacyCredentialReferenceCount}`);
       console.log(report.nextAction);

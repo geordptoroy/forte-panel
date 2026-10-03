@@ -4454,7 +4454,7 @@
           "type": "varchar(60)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'whatsapp'"
+          "default": "'baileys'"
         },
         "payload": {
           "name": "payload",
@@ -4511,7 +4511,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "webhook_events_operational_provider_check": {
+          "name": "webhook_events_operational_provider_check",
+          "value": "\"webhookEvents\".\"provider\" = 'baileys'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.whatsappChannels": {
