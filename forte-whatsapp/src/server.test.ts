@@ -378,4 +378,43 @@ describe("Baileys gateway HTTP contract", () => {
     expect(response.status).toBe(200);
     expect(sentMessageInstance).toBe("test-instance");
   });
+
+  it("rejects private media hidden in an arbitrary payload before calling the manager", async () => {
+    sentMessageInstance = "";
+    const response = await fetch(`${baseUrl}/api/instances/test-instance/send`, {
+      method: "POST",
+      headers: {
+        ...auth,
+        "Content-Type": "application/json",
+        "Idempotency-Key": "server-payload-private-media",
+      },
+      body: JSON.stringify({
+        phone: "5511999999999@s.whatsapp.net",
+        payload: { image: { url: "http://127.0.0.1/private" } },
+      }),
+    });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "private_media_reference_required",
+    });
+    expect(sentMessageInstance).toBe("");
+  });
+
+  it("accepts a public media reference hidden in an arbitrary payload", async () => {
+    sentMessageInstance = "";
+    const response = await fetch(`${baseUrl}/api/instances/test-instance/send`, {
+      method: "POST",
+      headers: {
+        ...auth,
+        "Content-Type": "application/json",
+        "Idempotency-Key": "server-payload-public-media",
+      },
+      body: JSON.stringify({
+        phone: "5511999999999@s.whatsapp.net",
+        payload: { image: { url: "https://media.example.com/private" } },
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(sentMessageInstance).toBe("test-instance");
+  });
 });

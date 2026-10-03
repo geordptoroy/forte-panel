@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   decodeAllowedOutboundMediaData,
+  isAllowedOutboundMediaPayload,
   isAllowedOutboundMediaReference,
   isAllowedOutboundMediaUrl,
 } from "./media-reference.js";
@@ -43,5 +44,16 @@ describe("outbound private media URL guard", () => {
     expect(isAllowedOutboundMediaReference("data:image/png;base64,not-base64!")).toBe(false);
     const oversized = `data:image/png;base64,${Buffer.alloc(8 * 1024 * 1024 + 1).toString("base64")}`;
     expect(isAllowedOutboundMediaReference(oversized)).toBe(false);
+  });
+
+  it("guards media fields in arbitrary JSON payloads without blocking interactive payloads", () => {
+    expect(
+      isAllowedOutboundMediaPayload({
+        viewOnceMessage: { message: { image: { url: "https://media.example.com/file" } } },
+      })
+    ).toBe(true);
+    expect(isAllowedOutboundMediaPayload({ buttons: [{ buttonId: "1" }] })).toBe(true);
+    expect(isAllowedOutboundMediaPayload({ image: { url: "http://127.0.0.1/file" } })).toBe(false);
+    expect(isAllowedOutboundMediaPayload({ audio: Buffer.from("secret") })).toBe(false);
   });
 });

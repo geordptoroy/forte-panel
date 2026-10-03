@@ -66,3 +66,37 @@ export function decodeAllowedOutboundMediaData(value: string) {
 export function isAllowedOutboundMediaReference(value: string) {
   return isAllowedOutboundMediaUrl(value) || Boolean(decodeAllowedOutboundMediaData(value));
 }
+
+
+const MEDIA_PAYLOAD_KEYS = new Set(["image", "audio", "video", "document", "sticker"]);
+const MAX_PAYLOAD_NODES = 256;
+
+function isAllowedMediaPayloadValue(value: unknown) {
+  if (typeof value === "string") return isAllowedOutboundMediaReference(value);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const reference = (value as { url?: unknown }).url;
+  return typeof reference === "string" && isAllowedOutboundMediaReference(reference);
+}
+
+/**
+ * JSON payloads can bypass the messageType path and reach Baileys directly.
+ * Inspect the known media fields recursively while keeping interactive payloads
+ * opaque and rejecting binary/object forms that cannot be bounded safely here.
+ */
+export function isAllowedOutboundMediaPayload(payload: unknown) {
+  const seen = new Set<object>();
+  let nodes = 0;
+  const visit = (value: unknown): boolean => {
+    if (++nodes > MAX_PAYLOAD_NODES) return false;
+    if (!value || typeof value !== "object") return true;
+    if (seen.has(value)) return false;
+    seen.add(value);
+    if (Array.isArray(value)) return value.every(visit);
+    for (const [key, child] of Object.entries(value)) {
+      if (MEDIA_PAYLOAD_KEYS.has(key) && !isAllowedMediaPayloadValue(child)) return false;
+      if (!visit(child)) return false;
+    }
+    return true;
+  };
+  return visit(payload);
+}
