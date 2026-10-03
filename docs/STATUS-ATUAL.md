@@ -3,7 +3,7 @@
 **Atualizado:** 3 de outubro de 2026, 08:57 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
-**Continuação local:** commits `bb3fb0e` (limites) e `6ee474c` (webhook genérico encerrado); sem push nesta sessão.
+**Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado) e `17b0b34` (guard de media outbound); sem push nesta sessão.
 
 ## Git e decisão de integração
 
@@ -34,6 +34,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Adicionado pré-parser do webhook Baileys que rejeita `Content-Length` excessivo e exige segredo/API key antes de materializar o JSON; o gateway envia também `X-Webhook-Instance-Id` para resolver o segredo por instância antes do parse, mantendo a assinatura HMAC após o parse.
 - Limitada a media inbound Baileys a 8 MiB descodificados: o gateway lê por stream com bound, o schema limita a data URL/base64 e o storage não aceita configuração acima desse tecto. Webhooks de eventos Baileys e receipts passam a consumir a quota `apiRequests` do workspace e devolvem `429`/`Retry-After` quando esgotada.
 - Encerrado permanentemente com `404` o endpoint REST genérico `/api/v1/webhooks/inbound/whatsapp`; o único contrato de inbound activo é o callback autenticado `/api/v1/webhooks/providers/baileys`, eliminando a segunda superfície de ingestão fora da policy Baileys-only.
+- Fechado o bypass de media no endpoint gateway `/send`: o ramo `payload` arbitrário agora inspecciona recursivamente campos `image`/`audio`/`video`/`document`/`sticker`, rejeita referências privadas e formas binárias não limitadas antes de chamar o manager, preservando URLs HTTPS permitidas e data URLs bounded.
 
 ## Autoridade documental
 
@@ -60,6 +61,7 @@ Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8f
 | Validator de configuração de produção | Passou com configuração sintética segura; sem credenciais reais. |
 | `pnpm build` do painel | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
 | Gateway Baileys | Suite isolada: **17 ficheiros / 86 testes passaram**, sem skips; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico; não houve alteração do lockfile nem do patch. |
+| Gateway Baileys — media arbitrária | `sendPayload` já não contorna a política de media: referências privadas, binários e objectos sem URL são rejeitados antes do manager; **17 ficheiros / 89 testes** passaram, com check/build verdes. |
 | Compose | YAML analisado com Prettier; `docker compose config` não pôde ser executado porque a CLI Docker não está instalada neste sandbox. Nenhum container/volume foi iniciado ou alterado. |
 | Workflow de publicação | YAML validado; `main` apenas, migrations PostgreSQL e zero-skips antes de `publish`. Ainda não executado no GitHub. |
 
@@ -69,7 +71,7 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 1. Completar a Fase 1: o tratamento async Express 4, os limites de body/rate e o encerramento do endpoint REST genérico estão implementados e testados; segue-se a revisão dos restantes endpoints. O gate de supportSession para status/plano/incidentes está implementado e testado. O fencing REST da `0060` falha fechado em resultado ambíguo; a reconciliação operacional continua pendente.
 2. A `0017` foi corrigida e testada. A `0043` continua fail-closed; inventário e teste protegem a transição, mas a política de arquivo/resolução dos dados PAPI/Meta históricos precisa de decisão explícita antes de qualquer upgrade com esses dados.
-3. Resolver os demais high de segurança e transporte Baileys, inclusive encriptação de auth state e semântica real de queued/sent/failed; os limites de media/body desta fase estão fechados localmente, sem smoke de imagem ou WhatsApp real.
+3. Resolver os demais high de segurança e transporte Baileys, inclusive encriptação de auth state e semântica real de queued/sent/failed; o guard de media outbound e os limites de media/body estão fechados localmente, sem smoke de imagem ou WhatsApp real.
 4. Fechar os gates de dados e operação: backup/restore completo, readiness, shutdown, email real ou promessa removida, observabilidade e staging controlado.
 5. Repetir typecheck, testes root/gateway, suite PostgreSQL sem skips, builds e workflow no mesmo SHA/digest quando as correções estiverem concluídas.
 6. Manter `publicSignup` fechado até as oito evidências do controlled release estarem comprovadas. Nenhum commit de promoção em `main`, publicação GHCR ou alteração da instalação Docker foi feito.
