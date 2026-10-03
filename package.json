@@ -14,6 +14,7 @@
     "check:restore-rehearsal-isolation": "tsx scripts/validate-restore-rehearsal-isolation.ts",
     "preflight:restore-rehearsal": "tsx scripts/run-restore-rehearsal-preflight.ts",
     "prepare:restore-rehearsal": "tsx scripts/prepare-restore-rehearsal.ts",
+    "verify:media-backup": "tsx scripts/media-backup-evidence.ts",
     "format": "prettier --write .",
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
