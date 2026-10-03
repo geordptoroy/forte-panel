@@ -1,4 +1,4 @@
-services:
+﻿services:
   postgres_panel:
     image: postgres:16-alpine
     container_name: forte_postgres_panel
@@ -34,6 +34,49 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks: [panel-network]
+
+  seaweedfs-config:
+    image: alpine:3.20
+    container_name: forte_seaweedfs_config
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        printf '{"identities":[{"name":"forte-panel","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write"]}]}'
+        "$${FORTE_STORAGE_ACCESS_KEY}" "$${FORTE_STORAGE_SECRET_KEY}" > /config/s3.json
+    environment:
+      FORTE_STORAGE_ACCESS_KEY: ${FORTE_STORAGE_ACCESS_KEY:?FORTE_STORAGE_ACCESS_KEY is required}
+      FORTE_STORAGE_SECRET_KEY: ${FORTE_STORAGE_SECRET_KEY:?FORTE_STORAGE_SECRET_KEY is required}
+    volumes:
+      - forte_seaweedfs_config:/config
+    networks: [panel-network]
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.80
+    container_name: forte_seaweedfs
+    restart: unless-stopped
+    command:
+      [
+        "server",
+        "-dir=/data",
+        "-s3",
+        "-s3.port=8333",
+        "-s3.config=/etc/seaweedfs/s3.json",
+      ]
+    ports:
+      - "127.0.0.1:${FORTE_STORAGE_PORT:-8333}:8333"
+    volumes:
+      - forte_seaweedfs_data:/data
+      - forte_seaweedfs_config:/etc/seaweedfs:ro
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8333/status >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      seaweedfs-config: { condition: service_completed_successfully }
     networks: [panel-network]
 
   forte-panel-migrations:
@@ -88,10 +131,17 @@ services:
       BAILEYS_API_KEY: ${BAILEYS_API_KEY:?BAILEYS_API_KEY is required}
       BAILEYS_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:?BAILEYS_WEBHOOK_SECRET is required}
       BAILEYS_INSTANCE_ID: ${BAILEYS_INSTANCE_ID:-default}
+      FORTE_STORAGE_ENDPOINT: ${FORTE_STORAGE_ENDPOINT:-http://seaweedfs:8333}
+      FORTE_STORAGE_REGION: ${FORTE_STORAGE_REGION:-us-east-1}
+      FORTE_STORAGE_BUCKET: ${FORTE_STORAGE_BUCKET:-forte-private}
+      FORTE_STORAGE_ACCESS_KEY: ${FORTE_STORAGE_ACCESS_KEY:?FORTE_STORAGE_ACCESS_KEY is required}
+      FORTE_STORAGE_SECRET_KEY: ${FORTE_STORAGE_SECRET_KEY:?FORTE_STORAGE_SECRET_KEY is required}
+      FORTE_STORAGE_FORCE_PATH_STYLE: ${FORTE_STORAGE_FORCE_PATH_STYLE:-true}
     ports: ["${PANEL_PORT:-3002}:3000"]
     depends_on:
       postgres_panel: { condition: service_healthy }
       redis_panel: { condition: service_healthy }
+      seaweedfs: { condition: service_healthy }
       forte-panel-migrations: { condition: service_completed_successfully }
     networks: [panel-network, whatsapp-network]
 
@@ -122,6 +172,12 @@ services:
       BAILEYS_API_KEY: ${BAILEYS_API_KEY:?BAILEYS_API_KEY is required}
       BAILEYS_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:?BAILEYS_WEBHOOK_SECRET is required}
       BAILEYS_INSTANCE_ID: ${BAILEYS_INSTANCE_ID:-default}
+      FORTE_STORAGE_ENDPOINT: ${FORTE_STORAGE_ENDPOINT:-http://seaweedfs:8333}
+      FORTE_STORAGE_REGION: ${FORTE_STORAGE_REGION:-us-east-1}
+      FORTE_STORAGE_BUCKET: ${FORTE_STORAGE_BUCKET:-forte-private}
+      FORTE_STORAGE_ACCESS_KEY: ${FORTE_STORAGE_ACCESS_KEY:?FORTE_STORAGE_ACCESS_KEY is required}
+      FORTE_STORAGE_SECRET_KEY: ${FORTE_STORAGE_SECRET_KEY:?FORTE_STORAGE_SECRET_KEY is required}
+      FORTE_STORAGE_FORCE_PATH_STYLE: ${FORTE_STORAGE_FORCE_PATH_STYLE:-true}
       WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS:-1500}
       WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-10}
       WORKER_MAX_ATTEMPTS: ${WORKER_MAX_ATTEMPTS:-3}
@@ -130,6 +186,7 @@ services:
     depends_on:
       postgres_panel: { condition: service_healthy }
       redis_panel: { condition: service_healthy }
+      seaweedfs: { condition: service_healthy }
       forte-panel-migrations: { condition: service_completed_successfully }
       forte-whatsapp: { condition: service_started }
     networks: [panel-network, whatsapp-network]
@@ -166,3 +223,5 @@ volumes:
   forte_postgres_panel_data:
   forte_redis_panel_data:
   forte_whatsapp_sessions:
+  forte_seaweedfs_data:
+  forte_seaweedfs_config:

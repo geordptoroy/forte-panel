@@ -70,6 +70,12 @@ export const ENV = {
     process.env.BUILT_IN_FORGE_API_URL ?? process.env.OPENAI_API_BASE ?? "",
   forgeApiKey:
     process.env.BUILT_IN_FORGE_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
+  storageEndpoint: process.env.FORTE_STORAGE_ENDPOINT ?? "",
+  storageRegion: process.env.FORTE_STORAGE_REGION ?? "us-east-1",
+  storageBucket: process.env.FORTE_STORAGE_BUCKET ?? "forte-private",
+  storageAccessKey: process.env.FORTE_STORAGE_ACCESS_KEY ?? "",
+  storageSecretKey: process.env.FORTE_STORAGE_SECRET_KEY ?? "",
+  storageForcePathStyle: process.env.FORTE_STORAGE_FORCE_PATH_STYLE !== "false",
   localAuthEnabled: process.env.LOCAL_AUTH_ENABLED === "true",
   localAdminEmail: process.env.LOCAL_ADMIN_EMAIL ?? "admin@fortepanel.local",
   localAdminPassword: process.env.LOCAL_ADMIN_PASSWORD ?? "",

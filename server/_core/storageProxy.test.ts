@@ -5,20 +5,18 @@ const mocks = vi.hoisted(() => ({
   authenticateRequest: vi.fn(),
   getWorkspaceMembershipContext: vi.fn(),
   consumeWorkspaceUsage: vi.fn(),
+  storageGetSignedUrl: vi.fn(),
 }));
 
 vi.mock("../db", () => ({
   getWorkspaceMembershipContext: mocks.getWorkspaceMembershipContext,
   consumeWorkspaceUsage: mocks.consumeWorkspaceUsage,
 }));
-vi.mock("./env", () => ({
-  ENV: {
-    forgeApiUrl: "https://forge.example",
-    forgeApiKey: "test-forge-key",
-  },
-}));
 vi.mock("./sdk", () => ({
   sdk: { authenticateRequest: mocks.authenticateRequest },
+}));
+vi.mock("../storage", () => ({
+  storageGetSignedUrl: mocks.storageGetSignedUrl,
 }));
 
 import { registerStorageProxy } from "./storageProxy";
@@ -54,7 +52,6 @@ function createResponse() {
 
 describe("storage proxy tenant authorization", () => {
   const handler = setupRoute();
-  const forgeFetch = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -66,39 +63,35 @@ describe("storage proxy tenant authorization", () => {
       remaining: 99,
       retryAfterMs: 60_000,
     });
-    forgeFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ url: "https://signed.example/private-object" }),
-    });
-    vi.stubGlobal("fetch", forgeFetch);
+    mocks.storageGetSignedUrl.mockResolvedValue(
+      "https://signed.example/private-object"
+    );
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   it("does not presign a key owned by another workspace", async () => {
     const response = createResponse();
-
     await handler(
       { params: { 0: "workspaces/43/outbound/private.ogg" } },
       response
     );
-
     expect(response.status).toHaveBeenCalledWith(404);
-    expect(forgeFetch).not.toHaveBeenCalled();
+    expect(mocks.storageGetSignedUrl).not.toHaveBeenCalled();
   });
 
   it("presigns an object under the authenticated workspace prefix", async () => {
     const response = createResponse();
-
     await handler(
       { params: { 0: "workspaces/42/outbound/private.ogg" } },
       response
     );
-
     expect(mocks.getWorkspaceMembershipContext).toHaveBeenCalledWith(101);
-    expect(forgeFetch).toHaveBeenCalledTimes(1);
+    expect(mocks.storageGetSignedUrl).toHaveBeenCalledWith(
+      "workspaces/42/outbound/private.ogg"
+    );
     expect(response.set).toHaveBeenCalledWith("Cache-Control", "no-store");
     expect(response.redirect).toHaveBeenCalledWith(
       307,
@@ -109,14 +102,12 @@ describe("storage proxy tenant authorization", () => {
   it("fails closed when the user has no single active workspace", async () => {
     mocks.getWorkspaceMembershipContext.mockResolvedValueOnce(null);
     const response = createResponse();
-
     await handler(
       { params: { 0: "workspaces/42/outbound/private.ogg" } },
       response
     );
-
     expect(response.status).toHaveBeenCalledWith(404);
-    expect(forgeFetch).not.toHaveBeenCalled();
+    expect(mocks.storageGetSignedUrl).not.toHaveBeenCalled();
   });
 
   it("does not presign media after the workspace API quota is exhausted", async () => {
@@ -127,15 +118,13 @@ describe("storage proxy tenant authorization", () => {
       retryAfterMs: 30_000,
     });
     const response = createResponse();
-
     await handler(
       { params: { 0: "workspaces/42/outbound/private.ogg" } },
       response
     );
-
     expect(response.status).toHaveBeenCalledWith(429);
     expect(response.setHeader).toHaveBeenCalledWith("Retry-After", "30");
-    expect(forgeFetch).not.toHaveBeenCalled();
+    expect(mocks.storageGetSignedUrl).not.toHaveBeenCalled();
   });
 
   it("rejects encoded traversal and unscoped storage keys before presigning", async () => {
@@ -149,6 +138,6 @@ describe("storage proxy tenant authorization", () => {
     const unscopedResponse = createResponse();
     await handler({ params: { 0: "generated/private.png" } }, unscopedResponse);
     expect(unscopedResponse.status).toHaveBeenCalledWith(404);
-    expect(forgeFetch).not.toHaveBeenCalled();
+    expect(mocks.storageGetSignedUrl).not.toHaveBeenCalled();
   });
 });

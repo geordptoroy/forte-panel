@@ -7,7 +7,10 @@ import {
 } from "./media-limits";
 
 export { decodeMediaDataUrl } from "./media-storage";
-export { INBOX_MEDIA_MAX_BYTES, INBOX_MEDIA_MAX_DATA_URL_CHARS } from "./media-limits";
+export {
+  INBOX_MEDIA_MAX_BYTES,
+  INBOX_MEDIA_MAX_DATA_URL_CHARS,
+} from "./media-limits";
 
 export type InboxAttachmentType = "image" | "audio" | "video" | "document";
 
@@ -40,7 +43,9 @@ export function isSupportedInboxMimeType(
   type: InboxAttachmentType,
   mimeType: string
 ) {
-  return supportedMimeTypes[type].has(mimeType.trim().toLowerCase().split(";")[0]);
+  return supportedMimeTypes[type].has(
+    mimeType.trim().toLowerCase().split(";")[0]
+  );
 }
 
 export function isWorkspaceInboxMediaKey(workspaceId: number, key: string) {
@@ -69,13 +74,17 @@ export async function uploadPrivateInboxAttachment(input: {
     !isSupportedInboxMimeType(input.type, declaredMimeType)
   )
     throw new Error("INBOX_MEDIA_INVALID");
-  if (decoded.buffer.length === 0 || decoded.buffer.length > INBOX_MEDIA_MAX_BYTES)
+  if (
+    decoded.buffer.length === 0 ||
+    decoded.buffer.length > INBOX_MEDIA_MAX_BYTES
+  )
     throw new Error("INBOX_MEDIA_TOO_LARGE");
 
-  const safeFileName = input.fileName
-    .replace(/[\\/]/g, "_")
-    .replace(/[^a-zA-Z0-9._-]/g, "_")
-    .slice(-120) || "attachment";
+  const safeFileName =
+    input.fileName
+      .replace(/[\\/]/g, "_")
+      .replace(/[^a-zA-Z0-9._-]/g, "_")
+      .slice(-120) || "attachment";
   const key = `workspaces/${input.workspaceId}/outbound/${randomUUID()}-${safeFileName}`;
   try {
     const uploaded = await storagePut(key, decoded.buffer, declaredMimeType);
@@ -86,14 +95,8 @@ export async function uploadPrivateInboxAttachment(input: {
       sizeBytes: decoded.buffer.length,
     };
   } catch {
-    // O anexo já foi validado e permanece pequeno o suficiente para atravessar
-    // a fila de envio. O storage privado continua sendo preferido, mas não
-    // deve impedir o envio transitório em ambientes locais sem Forge/S3.
-    return {
-      mediaData: input.dataUrl,
-      fileName: safeFileName,
-      mimeType: declaredMimeType,
-      sizeBytes: decoded.buffer.length,
-    };
+    // Nunca persistir Base64 na mensagem como fallback: isso ultrapassa o
+    // parser global e transforma a mensagem operacional num segundo arquivo.
+    throw new Error("INBOX_MEDIA_STORAGE_UNAVAILABLE");
   }
 }
