@@ -430,6 +430,9 @@ function PlatformAdminOverview() {
       ),
     onError: error => toast.error(error.message),
   });
+  const startOperatorStatusSession = trpc.platform.startSupportSession.useMutation({
+    onError: error => toast.error(error.message),
+  });
   const [reasonWorkspaceId, setReasonWorkspaceId] = useState<number | null>(
     null
   );
@@ -730,7 +733,7 @@ function PlatformAdminOverview() {
             <span className="eyebrow">Mudança de ciclo</span>
             <h2>Confirmar status</h2>
             <p>
-              O workspace será movido para <strong>{statusLabel[statusChange.status]}</strong>. A alteração será registrada na auditoria da plataforma.
+              O workspace será movido para <strong>{statusLabel[statusChange.status]}</strong>. Será aberta uma sessão operadora de curta duração para este workspace e a ação ficará auditada.
             </p>
             <label className="platform-field">
               <span>Motivo obrigatório</span>
@@ -742,16 +745,29 @@ function PlatformAdminOverview() {
             </label>
             <button
               className="btn-primary"
-              disabled={setWorkspaceStatus.isPending || statusReason.trim().length < 3}
-              onClick={() =>
-                setWorkspaceStatus.mutate({
-                  workspaceId: statusChange.workspaceId,
-                  status: statusChange.status,
-                  reason: statusReason,
-                })
-              }
+              disabled={!canMutate || setWorkspaceStatus.isPending || startOperatorStatusSession.isPending || statusReason.trim().length < 3}
+              onClick={() => {
+                const change = statusChange;
+                if (!change) return;
+                void startOperatorStatusSession
+                  .mutateAsync({
+                    workspaceId: change.workspaceId,
+                    mode: "operator",
+                    reason: statusReason,
+                    expiresInMinutes: 5,
+                  })
+                  .then(session =>
+                    setWorkspaceStatus.mutateAsync({
+                      workspaceId: change.workspaceId,
+                      sessionId: session.id,
+                      status: change.status,
+                      reason: statusReason,
+                    })
+                  )
+                  .catch(() => undefined);
+              }}
             >
-              {setWorkspaceStatus.isPending ? "Atualizando…" : "Confirmar mudança"}
+              {setWorkspaceStatus.isPending || startOperatorStatusSession.isPending ? "Atualizando…" : "Confirmar mudança"}
             </button>
           </section>
         </div>

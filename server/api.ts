@@ -1,5 +1,11 @@
 import crypto from "node:crypto";
-import express, { type Express, type Request, type Response } from "express";
+import express, {
+  type Express,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from "express";
 import { z } from "zod";
 import { isContactStage } from "@shared/contact-stage";
 import {
@@ -43,6 +49,12 @@ import {
 } from "./webhook-anti-replay";
 
 const api = express.Router();
+function asyncRoute(handler: RequestHandler): RequestHandler {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
 const webhookSecretCache = new Map<
   string,
   { secret: string; expiresAt: number }
@@ -268,7 +280,19 @@ function fail(
   message: string,
   error = "request_error"
 ) {
-  return res.status(statusCode).json({ error, message });
+  const safeMessage =
+    statusCode >= 500 && error === "internal_error"
+      ? "Erro interno do servidor"
+      : message;
+  return res.status(statusCode).json({ error, message: safeMessage });
+}
+
+function outboundQueueFailure(message: string) {
+  if (message.includes("instanceId é obrigatório"))
+    return { statusCode: 400, error: "instance_id_required" };
+  if (message.includes("Instância Baileys inválida"))
+    return { statusCode: 404, error: "unknown_baileys_instance" };
+  return { statusCode: 500, error: "internal_error" };
 }
 
 function requireApiKey(req: Request, res: Response) {
@@ -383,6 +407,13 @@ async function idempotent(
           ? JSON.parse(claim.record.responseBody)
           : { ok: true }
       );
+  if (claim.outcomeUnknown)
+    return fail(
+      res,
+      409,
+      "O resultado da operação anterior é inconclusivo; verifique o efeito antes de repetir",
+      "idempotency_outcome_unknown"
+    );
   if (claim.inProgress) {
     res.setHeader("Retry-After", "2");
     return fail(
@@ -392,24 +423,33 @@ async function idempotent(
       "idempotency_in_progress"
     );
   }
-  if (!claim.claimed)
+  if (!claim.claimed || !claim.claimToken)
     return fail(
       res,
       503,
       "Não foi possível reservar a chave de idempotência",
       "idempotency_unavailable"
     );
+  const claimToken = claim.claimToken;
   try {
     const result = await handler();
-    await completeApiIdempotency({
+    const completed = await completeApiIdempotency({
       workspaceId,
       key,
+      claimToken,
       statusCode: result.statusCode,
       responseBody: result.body,
     });
+    if (!completed)
+      return fail(
+        res,
+        409,
+        "A operação perdeu a lease; o resultado requer reconciliação antes de repetir",
+        "idempotency_outcome_unknown"
+      );
     return res.status(result.statusCode).json(result.body);
   } catch (error) {
-    await failApiIdempotency(workspaceId, key);
+    await failApiIdempotency(workspaceId, key, claimToken);
     throw error;
   }
 }
@@ -423,7 +463,7 @@ api.get("/health", (_req, res) =>
   })
 );
 
-api.get("/ready", async (_req, res) => {
+api.get("/ready", asyncRoute(async (_req, res) => {
   const database = await checkDatabaseHealth();
   const ready = database.status === "ok";
   return res.status(ready ? 200 : 503).json({
@@ -432,9 +472,9 @@ api.get("/ready", async (_req, res) => {
     checks: { database: database.status },
     timestamp: new Date().toISOString(),
   });
-});
+}));
 
-api.get("/core/diagnostics", async (req, res) => {
+api.get("/core/diagnostics", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const workspaceId = Number(process.env.FORTE_API_WORKSPACE_ID);
   const configuredWorkspace =
@@ -489,9 +529,9 @@ api.get("/core/diagnostics", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
-api.get("/channels", async (req, res) => {
+api.get("/channels", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
@@ -515,9 +555,9 @@ api.get("/channels", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
-api.get("/onboarding/prompt", async (req, res) => {
+api.get("/onboarding/prompt", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
@@ -534,9 +574,9 @@ api.get("/onboarding/prompt", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
-api.post("/lead-memory", async (req, res) => {
+api.post("/lead-memory", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const parsed = leadMemorySchema.safeParse(req.body);
   if (!parsed.success)
@@ -572,7 +612,7 @@ api.post("/lead-memory", async (req, res) => {
     };
     if (parsed.data.action === "buscar_lead")
       return res.json((await run()).body);
-    return idempotent(req, res, workspaceId, run);
+    return await idempotent(req, res, workspaceId, run);
   } catch (error) {
     return fail(
       res,
@@ -581,9 +621,9 @@ api.post("/lead-memory", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
-api.post("/contacts/upsert", async (req, res) => {
+api.post("/contacts/upsert", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const parsed = contactSchema.safeParse(req.body);
   if (!parsed.success)
@@ -591,7 +631,7 @@ api.post("/contacts/upsert", async (req, res) => {
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
   try {
-    return idempotent(req, res, workspaceId, async () => {
+    return await idempotent(req, res, workspaceId, async () => {
       const contact = await upsertApiContact(workspaceId, parsed.data);
       return {
         statusCode: 200,
@@ -618,9 +658,9 @@ api.post("/contacts/upsert", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
-api.get("/contacts/:id/messages", async (req, res) => {
+api.get("/contacts/:id/messages", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
@@ -661,9 +701,9 @@ api.get("/contacts/:id/messages", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
-api.get("/contacts/:id", async (req, res) => {
+api.get("/contacts/:id", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
@@ -698,9 +738,9 @@ api.get("/contacts/:id", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
-api.get("/availability", async (req, res) => {
+api.get("/availability", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
@@ -806,9 +846,9 @@ api.get("/availability", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
-api.post("/appointments", async (req, res) => {
+api.post("/appointments", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
@@ -872,9 +912,9 @@ api.post("/appointments", async (req, res) => {
       message.includes("indisponível") ? "schedule_conflict" : "internal_error"
     );
   }
-});
+}));
 
-api.post("/messages", async (req, res) => {
+api.post("/messages", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const parsed = messageSchema.safeParse(req.body);
   if (!parsed.success)
@@ -893,8 +933,35 @@ api.post("/messages", async (req, res) => {
     );
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
+  const provider = parsed.data.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
+  if (provider === "baileys") {
+    if (!parsed.data.instanceId)
+      return fail(
+        res,
+        400,
+        "instanceId é obrigatório para envio Baileys",
+        "instance_id_required"
+      );
+    try {
+      const owner = await findBaileysInstanceOwner(parsed.data.instanceId);
+      if (!owner?.active || owner.workspaceId !== workspaceId)
+        return fail(
+          res,
+          404,
+          "Instância Baileys não encontrada neste workspace",
+          "unknown_baileys_instance"
+        );
+    } catch {
+      return fail(
+        res,
+        503,
+        "Não foi possível validar a instância Baileys",
+        "instance_validation_unavailable"
+      );
+    }
+  }
   try {
-    return idempotent(req, res, workspaceId, async () => {
+    return await idempotent(req, res, workspaceId, async () => {
       const contact = parsed.data.contactId
         ? await getContactById(workspaceId, parsed.data.contactId)
         : await upsertApiContact(workspaceId, {
@@ -905,15 +972,6 @@ api.post("/messages", async (req, res) => {
         return {
           statusCode: 404,
           body: { error: "not_found", message: "Contato não encontrado" },
-        };
-      const provider = parsed.data.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
-      if (provider === "baileys" && !parsed.data.instanceId)
-        return {
-          statusCode: 400,
-          body: {
-            error: "instance_id_required",
-            message: "instanceId é obrigatório para envio Baileys",
-          },
         };
       const senderType = parsed.data.senderType ?? "human";
       const messageType = parsed.data.messageType ?? "text";
@@ -948,18 +1006,12 @@ api.post("/messages", async (req, res) => {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Falha ao enfileirar mensagem";
-    return fail(
-      res,
-      message.includes("instanceId é obrigatório") ? 400 : 500,
-      message,
-      message.includes("instanceId é obrigatório")
-        ? "instance_id_required"
-        : "internal_error"
-    );
+    const failure = outboundQueueFailure(message);
+    return fail(res, failure.statusCode, message, failure.error);
   }
-});
+}));
 
-api.post("/messages/batch", async (req, res) => {
+api.post("/messages/batch", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const parsed = messageBatchSchema.safeParse(req.body);
   if (!parsed.success)
@@ -983,20 +1035,41 @@ api.post("/messages/batch", async (req, res) => {
     );
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
+  for (let index = 0; index < parsed.data.messages.length; index += 1) {
+    const item = parsed.data.messages[index]!;
+    const provider = item.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
+    if (provider !== "baileys") continue;
+    if (!item.instanceId)
+      return fail(
+        res,
+        400,
+        `instanceId é obrigatório no item ${index + 1}`,
+        "instance_id_required"
+      );
+    try {
+      const owner = await findBaileysInstanceOwner(item.instanceId);
+      if (!owner?.active || owner.workspaceId !== workspaceId)
+        return fail(
+          res,
+          404,
+          `Instância Baileys não encontrada no workspace para o item ${index + 1}`,
+          "unknown_baileys_instance"
+        );
+    } catch {
+      return fail(
+        res,
+        503,
+        `Não foi possível validar a instância Baileys do item ${index + 1}`,
+        "instance_validation_unavailable"
+      );
+    }
+  }
   try {
-    return idempotent(req, res, workspaceId, async () => {
+    return await idempotent(req, res, workspaceId, async () => {
       const results: Array<Record<string, unknown>> = [];
       for (let index = 0; index < parsed.data.messages.length; index += 1) {
         const item = parsed.data.messages[index];
         const provider = item.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
-        if (provider === "baileys" && !item.instanceId)
-          return {
-            statusCode: 400,
-            body: {
-              error: "instance_id_required",
-              message: `instanceId é obrigatório no item ${index + 1}`,
-            },
-          };
         const contact = item.contactId
           ? await getContactById(workspaceId, item.contactId)
           : await upsertApiContact(workspaceId, {
@@ -1059,18 +1132,12 @@ api.post("/messages/batch", async (req, res) => {
       error instanceof Error
         ? error.message
         : "Falha ao enfileirar lote de mensagens";
-    return fail(
-      res,
-      message.includes("instanceId é obrigatório") ? 400 : 500,
-      message,
-      message.includes("instanceId é obrigatório")
-        ? "instance_id_required"
-        : "internal_error"
-    );
+    const failure = outboundQueueFailure(message);
+    return fail(res, failure.statusCode, message, failure.error);
   }
-});
+}));
 
-api.patch("/contacts/:id/stage", async (req, res) => {
+api.patch("/contacts/:id/stage", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const id = Number(req.params.id);
   const parsed = stageSchema.safeParse(req.body);
@@ -1081,7 +1148,7 @@ api.patch("/contacts/:id/stage", async (req, res) => {
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
   try {
-    return idempotent(req, res, workspaceId, async () => {
+    return await idempotent(req, res, workspaceId, async () => {
       const contact = await getContactById(workspaceId, id);
       if (!contact)
         return {
@@ -1108,9 +1175,9 @@ api.patch("/contacts/:id/stage", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
-api.post("/appointments/:id/cancel", async (req, res) => {
+api.post("/appointments/:id/cancel", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
@@ -1118,7 +1185,7 @@ api.post("/appointments/:id/cancel", async (req, res) => {
   if (!Number.isInteger(id) || id <= 0)
     return fail(res, 400, "ID de agendamento inválido", "invalid_id");
   try {
-    return idempotent(req, res, workspaceId, async () => {
+    return await idempotent(req, res, workspaceId, async () => {
       const appointment = await cancelAgendaAppointment(workspaceId, id);
       if (!appointment)
         return {
@@ -1135,9 +1202,9 @@ api.post("/appointments/:id/cancel", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
-api.post("/appointments/:id/reschedule", async (req, res) => {
+api.post("/appointments/:id/reschedule", asyncRoute(async (req, res) => {
   if (!requireApiKey(req, res)) return;
   const workspaceId = await requireApiWorkspaceId(res);
   const id = Number(req.params.id);
@@ -1196,9 +1263,9 @@ api.post("/appointments/:id/reschedule", async (req, res) => {
       message.includes("indisponível") ? "schedule_conflict" : "internal_error"
     );
   }
-});
+}));
 
-api.post("/webhooks/inbound/whatsapp", async (req, res) => {
+api.post("/webhooks/inbound/whatsapp", asyncRoute(async (req, res) => {
   const replay = webhookReplayFor(
     req,
     process.env.WEBHOOK_SIGNING_SECRET?.trim() ?? ""
@@ -1283,7 +1350,7 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
       "internal_error"
     );
   }
-});
+}));
 
 const baileysDeliveryEventSchema = z.object({
   eventType: z.literal("message_status"),
@@ -1558,9 +1625,17 @@ async function handleBaileysWebhook(req: Request, res: Response) {
   }
 }
 
-api.post("/webhooks/providers/baileys", async (req, res) =>
-  handleBaileysWebhook(req, res)
+api.post("/webhooks/providers/baileys", asyncRoute(async (req, res) =>
+  handleBaileysWebhook(req, res))
 );
+
+api.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if (res.headersSent) return next(error);
+  console.error("[REST API] Unhandled route error", {
+    error: error instanceof Error ? error.message : String(error),
+  });
+  return fail(res, 500, "Erro interno do servidor", "internal_error");
+});
 
 export function registerApiRoutes(app: Express) {
   app.use("/api/v1", api);

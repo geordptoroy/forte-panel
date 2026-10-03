@@ -6727,6 +6727,7 @@ export async function claimApiIdempotency(input: {
   const leaseUntil = new Date(
     Date.now() + Math.max(10_000, Math.min(input.leaseMs ?? 120_000, 900_000))
   );
+  const claimToken = crypto.randomUUID();
   const inserted = await db
     .insert(apiIdempotency)
     .values({
@@ -6735,53 +6736,56 @@ export async function claimApiIdempotency(input: {
       status: "processing",
       workspaceId: input.workspaceId,
       leaseUntil,
+      claimToken,
       updatedAt: new Date(),
     })
     .onConflictDoNothing({
       target: [apiIdempotency.workspaceId, apiIdempotency.key],
     })
     .returning();
-  if (inserted[0]) return { claimed: true, record: inserted[0] };
+  if (inserted[0]) return { claimed: true, record: inserted[0], claimToken };
   const existing = await getApiIdempotency(input.workspaceId, input.key);
   if (!existing) return { claimed: false, retry: true };
   if (existing.fingerprint !== input.fingerprint)
     return { claimed: false, conflict: true, record: existing };
   if (existing.status === "completed")
     return { claimed: false, completed: true, record: existing };
+  if (existing.status === "processing") {
+    const expired = !existing.leaseUntil || existing.leaseUntil < new Date();
+    return expired
+      ? { claimed: false, outcomeUnknown: true, record: existing }
+      : { claimed: false, inProgress: true, record: existing };
+  }
+  // Only an explicit, reconciled `failed` state is retryable. Expired or thrown
+  // handlers may already have committed external effects, so they fail closed.
+  if (existing.status !== "failed")
+    return { claimed: false, outcomeUnknown: true, record: existing };
   const reclaimed = await db
     .update(apiIdempotency)
-    .set({ status: "processing", leaseUntil, updatedAt: new Date() })
+    .set({ status: "processing", leaseUntil, claimToken, updatedAt: new Date() })
     .where(
       and(
         eq(apiIdempotency.workspaceId, input.workspaceId),
         eq(apiIdempotency.key, input.key),
         eq(apiIdempotency.fingerprint, input.fingerprint),
-        or(
-          eq(apiIdempotency.status, "failed"),
-          and(
-            eq(apiIdempotency.status, "processing"),
-            or(
-              isNull(apiIdempotency.leaseUntil),
-              lt(apiIdempotency.leaseUntil, new Date())
-            )
-          )
-        )
+        eq(apiIdempotency.status, "failed")
       )
     )
     .returning();
-  if (reclaimed[0]) return { claimed: true, record: reclaimed[0] };
+  if (reclaimed[0]) return { claimed: true, record: reclaimed[0], claimToken };
   return { claimed: false, inProgress: true, record: existing };
 }
 
 export async function completeApiIdempotency(input: {
   workspaceId: number;
   key: string;
+  claimToken: string;
   statusCode: number;
   responseBody: unknown;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  await db
+  const updated = await db
     .update(apiIdempotency)
     .set({
       status: "completed",
@@ -6793,23 +6797,35 @@ export async function completeApiIdempotency(input: {
     .where(
       and(
         eq(apiIdempotency.workspaceId, input.workspaceId),
-        eq(apiIdempotency.key, input.key)
+        eq(apiIdempotency.key, input.key),
+        eq(apiIdempotency.claimToken, input.claimToken),
+        eq(apiIdempotency.status, "processing")
       )
-    );
+    )
+    .returning({ id: apiIdempotency.id });
+  return updated.length > 0;
 }
 
-export async function failApiIdempotency(workspaceId: number, key: string) {
+export async function failApiIdempotency(
+  workspaceId: number,
+  key: string,
+  claimToken: string
+) {
   const db = await getDb();
-  if (!db) return;
-  await db
+  if (!db) throw new Error("Database unavailable");
+  const updated = await db
     .update(apiIdempotency)
-    .set({ status: "failed", leaseUntil: null, updatedAt: new Date() })
+    .set({ status: "indeterminate", leaseUntil: null, updatedAt: new Date() })
     .where(
       and(
         eq(apiIdempotency.workspaceId, workspaceId),
-        eq(apiIdempotency.key, key)
+        eq(apiIdempotency.key, key),
+        eq(apiIdempotency.claimToken, claimToken),
+        eq(apiIdempotency.status, "processing")
       )
-    );
+    )
+    .returning({ id: apiIdempotency.id });
+  return updated.length > 0;
 }
 
 export async function claimAgentEffect(input: {
@@ -7911,6 +7927,14 @@ export async function queueOutboundMessage(
   const selectedProvider = assertOperationalWhatsappProvider(
     provider ?? OPERATIONAL_WHATSAPP_PROVIDER
   );
+  if (selectedProvider === "baileys") {
+    const instanceId =
+      typeof metadata?.instanceId === "string" ? metadata.instanceId.trim() : "";
+    if (!instanceId)
+      throw new Error("instanceId é obrigatório para envio Baileys");
+    if (!(await getBaileysInstance(workspaceId, instanceId)))
+      throw new Error("Instância Baileys inválida para este workspace");
+  }
   const contact = await getContactById(workspaceId, contactId);
   if (!contact) throw new Error("Contact not found");
   const channels = await listWhatsappChannels(workspaceId);
@@ -8053,6 +8077,37 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
   let failed = 0;
   let throttled = 0;
   for (const item of pending) {
+    if (item.message.provider === "baileys") {
+      const instanceId =
+        typeof item.message.metadata?.instanceId === "string"
+          ? item.message.metadata.instanceId.trim()
+          : "";
+      const ownedInstance =
+        item.workspaceId && instanceId
+          ? await getBaileysInstance(item.workspaceId, instanceId)
+          : undefined;
+      if (!ownedInstance) {
+        const rejected = await db
+          .update(messages)
+          .set({
+            status: "failed",
+            lastError: "Instância Baileys inválida para este workspace",
+          })
+          .where(and(eq(messages.id, item.message.id), eq(messages.status, "queued")))
+          .returning({ id: messages.id });
+        if (rejected.length > 0) {
+          if (item.workspaceId)
+            await db.insert(auditLogs).values({
+              workspaceId: item.workspaceId,
+              contactId: item.contactId,
+              action: "message_send_rejected",
+              summary: "Envio bloqueado: instância Baileys fora do workspace ou inativa",
+            });
+          failed += 1;
+        }
+        continue;
+      }
+    }
     if (item.workspaceId) {
       const usage = await consumeWorkspaceUsage(
         item.workspaceId,
@@ -8083,6 +8138,13 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
         typeof item.message.metadata?.instanceId === "string"
           ? item.message.metadata.instanceId
           : undefined;
+      if (
+        selectedProvider === "baileys" &&
+        (!item.workspaceId ||
+          !instanceId ||
+          !(await getBaileysInstance(item.workspaceId, instanceId)))
+      )
+        throw new Error("Instância Baileys inválida para este workspace");
       let sendContent = item.message.content;
       let sendMetadata = item.message.metadata ?? undefined;
       if (["image", "audio", "video", "document"].includes(item.message.messageType)) {

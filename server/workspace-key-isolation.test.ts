@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   apiIdempotency,
   contacts,
@@ -12,7 +12,9 @@ import {
 } from "../drizzle/schema";
 import {
   claimApiIdempotency,
+  completeApiIdempotency,
   enqueueDomainEvent,
+  failApiIdempotency,
   getDb,
   markWebhookEvent,
   reconcileBaileysDeliveryStatus,
@@ -73,6 +75,95 @@ describe.skipIf(!hasDatabase)("workspace-scoped deduplication", () => {
     const eventB = await enqueueDomainEvent({ workspaceId: workspaceBId, event: "task.due", aggregateType: "task", eventKey: "same-domain-key-123456", payload: { workspace: "b" } });
     expect(eventA?.workspaceId).toBe(workspaceAId);
     expect(eventB?.workspaceId).toBe(workspaceBId);
+  });
+
+  it("does not re-run an expired REST claim when its side-effect outcome is unknown", async () => {
+    const db = await getDb();
+    if (!db) throw new Error("database unavailable");
+    const key = `expired-rest-${suffix}`;
+    const first = await claimApiIdempotency({
+      workspaceId: workspaceAId,
+      key,
+      fingerprint: "expired-payload",
+    });
+    if (!first.claimed) throw new Error("expected the first REST claim");
+
+    await db
+      .update(apiIdempotency)
+      .set({ leaseUntil: new Date(Date.now() - 1) })
+      .where(
+        and(
+          eq(apiIdempotency.workspaceId, workspaceAId),
+          eq(apiIdempotency.key, key)
+        )
+      );
+    const retry = await claimApiIdempotency({
+      workspaceId: workspaceAId,
+      key,
+      fingerprint: "expired-payload",
+    });
+    expect(retry).toMatchObject({ claimed: false, outcomeUnknown: true });
+    expect(retry.record?.claimToken).toBe(first.claimToken);
+
+    expect(
+      await completeApiIdempotency({
+        workspaceId: workspaceAId,
+        key,
+        claimToken: first.claimToken,
+        statusCode: 201,
+        responseBody: { owner: "original" },
+      })
+    ).toBe(true);
+  });
+
+  it("fences complete and fail from a stale REST claim after explicit safe reopening", async () => {
+    const db = await getDb();
+    if (!db) throw new Error("database unavailable");
+    const key = `fenced-rest-${suffix}`;
+    const first = await claimApiIdempotency({
+      workspaceId: workspaceAId,
+      key,
+      fingerprint: "fenced-payload",
+    });
+    if (!first.claimed) throw new Error("expected the first REST claim");
+
+    // This explicit DB state represents an operator-approved retry after reconciliation.
+    await db
+      .update(apiIdempotency)
+      .set({ status: "failed", leaseUntil: null })
+      .where(
+        and(
+          eq(apiIdempotency.workspaceId, workspaceAId),
+          eq(apiIdempotency.key, key)
+        )
+      );
+    const second = await claimApiIdempotency({
+      workspaceId: workspaceAId,
+      key,
+      fingerprint: "fenced-payload",
+    });
+    if (!second.claimed) throw new Error("expected the reconciled REST claim");
+    expect(second.claimToken).not.toBe(first.claimToken);
+
+    expect(
+      await completeApiIdempotency({
+        workspaceId: workspaceAId,
+        key,
+        claimToken: first.claimToken,
+        statusCode: 200,
+        responseBody: { owner: "stale" },
+      })
+    ).toBe(false);
+    expect(await failApiIdempotency(workspaceAId, key, first.claimToken)).toBe(false);
+    expect(
+      await completeApiIdempotency({
+        workspaceId: workspaceAId,
+        key,
+        claimToken: second.claimToken,
+        statusCode: 201,
+        responseBody: { owner: "current" },
+      })
+    ).toBe(true);
   });
 
   it("reclaims expired webhook leases and rejects stale completion tokens", async () => {

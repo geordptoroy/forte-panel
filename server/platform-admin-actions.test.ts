@@ -85,9 +85,18 @@ describe.skipIf(!hasDatabase)("platform admin mutation safety", () => {
   });
 
   it("suspends and reactivates a workspace with explicit status transitions", async () => {
+    const session = await startSupportSession({
+      platformAdminId,
+      workspaceId,
+      mode: "operator",
+      reason: "Validar transição com sessão operadora",
+      expiresInMinutes: 5,
+    });
+    sessionId = session.id;
     const suspended = await setPlatformWorkspaceStatus({
       platformAdminId,
       workspaceId,
+      supportSessionId: session.id,
       status: "suspended",
       reason: "Teste operacional de suspensão",
     });
@@ -96,10 +105,16 @@ describe.skipIf(!hasDatabase)("platform admin mutation safety", () => {
     const reactivated = await setPlatformWorkspaceStatus({
       platformAdminId,
       workspaceId,
+      supportSessionId: session.id,
       status: "active",
       reason: "Teste operacional de reativação",
     });
     expect(reactivated).toMatchObject({ status: "active", active: true });
+    await revokeSupportSession({
+      platformAdminId,
+      sessionId: session.id,
+      reason: "Fim da validação de transição",
+    });
   });
 
   it("records a scoped support note and audit trail", async () => {

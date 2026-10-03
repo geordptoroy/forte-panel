@@ -1,6 +1,22 @@
 import type { Express } from "express";
+import { getWorkspaceMembershipContext } from "../db";
 import { ENV } from "./env";
 import { sdk } from "./sdk";
+
+function isSafeStorageKey(key: string) {
+  if (
+    key.length > 512 ||
+    key.startsWith("/") ||
+    key.includes("\\") ||
+    /[\u0000-\u001f\u007f]/.test(key) ||
+    /%(?:2e|2f|5c)/i.test(key)
+  )
+    return false;
+  const segments = key.split("/");
+  return segments.every(
+    segment => segment.length > 0 && segment !== "." && segment !== ".."
+  );
+}
 
 export function registerStorageProxy(app: Express) {
   app.get("/manus-storage/*", async (req, res) => {
@@ -10,15 +26,34 @@ export function registerStorageProxy(app: Express) {
       return;
     }
 
+    let user;
     try {
-      await sdk.authenticateRequest(req);
+      user = await sdk.authenticateRequest(req);
     } catch {
       res.status(401).send("Authentication required");
       return;
     }
 
-    if (key.length > 512 || key.startsWith("/") || key.includes("..") || /[\r\n]/.test(key)) {
+    if (!isSafeStorageKey(key)) {
       res.status(400).send("Invalid storage key");
+      return;
+    }
+
+    let membership;
+    try {
+      membership = await getWorkspaceMembershipContext(user.id);
+    } catch (err) {
+      console.error("[StorageProxy] failed to resolve workspace membership:", err);
+      res.status(503).send("Storage authorization unavailable");
+      return;
+    }
+    if (!membership) {
+      res.status(404).send("Storage object not found");
+      return;
+    }
+    const workspacePrefix = `workspaces/${membership.workspaceId}/`;
+    if (!key.startsWith(workspacePrefix) || key.length === workspacePrefix.length) {
+      res.status(404).send("Storage object not found");
       return;
     }
 

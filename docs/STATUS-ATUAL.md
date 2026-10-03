@@ -1,8 +1,8 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 2 de outubro de 2026, 23:09 (UTC−3)
+**Atualizado:** 3 de outubro de 2026, 08:49 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
-**Estado:** candidata local em validação; **não publicada**.
+**Estado:** candidata local em remediação P0; **não publicada**.
 
 ## Git e decisão de integração
 
@@ -11,7 +11,7 @@
 | `origin/main` | `f67548570f44b8c8fe79082911d7de557a8a3650` | Base canónica observada antes da candidata; confirmar de novo antes de promover. |
 | `origin/feat/o7.15-storage-reconciliation-observability` | `61d8a13703b3146727987b6f00b34785bfdcfb87` | Linha de desenvolvimento que está a ser reconciliada localmente com a main. |
 | PR #3, `docs/ai-admin-core-plan-2026-09-27` | `d90bba2edc6601e73db9bd18601b9d97a2b2bef4` | Auditoria concluída: **não integrar a ref inteira**. As capacidades Baileys principais já estão em main/O7; a arquitetura multi-canal antiga não faz parte do produto. |
-| Candidata | branch `integration/beta-candidate-2026-10-02`, `HEAD=f675485` | Junção main+O7 ainda sem commit; alterações de integração locais e staged/unstaged, zero conflitos não resolvidos no último check. |
+| Candidata auditada | branch `integration/beta-candidate-2026-10-02`, `HEAD=445d4cc2747366b3a27976ba0b0046e8fbba102c` | Junção main+O7 num commit local; a auditoria descreve este SHA. O working tree contém agora remediações locais ainda não commitadas nem publicadas. |
 
 **Conclusão da auditoria:** main+O7 já contém o modelo multi-instância Baileys, pairing/readiness, polling de estado, CRUD, settings/profile, integração REST opt-in e os gates mais recentes. As migrations 0038/0039 do PR são byte-a-byte iguais às refs atuais; o candidato conserva também as migrations 0040–0044 de main e 0045–0058 de O7. A ref antiga do PR carrega uma arquitetura multi-canal fora do escopo e uma UI alternativa que remove settings/profile e o atalho Inbox; trazer a branch inteira é regressivo e conflitante. Nenhuma alteração do PR #3 foi copiada.
 
@@ -36,32 +36,39 @@ Para esta candidata, a ordem é: `AGENTS.md` (regras da IA) → `docs/STATUS-ATU
 
 O utilizador confirmou em 2026-10-02: **Baileys é o único canal do produto**; PAPI pode aparecer apenas em revisão de engenharia, e Meta não é suportada. Estas alterações continuam locais. Não reintroduzir adapters, configurações ou opções de outros canais; qualquer mudança de UX deve preservar os contratos atuais.
 
+## Auditoria beta completa — 2026-10-03
+
+Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8fbba102c`: **94 achados (2 critical, 38 high, 41 medium, 13 low)**. Ver [`docs/AUDITORIA-BETA-COMPLETA-2026-10-03.md`](./AUDITORIA-BETA-COMPLETA-2026-10-03.md) e o roteiro [`docs/PLANO-REMEDIACAO-BETA.md`](./PLANO-REMEDIACAO-BETA.md). O achado crítico de migration `0017` exige fixtures com dados legados; o gate de lançamento público continua corretamente fechado até existirem as oito evidências reais. A auditoria não alterou código, não usou Supabase nem publicou imagens.
+
 ## Validação já concluída
 
 | Verificação na candidata | Resultado |
 |---|---|
-| PostgreSQL local descartável, versão 16 | **60 migrations** numa base vazia; upgrade `main`→candidata aplicou 45 + 15 migrations com sucesso. |
+| PostgreSQL local descartável, versão 16 | **61 migrations** numa base vazia; upgrade `main`→candidata aplicou 45 + 16 migrations com sucesso. |
 | `pnpm check` | Passou. |
 | Regressões focadas após generalizar a deteção de credenciais | **4 ficheiros / 18 testes passaram** (`platform-admin`, `secret-safety`, `baileys-policy`, `message-routing`). |
 | Procura de providers no runtime/env e links do índice | **Zero referências operacionais/variáveis antigas; 17 links documentais válidos.** Testes negativos continuam a provar que valores legados são rejeitados. |
-| Suite root com `DATABASE_URL` local | **112 ficheiros / 407 testes passaram; zero skipped** na execução completa anterior à última alteração do validador; a cobertura focada foi repetida depois dela. |
+| Segurança P0 e regressões de tenancy | Storage proxy, REST/queue e SSRF têm guards; `setWorkspaceLifecycleStatus`, `setWorkspacePlan` e mutations de incidentes exigem sessão operadora do admin/workspace correctos e registam `supportSessionId`; o Kanban inicia sessão curta antes de suspender/reativar. O delete Baileys prova ownership; `0017` remove o fallback `forte-demo`; `0060` aplica fencing REST fail-closed. |
+| Migration 0043 e preflight | **4 superfícies legadas bloqueiam sem mutação** e preservam rows/enum; inventário read-only reporta os quatro counts e referências a credenciais sem revelar valores. |
+| Express 4 async REST | 17 callbacks async protegidos por `asyncRoute`; erros não tratados devolvem JSON 500 genérico; as 6 rotas idempotentes passaram a `return await`; 8 regressões cobrem 7 endpoints e claim failed. |
+| Suite root com `DATABASE_URL` local | **120 ficheiros / 442 testes passaram** na execução completa após esta remediação; sem skips nesta execução. |
 | Validator de configuração de produção | Passou com configuração sintética segura; sem credenciais reais. |
-| `pnpm build` | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
-| Gateway Baileys | **16 ficheiros / 84 testes passaram;** typecheck e build passaram. |
+| `pnpm build` do painel | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
+| Gateway Baileys | Suite completa incluída nos 442 testes; typecheck e build `tsc` directos passaram. O comando pnpm isolado foi travado pela política de scripts de dependências; nenhum script foi aprovado/executado. |
+| Compose | YAML analisado com Prettier; `docker compose config` não pôde ser executado porque a CLI Docker não está instalada neste sandbox. Nenhum container/volume foi iniciado ou alterado. |
 | Workflow de publicação | YAML validado; `main` apenas, migrations PostgreSQL e zero-skips antes de `publish`. Ainda não executado no GitHub. |
 
-A suite root também passou sobre a base atualizada de 45 migrations da `main` para 60 da candidata. A base era descartável e não continha dados de negócio; isto prova compatibilidade do SQL de upgrade, **não** preservação de dados reais existentes. Os testes não cobriram WhatsApp real, browser do utilizador, envio de mensagens, Supabase nem imagem Docker executada.
+A suite root também passou sobre a base atualizada de 45 migrations da `main` para 61 da candidata. A base era descartável e não continha dados de negócio; isto prova compatibilidade do SQL de upgrade, **não** preservação de dados reais existentes. Os testes não cobriram WhatsApp real, browser do utilizador, envio de mensagens, Supabase nem imagem Docker executada.
 
 ## Pendências antes de promover
 
-1. O escopo Baileys-only está confirmado; não há decisão pendente de provider.
-2. Manter a UI atual; só portar a variante visual/formulário do PR #3 se for explicitamente desejada, preservando settings/profile, o atalho Inbox e os contratos atuais.
-3. Rever as migrations que bloqueiam dados legacy/duplicados e o preflight necessário antes de uma futura atualização de uma base com dados reais; os testes usaram apenas bases descartáveis.
-4. O gate PostgreSQL/migrations/zero-skips já foi acrescentado ao workflow local de publicação; após promover, confirmar no GitHub que `verify` termina verde antes de `publish` começar.
-5. Resolver a localização das settings pnpm antes de regenerar o lockfile; a instalação congelada atual aplica o patch Wouter, mas continua a emitir aviso.
-6. Rever o aviso de bundle e os gaps de signup/isolamento/readiness descritos na auditoria completa; repetir os gates após qualquer alteração.
-7. Só após revisão, confirmar a `main` remota mais recente e pedir autorização para promover/publicar. Esperar o workflow GHCR terminar por completo antes de entregar o procedimento local.
+1. Completar a Fase 1: o tratamento async Express 4 está implementado; seguem-se limites de body/rate e revisão dos restantes endpoints. O gate de supportSession para status/plano/incidentes está implementado e testado. O fencing REST da `0060` falha fechado em resultado ambíguo; a reconciliação operacional continua pendente.
+2. A `0017` foi corrigida e testada. A `0043` continua fail-closed; inventário e teste protegem a transição, mas a política de arquivo/resolução dos dados PAPI/Meta históricos precisa de decisão explícita antes de qualquer upgrade com esses dados.
+3. Resolver os demais high de segurança e transporte Baileys, inclusive encriptação de auth state, limites de media/body e semântica real de queued/sent/failed.
+4. Fechar os gates de dados e operação: backup/restore completo, readiness, shutdown, email real ou promessa removida, observabilidade e staging controlado.
+5. Repetir typecheck, testes root/gateway, suite PostgreSQL sem skips, builds e workflow no mesmo SHA/digest quando as correções estiverem concluídas.
+6. Manter `publicSignup` fechado até as oito evidências do controlled release estarem comprovadas. Nenhum commit de promoção, push, publicação GHCR ou alteração da instalação Docker foi feito.
 
 ## Próxima ação
 
-**Manter a candidata main+O7, sem importar PR #3; rever as migrations de dados legacy e repetir todos os gates antes de qualquer promoção.** O upgrade de schema main→candidata passou numa base descartável, mas a candidata não é uma release beta pública e não deve ser instalada no ambiente do utilizador.
+**Continuar pela Fase 1 (limites de body/rate e revisão dos restantes endpoints) e decidir a política de preservação para a 0043**, sempre em PostgreSQL local descartável. O wrapper Express 4 foi validado em 7 rotas idempotentes; a `0060` impede replays automáticos de resultados ambíguos, mas a ferramenta de reconciliação ainda falta. A prova actual da `0043` demonstra bloqueio sem mutação, não resolve nem autoriza limpar/arquivar dados históricos; a candidata não é release beta pública e não deve ser instalada no ambiente do utilizador.

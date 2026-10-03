@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   agentRuns,
@@ -7,11 +7,25 @@ import {
   conversations,
   messages,
   workspaceSettings,
+  whatsappInstances,
   workspaces,
 } from "../drizzle/schema";
 import { getAgentMetrics, getDb, getNativeAgentKillSwitch, setNativeAgentKillSwitch } from "./db";
 import { runNativeAgent } from "./native-agent";
 import type { AgentProviderSettings } from "./llm-providers";
+
+const llmNetwork = vi.hoisted(() => ({
+  fetch: vi.fn(),
+  lookup: vi.fn(),
+}));
+vi.mock("node:dns/promises", () => ({ lookup: llmNetwork.lookup }));
+vi.mock("undici", () => ({
+  fetch: llmNetwork.fetch,
+  Agent: class MockAgent {
+    close = vi.fn(async () => undefined);
+    constructor(_options: unknown) {}
+  },
+}));
 
 const hasDatabase = Boolean(
   process.env.DATABASE_URL && /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL)
@@ -22,7 +36,7 @@ const settings: AgentProviderSettings = {
     nvidia_nim: { enabled: false, baseUrl: "", apiKey: "" },
     google_gemini: {
       enabled: true,
-      baseUrl: "https://synthetic-provider.invalid/v1",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
       apiKey: "synthetic-key",
     },
     openai_compatible: { enabled: false, baseUrl: "", apiKey: "" },
@@ -37,6 +51,7 @@ const settings: AgentProviderSettings = {
 
 describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
   const suffix = `agentresume${Date.now()}`;
+  const instanceId = `agent-instance-${suffix}`;
   let workspaceId = 0;
   const contactsByType = new Map<string, { contactId: number; conversationId: number }>();
   const eventIds = ["text", "audio", "image", "document"].map(type => `synthetic:${type}:${suffix}`);
@@ -53,6 +68,13 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
       })
       .returning({ id: workspaces.id });
     workspaceId = workspace.id;
+    await db.insert(whatsappInstances).values({
+      workspaceId,
+      provider: "baileys",
+      instanceId,
+      name: "Instância de teste do agente",
+      active: 1,
+    });
 
     const types = ["text", "audio", "image", "document"] as const;
     for (const [index, type] of types.entries()) {
@@ -76,7 +98,14 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
     }
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  beforeEach(() => {
+    llmNetwork.fetch.mockReset();
+    llmNetwork.lookup.mockReset().mockResolvedValue([
+      { address: "8.8.8.8", family: 4 },
+    ]);
+  });
+
+  afterEach(() => llmNetwork.fetch.mockReset());
 
   afterAll(async () => {
     const db = await getDb();
@@ -95,6 +124,7 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
       await db.delete(contacts).where(inArray(contacts.id, contactIds));
     }
     await db.delete(workspaceSettings).where(eq(workspaceSettings.workspaceId, workspaceId));
+    await db.delete(whatsappInstances).where(eq(whatsappInstances.workspaceId, workspaceId));
     await db.delete(workspaces).where(eq(workspaces.id, workspaceId));
   });
 
@@ -116,7 +146,7 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
     expect((await getNativeAgentKillSwitch(workspaceId)).paused).toBe(false);
 
     const calls: Array<{ model?: string; messages?: Array<{ role: string; content: unknown }> }> = [];
-    const fetchMock = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+    const fetchMock = llmNetwork.fetch.mockImplementation(async (_url: string, init: RequestInit) => {
       const payload = JSON.parse(String(init.body)) as {
         model?: string;
         messages?: Array<{ role: string; content: unknown }>;
@@ -135,8 +165,6 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
         headers: { "content-type": "application/json" },
       });
     });
-    vi.stubGlobal("fetch", fetchMock);
-
     const types = ["text", "audio", "image", "document"] as const;
     for (const type of types) {
       const record = contactsByType.get(type);
@@ -149,10 +177,13 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
           conversationId: record.conversationId,
           content: `mensagem ${type}`,
           messageType: type,
-          metadata:
-            type === "text"
-              ? undefined
-              : { mediaData: `https://synthetic-provider.invalid/${type}`, mediaMimeType: type === "audio" ? "audio/ogg" : type === "image" ? "image/jpeg" : "application/pdf" },
+          instanceId,
+          metadata: type === "text"
+            ? undefined
+            : {
+                mediaData: `https://synthetic-provider.invalid/${type}`,
+                mediaMimeType: type === "audio" ? "audio/ogg" : type === "image" ? "image/jpeg" : "application/pdf",
+              },
         },
         {
           enabled: true,
@@ -196,7 +227,7 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
         ...settings.providers,
         nvidia_nim: {
           enabled: true,
-          baseUrl: "https://synthetic-primary.invalid/v1",
+          baseUrl: "https://integrate.api.nvidia.com/v1",
           apiKey: "primary-key",
         },
       },
@@ -210,14 +241,12 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
       },
     };
     const fallbackEventId = `synthetic:fallback:${suffix}`;
-    const fallbackFetch = vi.fn()
+    const fallbackFetch = llmNetwork.fetch
       .mockRejectedValueOnce(new Error("primary unavailable"))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         model: "synthetic-fallback-text",
         choices: [{ message: { content: "Resposta recuperada pelo fallback." } }],
       }), { status: 200, headers: { "content-type": "application/json" } }));
-    vi.stubGlobal("fetch", fallbackFetch);
-
     await runNativeAgent({
       eventId: fallbackEventId,
       workspaceId,
@@ -225,6 +254,7 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
       conversationId: textRecord.conversationId,
       content: "mensagem com fallback",
       messageType: "text",
+      instanceId,
     }, {
       enabled: true,
       model: "ignored-by-route",
@@ -235,8 +265,7 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
     expect(fallbackFetch).toHaveBeenCalledTimes(2);
 
     const failedEventId = `synthetic:failed:${suffix}`;
-    const failedFetch = vi.fn().mockRejectedValue(new Error("provider offline"));
-    vi.stubGlobal("fetch", failedFetch);
+    const failedFetch = llmNetwork.fetch.mockRejectedValue(new Error("provider offline"));
     await expect(runNativeAgent({
       eventId: failedEventId,
       workspaceId,
@@ -244,6 +273,7 @@ describe.skipIf(!hasDatabase)("native agent controlled resume", () => {
       conversationId: textRecord.conversationId,
       content: "mensagem sem fallback",
       messageType: "text",
+      instanceId,
     }, {
       enabled: true,
       model: "ignored-by-route",

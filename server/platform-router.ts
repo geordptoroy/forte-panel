@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { assertAllowedLlmBaseUrl } from "./llm-url-security";
 import {
   addPlatformWorkspaceNote,
   canPlatformAdminMutate,
@@ -9,6 +10,7 @@ import {
   disconnectPlatformBaileysInstance,
   getActiveSupportSession,
   getPlatformGlobalAgentSnapshot,
+  getPlatformIncidentWorkspaceId,
   getPlatformAdminAccess,
   getPlatformSupportSnapshot,
   createPlatformSupportService,
@@ -125,12 +127,22 @@ const supportSessionInput = z.object({
   workspaceId: workspaceIdInput,
   sessionId: z.number().int().positive(),
 });
+const optionalSupportSessionInput = z.object({
+  workspaceId: workspaceIdInput,
+  sessionId: z.number().int().positive().optional(),
+});
 
 async function requireSession(
-  input: { workspaceId: number; sessionId: number },
+  input: { workspaceId: number; sessionId?: number },
   platformAdminId: number,
   requireOperator = false
 ) {
+  if (!input.sessionId) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Sessão de suporte ausente, expirada, revogada ou fora do workspace",
+    });
+  }
   const session = await getActiveSupportSession({
     platformAdminId,
     workspaceId: input.workspaceId,
@@ -176,6 +188,32 @@ const globalLlmInput = z.object({
     audio: routingConfigInput,
     document: routingConfigInput,
   }),
+}).superRefine((value, ctx) => {
+  const checkUrl = (
+    provider: "nvidia_nim" | "google_gemini" | "openai_compatible",
+    baseUrl: string | undefined,
+    path: (string | number)[]
+  ) => {
+    if (!baseUrl?.trim()) return;
+    try {
+      assertAllowedLlmBaseUrl(provider, baseUrl.trim());
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        message: error instanceof Error ? error.message : "Destino LLM não autorizado",
+        path,
+      });
+    }
+  };
+  for (const provider of ["nvidia_nim", "google_gemini", "openai_compatible"] as const)
+    checkUrl(provider, value.providers[provider].baseUrl, ["providers", provider, "baseUrl"]);
+  for (const capability of ["text", "vision", "audio", "document"] as const) {
+    const route = value.routing[capability];
+    checkUrl(route.provider, route.baseUrl, ["routing", capability, "baseUrl"]);
+    route.fallback?.forEach((fallback, index) =>
+      checkUrl(fallback.provider, fallback.baseUrl, ["routing", capability, "fallback", index, "baseUrl"])
+    );
+  }
 });
 const aiConnectionCapability = z.enum([
   "whatsapp_reply",
@@ -242,7 +280,32 @@ export const platformRouter = router({
     .mutation(async ({ input }) => { const workspace = await ensurePlatformSupportWorkspace(); const instance = await getBaileysInstance(workspace.id, input.instanceId); if (!instance) throw new TRPCError({ code: "NOT_FOUND", message: "Instância não encontrada" }); await updateBaileysInstanceSettings(instance.instanceId, input.settings); return getBaileysStatus(instance.instanceId); }),
   supportDeleteBaileysInstance: requirePlatformOperator
     .input(z.object({ instanceId: z.string().min(1).max(160), confirmDeletion: z.literal(true) }))
-    .mutation(async ({ input }) => { const workspace = await ensurePlatformSupportWorkspace(); await deleteBaileysGatewayInstance(input.instanceId).catch(() => undefined); await archiveBaileysInstance(workspace.id, input.instanceId); return { success: true, instanceId: input.instanceId } as const; }),
+    .mutation(async ({ input, ctx }) => {
+      const workspace = await ensurePlatformSupportWorkspace();
+      const instance = await getBaileysInstance(workspace.id, input.instanceId);
+      if (!instance)
+        throw new TRPCError({ code: "NOT_FOUND", message: "Instância não encontrada" });
+
+      // Never send an unowned identifier to the gateway: its registry is global.
+      await deleteBaileysGatewayInstance(instance.instanceId);
+      const archived = await archiveBaileysInstance(workspace.id, instance.instanceId);
+      if (!archived)
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A instância mudou de estado antes de ser arquivada",
+        });
+
+      await recordPlatformAudit({
+        platformAdminId: ctx.platformAdmin.id,
+        workspaceId: workspace.id,
+        action: "support_baileys_instance_deleted",
+        reason: "Remoção confirmada da instância própria do workspace de suporte",
+        summary: `Instância Baileys ${instance.name} removida do workspace de suporte`,
+        before: { instanceId: instance.instanceId, status: instance.status, active: true },
+        after: { instanceId: archived.instanceId, status: "deleted", active: false },
+      });
+      return { success: true, instanceId: archived.instanceId } as const;
+    }),
   supportInbox: router({
     uploadAttachment: requirePlatformOperator
       .input(
@@ -371,6 +434,16 @@ export const platformRouter = router({
       baseUrl: z.string().trim().url().max(500),
       model: z.string().trim().min(1).max(200),
       apiKey: z.string().trim().min(1).max(4_000),
+    }).superRefine((input, ctx) => {
+      try {
+        assertAllowedLlmBaseUrl(input.provider, input.baseUrl);
+      } catch (error) {
+        ctx.addIssue({
+          code: "custom",
+          message: error instanceof Error ? error.message : "Destino LLM não autorizado",
+          path: ["baseUrl"],
+        });
+      }
     }))
     .mutation(({ input, ctx }) => createPlatformAiConnection({ ...input, platformAdminId: ctx.platformAdmin.id })),
 
@@ -445,34 +518,47 @@ export const platformRouter = router({
 
   setWorkspaceLifecycleStatus: requirePlatformOperator
     .input(
-      z.object({
-        workspaceId: workspaceIdInput,
+      optionalSupportSessionInput.extend({
         status: z.enum(["onboarding", "active", "suspended"]),
         reason: reasonInput,
       })
     )
-    .mutation(({ input, ctx }) =>
-      setPlatformWorkspaceStatus({
+    .mutation(async ({ input, ctx }) => {
+      const session = await requireSession(input, ctx.platformAdmin.id, true);
+      return setPlatformWorkspaceStatus({
         ...input,
+        supportSessionId: session.id,
         platformAdminId: ctx.platformAdmin.id,
-      })
-    ),
+      });
+    }),
 
   setWorkspacePlan: requirePlatformOperator
-    .input(z.object({ workspaceId: workspaceIdInput, plan: z.enum(["starter", "pro", "business"]), reason: reasonInput }))
-    .mutation(({ input, ctx }) => setPlatformWorkspacePlan({ ...input, platformAdminId: ctx.platformAdmin.id })),
+    .input(optionalSupportSessionInput.extend({ plan: z.enum(["starter", "pro", "business"]), reason: reasonInput }))
+    .mutation(async ({ input, ctx }) => {
+      const session = await requireSession(input, ctx.platformAdmin.id, true);
+      return setPlatformWorkspacePlan({ ...input, supportSessionId: session.id, platformAdminId: ctx.platformAdmin.id });
+    }),
 
   incidents: requirePlatform
     .input(z.object({ workspaceId: workspaceIdInput.optional() }).optional())
     .query(({ input }) => listPlatformIncidents(input?.workspaceId)),
 
   openIncident: requirePlatformOperator
-    .input(z.object({ workspaceId: workspaceIdInput, severity: z.enum(["low", "medium", "high", "critical"]), title: z.string().trim().min(3).max(180), details: z.string().trim().min(3).max(10_000) }))
-    .mutation(({ input, ctx }) => openPlatformIncident({ ...input, platformAdminId: ctx.platformAdmin.id })),
+    .input(optionalSupportSessionInput.extend({ severity: z.enum(["low", "medium", "high", "critical"]), title: z.string().trim().min(3).max(180), details: z.string().trim().min(3).max(10_000) }))
+    .mutation(async ({ input, ctx }) => {
+      const session = await requireSession(input, ctx.platformAdmin.id, true);
+      return openPlatformIncident({ ...input, supportSessionId: session.id, platformAdminId: ctx.platformAdmin.id });
+    }),
 
   resolveIncident: requirePlatformOperator
-    .input(z.object({ incidentId: z.number().int().positive(), reason: reasonInput }))
-    .mutation(({ input, ctx }) => resolvePlatformIncident({ ...input, platformAdminId: ctx.platformAdmin.id })),
+    .input(z.object({ incidentId: z.number().int().positive(), sessionId: z.number().int().positive().optional(), reason: reasonInput }))
+    .mutation(async ({ input, ctx }) => {
+      if (!input.sessionId) throw new TRPCError({ code: "FORBIDDEN", message: "Sessão operadora ausente ou inválida" });
+      const workspaceId = await getPlatformIncidentWorkspaceId(input.incidentId);
+      if (!workspaceId) throw new TRPCError({ code: "NOT_FOUND", message: "Incidente não encontrado" });
+      const session = await requireSession({ workspaceId, sessionId: input.sessionId }, ctx.platformAdmin.id, true);
+      return resolvePlatformIncident({ ...input, supportSessionId: session.id, platformAdminId: ctx.platformAdmin.id });
+    }),
 
   supportTickets: requirePlatform
     .input(z.object({ workspaceId: workspaceIdInput.optional() }).optional())
@@ -985,10 +1071,11 @@ export const platformRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      await requireSession(input, ctx.platformAdmin.id, true);
+      const session = await requireSession(input, ctx.platformAdmin.id, true);
       return setPlatformWorkspaceStatus({
         platformAdminId: ctx.platformAdmin.id,
         workspaceId: input.workspaceId,
+        supportSessionId: session.id,
         status: input.status,
         reason: input.reason,
       });

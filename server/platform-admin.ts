@@ -81,6 +81,7 @@ import {
   maskProviderSecret,
   type AgentProviderSettings,
 } from "./llm-providers";
+import { validateLlmTarget } from "./llm-url-security";
 import { validateInteractiveMessage } from "./interactive-messages";
 import { buildSaaSBillingBoundary } from "./saas-billing";
 
@@ -506,6 +507,26 @@ export async function savePlatformGlobalAiPolicy(input: {
   maxSteps: number;
   llm: AgentProviderSettings;
 }) {
+  const targets = new Map<string, { provider: keyof AgentProviderSettings["providers"]; url: string }>();
+  const addTarget = (
+    provider: keyof AgentProviderSettings["providers"],
+    url?: string
+  ) => {
+    const normalizedUrl = url?.trim();
+    if (normalizedUrl) targets.set(`${provider}:${normalizedUrl}`, { provider, url: normalizedUrl });
+  };
+  for (const [provider, config] of Object.entries(input.llm.providers))
+    addTarget(provider as keyof AgentProviderSettings["providers"], config.baseUrl);
+  for (const route of Object.values(input.llm.routing)) {
+    addTarget(route.provider, route.baseUrl);
+    for (const fallback of route.fallback ?? [])
+      addTarget(fallback.provider, fallback.baseUrl);
+  }
+  await Promise.all(
+    Array.from(targets.values()).map(({ provider, url }) =>
+      validateLlmTarget(provider, url)
+    )
+  );
   const before = await getPlatformGlobalNativeAgentConfig();
   const saved = await savePlatformGlobalNativeAgentConfig({
     enabled: input.enabled,
@@ -554,14 +575,12 @@ function safeAiConnection(row: typeof platformAiConnections.$inferSelect) {
   };
 }
 
-function assertAiBaseUrl(value: string) {
-  const url = new URL(value);
-  const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
-  if (url.protocol !== "https:" && !(local && url.protocol === "http:"))
-    throw new Error("A URL da API deve usar HTTPS (HTTP só é aceito para localhost)");
-  if (url.username || url.password)
-    throw new Error("A URL da API não pode conter usuário ou senha");
-  return value.replace(/\/+$/, "");
+async function assertAiBaseUrl(
+  provider: PlatformAiProvider,
+  value: string
+) {
+  const url = await validateLlmTarget(provider, value);
+  return url.toString().replace(/\/+$/, "");
 }
 
 export async function listPlatformAiConnections() {
@@ -589,7 +608,7 @@ export async function createPlatformAiConnection(input: {
   const model = input.model.trim();
   const apiKey = input.apiKey.trim();
   if (!name || !model || !apiKey) throw new Error("Preencha nome, modelo e API key");
-  const baseUrl = assertAiBaseUrl(input.baseUrl.trim());
+  const baseUrl = await assertAiBaseUrl(input.provider, input.baseUrl.trim());
   const inserted = await db
     .insert(platformAiConnections)
     .values({
@@ -1995,9 +2014,17 @@ export async function setPlatformWorkspaceRetention(input: { platformAdminId: nu
 export async function setPlatformWorkspaceStatus(input: {
   platformAdminId: number;
   workspaceId: number;
+  supportSessionId: number;
   status: WorkspaceStatus;
   reason: string;
 }) {
+  const session = await getActiveSupportSession({
+    platformAdminId: input.platformAdminId,
+    workspaceId: input.workspaceId,
+    sessionId: input.supportSessionId,
+    requireOperator: true,
+  });
+  if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const workspace = (
@@ -2022,6 +2049,7 @@ export async function setPlatformWorkspaceStatus(input: {
   await recordPlatformAudit({
     platformAdminId: input.platformAdminId,
     workspaceId: input.workspaceId,
+    supportSessionId: session.id,
     action: `workspace_${input.status}`,
     reason: input.reason,
     summary: `Workspace ${input.status === "suspended" ? "suspenso" : input.status === "onboarding" ? "marcado em onboarding" : "reativado"}`,
@@ -2062,15 +2090,23 @@ export async function setPlatformWorkspaceAi(input: {
 export async function setPlatformWorkspacePlan(input: {
   platformAdminId: number;
   workspaceId: number;
+  supportSessionId: number;
   plan: "starter" | "pro" | "business";
   reason: string;
 }) {
+  const session = await getActiveSupportSession({
+    platformAdminId: input.platformAdminId,
+    workspaceId: input.workspaceId,
+    sessionId: input.supportSessionId,
+    requireOperator: true,
+  });
+  if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const workspace = (await db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).limit(1))[0];
   if (!workspace) throw new Error("Workspace não encontrado");
   const updated = (await db.update(workspaces).set({ plan: input.plan, updatedAt: new Date() }).where(eq(workspaces.id, input.workspaceId)).returning())[0];
-  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, action: "workspace_plan_changed", reason: input.reason, summary: `Plano alterado de ${workspace.plan} para ${input.plan}`, before: { plan: workspace.plan }, after: { plan: updated.plan } });
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, supportSessionId: session.id, action: "workspace_plan_changed", reason: input.reason, summary: `Plano alterado de ${workspace.plan} para ${input.plan}`, before: { plan: workspace.plan }, after: { plan: updated.plan } });
   return { id: updated.id, plan: updated.plan };
 }
 
@@ -2109,21 +2145,36 @@ export async function listPlatformIncidents(workspaceId?: number) {
   return db.select().from(platformIncidents).where(workspaceId ? eq(platformIncidents.workspaceId, workspaceId) : undefined).orderBy(desc(platformIncidents.createdAt), desc(platformIncidents.id)).limit(100);
 }
 
-export async function openPlatformIncident(input: { platformAdminId: number; workspaceId: number; severity: "low" | "medium" | "high" | "critical"; title: string; details: string }) {
+export async function getPlatformIncidentWorkspaceId(incidentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const incident = (await db
+    .select({ workspaceId: platformIncidents.workspaceId })
+    .from(platformIncidents)
+    .where(eq(platformIncidents.id, incidentId))
+    .limit(1))[0];
+  return incident?.workspaceId ?? null;
+}
+
+export async function openPlatformIncident(input: { platformAdminId: number; workspaceId: number; supportSessionId: number; severity: "low" | "medium" | "high" | "critical"; title: string; details: string }) {
+  const session = await getActiveSupportSession({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, sessionId: input.supportSessionId, requireOperator: true });
+  if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const incident = (await db.insert(platformIncidents).values({ workspaceId: input.workspaceId, severity: input.severity, title: input.title, details: input.details, openedByPlatformAdminId: input.platformAdminId }).returning())[0];
-  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, action: "workspace_incident_opened", reason: input.title, summary: `${input.severity}: ${input.title}`, after: { incidentId: incident.id, status: incident.status } });
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, supportSessionId: session.id, action: "workspace_incident_opened", reason: input.title, summary: `${input.severity}: ${input.title}`, after: { incidentId: incident.id, status: incident.status } });
   return incident;
 }
 
-export async function resolvePlatformIncident(input: { platformAdminId: number; incidentId: number; reason: string }) {
+export async function resolvePlatformIncident(input: { platformAdminId: number; incidentId: number; supportSessionId: number; reason: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const current = (await db.select().from(platformIncidents).where(eq(platformIncidents.id, input.incidentId)).limit(1))[0];
   if (!current) throw new Error("Incidente não encontrado");
+  const session = await getActiveSupportSession({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, sessionId: input.supportSessionId, requireOperator: true });
+  if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
   const incident = (await db.update(platformIncidents).set({ status: "resolved", resolvedByPlatformAdminId: input.platformAdminId, resolvedAt: new Date(), updatedAt: new Date() }).where(eq(platformIncidents.id, input.incidentId)).returning())[0];
-  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, action: "workspace_incident_resolved", reason: input.reason, summary: `Incidente #${current.id} resolvido`, before: { status: current.status }, after: { status: incident.status } });
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, supportSessionId: session.id, action: "workspace_incident_resolved", reason: input.reason, summary: `Incidente #${current.id} resolvido`, before: { status: current.status }, after: { status: incident.status } });
   return incident;
 }
 

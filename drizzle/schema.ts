@@ -979,6 +979,7 @@ export const apiIdempotency = pgTable(
     statusCode: integer("statusCode").default(200).notNull(),
     responseBody: text("responseBody"),
     leaseUntil: timestamp("leaseUntil"),
+    claimToken: varchar("claimToken", { length: 64 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },

@@ -1,10 +1,44 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { invokeConfiguredLLM, type AgentProviderSettings } from "./llm-providers";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  assertAllowedLlmBaseUrl,
+} from "./llm-url-security";
+import {
+  invokeConfiguredLLM,
+  type AgentProviderSettings,
+} from "./llm-providers";
+
+const mocks = vi.hoisted(() => ({
+  fetch: vi.fn(),
+  lookup: vi.fn(),
+  agents: [] as any[],
+}));
+
+vi.mock("node:dns/promises", () => ({ lookup: mocks.lookup }));
+vi.mock("undici", () => ({
+  fetch: mocks.fetch,
+  Agent: class MockAgent {
+    options: any;
+    close = vi.fn(async () => undefined);
+
+    constructor(options: any) {
+      this.options = options;
+      mocks.agents.push(this);
+    }
+  },
+}));
 
 const settings: AgentProviderSettings = {
   providers: {
-    nvidia_nim: { enabled: true, baseUrl: "https://primary.example/v1", apiKey: "primary-key" },
-    google_gemini: { enabled: true, baseUrl: "https://fallback.example/v1", apiKey: "fallback-key" },
+    nvidia_nim: {
+      enabled: true,
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      apiKey: "primary-key",
+    },
+    google_gemini: {
+      enabled: true,
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+      apiKey: "fallback-key",
+    },
     openai_compatible: { enabled: false, baseUrl: "", apiKey: "" },
   },
   routing: {
@@ -19,17 +53,42 @@ const settings: AgentProviderSettings = {
   },
 };
 
-afterEach(() => vi.unstubAllGlobals());
+function response(content: unknown, status = 200, headers?: HeadersInit) {
+  return new Response(JSON.stringify(content), {
+    status,
+    headers: { "content-type": "application/json", ...Object.fromEntries(new Headers(headers)) },
+  });
+}
+
+function onlyPrimaryProviderSettings(): AgentProviderSettings {
+  return {
+    ...settings,
+    routing: {
+      ...settings.routing,
+      text: { provider: "nvidia_nim", model: "primary-model" },
+    },
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllEnvs();
+  mocks.agents.length = 0;
+  mocks.lookup.mockResolvedValue([{ address: "8.8.8.8", family: 4 }]);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("configured LLM routing", () => {
   it("uses the explicit fallback after a primary provider failure", async () => {
-    const fetchMock = vi.fn()
+    mocks.fetch
       .mockRejectedValueOnce(new Error("primary unavailable"))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
+      .mockResolvedValueOnce(response({
         model: "fallback-model",
         choices: [{ message: { content: "Resposta de fallback" } }],
-      }), { status: 200, headers: { "content-type": "application/json" } }));
-    vi.stubGlobal("fetch", fetchMock);
+      }));
 
     const result = await invokeConfiguredLLM(settings, "text", {
       model: "unused-model",
@@ -37,22 +96,37 @@ describe("configured LLM routing", () => {
     });
 
     expect(result.choices[0]?.message.content).toBe("Resposta de fallback");
-    expect(result.telemetry).toEqual({ capability: "text", provider: "google_gemini", attempts: 2, fallbackUsed: true, failureCode: null });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe("fallback-model");
+    expect(result.telemetry).toEqual({
+      capability: "text",
+      provider: "google_gemini",
+      attempts: 2,
+      fallbackUsed: true,
+      failureCode: null,
+    });
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(mocks.fetch.mock.calls[1]![1].body).model).toBe(
+      "fallback-model"
+    );
+    expect(mocks.fetch.mock.calls[1]![1]).toMatchObject({ redirect: "error" });
   });
 
   it("does not try an implicit provider when no fallback is configured", async () => {
-    const fetchMock = vi.fn().mockRejectedValue(new Error("unavailable"));
-    vi.stubGlobal("fetch", fetchMock);
+    mocks.fetch.mockRejectedValue(new Error("unavailable"));
 
-    const error = await invokeConfiguredLLM({
-      ...settings,
-      routing: { ...settings.routing, text: { provider: "nvidia_nim", model: "primary-model" } },
-    }, "text", { model: "unused-model", messages: [] }).catch(error => error);
-    expect(error.telemetry).toEqual({ capability: "text", provider: null, attempts: 1, fallbackUsed: false, failureCode: "Error" });
+    const error = await invokeConfiguredLLM(
+      onlyPrimaryProviderSettings(),
+      "text",
+      { model: "unused-model", messages: [] }
+    ).catch(error => error);
+    expect(error.telemetry).toEqual({
+      capability: "text",
+      provider: null,
+      attempts: 1,
+      fallbackUsed: false,
+      failureCode: "Error",
+    });
     expect(error.message).toContain("tentativas: nvidia_nim:Error");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -61,13 +135,12 @@ describe("configured LLM routing", () => {
     ["audio", "audio-fallback"],
     ["document", "document-fallback"],
   ] as const)("uses the explicit fallback for %s", async (capability, fallbackModel) => {
-    const fetchMock = vi.fn()
+    mocks.fetch
       .mockRejectedValueOnce(new Error("primary unavailable"))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
+      .mockResolvedValueOnce(response({
         model: fallbackModel,
         choices: [{ message: { content: `fallback-${capability}` } }],
-      }), { status: 200, headers: { "content-type": "application/json" } }));
-    vi.stubGlobal("fetch", fetchMock);
+      }));
 
     const result = await invokeConfiguredLLM({
       ...settings,
@@ -89,15 +162,16 @@ describe("configured LLM routing", () => {
       fallbackUsed: true,
       failureCode: null,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe(fallbackModel);
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(mocks.fetch.mock.calls[1]![1].body).model).toBe(
+      fallbackModel
+    );
   });
 
   it.each(["text", "vision", "audio", "document"] as const)(
     "fails closed with bounded telemetry when %s has no available provider",
     async capability => {
-      const fetchMock = vi.fn().mockRejectedValue(new Error("provider offline"));
-      vi.stubGlobal("fetch", fetchMock);
+      mocks.fetch.mockRejectedValue(new Error("provider offline"));
 
       const error = await invokeConfiguredLLM({
         ...settings,
@@ -115,7 +189,98 @@ describe("configured LLM routing", () => {
         failureCode: "Error",
       });
       expect(error.message).toContain("nvidia_nim:Error");
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(mocks.fetch).toHaveBeenCalledTimes(1);
     }
   );
+
+  it.each([
+    "http://127.0.0.1/v1",
+    "https://127.0.0.1/v1",
+    "https://10.0.0.1/v1",
+    "https://169.254.169.254/latest/meta-data",
+    "https://[::1]/v1",
+  ])("rejects a local or literal-IP target before sending the provider key: %s", async baseUrl => {
+    const unsafe = {
+      ...onlyPrimaryProviderSettings(),
+      providers: {
+        ...settings.providers,
+        nvidia_nim: { enabled: true, baseUrl, apiKey: "must-not-leak" },
+      },
+    };
+
+    await expect(
+      invokeConfiguredLLM(unsafe, "text", { model: "m", messages: [] })
+    ).rejects.toThrow();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks a hostname that resolves to a private, link-local, or mixed DNS set", async () => {
+    mocks.lookup.mockResolvedValueOnce([
+      { address: "8.8.8.8", family: 4 },
+      { address: "169.254.169.254", family: 4 },
+    ]);
+
+    await expect(
+      invokeConfiguredLLM(onlyPrimaryProviderSettings(), "text", {
+        model: "m",
+        messages: [],
+      })
+    ).rejects.toThrow("Nenhum provider disponível");
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("disables redirects so a provider cannot forward the authorization header", async () => {
+    mocks.fetch.mockResolvedValueOnce(
+      new Response("", {
+        status: 302,
+        headers: { location: "http://169.254.169.254/latest/meta-data" },
+      })
+    );
+
+    await expect(
+      invokeConfiguredLLM(onlyPrimaryProviderSettings(), "text", {
+        model: "m",
+        messages: [],
+      })
+    ).rejects.toThrow("Nenhum provider disponível");
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.fetch.mock.calls[0]![1]).toMatchObject({ redirect: "error" });
+    expect(mocks.fetch.mock.calls[0]![1].headers.authorization).toBe(
+      "Bearer primary-key"
+    );
+  });
+
+  it("rechecks DNS through the socket dispatcher to block rebinding", async () => {
+    mocks.fetch.mockResolvedValueOnce(
+      response({ choices: [{ message: { content: "OK" } }] })
+    );
+    await invokeConfiguredLLM(onlyPrimaryProviderSettings(), "text", {
+      model: "m",
+      messages: [],
+    });
+
+    const socketLookup = mocks.agents[0]!.options.connect.lookup;
+    expect(typeof socketLookup).toBe("function");
+    mocks.lookup.mockResolvedValueOnce([{ address: "10.0.0.9", family: 4 }]);
+    const outcome = await new Promise<any>(resolve => {
+      socketLookup("integrate.api.nvidia.com", { all: true }, (error: Error | null, addresses: unknown) =>
+        resolve(error ?? addresses)
+      );
+    });
+    expect(outcome).toMatchObject({ code: "EACCES" });
+  });
+
+  it("requires custom OpenAI-compatible hosts to be explicitly allowlisted", () => {
+    expect(() =>
+      assertAllowedLlmBaseUrl("openai_compatible", "https://api.custom-ai.net/v1")
+    ).toThrow("FORTE_LLM_ALLOWED_HOSTS");
+    vi.stubEnv("FORTE_LLM_ALLOWED_HOSTS", "api.custom-ai.net");
+    expect(
+      assertAllowedLlmBaseUrl(
+        "openai_compatible",
+        "https://api.custom-ai.net/v1"
+      ).hostname
+    ).toBe("api.custom-ai.net");
+  });
 });

@@ -1,5 +1,11 @@
 import crypto from "node:crypto";
+import { fetch as undiciFetch } from "undici";
 import type { InvokeParams, InvokeResult, Tool } from "./_core/llm";
+import {
+  buildLlmEndpoint,
+  createGuardedLlmAgent,
+  validateLlmTarget,
+} from "./llm-url-security";
 
 export type AgentProviderId =
   | "nvidia_nim"
@@ -157,11 +163,6 @@ export function maskProviderSecret(value: string) {
   return plain ? `••••••••${plain.slice(-4)}` : "";
 }
 
-function endpoint(baseUrl: string) {
-  const normalized = baseUrl.replace(/\/$/, "");
-  return normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
-}
-
 function normalizeParams(params: InvokeParams) {
   const payload: Record<string, unknown> = {
     messages: params.messages,
@@ -179,6 +180,35 @@ function normalizeParams(params: InvokeParams) {
   return Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== undefined)
   );
+}
+
+async function readBoundedJson(
+  response: Awaited<ReturnType<typeof undiciFetch>>
+): Promise<InvokeResult> {
+  const maxResponseBytes = 10 * 1024 * 1024;
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxResponseBytes)
+    throw new Error("Resposta LLM excedeu o limite de 10 MiB");
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Resposta LLM sem corpo JSON");
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxResponseBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("Resposta LLM excedeu o limite de 10 MiB");
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as InvokeResult;
 }
 
 export async function invokeConfiguredLLM(
@@ -207,8 +237,11 @@ export async function invokeConfiguredLLM(
       failures.push(`${candidate.provider}:indisponível`);
       continue;
     }
+    let dispatcher: ReturnType<typeof createGuardedLlmAgent> | undefined;
     try {
-      const response = await fetch(`${endpoint(baseUrl)}/chat/completions`, {
+      const target = await validateLlmTarget(candidate.provider, baseUrl);
+      dispatcher = createGuardedLlmAgent();
+      const response = await undiciFetch(buildLlmEndpoint(target.toString()), {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -218,12 +251,15 @@ export async function invokeConfiguredLLM(
           normalizeParams({ ...params, model: candidate.model || params.model })
         ),
         signal: AbortSignal.timeout(timeoutMs),
+        redirect: "error",
+        dispatcher,
       });
       if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
         failures.push(`${candidate.provider}:http_${response.status}`);
         continue;
       }
-      const result = (await response.json()) as InvokeResult;
+      const result = await readBoundedJson(response);
       return {
         ...result,
         telemetry: {
@@ -238,6 +274,8 @@ export async function invokeConfiguredLLM(
       failures.push(
         `${candidate.provider}:${error instanceof Error ? error.name : "erro"}`
       );
+    } finally {
+      await dispatcher?.close().catch(() => undefined);
     }
   }
   throw new LLMProviderError(

@@ -3,11 +3,13 @@
  *
  * Example usage:
  *   const { url: imageUrl } = await generateImage({
+ *     workspaceId: 42,
  *     prompt: "A serene landscape with mountains"
  *   });
  *
  * For editing:
  *   const { url: imageUrl } = await generateImage({
+ *     workspaceId: 42,
  *     prompt: "Add a rainbow to this landscape",
  *     originalImages: [{
  *       url: "https://example.com/original.jpg",
@@ -24,6 +26,7 @@ const DEFAULT_IMAGE_MODEL = "MODEL_GPT_IMAGE_2";
 const DEFAULT_IMAGE_QUALITY = "medium";
 
 export type GenerateImageOptions = {
+  workspaceId: number;
   prompt: string;
   originalImages?: Array<{
     url?: string;
@@ -43,6 +46,9 @@ export type GenerateImageResponse = {
 export async function generateImage(
   options: GenerateImageOptions
 ): Promise<GenerateImageResponse> {
+  if (!Number.isInteger(options.workspaceId) || options.workspaceId < 1) {
+    throw new Error("A workspaceId válido é obrigatório para guardar a imagem");
+  }
   if (!ENV.forgeApiUrl) {
     throw new Error("BUILT_IN_FORGE_API_URL is not configured");
   }
@@ -97,7 +103,7 @@ export async function generateImage(
 
   // Save to S3
   const { url } = await storagePut(
-    `generated/${Date.now()}.png`,
+    `workspaces/${options.workspaceId}/generated/${Date.now()}.png`,
     buffer,
     result.image.mimeType
   );

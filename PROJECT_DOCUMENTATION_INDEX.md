@@ -1,6 +1,6 @@
 # Forte Panel — índice de documentação
 
-**Atualizado:** 2026-10-02. Este índice substitui as instruções antigas sobre branches, tags e próximos passos.
+**Atualizado:** 2026-10-03. Este índice substitui as instruções antigas sobre branches, tags e próximos passos.
 
 ## Leia primeiro — autoridade atual
 
@@ -27,6 +27,8 @@ Em caso de conflito, seguir esta ordem e confirmar o estado atual do Git. Os fic
 
 ## Operação e beta
 
+- [`docs/AUDITORIA-BETA-COMPLETA-2026-10-03.md`](./docs/AUDITORIA-BETA-COMPLETA-2026-10-03.md) — auditoria estática completa da candidata, com 94 achados e evidência por domínio.
+- [`docs/PLANO-REMEDIACAO-BETA.md`](./docs/PLANO-REMEDIACAO-BETA.md) — sequência de correções, critérios de aceitação e gates para beta segura.
 - [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — checklist a rever contra o estado atual antes de qualquer beta.
 - [`docs/AUDITORIA-COMPLETA-INBOX-BAILEYS.md`](./docs/AUDITORIA-COMPLETA-INBOX-BAILEYS.md) — evidências, limites e testes da auditoria da Inbox.
 

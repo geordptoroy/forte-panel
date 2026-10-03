@@ -1161,7 +1161,9 @@ describe.skipIf(!hasDatabase)("Inbox instance filter isolation", () => {
       apiContact.id,
       "Contato iniciado pelo time",
       "baileys",
-      "human"
+      "human",
+      "text",
+      { instanceId: instanceA1 }
     );
     const apiConversation = await getConversationByContact(
       workspaceAId,

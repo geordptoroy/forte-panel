@@ -16,6 +16,10 @@ function asNumber(value: unknown) {
   return Number(value ?? 0);
 }
 
+function sumCount(rows: QueryResultRow[]) {
+  return rows.reduce((total, row) => total + asNumber(row.count), 0);
+}
+
 const workspaceId = readWorkspaceFilter();
 const jsonOutput = process.argv.includes("--json");
 const databaseUrl = process.env.DATABASE_URL;
@@ -49,7 +53,9 @@ try {
 
     const channelProviders = await client.query<QueryResultRow>(
       `SELECT w.id AS "workspaceId", w.name AS "workspaceName",
-              ch.provider::text AS provider, COUNT(*)::integer AS count
+              ch.provider::text AS provider, COUNT(*)::integer AS count,
+              COUNT(*) FILTER (WHERE NULLIF(ch."credentialsRef", '') IS NOT NULL)::integer
+                AS "credentialRefCount"
          FROM "whatsappChannels" ch
          JOIN "workspaces" w ON w.id = ch."workspaceId"
         WHERE ${workspaceFilter}
@@ -62,7 +68,11 @@ try {
       `SELECT w.id AS "workspaceId", w.name AS "workspaceName",
               wi.provider::text AS provider, COUNT(*)::integer AS count,
               COUNT(*) FILTER (WHERE wi.active = 1)::integer AS "activeCount",
-              COUNT(*) FILTER (WHERE wi."isDefault" = 1)::integer AS "defaultCount"
+              COUNT(*) FILTER (WHERE wi."isDefault" = 1)::integer AS "defaultCount",
+              COUNT(*) FILTER (WHERE NULLIF(wi."encryptedApiKey", '') IS NOT NULL)::integer
+                AS "encryptedApiKeyCount",
+              COUNT(*) FILTER (WHERE NULLIF(wi."encryptedWebhookSecret", '') IS NOT NULL)::integer
+                AS "encryptedWebhookSecretCount"
          FROM "whatsappInstances" wi
          JOIN "workspaces" w ON w.id = wi."workspaceId"
         WHERE ${workspaceFilter}
@@ -98,6 +108,20 @@ try {
         WHERE ${contactWorkspaceFilter}
         GROUP BY c."workspaceId", w.name, m.provider, m.direction, m.status
         ORDER BY c."workspaceId", provider, m.direction, m.status`,
+      params
+    );
+
+    const defaultProviderSettings = await client.query<QueryResultRow>(
+      `SELECT w.id AS "workspaceId", w.name AS "workspaceName",
+              COUNT(*)::integer AS count,
+              COUNT(*) FILTER (WHERE COALESCE(ws.value, '') <> 'baileys')::integer
+                AS "legacyCount"
+         FROM "workspaceSettings" ws
+         JOIN "workspaces" w ON w.id = ws."workspaceId"
+        WHERE ${workspaceFilter}
+          AND ws.key = 'default_whatsapp_provider'
+        GROUP BY w.id, w.name
+        ORDER BY w.id`,
       params
     );
 
@@ -151,6 +175,33 @@ try {
       params
     );
 
+    const legacyProviderBlockers = {
+      channels: sumCount(channelProviders.rows.filter(row => row.provider !== "baileys")),
+      instances: sumCount(instanceProviders.rows.filter(row => row.provider !== "baileys")),
+      messages: sumCount(messageProviders.rows.filter(row => row.provider !== "baileys")),
+      defaultProviderSettings: defaultProviderSettings.rows.reduce(
+        (total, row) => total + asNumber(row.legacyCount),
+        0
+      ),
+    };
+    const migration0043BlockerCount = Object.values(legacyProviderBlockers).reduce(
+      (total, count) => total + count,
+      0
+    );
+    const legacyCredentialReferenceCount =
+      instanceProviders.rows
+        .filter(row => row.provider !== "baileys")
+        .reduce(
+          (total, row) =>
+            total +
+            asNumber(row.encryptedApiKeyCount) +
+            asNumber(row.encryptedWebhookSecretCount),
+          0
+        ) +
+      channelProviders.rows
+        .filter(row => row.provider !== "baileys")
+        .reduce((total, row) => total + asNumber(row.credentialRefCount), 0);
+
     const report = {
       readOnly: true,
       generatedAt: new Date().toISOString(),
@@ -163,9 +214,16 @@ try {
       instanceProviders: instanceProviders.rows,
       instances: instances.rows,
       messageProviders: messageProviders.rows,
+      defaultProviderSettings: defaultProviderSettings.rows,
       pendingMessages: pendingMessages.rows,
       legacySettings: settings.rows,
       duplicateInstanceIds: duplicateInstanceIds.rows,
+      migration0043: {
+        blocked: migration0043BlockerCount > 0,
+        blockers: legacyProviderBlockers,
+        totalBlockerRows: migration0043BlockerCount,
+        legacyCredentialReferences: legacyCredentialReferenceCount,
+      },
       totals: {
         workspaces: workspaces.rowCount ?? workspaces.rows.length,
         instances: instances.rowCount ?? instances.rows.length,
@@ -180,7 +238,9 @@ try {
         duplicateInstanceIds: duplicateInstanceIds.rowCount ?? duplicateInstanceIds.rows.length,
       },
       nextAction:
-        "Salvar este JSON como evidência; revisar provider, instanceId e mensagens pendentes antes de qualquer migration ou limpeza.",
+        migration0043BlockerCount > 0
+          ? "A migration 0043 ficaria bloqueada. Preservar a base, guardar este inventário e obter aprovação explícita para resolver/arquivar cada categoria; nunca renomear provider legado para baileys."
+          : "Os quatro gates de dados da migration 0043 estão sem blockers neste snapshot. Guardar este inventário e confirmar backup/rollback antes de qualquer migration.",
     };
 
     await client.query("ROLLBACK");
@@ -195,6 +255,10 @@ try {
       console.log(`Mensagens queued/processing: ${report.totals.pendingMessages}`);
       console.log(`Settings potencialmente legados: ${report.totals.legacySettingRows}`);
       console.log(`IDs de instância duplicados entre workspaces: ${report.totals.duplicateInstanceIds}`);
+      console.log(
+        `Blockers 0043 (channels/instances/messages/default provider): ${legacyProviderBlockers.channels}/${legacyProviderBlockers.instances}/${legacyProviderBlockers.messages}/${legacyProviderBlockers.defaultProviderSettings}`
+      );
+      console.log(`Referências credenciais ligadas a providers legados: ${legacyCredentialReferenceCount}`);
       console.log(report.nextAction);
       console.log("Use --json para obter o relatório completo sem valores sensíveis.");
     }
