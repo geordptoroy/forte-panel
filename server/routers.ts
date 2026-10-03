@@ -139,7 +139,11 @@ import {
   rejectAgentEffectProposal,
 } from "./db";
 import { confirmNativeAgentEffect } from "./native-agent";
-import { sendInviteEmail, sendPasswordResetEmail } from "./_core/email";
+import {
+  describeEmailDelivery,
+  sendInviteEmail,
+  sendPasswordResetEmail,
+} from "./_core/email";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import {
   INBOX_MEDIA_MAX_DATA_URL_CHARS,
@@ -691,6 +695,12 @@ export const appRouter = router({
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
             message: "Recuperação local não configurada",
+          });
+        }
+        if (describeEmailDelivery() !== "ready") {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Recuperação por email não configurada",
           });
         }
         const email = input.email.trim().toLowerCase();

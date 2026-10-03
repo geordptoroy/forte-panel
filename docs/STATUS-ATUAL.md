@@ -1,9 +1,9 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 3 de outubro de 2026, 08:57 (UTC−3)
+**Atualizado:** 3 de outubro de 2026, 08:58 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
-**Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only), `eeaa6d5` (reconciliação idempotente auditável), `a896dbd` (readiness/body do gateway) e a correcção local de auth state ainda não commitada; sem push nesta sessão.
+**Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only), `eeaa6d5` (reconciliação idempotente auditável), `a896dbd` (readiness/body do gateway), `bdeff4b` (evidência fail-closed de backup de media) e `0a190fb` (documentação de operação); sem push nesta sessão.
 
 ## Git e decisão de integração
 
@@ -89,4 +89,4 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Próxima ação
 
-**Continuar pela revisão dos restantes endpoints e dos gates de transporte/operação**, agora priorizando o contrato de backup externo dos blobs Forge/S3 e alertas externos. O backup local já verifica DB/sessão e a identidade da chave sem expor o segredo, mas ainda não é prova de backup cifrado/off-host nem de restore completo de blobs/media; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
+**Continuar pelos gates de transporte/operação**, agora priorizando contrato de backup externo dos blobs Forge/S3 e alertas externos. A recuperação por email agora falha fechado com `PRECONDITION_FAILED` antes de emitir/persistir token quando não há provider transacional pronto; convites mantêm fallback explícito por link manual. O backup local já verifica DB/sessão e a identidade da chave sem expor o segredo, mas ainda não é prova de backup cifrado/off-host nem de restore completo de blobs/media; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
