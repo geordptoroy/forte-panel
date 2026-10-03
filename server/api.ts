@@ -1284,92 +1284,14 @@ api.post("/appointments/:id/reschedule", asyncRoute(async (req, res) => {
   }
 }));
 
-api.post("/webhooks/inbound/whatsapp", asyncRoute(async (req, res) => {
-  const replay = webhookReplayFor(
-    req,
-    process.env.WEBHOOK_SIGNING_SECRET?.trim() ?? ""
-  );
-  if (!replay.ok && !requireApiKey(req, res)) return;
-  const parsed = webhookSchema.safeParse(req.body);
-  if (!parsed.success)
-    return fail(res, 400, "Evento de WhatsApp inválido", "invalid_payload");
-  const idempotencyKey = req.header("Idempotency-Key");
-  if (
-    !idempotencyKey ||
-    idempotencyKey.length < 8 ||
-    idempotencyKey.length > 180
+api.post("/webhooks/inbound/whatsapp", (_req, res) =>
+  fail(
+    res,
+    404,
+    "Endpoint legado desativado; use o callback interno Baileys",
+    "not_found"
   )
-    return fail(
-      res,
-      400,
-      "Idempotency-Key é obrigatório",
-      "idempotency_key_required"
-    );
-  if (idempotencyKey !== parsed.data.eventId)
-    return fail(
-      res,
-      409,
-      "Idempotency-Key deve corresponder ao eventId",
-      "idempotency_conflict"
-    );
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  let eventLeaseToken: string | undefined;
-  try {
-    const registered = await registerWebhookEvent({
-      eventId: parsed.data.eventId,
-      provider: "whatsapp",
-      payload: parsed.data,
-      workspaceId,
-      ...(replay.ok
-        ? { webhookNonce: replay.nonce, webhookTimestamp: replay.timestamp }
-        : {}),
-    });
-    if (registered.conflict)
-      return fail(
-        res,
-        409,
-        "O eventId já foi usado com outro payload",
-        "idempotency_conflict"
-      );
-    if (registered.duplicate)
-      return res.status(200).json({
-        accepted: true,
-        duplicate: true,
-        eventId: parsed.data.eventId,
-      });
-    eventLeaseToken = registered.leaseToken;
-    if (!eventLeaseToken) throw new Error("Webhook lease token unavailable");
-    const result = await ingestInboundWhatsApp(workspaceId, parsed.data);
-    await markWebhookEvent(
-      workspaceId,
-      parsed.data.eventId,
-      "processed",
-      eventLeaseToken
-    );
-    return res.status(202).json({
-      accepted: true,
-      duplicate: "duplicate" in result && result.duplicate === true,
-      ignored: "ignored" in result && result.ignored === true,
-      eventId: parsed.data.eventId,
-      data: result,
-    });
-  } catch (error) {
-    if (eventLeaseToken)
-      await markWebhookEvent(
-        workspaceId,
-        parsed.data.eventId,
-        "failed",
-        eventLeaseToken
-      );
-    return fail(
-      res,
-      500,
-      error instanceof Error ? error.message : "Falha ao processar webhook",
-      "internal_error"
-    );
-  }
-}));
+);
 
 const baileysDeliveryEventSchema = z.object({
   eventType: z.literal("message_status"),

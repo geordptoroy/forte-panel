@@ -47,7 +47,6 @@ Quando `FORTE_PUBLIC_API_ENABLED` não for exatamente `true` no **servidor**, as
 | `PATCH` | `/api/v1/contacts/:id/stage`          | Mover contato no funil com auditoria                                         |
 | `POST`  | `/api/v1/appointments/:id/cancel`     | Cancelar reserva                                                             |
 | `POST`  | `/api/v1/appointments/:id/reschedule` | Reagendar reserva com checagem de conflito                                   |
-| `POST`  | `/api/v1/webhooks/inbound/whatsapp`   | Receber evento normalizado do provider WhatsApp                              |
 | `POST`  | `/api/v1/webhooks/providers/baileys`   | Callback interno autenticado do gateway Baileys (continua ativo)              |
 
 ## Agenda, serviços e profissionais
@@ -64,7 +63,9 @@ A disponibilidade semanal representa jornada de trabalho, não uma vaga reservad
 
 ## Webhook de entrada
 
-O evento deve conter `eventId`, `phone`, `content` e `receivedAt`; `name`, `messageType` e `metadata` são opcionais. Toda requisição exige `Idempotency-Key` igual ao `eventId`; o `eventId` deve ser único por instância/canal. Ele também é gravado em `messages.externalId` sob índice único, impedindo duplicação no histórico mesmo se um processamento anterior falhar depois da gravação. A mesma chave com outro payload retorna conflito. Eventos com status `failed` podem ser reprocessados; eventos em `received` ou `processed` são tratados como duplicados. O endpoint poderá exigir `X-Webhook-Signature` com HMAC quando `WEBHOOK_SIGNING_SECRET` estiver configurado.
+O endpoint genérico `/api/v1/webhooks/inbound/whatsapp` está permanentemente desativado e responde `404`: o produto suporta apenas Baileys e não mantém um segundo contrato de ingestão normalizada.
+
+O único callback de entrada activo é `/api/v1/webhooks/providers/baileys`. O evento deve conter `eventId`, `phone`, `content` e `receivedAt`; `name`, `messageType` e `metadata` são opcionais. A autenticação, assinatura, ownership da instância, idempotência e ingestão são aplicadas pelo fluxo Baileys descrito abaixo.
 
 O callback interno `/api/v1/webhooks/providers/baileys` pode responder `202 accepted` com `ignored: true` quando o gateway/API filtrar história/backfill, corpo vazio, texto-placeholder ou histórico não importável (por exemplo, sem telefone ou conteúdo). O evento ignorado é reconhecido para encerrar a outbox e não cria lead, conversa ou mensagem. A resposta inclui `eventId` e o motivo em `data.reason`; não significa que o histórico foi importado.
 

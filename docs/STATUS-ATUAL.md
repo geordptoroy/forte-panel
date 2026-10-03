@@ -33,6 +33,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Reduzido o parser JSON global para 1 MiB, com limites de rota explícitos para o webhook Baileys (12 MiB), voz de onboarding (24 MiB) e uploads de anexos (12 MiB), preservando os contratos de anexos existentes.
 - Adicionado pré-parser do webhook Baileys que rejeita `Content-Length` excessivo e exige segredo/API key antes de materializar o JSON; o gateway envia também `X-Webhook-Instance-Id` para resolver o segredo por instância antes do parse, mantendo a assinatura HMAC após o parse.
 - Limitada a media inbound Baileys a 8 MiB descodificados: o gateway lê por stream com bound, o schema limita a data URL/base64 e o storage não aceita configuração acima desse tecto. Webhooks de eventos Baileys e receipts passam a consumir a quota `apiRequests` do workspace e devolvem `429`/`Retry-After` quando esgotada.
+- Encerrado permanentemente com `404` o endpoint REST genérico `/api/v1/webhooks/inbound/whatsapp`; o único contrato de inbound activo é o callback autenticado `/api/v1/webhooks/providers/baileys`, eliminando a segunda superfície de ingestão fora da policy Baileys-only.
 
 ## Autoridade documental
 
@@ -66,7 +67,7 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Pendências antes de promover
 
-1. Completar a Fase 1: o tratamento async Express 4 e os limites de body/rate estão implementados e testados; segue-se a revisão dos restantes endpoints. O gate de supportSession para status/plano/incidentes está implementado e testado. O fencing REST da `0060` falha fechado em resultado ambíguo; a reconciliação operacional continua pendente.
+1. Completar a Fase 1: o tratamento async Express 4, os limites de body/rate e o encerramento do endpoint REST genérico estão implementados e testados; segue-se a revisão dos restantes endpoints. O gate de supportSession para status/plano/incidentes está implementado e testado. O fencing REST da `0060` falha fechado em resultado ambíguo; a reconciliação operacional continua pendente.
 2. A `0017` foi corrigida e testada. A `0043` continua fail-closed; inventário e teste protegem a transição, mas a política de arquivo/resolução dos dados PAPI/Meta históricos precisa de decisão explícita antes de qualquer upgrade com esses dados.
 3. Resolver os demais high de segurança e transporte Baileys, inclusive encriptação de auth state e semântica real de queued/sent/failed; os limites de media/body desta fase estão fechados localmente, sem smoke de imagem ou WhatsApp real.
 4. Fechar os gates de dados e operação: backup/restore completo, readiness, shutdown, email real ou promessa removida, observabilidade e staging controlado.
@@ -75,4 +76,4 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Próxima ação
 
-**Continuar pela revisão dos restantes endpoints e decidir a política de preservação para a 0043**, sempre em PostgreSQL local descartável. O wrapper Express 4 e os limites body/rate foram validados; a `0060` impede replays automáticos de resultados ambíguos, mas a ferramenta de reconciliação ainda falta. A prova actual da `0043` demonstra bloqueio sem mutação, não resolve nem autoriza limpar/arquivar dados históricos; a candidata não é release beta pública e não deve ser instalada no ambiente do utilizador.
+**Continuar pela revisão dos restantes endpoints e decidir a política de preservação para a 0043**, sempre em PostgreSQL local descartável. O wrapper Express 4, os limites body/rate e o `404` permanente do inbound genérico foram validados; a `0060` impede replays automáticos de resultados ambíguos, mas a ferramenta de reconciliação ainda falta. A prova actual da `0043` demonstra bloqueio sem mutação, não resolve nem autoriza limpar/arquivar dados históricos; a candidata não é release beta pública e não deve ser instalada no ambiente do utilizador.

@@ -238,52 +238,27 @@ describe("versioned API", () => {
     }
   });
 
-  it("requires inbound webhook Idempotency-Key to match eventId", async () => {
-    const previousKey = process.env.FORTE_API_KEY;
-    process.env.FORTE_API_KEY = "test-api-key";
-    try {
-      const payload = {
-        eventId: "instance-1:message-1",
-        phone: "5511999999999",
-        content: "Olá",
-        messageType: "text",
-      };
-      const missing = await fetch(
-        `${baseUrl}/api/v1/webhooks/inbound/whatsapp`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer test-api-key",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        }
-      );
-      expect(missing.status).toBe(400);
-      await expect(missing.json()).resolves.toMatchObject({
-        error: "idempotency_key_required",
-      });
-
-      const mismatch = await fetch(
-        `${baseUrl}/api/v1/webhooks/inbound/whatsapp`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer test-api-key",
-            "Content-Type": "application/json",
-            "Idempotency-Key": "another-message-key",
-          },
-          body: JSON.stringify(payload),
-        }
-      );
-      expect(mismatch.status).toBe(409);
-      await expect(mismatch.json()).resolves.toMatchObject({
-        error: "idempotency_conflict",
-      });
-    } finally {
-      if (previousKey === undefined) delete process.env.FORTE_API_KEY;
-      else process.env.FORTE_API_KEY = previousKey;
-    }
+  it("permanently closes the generic inbound webhook in Baileys-only mode", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/v1/webhooks/inbound/whatsapp`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-api-key",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          eventId: "instance-1:message-1",
+          phone: "5511999999999",
+          content: "Olá",
+          messageType: "text",
+        }),
+      }
+    );
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "not_found",
+    });
   });
 
   it("rejects Baileys webhooks without a secret, signature, or API key", async () => {
