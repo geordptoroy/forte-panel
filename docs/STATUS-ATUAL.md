@@ -41,7 +41,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 
 Para esta candidata, a ordem é: `AGENTS.md` (regras da IA) → `docs/STATUS-ATUAL.md` (estado e decisões) → `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md` (processo). Os handoffs, prompts, `todo.md`, fonte de verdade e relatórios com o banner **DOCUMENTO HISTÓRICO** preservam o passado; não se devem executar neles branches, tags `:dev`, comandos ou próximos passos antigos.
 
-O utilizador confirmou em 2026-10-02: **Baileys é o único canal do produto**; PAPI pode aparecer apenas em revisão de engenharia, e Meta não é suportada. Estas alterações continuam locais. Não reintroduzir adapters, configurações ou opções de outros canais; qualquer mudança de UX deve preservar os contratos atuais.
+O utilizador confirmou em 2026-10-02/03: **Baileys é o único canal/provedor do produto**; PAPI é apenas referência de engenharia e Meta não faz parte da aplicação. A migration `0043` purga rows, credenciais/configuração operacional, mensagens e eventos de webhook não-Baileys, preservando apenas Baileys. Não reintroduzir adapters, configurações ou opções de outros canais; qualquer mudança de UX deve preservar os contratos atuais.
 
 ## Auditoria beta completa — 2026-10-03
 
@@ -56,9 +56,9 @@ Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8f
 | Regressões focadas após generalizar a deteção de credenciais | **4 ficheiros / 18 testes passaram** (`platform-admin`, `secret-safety`, `baileys-policy`, `message-routing`). |
 | Procura de providers no runtime/env e links do índice | **Zero referências operacionais/variáveis antigas; 17 links documentais válidos.** Testes negativos continuam a provar que valores legados são rejeitados. |
 | Segurança P0 e regressões de tenancy | Storage proxy, REST/queue e SSRF têm guards; `setWorkspaceLifecycleStatus`, `setWorkspacePlan` e mutations de incidentes exigem sessão operadora do admin/workspace correctos e registam `supportSessionId`; o Kanban inicia sessão curta antes de suspender/reativar. O delete Baileys prova ownership; `0017` remove o fallback `forte-demo`; `0060` aplica fencing REST fail-closed. |
-| Migration 0043 e preflight | **4 superfícies legadas bloqueiam sem mutação** e preservam rows/enum; inventário read-only reporta os quatro counts e referências a credenciais sem revelar valores. |
+| Migration 0043 e preflight | **Purge explícito de superfícies não-Baileys**; teste PostgreSQL confirma remoção de channels/instances/messages/settings/webhookEvents não-Baileys, preservação Baileys, enum/check/default Baileys-only e inventário read-only reporta candidatos sem revelar valores. |
 | Express 4 async REST | 17 callbacks async protegidos por `asyncRoute`; erros não tratados devolvem JSON 500 genérico; as 6 rotas idempotentes passaram a `return await`; 8 regressões cobrem 7 endpoints e claim failed. |
-| Suite root com `DATABASE_URL` local | **122 ficheiros / 449 testes passaram** na execução completa após esta remediação; sem skips nesta execução. |
+| Suite root com `DATABASE_URL` local | **123 ficheiros / 451 testes passaram** na execução completa após esta remediação; sem skips nesta execução. |
 | Validator de configuração de produção | Passou com configuração sintética segura; sem credenciais reais. |
 | `pnpm build` do painel | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
 | Gateway Baileys | Suite isolada: **17 ficheiros / 86 testes passaram**, sem skips; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico; não houve alteração do lockfile nem do patch. |
@@ -71,7 +71,7 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 ## Pendências antes de promover
 
 1. Completar a Fase 1: o tratamento async Express 4, os limites de body/rate e o encerramento do endpoint REST genérico estão implementados e testados; segue-se a revisão dos restantes endpoints. O gate de supportSession para status/plano/incidentes está implementado e testado. O fencing REST da `0060` falha fechado em resultado ambíguo; a reconciliação operacional continua pendente.
-2. A `0017` foi corrigida e testada. A `0043` continua fail-closed; inventário e teste protegem a transição, mas a política de arquivo/resolução dos dados PAPI/Meta históricos precisa de decisão explícita antes de qualquer upgrade com esses dados.
+2. A `0017` foi corrigida e testada. A `0043` agora aplica a decisão explícita Baileys-only: elimina rows/configuração/eventos/mensagens tagged com provider não-Baileys durante o upgrade. O inventário read-only deve ser guardado antes de aplicar a migration real; não executar este upgrade no ambiente do utilizador sem backup/rollback validado.
 3. Resolver os demais high de segurança e transporte Baileys, inclusive encriptação de auth state e semântica real de queued/sent/failed; o guard de media outbound e os limites de media/body estão fechados localmente, sem smoke de imagem ou WhatsApp real.
 4. Fechar os gates de dados e operação: backup/restore completo, readiness, shutdown, email real ou promessa removida, observabilidade e staging controlado.
 5. Repetir typecheck, testes root/gateway, suite PostgreSQL sem skips, builds e workflow no mesmo SHA/digest quando as correções estiverem concluídas.
@@ -79,4 +79,4 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Próxima ação
 
-**Continuar pela revisão dos restantes endpoints e decidir a política de preservação para a 0043**, sempre em PostgreSQL local descartável. O wrapper Express 4, os limites body/rate e o `404` permanente do inbound genérico foram validados; a `0060` impede replays automáticos de resultados ambíguos, mas a ferramenta de reconciliação ainda falta. A prova actual da `0043` demonstra bloqueio sem mutação, não resolve nem autoriza limpar/arquivar dados históricos; a candidata não é release beta pública e não deve ser instalada no ambiente do utilizador.
+**Continuar pela revisão dos restantes endpoints e pela ferramenta de reconciliação de claims**, sempre em PostgreSQL local descartável. O wrapper Express 4, os limites body/rate, o `404` permanente do inbound genérico e a purge Baileys-only da `0043` foram validados; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.

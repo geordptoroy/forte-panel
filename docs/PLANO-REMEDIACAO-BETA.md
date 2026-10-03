@@ -132,7 +132,7 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 
 ## Estado
 
-**Execução na branch `integration/beta-candidate-2026-10-02`; base `cdaa811` publicada para handoff e continuação local `bb3fb0e`/`6ee474c`/`17b0b34`, sem push/merge para `main` ou publicação de imagem.** As correcções abaixo foram implementadas e verificadas sem uso de Supabase, WhatsApp real ou Docker do utilizador:
+**Execução na branch `integration/beta-candidate-2026-10-02`; base `cdaa811` publicada para handoff e continuação local `bb3fb0e`/`6ee474c`/`17b0b34`/`6a02133`, sem push/merge para `main` ou publicação de imagem.** As correcções abaixo foram implementadas e verificadas sem uso de Supabase, WhatsApp real ou Docker do utilizador:
 
 | Item | Evidência actual | Estado |
 |---|---|---|
@@ -147,21 +147,21 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 | Fase 1.8 — inbound genérico fora de Baileys-only | `/api/v1/webhooks/inbound/whatsapp` responde `404` permanentemente; o contrato e o teste negativo deixam apenas `/api/v1/webhooks/providers/baileys` como callback de entrada. | Fechado localmente |
 | Fase 3.1 — contrato MIME/PTT outbound | `mediaMimeType` é a fonte canónica com `mimetype` de compatibilidade; áudio normal explicita `ptt: false` e gravação do microfone `ptt: true`; helpers cobrem MIME real e fallback. | Fechado localmente; sem smoke externo |
 | Fase 2.1 — migration `0017` | Removido fallback `forte-demo`; inferência apenas com ownership determinística e falha diagnóstica em ambiguidade. Testes cobrem backfill single-tenant e bloqueio sem atribuição arbitrária. | Fechado localmente |
-| Fase 2.2 — transição `0043` | Migration mantém fail-closed. Novo teste PostgreSQL exercita channels, instances, messages e default provider; cada blocker aborta sem alterar rows ou enum. Inventário read-only acrescenta counts exactos, referência a credenciais e próximos passos sem expor valores. | Protegido, resolução pendente |
+| Fase 2.2 — transição `0043` | Migration Baileys-only purga channels, instances, messages, settings e webhookEvents não-Baileys; preserva rows Baileys e fixa enum/check/default Baileys-only. Teste PostgreSQL confirma a purge e o inventário read-only reporta candidatos/credenciais sem expor valores. | Implementado localmente; aplicar só com backup/rollback |
 
 ## Validação da remediação local (2026-10-03)
 
 - `pnpm check`: passou.
-- Suite Vitest root contra PostgreSQL 16 local: **123 ficheiros / 454 testes passaram; sem skips**.
+- Suite Vitest root contra PostgreSQL 16 local: **123 ficheiros / 451 testes passaram; sem skips**.
 - `pnpm build` do painel: passou; permanece o aviso conhecido de bundle JavaScript principal com cerca de 1,1 MB minificado.
 - Gateway Baileys: **18 ficheiros / 91 testes passaram, sem skips**; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico.
 - Body/media/rate: testes focados de ingress, media e quota passaram (**3 ficheiros / 15 testes**); o parser global deixou 50 MiB e passou a 1 MiB, com webhook Baileys pré-autenticado a 12 MiB e media inbound limitada a 8 MiB descodificados.
-- Migration `0043`: quatro casos legados foram testados numa base temporária local, depois removida; PostgreSQL continua disponível e não ficou base temporária.
-- Inventário WhatsApp: executado em `BEGIN READ ONLY` na base local, mostrando zero blockers nesse snapshot de teste; isto **não** é inventário da instalação do utilizador.
+- Migration `0043`: fixture temporário local com rows Baileys + não-Baileys confirmou purge das superfícies operacionais não-Baileys e preservação Baileys; a base temporária foi removida.
+- Inventário WhatsApp: executado em `BEGIN READ ONLY`; agora reporta `purgeCandidates`/`purgeRequired` e nunca altera a base. Isto **não** é inventário da instalação do utilizador.
 - YAML Compose analisado; a CLI Docker não está instalada. Nenhum container ou volume Docker foi iniciado, parado, resetado ou alterado.
 
 ## Pendências e limite de segurança
 
-Continuam abertos os itens restantes da Fase 1 (revisão dos demais endpoints), a ferramenta operacional para reconciliar claims `indeterminate`, as outras migrations/dados, o transporte Baileys e os gates de operação listados acima. O parser JSON global foi reduzido para 1 MiB; o webhook Baileys usa 12 MiB apenas após pré-autenticação, a media descodificada fica limitada a 8 MiB e os anexos existentes têm excepções explícitas sem o antigo limite global de 50 MB. O inventário local e o teste da `0043` demonstram comportamento fail-closed; não provam que a base real do utilizador esteja livre de legado.
+Continuam abertos os itens restantes da Fase 1 (revisão dos demais endpoints), a ferramenta operacional para reconciliar claims `indeterminate`, as outras migrations/dados, o transporte Baileys e os gates de operação listados acima. O parser JSON global foi reduzido para 1 MiB; o webhook Baileys usa 12 MiB apenas após pré-autenticação, a media descodificada fica limitada a 8 MiB e os anexos existentes têm excepções explícitas sem o antigo limite global de 50 MB. A `0043` purga dados não-Baileys por decisão explícita, mas o inventário local não prova o conteúdo da base real do utilizador.
 
-A transformação/arquivo ou eliminação de dados PAPI/Meta históricos **não foi escolhida nem executada**. Antes de alterar `0043` para arquivar ou apagar rows/segredos, obter decisão explícita sobre retenção e tratamento de mensagens pendentes; até lá, manter o gate e não aplicar upgrades a bases reais. Nenhuma publicação fica autorizada por este documento.
+A eliminação de dados PAPI/Meta/genericamente não-Baileys foi **escolhida no pedido do utilizador e implementada na migration `0043`**, mas não foi executada numa base real. Antes de aplicar o upgrade, guardar o inventário read-only, confirmar backup/rollback e rever o impacto da eliminação de mensagens pendentes, credenciais, settings e eventos de webhook não-Baileys. Nenhuma publicação fica autorizada por este documento.
