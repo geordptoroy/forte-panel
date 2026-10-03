@@ -1,6 +1,6 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 3 de outubro de 2026, 13:17 (UTC−3)
+**Atualizado:** 3 de outubro de 2026, 13:49 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
 **Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only), `eeaa6d5` (reconciliação idempotente auditável), `a896dbd` (readiness/body do gateway), `bdeff4b` (evidência fail-closed de backup de media), `0a190fb` (documentação de operação), `6582607` (reset de password fail-closed) e `87dfaac` (sink operacional opcional); sem push nesta sessão.
@@ -18,7 +18,7 @@
 
 O possível conflito de nonce foi revisto: o gateway gera nonce aleatório com 18 bytes (144 bits), e a aplicação usa um segredo global de assinatura; a unicidade por workspace/provider é intencional para detetar replay independentemente da instância. Não foi feita alteração ao índice.
 
-Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-02` para permitir continuação por outra IA. Não houve merge/push para `main`, publicação GHCR, acesso ao Supabase, reset Docker nem teste contra a instância real do utilizador. O push não disparou workflows; PR #3 permanece sem alteração remota.
+Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-02` para permitir continuação por outra IA. A candidata foi posteriormente actualizada até `84bed77` apenas nessa branch para o dispatch autorizado do Actions; não houve merge para `main`, publicação GHCR, acesso ao Supabase, reset Docker nem teste contra a instância real do utilizador. PR #3 permanece sem alteração remota.
 
 ## Alterações feitas apenas na candidata
 
@@ -48,9 +48,10 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Adicionado `pnpm verify:media-backup INVENTORY.json`: valida o inventário tenant-scoped, exige exportação de conteúdo e prova de restore com hashes SHA-256 reais para declarar `restore_proven`; com o adapter Forge actual, o resultado explícito é `inventory_only` e exit code não-zero.
 - Adicionado transporte opcional `FORTE_OBSERVABILITY_WEBHOOK_URL`/`FORTE_OBSERVABILITY_WEBHOOK_TOKEN`: exporta apenas heartbeat/falhas agregadas do worker, com payload allowlisted, limites, timeout de 2 s, autenticação Bearer e redacção; fica inactivo sem configuração e exige HTTPS/token no validator de produção.
 - O proxy autenticado `/manus-storage/*` agora consome a quota `apiRequests` do workspace depois da validação de tenant/key, expõe `X-RateLimit-*` e devolve `429`/`Retry-After` sem pedir presigned URL ao backend quando a quota está esgotada.
-- Os workflows `publish-image` e `postgres-integration` agora passam `DATABASE_URL`, `JWT_SECRET` e todas as credenciais sintéticas Baileys ao validator de produção; o CI deixa de passar sem validar o contrato do único provider. Ambos mantêm o bloqueio de testes skipped; nenhum workflow foi disparado. A tentativa de mover a configuração pnpm foi revertida porque removia o patch Wouter do lockfile; o warning de configuração pnpm permanece pendente.
+- Os workflows `publish-image` e `postgres-integration` agora passam `DATABASE_URL`, `JWT_SECRET` e todas as credenciais sintéticas Baileys ao validator de produção; o CI deixa de passar sem validar o contrato do único provider. Ambos mantêm o bloqueio de testes skipped. A tentativa de mover a configuração pnpm foi revertida porque removia o patch Wouter do lockfile; o warning de configuração pnpm permanece pendente.
 - O callback OAuth agora rejeita `code`/`state` acima de 4096 caracteres antes do exchange, mantém o guard de nonce/cookie e redige o erro para apenas nome/classe no log. Foram adicionados testes para payload oversized e state sem cookie; não há contacto com o provider OAuth nos testes.
-- O Compose operacional/local aceita `FORTE_PANEL_IMAGE` e `FORTE_WHATSAPP_IMAGE` para pinagem por tag `sha-*`, mantendo `:latest` apenas como default. `start-docker.ps1` faz `pull` antes do reset destrutivo e aborta sem apagar volumes se a imagem não existir; o procedimento completo está em `docs/TESTE-LOCAL-RESET-E-IMAGEM-PINADA.md`. O SHA `236c44d` ainda não tem imagens GHCR publicadas.
+- O Compose operacional/local aceita `FORTE_PANEL_IMAGE` e `FORTE_WHATSAPP_IMAGE` para pinagem por tag `sha-*`, mantendo `:latest` apenas como default. `start-docker.ps1` faz `pull` antes do reset destrutivo e aborta sem apagar volumes se a imagem não existir; o procedimento completo está em `docs/TESTE-LOCAL-RESET-E-IMAGEM-PINADA.md`.
+- O dispatch autorizado `publish-image` `37149066623` foi executado na candidata `84bed77`, mas falhou antes da publicação porque três suites de integração ainda usavam `provider: "test"`, rejeitado pela constraint Baileys-only `webhook_events_operational_provider_check`. Os fixtures foram corrigidos para `provider: "baileys"`; a validação local posterior passou com **129 ficheiros / 474 testes**, root build, Gateway check e Gateway build verdes. É necessário repetir o Actions antes de obter imagens GHCR.
 
 ## Autoridade documental
 

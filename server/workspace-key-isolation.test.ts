@@ -21,7 +21,10 @@ import {
   registerWebhookEvent,
 } from "./db";
 
-const hasDatabase = Boolean(process.env.DATABASE_URL && /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL));
+const hasDatabase = Boolean(
+  process.env.DATABASE_URL &&
+    /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL)
+);
 
 describe.skipIf(!hasDatabase)("workspace-scoped deduplication", () => {
   const suffix = `keys${Date.now()}`;
@@ -34,10 +37,13 @@ describe.skipIf(!hasDatabase)("workspace-scoped deduplication", () => {
   beforeAll(async () => {
     const db = await getDb();
     if (!db) throw new Error("database unavailable");
-    const inserted = await db.insert(workspaces).values([
-      { name: `Keys A ${suffix}`, slug: `keys-a-${suffix}` },
-      { name: `Keys B ${suffix}`, slug: `keys-b-${suffix}` },
-    ]).returning({ id: workspaces.id });
+    const inserted = await db
+      .insert(workspaces)
+      .values([
+        { name: `Keys A ${suffix}`, slug: `keys-a-${suffix}` },
+        { name: `Keys B ${suffix}`, slug: `keys-b-${suffix}` },
+      ])
+      .returning({ id: workspaces.id });
     workspaceAId = inserted[0]!.id;
     workspaceBId = inserted[1]!.id;
   });
@@ -47,32 +53,72 @@ describe.skipIf(!hasDatabase)("workspace-scoped deduplication", () => {
     if (!db) return;
     const ids = [workspaceAId, workspaceBId].filter(Boolean);
     if (seededConversationIds.length)
-      await db.delete(messages).where(inArray(messages.conversationId, seededConversationIds));
+      await db
+        .delete(messages)
+        .where(inArray(messages.conversationId, seededConversationIds));
     if (seededConversationIds.length)
-      await db.delete(conversations).where(inArray(conversations.id, seededConversationIds));
+      await db
+        .delete(conversations)
+        .where(inArray(conversations.id, seededConversationIds));
     if (seededContactIds.length)
       await db.delete(contacts).where(inArray(contacts.id, seededContactIds));
     if (seededInstanceIds.length)
-      await db.delete(whatsappInstances).where(inArray(whatsappInstances.instanceId, seededInstanceIds));
+      await db
+        .delete(whatsappInstances)
+        .where(inArray(whatsappInstances.instanceId, seededInstanceIds));
     await db.delete(domainEvents).where(inArray(domainEvents.workspaceId, ids));
-    await db.delete(webhookEvents).where(inArray(webhookEvents.workspaceId, ids));
-    await db.delete(apiIdempotency).where(inArray(apiIdempotency.workspaceId, ids));
+    await db
+      .delete(webhookEvents)
+      .where(inArray(webhookEvents.workspaceId, ids));
+    await db
+      .delete(apiIdempotency)
+      .where(inArray(apiIdempotency.workspaceId, ids));
     await db.delete(workspaces).where(inArray(workspaces.id, ids));
   });
 
   it("allows the same idempotency key, webhook event, and domain event key in different workspaces", async () => {
-    const first = await claimApiIdempotency({ workspaceId: workspaceAId, key: "same-key-123456", fingerprint: "a" });
-    const second = await claimApiIdempotency({ workspaceId: workspaceBId, key: "same-key-123456", fingerprint: "b" });
+    const first = await claimApiIdempotency({
+      workspaceId: workspaceAId,
+      key: "same-key-123456",
+      fingerprint: "a",
+    });
+    const second = await claimApiIdempotency({
+      workspaceId: workspaceBId,
+      key: "same-key-123456",
+      fingerprint: "b",
+    });
     expect(first.claimed).toBe(true);
     expect(second.claimed).toBe(true);
 
-    const webhookA = await registerWebhookEvent({ workspaceId: workspaceAId, eventId: "same-event-123456", provider: "test", payload: { workspace: "a" } });
-    const webhookB = await registerWebhookEvent({ workspaceId: workspaceBId, eventId: "same-event-123456", provider: "test", payload: { workspace: "b" } });
+    const webhookA = await registerWebhookEvent({
+      workspaceId: workspaceAId,
+      eventId: "same-event-123456",
+      provider: "baileys",
+      payload: { workspace: "a" },
+    });
+    const webhookB = await registerWebhookEvent({
+      workspaceId: workspaceBId,
+      eventId: "same-event-123456",
+      provider: "baileys",
+      payload: { workspace: "b" },
+    });
     expect(webhookA.duplicate).toBe(false);
     expect(webhookB.duplicate).toBe(false);
 
-    const eventA = await enqueueDomainEvent({ workspaceId: workspaceAId, event: "task.due", aggregateType: "task", eventKey: "same-domain-key-123456", payload: { workspace: "a" } });
-    const eventB = await enqueueDomainEvent({ workspaceId: workspaceBId, event: "task.due", aggregateType: "task", eventKey: "same-domain-key-123456", payload: { workspace: "b" } });
+    const eventA = await enqueueDomainEvent({
+      workspaceId: workspaceAId,
+      event: "task.due",
+      aggregateType: "task",
+      eventKey: "same-domain-key-123456",
+      payload: { workspace: "a" },
+    });
+    const eventB = await enqueueDomainEvent({
+      workspaceId: workspaceBId,
+      event: "task.due",
+      aggregateType: "task",
+      eventKey: "same-domain-key-123456",
+      payload: { workspace: "b" },
+    });
     expect(eventA?.workspaceId).toBe(workspaceAId);
     expect(eventB?.workspaceId).toBe(workspaceBId);
   });
@@ -154,7 +200,9 @@ describe.skipIf(!hasDatabase)("workspace-scoped deduplication", () => {
         responseBody: { owner: "stale" },
       })
     ).toBe(false);
-    expect(await failApiIdempotency(workspaceAId, key, first.claimToken)).toBe(false);
+    expect(await failApiIdempotency(workspaceAId, key, first.claimToken)).toBe(
+      false
+    );
     expect(
       await completeApiIdempotency({
         workspaceId: workspaceAId,
@@ -172,7 +220,7 @@ describe.skipIf(!hasDatabase)("workspace-scoped deduplication", () => {
     const first = await registerWebhookEvent({
       workspaceId: workspaceAId,
       eventId,
-      provider: "test",
+      provider: "baileys",
       payload,
     });
     expect(first.duplicate).toBe(false);
@@ -181,7 +229,7 @@ describe.skipIf(!hasDatabase)("workspace-scoped deduplication", () => {
     const activeDuplicate = await registerWebhookEvent({
       workspaceId: workspaceAId,
       eventId,
-      provider: "test",
+      provider: "baileys",
       payload,
     });
     expect(activeDuplicate.duplicate).toBe(true);
@@ -195,26 +243,40 @@ describe.skipIf(!hasDatabase)("workspace-scoped deduplication", () => {
     const retry = await registerWebhookEvent({
       workspaceId: workspaceAId,
       eventId,
-      provider: "test",
+      provider: "baileys",
       payload,
     });
     expect(retry.duplicate).toBe(false);
-    if (retry.duplicate) throw new Error("expected expired webhook lease to be reclaimed");
+    if (retry.duplicate)
+      throw new Error("expected expired webhook lease to be reclaimed");
     expect(retry.leaseToken).not.toBe(first.leaseToken);
 
-    await markWebhookEvent(workspaceAId, eventId, "processed", first.leaseToken);
+    await markWebhookEvent(
+      workspaceAId,
+      eventId,
+      "processed",
+      first.leaseToken
+    );
     const stillOwned = await db
       .select()
       .from(webhookEvents)
       .where(eq(webhookEvents.id, first.event.id))
       .limit(1);
-    expect(stillOwned[0]).toMatchObject({ status: "received", leaseToken: retry.leaseToken });
+    expect(stillOwned[0]).toMatchObject({
+      status: "received",
+      leaseToken: retry.leaseToken,
+    });
 
-    await markWebhookEvent(workspaceAId, eventId, "processed", retry.leaseToken);
+    await markWebhookEvent(
+      workspaceAId,
+      eventId,
+      "processed",
+      retry.leaseToken
+    );
     const completedDuplicate = await registerWebhookEvent({
       workspaceId: workspaceAId,
       eventId,
-      provider: "test",
+      provider: "baileys",
       payload,
     });
     expect(completedDuplicate.duplicate).toBe(true);

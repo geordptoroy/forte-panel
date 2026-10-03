@@ -9,7 +9,8 @@ import {
 import { cleanupOnboardingAudioRetention, getDb } from "./db";
 
 const hasDatabase = Boolean(
-  process.env.DATABASE_URL && /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL)
+  process.env.DATABASE_URL &&
+    /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL)
 );
 
 describe.skipIf(!hasDatabase)("onboarding audio retention", () => {
@@ -86,7 +87,7 @@ describe.skipIf(!hasDatabase)("onboarding audio retention", () => {
           sessionId: 900001,
           workspaceId: workspaceA,
           status: "completed",
-          provider: "test",
+          provider: "baileys",
           model: "test",
           language: "pt",
           text: "expirar",
@@ -101,7 +102,7 @@ describe.skipIf(!hasDatabase)("onboarding audio retention", () => {
           sessionId: 900002,
           workspaceId: workspaceB,
           status: "completed",
-          provider: "test",
+          provider: "baileys",
           model: "test",
           language: "pt",
           text: "preservar",
@@ -120,10 +121,30 @@ describe.skipIf(!hasDatabase)("onboarding audio retention", () => {
   afterAll(async () => {
     const db = await getDb();
     if (!db) return;
-    await db.delete(onboardingTranscriptions).where(inArray(onboardingTranscriptions.id, [transcriptionA, transcriptionB].filter(Boolean)));
-    await db.delete(onboardingAudioAssets).where(inArray(onboardingAudioAssets.id, [assetA, assetB].filter(Boolean)));
-    await db.delete(onboardingRetentionPolicies).where(inArray(onboardingRetentionPolicies.workspaceId, [workspaceA, workspaceB].filter(Boolean)));
-    await db.delete(workspaces).where(inArray(workspaces.id, [workspaceA, workspaceB].filter(Boolean)));
+    await db
+      .delete(onboardingTranscriptions)
+      .where(
+        inArray(
+          onboardingTranscriptions.id,
+          [transcriptionA, transcriptionB].filter(Boolean)
+        )
+      );
+    await db
+      .delete(onboardingAudioAssets)
+      .where(
+        inArray(onboardingAudioAssets.id, [assetA, assetB].filter(Boolean))
+      );
+    await db
+      .delete(onboardingRetentionPolicies)
+      .where(
+        inArray(
+          onboardingRetentionPolicies.workspaceId,
+          [workspaceA, workspaceB].filter(Boolean)
+        )
+      );
+    await db
+      .delete(workspaces)
+      .where(inArray(workspaces.id, [workspaceA, workspaceB].filter(Boolean)));
   });
 
   it("supports dry-run without deleting and reports counts by workspace", async () => {
@@ -136,16 +157,44 @@ describe.skipIf(!hasDatabase)("onboarding audio retention", () => {
       workspaces: { [workspaceA]: { assets: 1, transcriptions: 1 } },
     });
     const db = await getDb();
-    expect(await db?.select().from(onboardingAudioAssets).where(inArray(onboardingAudioAssets.id, [assetA]))).toHaveLength(1);
+    expect(
+      await db
+        ?.select()
+        .from(onboardingAudioAssets)
+        .where(inArray(onboardingAudioAssets.id, [assetA]))
+    ).toHaveLength(1);
   });
 
   it("deletes only expired rows and keeps another workspace intact", async () => {
     const result = await cleanupOnboardingAudioRetention({ now });
-    expect(result).toMatchObject({ assetsExpired: 1, transcriptionsExpired: 1 });
+    expect(result).toMatchObject({
+      assetsExpired: 1,
+      transcriptionsExpired: 1,
+    });
     const db = await getDb();
-    expect(await db?.select().from(onboardingAudioAssets).where(inArray(onboardingAudioAssets.id, [assetA]))).toHaveLength(0);
-    expect(await db?.select().from(onboardingTranscriptions).where(inArray(onboardingTranscriptions.id, [transcriptionA]))).toHaveLength(0);
-    expect(await db?.select().from(onboardingAudioAssets).where(inArray(onboardingAudioAssets.id, [assetB]))).toHaveLength(1);
-    expect(await db?.select().from(onboardingTranscriptions).where(inArray(onboardingTranscriptions.id, [transcriptionB]))).toHaveLength(1);
+    expect(
+      await db
+        ?.select()
+        .from(onboardingAudioAssets)
+        .where(inArray(onboardingAudioAssets.id, [assetA]))
+    ).toHaveLength(0);
+    expect(
+      await db
+        ?.select()
+        .from(onboardingTranscriptions)
+        .where(inArray(onboardingTranscriptions.id, [transcriptionA]))
+    ).toHaveLength(0);
+    expect(
+      await db
+        ?.select()
+        .from(onboardingAudioAssets)
+        .where(inArray(onboardingAudioAssets.id, [assetB]))
+    ).toHaveLength(1);
+    expect(
+      await db
+        ?.select()
+        .from(onboardingTranscriptions)
+        .where(inArray(onboardingTranscriptions.id, [transcriptionB]))
+    ).toHaveLength(1);
   });
 });
