@@ -97,7 +97,7 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 4. **Parcialmente implementado localmente:** `backup-restore.sh` inclui DB e sessão Baileys, exige a chave AES e regista apenas o seu fingerprint, com verificação de correspondência antes do restore destrutivo. Faltam backup cifrado/off-host, blobs/media reais e rehearsal completo medindo RPO/RTO.
 5. **Parcialmente implementado localmente:** `backup-restore.sh retention BACKUP_DIR` configura `BACKUP_RETENTION_DAYS` (30 por defeito), lista manifestos expirados em dry-run e nunca apaga dados. A aplicação da retenção só deve ser desenhada após validar escopo, recovery e armazenamento off-host.
 6. Resolver entrega de email: ou implementar transporte real testado (convites/reset), ou desativar/remover a promessa de SMTP até existir provider configurado.
-7. Adicionar logs/métricas/alertas externos com redaction e correlação por request/workspace/instance.
+7. **Parcialmente implementado localmente:** `X-Request-Id` validado/gerado no Panel, proxy de storage com logs redigidos e heartbeat JSON do worker. Faltam transporte externo de métricas/alertas e uma política operacional de retenção/alerta para o backend Forge/S3.
 8. Validar config de produção no startup sem imprimir secrets; impedir `DEMO_MODE`/seed se a base for ambiente de produção.
 9. Manter instalação do utilizador por `git pull` e pelo script oficial já acordado; o reset é sempre opção explícita e scoped à stack do Forte Panel.
 

@@ -43,6 +43,8 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Adicionados healthchecks Compose para Panel e gateway, dependência do worker no gateway saudável e shutdown gracioso: o Panel drena ligações HTTP até 10 s e o worker interrompe o sleep, aguarda o tick corrente e termina limpo em SIGTERM/SIGINT.
 - Reforçado `scripts/backup-restore.sh`: backup/restore exigem `WHATSAPP_SESSION_ENCRYPTION_KEY`, guardam apenas o fingerprint SHA-256 da chave no manifesto e recusam restore antes de `pg_restore` quando a chave não corresponde; o segredo nunca é escrito no backup.
 - Adicionado `scripts/backup-restore.sh retention BACKUP_DIR`: calcula candidatos por `created_at` e `BACKUP_RETENTION_DAYS` (30 por defeito), imprime apenas um plano de retenção e não remove ficheiros; a aplicação destrutiva continua deliberadamente fora do runtime até haver validação operacional.
+- Endurecido o caminho de blobs: o adapter rejeita traversal, separadores/bytes de controlo, encoding de traversal e chaves acima de 512 caracteres; o proxy de media não regista corpos de erro do backend e inclui apenas `requestId`, nome do erro e status.
+- Adicionado `X-Request-Id` validado ou gerado no arranque HTTP do Panel, permitindo correlação segura sem aceitar newline/header injection; o worker já mantém heartbeat JSON com estado redigido por nome de erro.
 
 ## Autoridade documental
 
@@ -86,4 +88,4 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Próxima ação
 
-**Continuar pela revisão dos restantes endpoints e dos gates de transporte/operação**, agora priorizando retenção explícita, media/blobs e observabilidade externa. O backup local já verifica DB/sessão e a identidade da chave sem expor o segredo, mas ainda não é prova de backup cifrado/off-host nem de restore completo de blobs/media; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
+**Continuar pela revisão dos restantes endpoints e dos gates de transporte/operação**, agora priorizando o contrato de backup externo dos blobs Forge/S3 e alertas externos. O backup local já verifica DB/sessão e a identidade da chave sem expor o segredo, mas ainda não é prova de backup cifrado/off-host nem de restore completo de blobs/media; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
