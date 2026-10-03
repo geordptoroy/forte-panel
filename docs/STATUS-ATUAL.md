@@ -45,6 +45,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Adicionado `scripts/backup-restore.sh retention BACKUP_DIR`: calcula candidatos por `created_at` e `BACKUP_RETENTION_DAYS` (30 por defeito), imprime apenas um plano de retenção e não remove ficheiros; a aplicação destrutiva continua deliberadamente fora do runtime até haver validação operacional.
 - Endurecido o caminho de blobs: o adapter rejeita traversal, separadores/bytes de controlo, encoding de traversal e chaves acima de 512 caracteres; o proxy de media não regista corpos de erro do backend e inclui apenas `requestId`, nome do erro e status.
 - Adicionado `X-Request-Id` validado ou gerado no arranque HTTP do Panel, permitindo correlação segura sem aceitar newline/header injection; o worker já mantém heartbeat JSON com estado redigido por nome de erro.
+- Adicionado `pnpm verify:media-backup INVENTORY.json`: valida o inventário tenant-scoped, exige exportação de conteúdo e prova de restore com hashes SHA-256 reais para declarar `restore_proven`; com o adapter Forge actual, o resultado explícito é `inventory_only` e exit code não-zero.
 
 ## Autoridade documental
 
