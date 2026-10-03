@@ -58,7 +58,18 @@ jobs:
         run: pnpm exec drizzle-kit migrate
 
       - name: Validate production configuration contract
-        run: NODE_ENV=production FORTE_SECURITY_FAIL_CLOSED=true DEMO_MODE=false WORKSPACE_BOOTSTRAP_ENABLED=false pnpm check:production-config
+        env:
+          NODE_ENV: production
+          DATABASE_URL: postgresql://synthetic.invalid/forte
+          JWT_SECRET: synthetic-jwt-secret-with-at-least-32-characters
+          FORTE_SECURITY_FAIL_CLOSED: "true"
+          DEMO_MODE: "false"
+          WORKSPACE_BOOTSTRAP_ENABLED: "false"
+          BAILEYS_BASE_URL: http://forte-whatsapp:3010
+          BAILEYS_API_KEY: synthetic-baileys-api-key-with-at-least-32-characters
+          BAILEYS_WEBHOOK_SECRET: synthetic-baileys-webhook-secret-with-at-least-32-characters
+          WHATSAPP_SESSION_ENCRYPTION_KEY: synthetic-session-key-012345678901234567890123456789
+        run: pnpm check:production-config
 
       - name: Run complete test suite against PostgreSQL
         run: |

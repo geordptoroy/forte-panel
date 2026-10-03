@@ -112,7 +112,7 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 - Tornar E2E de browser/API e E2E Baileys com escopos separados e evidência no mesmo SHA/digest que se promove.
 - Corrigir warning/config pnpm e tornar patch/override reproduzíveis em install limpo.
 
-**Aceitação:** CI demonstra que erro de tipo, teste falhado, migration incompatível, skip de DB e advisory fora da política impedem o publish; build do digest promovido é o que foi verificado.
+**Aceitação:** CI demonstra que erro de tipo, teste falhado, migration incompatível, skip de DB e advisory fora da política impedem o publish; build do digest promovido é o que foi verificado. Os workflows agora validam também o contrato de produção Baileys-only com configuração sintética fail-closed; o warning de configuração pnpm e advisories continuam pendentes.
 
 ## Fase 9 — refatoração estrutural incremental (P2, após P0/P1)
 

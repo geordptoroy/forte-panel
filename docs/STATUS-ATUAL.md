@@ -1,6 +1,6 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 3 de outubro de 2026, 11:53 (UTC−3)
+**Atualizado:** 3 de outubro de 2026, 12:06 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
 **Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only), `eeaa6d5` (reconciliação idempotente auditável), `a896dbd` (readiness/body do gateway), `bdeff4b` (evidência fail-closed de backup de media), `0a190fb` (documentação de operação), `6582607` (reset de password fail-closed) e `87dfaac` (sink operacional opcional); sem push nesta sessão.
@@ -48,6 +48,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Adicionado `pnpm verify:media-backup INVENTORY.json`: valida o inventário tenant-scoped, exige exportação de conteúdo e prova de restore com hashes SHA-256 reais para declarar `restore_proven`; com o adapter Forge actual, o resultado explícito é `inventory_only` e exit code não-zero.
 - Adicionado transporte opcional `FORTE_OBSERVABILITY_WEBHOOK_URL`/`FORTE_OBSERVABILITY_WEBHOOK_TOKEN`: exporta apenas heartbeat/falhas agregadas do worker, com payload allowlisted, limites, timeout de 2 s, autenticação Bearer e redacção; fica inactivo sem configuração e exige HTTPS/token no validator de produção.
 - O proxy autenticado `/manus-storage/*` agora consome a quota `apiRequests` do workspace depois da validação de tenant/key, expõe `X-RateLimit-*` e devolve `429`/`Retry-After` sem pedir presigned URL ao backend quando a quota está esgotada.
+- Os workflows `publish-image` e `postgres-integration` agora passam `DATABASE_URL`, `JWT_SECRET` e todas as credenciais sintéticas Baileys ao validator de produção; o CI deixa de passar sem validar o contrato do único provider. Ambos mantêm o bloqueio de testes skipped; nenhum workflow foi disparado. A tentativa de mover a configuração pnpm foi revertida porque removia o patch Wouter do lockfile; o warning de configuração pnpm permanece pendente.
 
 ## Autoridade documental
 
