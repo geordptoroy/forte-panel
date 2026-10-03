@@ -1,6 +1,6 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 3 de outubro de 2026, 11:40 (UTC−3)
+**Atualizado:** 3 de outubro de 2026, 11:53 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
 **Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only), `eeaa6d5` (reconciliação idempotente auditável), `a896dbd` (readiness/body do gateway), `bdeff4b` (evidência fail-closed de backup de media), `0a190fb` (documentação de operação), `6582607` (reset de password fail-closed) e `87dfaac` (sink operacional opcional); sem push nesta sessão.
@@ -75,6 +75,7 @@ Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8f
 | `pnpm build` do painel | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
 | Gateway Baileys | Suite isolada: **18 ficheiros / 93 testes passaram**, sem skips; TypeScript check e build passaram com os binários locais. O lifecycle `pnpm` tentou reinstalar dependências e foi bloqueado por scripts ignorados; os artefactos gerados foram removidos e nenhum lockfile foi versionado. |
 | Gateway Baileys — media/MIME/PTT | `sendPayload` já não contorna a política de media; `mediaMimeType` e PTT são preservados até ao payload Baileys; **18 ficheiros / 91 testes** passaram, com check/build verdes. |
+| Preflight de restore/rehearsal | **5 ficheiros / 12 testes passaram**; pacote, hashes, isolamento, endpoint de produção e decisão fail-closed foram verificados com fixtures sintéticas. |
 | Compose | YAML analisado com Prettier; `docker compose config` não pôde ser executado porque a CLI Docker não está instalada neste sandbox. Nenhum container/volume foi iniciado ou alterado. |
 | Workflow de publicação | YAML validado; `main` apenas, migrations PostgreSQL e zero-skips antes de `publish`. Ainda não executado no GitHub. |
 
@@ -91,4 +92,4 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Próxima ação
 
-**Próximo passo:** executar staging controlado e workflow autorizado com o mesmo SHA/digest, incluindo restore completo de DB/sessão/blobs, smoke de readiness/restart, sink de alertas autorizado e evidências redigidas. O gate local está verde, mas a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
+**Próximo passo:** executar staging controlado e workflow autorizado com o mesmo SHA/digest, incluindo restore completo de DB/sessão/blobs, smoke de readiness/restart, sink de alertas autorizado e evidências redigidas. O preflight local está verde e o smoke sem `STAGING_BASE_URL` falha correctamente com exit code 2. A execução real permanece bloqueada: este Sandbox não tem Docker, URL de staging nem secrets de staging. A candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
