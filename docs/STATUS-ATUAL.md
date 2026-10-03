@@ -42,6 +42,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Readiness operacional separado de liveness: `/api/v1/health` continua a medir processo, enquanto `/api/v1/ready` exige DB saudável, heartbeat do worker não stale/healthy e gateway Baileys operacional/conectado; a resposta expõe cada check sem segredos.
 - Adicionados healthchecks Compose para Panel e gateway, dependência do worker no gateway saudável e shutdown gracioso: o Panel drena ligações HTTP até 10 s e o worker interrompe o sleep, aguarda o tick corrente e termina limpo em SIGTERM/SIGINT.
 - Reforçado `scripts/backup-restore.sh`: backup/restore exigem `WHATSAPP_SESSION_ENCRYPTION_KEY`, guardam apenas o fingerprint SHA-256 da chave no manifesto e recusam restore antes de `pg_restore` quando a chave não corresponde; o segredo nunca é escrito no backup.
+- Adicionado `scripts/backup-restore.sh retention BACKUP_DIR`: calcula candidatos por `created_at` e `BACKUP_RETENTION_DAYS` (30 por defeito), imprime apenas um plano de retenção e não remove ficheiros; a aplicação destrutiva continua deliberadamente fora do runtime até haver validação operacional.
 
 ## Autoridade documental
 
