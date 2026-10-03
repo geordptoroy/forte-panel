@@ -11,6 +11,7 @@ import { baileysWebhookAuthenticationGuard } from "../baileys-webhook-ingress";
 import { BAILEYS_WEBHOOK_MAX_BODY_BYTES } from "../media-limits";
 import { createContext } from "./context";
 import { securityHeadersForRequest } from "./http-security";
+import { requestIdFor } from "./request-context";
 import { serveStatic, setupVite } from "./vite";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -36,6 +37,9 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
   app.use((req, res, next) => {
+    const requestId = requestIdFor(req.get("x-request-id"));
+    res.locals.requestId = requestId;
+    res.setHeader("X-Request-Id", requestId);
     for (const [name, value] of Object.entries(securityHeadersForRequest(req)))
       res.setHeader(name, value);
     next();

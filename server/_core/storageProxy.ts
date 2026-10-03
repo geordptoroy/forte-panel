@@ -20,6 +20,7 @@ function isSafeStorageKey(key: string) {
 
 export function registerStorageProxy(app: Express) {
   app.get("/manus-storage/*", async (req, res) => {
+    const requestId = String(res.locals?.requestId ?? "unknown");
     const key = (req.params as Record<string, string>)[0];
     if (!key) {
       res.status(400).send("Missing storage key");
@@ -43,7 +44,10 @@ export function registerStorageProxy(app: Express) {
     try {
       membership = await getWorkspaceMembershipContext(user.id);
     } catch (err) {
-      console.error("[StorageProxy] failed to resolve workspace membership:", err);
+      console.error("[StorageProxy] failed to resolve workspace membership", {
+        requestId,
+        error: err instanceof Error ? err.name : "unknown_error",
+      });
       res.status(503).send("Storage authorization unavailable");
       return;
     }
@@ -74,8 +78,11 @@ export function registerStorageProxy(app: Express) {
       });
 
       if (!forgeResp.ok) {
-        const body = await forgeResp.text().catch(() => "");
-        console.error(`[StorageProxy] forge error: ${forgeResp.status} ${body}`);
+        await forgeResp.text().catch(() => "");
+        console.error("[StorageProxy] forge error", {
+          requestId,
+          status: forgeResp.status,
+        });
         res.status(502).send("Storage backend error");
         return;
       }
@@ -89,7 +96,10 @@ export function registerStorageProxy(app: Express) {
       res.set("Cache-Control", "no-store");
       res.redirect(307, url);
     } catch (err) {
-      console.error("[StorageProxy] failed:", err);
+      console.error("[StorageProxy] failed", {
+        requestId,
+        error: err instanceof Error ? err.name : "unknown_error",
+      });
       res.status(502).send("Storage proxy error");
     }
   });
