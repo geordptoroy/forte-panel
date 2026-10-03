@@ -3,7 +3,7 @@
 **Atualizado:** 3 de outubro de 2026, 08:57 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
-**Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado) e `17b0b34` (guard de media outbound); sem push nesta sessão.
+**Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound) e `8e8c1bd` (contrato MIME/PTT); sem push nesta sessão.
 
 ## Git e decisão de integração
 
@@ -35,6 +35,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Limitada a media inbound Baileys a 8 MiB descodificados: o gateway lê por stream com bound, o schema limita a data URL/base64 e o storage não aceita configuração acima desse tecto. Webhooks de eventos Baileys e receipts passam a consumir a quota `apiRequests` do workspace e devolvem `429`/`Retry-After` quando esgotada.
 - Encerrado permanentemente com `404` o endpoint REST genérico `/api/v1/webhooks/inbound/whatsapp`; o único contrato de inbound activo é o callback autenticado `/api/v1/webhooks/providers/baileys`, eliminando a segunda superfície de ingestão fora da policy Baileys-only.
 - Fechado o bypass de media no endpoint gateway `/send`: o ramo `payload` arbitrário agora inspecciona recursivamente campos `image`/`audio`/`video`/`document`/`sticker`, rejeita referências privadas e formas binárias não limitadas antes de chamar o manager, preservando URLs HTTPS permitidas e data URLs bounded.
+- Corrigido o contrato MIME/PTT outbound: `mediaMimeType` é a fonte canónica (com `mimetype` apenas como compatibilidade), ficheiros áudio normais usam `ptt: false` e gravações do microfone usam `ptt: true`; testes cobrem WebM/Opus, OGG e fallback MIME.
 
 ## Autoridade documental
 
@@ -61,7 +62,7 @@ Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8f
 | Validator de configuração de produção | Passou com configuração sintética segura; sem credenciais reais. |
 | `pnpm build` do painel | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
 | Gateway Baileys | Suite isolada: **17 ficheiros / 86 testes passaram**, sem skips; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico; não houve alteração do lockfile nem do patch. |
-| Gateway Baileys — media arbitrária | `sendPayload` já não contorna a política de media: referências privadas, binários e objectos sem URL são rejeitados antes do manager; **17 ficheiros / 89 testes** passaram, com check/build verdes. |
+| Gateway Baileys — media/MIME/PTT | `sendPayload` já não contorna a política de media; `mediaMimeType` e PTT são preservados até ao payload Baileys; **18 ficheiros / 91 testes** passaram, com check/build verdes. |
 | Compose | YAML analisado com Prettier; `docker compose config` não pôde ser executado porque a CLI Docker não está instalada neste sandbox. Nenhum container/volume foi iniciado ou alterado. |
 | Workflow de publicação | YAML validado; `main` apenas, migrations PostgreSQL e zero-skips antes de `publish`. Ainda não executado no GitHub. |
 

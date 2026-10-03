@@ -145,15 +145,16 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 | Fase 1.7 — erros async Express 4 | As 17 callbacks async do router REST são envolvidas por `asyncRoute`; middleware devolve JSON 500 genérico; os seis `return idempotent(...)` sem await foram corrigidos. Oito testes provam respostas 500/sem leak e claim failed nas sete rotas idempotentes auditadas. | Fechado localmente |
 | Fase 1.7 — limites de body/media e rate | Parser global reduzido a 1 MiB; webhook Baileys autenticado e limitado antes do parse (12 MiB), uploads existentes mantêm limites explícitos; media inbound limitada a 8 MiB no gateway por stream e na API; webhooks e receipts consomem quota `apiRequests` por workspace. Testes cobrem `413`, autenticação, 8 MiB e `429`. | Fechado localmente; sem smoke externo |
 | Fase 1.8 — inbound genérico fora de Baileys-only | `/api/v1/webhooks/inbound/whatsapp` responde `404` permanentemente; o contrato e o teste negativo deixam apenas `/api/v1/webhooks/providers/baileys` como callback de entrada. | Fechado localmente |
+| Fase 3.1 — contrato MIME/PTT outbound | `mediaMimeType` é a fonte canónica com `mimetype` de compatibilidade; áudio normal explicita `ptt: false` e gravação do microfone `ptt: true`; helpers cobrem MIME real e fallback. | Fechado localmente; sem smoke externo |
 | Fase 2.1 — migration `0017` | Removido fallback `forte-demo`; inferência apenas com ownership determinística e falha diagnóstica em ambiguidade. Testes cobrem backfill single-tenant e bloqueio sem atribuição arbitrária. | Fechado localmente |
 | Fase 2.2 — transição `0043` | Migration mantém fail-closed. Novo teste PostgreSQL exercita channels, instances, messages e default provider; cada blocker aborta sem alterar rows ou enum. Inventário read-only acrescenta counts exactos, referência a credenciais e próximos passos sem expor valores. | Protegido, resolução pendente |
 
 ## Validação da remediação local (2026-10-03)
 
 - `pnpm check`: passou.
-- Suite Vitest root contra PostgreSQL 16 local: **122 ficheiros / 449 testes passaram; sem skips**.
+- Suite Vitest root contra PostgreSQL 16 local: **123 ficheiros / 454 testes passaram; sem skips**.
 - `pnpm build` do painel: passou; permanece o aviso conhecido de bundle JavaScript principal com cerca de 1,1 MB minificado.
-- Gateway Baileys: **17 ficheiros / 86 testes passaram, sem skips**; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico.
+- Gateway Baileys: **18 ficheiros / 91 testes passaram, sem skips**; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico.
 - Body/media/rate: testes focados de ingress, media e quota passaram (**3 ficheiros / 15 testes**); o parser global deixou 50 MiB e passou a 1 MiB, com webhook Baileys pré-autenticado a 12 MiB e media inbound limitada a 8 MiB descodificados.
 - Migration `0043`: quatro casos legados foram testados numa base temporária local, depois removida; PostgreSQL continua disponível e não ficou base temporária.
 - Inventário WhatsApp: executado em `BEGIN READ ONLY` na base local, mostrando zero blockers nesse snapshot de teste; isto **não** é inventário da instalação do utilizador.
