@@ -33,8 +33,8 @@ O clone local precisa conter a versão candidata. Como o SHA acima ainda não fo
 No `.env` local, não no repositório, definir:
 
 ```dotenv
-FORTE_PANEL_IMAGE=ghcr.io/geordptoroy/forte-panel:sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa
-FORTE_WHATSAPP_IMAGE=ghcr.io/geordptoroy/forte-whatsapp:sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa
+FORTE_PANEL_IMAGE=ghcr.io/geordptoroy/forte-panel:sha-06cc98e
+FORTE_WHATSAPP_IMAGE=ghcr.io/geordptoroy/forte-whatsapp:sha-06cc98e
 ```
 
 Confirmar que o `.env` contém também, com valores apenas locais:
@@ -60,9 +60,9 @@ Não copiar segredos de produção para este ficheiro.
 
 ```powershell
 $ErrorActionPreference = "Stop"
-$panelImage = "ghcr.io/geordptoroy/forte-panel:sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa"
-# O tag do Gateway deve usar exactamente o mesmo SHA completo:
-$whatsappImage = "ghcr.io/geordptoroy/forte-whatsapp:sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa"
+$panelImage = "ghcr.io/geordptoroy/forte-panel:sha-06cc98e"
+# O tag curto do Gateway deve usar exactamente o mesmo SHA do commit:
+$whatsappImage = "ghcr.io/geordptoroy/forte-whatsapp:sha-06cc98e"
 
 docker manifest inspect $panelImage
 docker manifest inspect $whatsappImage
@@ -151,7 +151,7 @@ Para apagar apenas os dados da execução descartável:
 - Commit publicado na branch candidata: `06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa`.
 - Workflow: `37149496087`.
 - Gate de verificação: verde, sem testes skipped.
-- Imagens Panel e Gateway: publicadas com tag `sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa`.
+- Imagens Panel e Gateway: publicadas com tag `sha-06cc98e`.
 - `main`: não alterada.
 
 Se qualquer `docker manifest inspect` falhar no PC, parar antes do reset e confirmar autenticação/visibilidade do GHCR.

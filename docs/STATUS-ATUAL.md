@@ -2,7 +2,7 @@
 
 **Atualizado:** 3 de outubro de 2026, 14:01 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
-**Estado:** candidata de remediação publicada na branch de handoff e nas imagens GHCR `sha-06cc98e...`; **não integrada em `main` nem publicada como `latest`/release**.
+**Estado:** candidata de remediação publicada na branch de handoff e nas imagens GHCR `sha-06cc98e`; **não integrada em `main` nem publicada como `latest`/release**.
 **Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only), `eeaa6d5` (reconciliação idempotente auditável), `a896dbd` (readiness/body do gateway), `bdeff4b` (evidência fail-closed de backup de media), `0a190fb` (documentação de operação), `6582607` (reset de password fail-closed) e `87dfaac` (sink operacional opcional); branch candidata actualizada e publicada no GitHub, sem alteração de `main`.
 
 ## Git e decisão de integração
@@ -52,7 +52,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - O callback OAuth agora rejeita `code`/`state` acima de 4096 caracteres antes do exchange, mantém o guard de nonce/cookie e redige o erro para apenas nome/classe no log. Foram adicionados testes para payload oversized e state sem cookie; não há contacto com o provider OAuth nos testes.
 - O Compose operacional/local aceita `FORTE_PANEL_IMAGE` e `FORTE_WHATSAPP_IMAGE` para pinagem por tag `sha-*`, mantendo `:latest` apenas como default. `start-docker.ps1` faz `pull` antes do reset destrutivo e aborta sem apagar volumes se a imagem não existir; o procedimento completo está em `docs/TESTE-LOCAL-RESET-E-IMAGEM-PINADA.md`.
 - O dispatch autorizado `publish-image` `37149066623` foi executado na candidata `84bed77`, mas falhou antes da publicação porque três suites de integração ainda usavam `provider: "test"`, rejeitado pela constraint Baileys-only `webhook_events_operational_provider_check`. Os fixtures foram corrigidos para `provider: "baileys"`; a validação local passou com **129 ficheiros / 474 testes**, root build, Gateway check e Gateway build verdes. O segundo dispatch `37149321671` chegou a todos os gates mas encontrou um falso positivo do scanner numa fixture textual; a fixture foi tornada dinâmica sem relaxar o scanner.
-- O terceiro dispatch autorizado `publish-image` `37149496087` passou todos os gates e publicou as imagens multi-arquitectura Panel/Gateway para `sha-06cc98e5ffeb5e6c1ca9c40e58cced8983488bfa`. O run não publicou `latest`; `main` permanece intacta.
+- O terceiro dispatch autorizado `publish-image` `37149496087` passou todos os gates e publicou as imagens multi-arquitectura Panel/Gateway para `sha-06cc98e`. O run não publicou `latest`; `main` permanece intacta.
 
 ## Autoridade documental
 
