@@ -3,6 +3,7 @@
 **Atualizado:** 3 de outubro de 2026, 08:57 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
+**Continuação local:** commit `bb3fb0e` (`fix: bound Baileys webhook bodies and media`); sem push nesta sessão.
 
 ## Git e decisão de integração
 

@@ -132,7 +132,7 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 
 ## Estado
 
-**Execução na branch `integration/beta-candidate-2026-10-02`; commit `cdaa811` publicado para handoff, sem merge para `main` ou publicação de imagem.** As correcções abaixo foram implementadas e verificadas sem uso de Supabase, WhatsApp real ou Docker do utilizador:
+**Execução na branch `integration/beta-candidate-2026-10-02`; base `cdaa811` publicada para handoff e continuação local `bb3fb0e`, sem push/merge para `main` ou publicação de imagem.** As correcções abaixo foram implementadas e verificadas sem uso de Supabase, WhatsApp real ou Docker do utilizador:
 
 | Item | Evidência actual | Estado |
 |---|---|---|
