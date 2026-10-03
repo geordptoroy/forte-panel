@@ -10,6 +10,8 @@ import {
 } from "./media-reference.js";
 import { SendLedgerError } from "./send-ledger.js";
 
+const MAX_JSON_BODY_BYTES = 1 * 1024 * 1024;
+
 export function createServer(registry: InstanceRegistry) {
   return http.createServer(async (req, res) => {
     const url = new URL(
@@ -26,6 +28,11 @@ export function createServer(registry: InstanceRegistry) {
         instance => instance.status === "error"
       );
       const ready = failedInstances.length === 0;
+      if (!authorized(req))
+        return json(res, ready ? 200 : 503, {
+          status: ready ? "ready" : "not_ready",
+          service: "forte-whatsapp",
+        });
       return json(res, ready ? 200 : 503, {
         status: ready ? "ready" : "not_ready",
         instance: defaultInstance ?? null,
@@ -213,6 +220,8 @@ export function createServer(registry: InstanceRegistry) {
         });
       const message =
         error instanceof Error ? error.message : "gateway_request_failed";
+      if (message === "request_body_too_large")
+        return json(res, 413, { error: "request_body_too_large" });
       const status = message.includes("não encontrada") ? 404 : 400;
       return json(res, status, { error: "gateway_request_failed", message });
     }
@@ -245,7 +254,15 @@ function json(res: http.ServerResponse, status: number, value: unknown) {
 async function readJson(
   req: http.IncomingMessage
 ): Promise<Record<string, unknown>> {
+  const contentLength = Number(req.headers["content-length"] ?? 0);
+  if (contentLength > MAX_JSON_BODY_BYTES)
+    throw new Error("request_body_too_large");
   let body = "";
-  for await (const chunk of req) body += chunk;
+  let bytes = 0;
+  for await (const chunk of req) {
+    bytes += Buffer.byteLength(chunk);
+    if (bytes > MAX_JSON_BODY_BYTES) throw new Error("request_body_too_large");
+    body += chunk;
+  }
   return body ? (JSON.parse(body) as Record<string, unknown>) : {};
 }

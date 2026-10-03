@@ -149,8 +149,17 @@ describe("Baileys gateway HTTP contract", () => {
 
     const ready = await fetch(`${baseUrl}/ready`);
     expect(ready.status).toBe(200);
-    await expect(ready.json()).resolves.toMatchObject({
+    const publicReady = await ready.json();
+    expect(publicReady).toMatchObject({
       status: "ready",
+      service: "forte-whatsapp",
+    });
+    expect(publicReady).not.toHaveProperty("instance");
+    expect(publicReady).not.toHaveProperty("instances");
+    expect(publicReady).not.toHaveProperty("failedInstances");
+
+    const authorizedReady = await fetch(`${baseUrl}/ready`, { headers: auth });
+    await expect(authorizedReady.json()).resolves.toMatchObject({
       instance: {
         webhookOutboxPending: 2,
         webhookOutboxDeadLetter: 5,
@@ -357,6 +366,27 @@ describe("Baileys gateway HTTP contract", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "phone_required",
     });
+  });
+
+  it("rejects JSON bodies above the gateway limit before calling the manager", async () => {
+    sentMessageInstance = "";
+    const response = await fetch(`${baseUrl}/api/instances/test-instance/send`, {
+      method: "POST",
+      headers: {
+        ...auth,
+        "Content-Type": "application/json",
+        "Idempotency-Key": "server-body-too-large",
+      },
+      body: JSON.stringify({
+        phone: "5511999999999@s.whatsapp.net",
+        content: "x".repeat(1_100_000),
+      }),
+    });
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "request_body_too_large",
+    });
+    expect(sentMessageInstance).toBe("");
   });
 
   it("accepts a validated embedded media data URL", async () => {
