@@ -2,7 +2,7 @@
 
 **Base:** auditoria estática do commit `445d4cc2747366b3a27976ba0b0046e8fbba102c`, concluída em 2026-10-03.
 
-**Estado:** implementação local em curso; só marcar um item concluído quando cumprir a aceitação e registar evidência.
+**Estado:** remediações commitadas e publicadas em branch de handoff `integration/beta-candidate-2026-10-02` (`cdaa811`); `main` e GHCR `latest` permanecem intactos.
 **Relatório completo:** [`AUDITORIA-BETA-COMPLETA-2026-10-03.md`](./AUDITORIA-BETA-COMPLETA-2026-10-03.md).
 
 ## Regra de trabalho
@@ -132,7 +132,7 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 
 ## Estado
 
-**Execução local em curso na branch `integration/beta-candidate-2026-10-02`; sem commit, push, merge ou publicação.** As correcções abaixo foram implementadas e verificadas no working tree, sem uso de Supabase, WhatsApp real ou Docker do utilizador:
+**Execução na branch `integration/beta-candidate-2026-10-02`; commit `cdaa811` publicado para handoff, sem merge para `main` ou publicação de imagem.** As correcções abaixo foram implementadas e verificadas sem uso de Supabase, WhatsApp real ou Docker do utilizador:
 
 | Item | Evidência actual | Estado |
 |---|---|---|

@@ -1,8 +1,8 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 3 de outubro de 2026, 08:49 (UTC−3)
+**Atualizado:** 3 de outubro de 2026, 08:57 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
-**Estado:** candidata local em remediação P0; **não publicada**.
+**Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
 
 ## Git e decisão de integração
 
@@ -11,13 +11,13 @@
 | `origin/main` | `f67548570f44b8c8fe79082911d7de557a8a3650` | Base canónica observada antes da candidata; confirmar de novo antes de promover. |
 | `origin/feat/o7.15-storage-reconciliation-observability` | `61d8a13703b3146727987b6f00b34785bfdcfb87` | Linha de desenvolvimento que está a ser reconciliada localmente com a main. |
 | PR #3, `docs/ai-admin-core-plan-2026-09-27` | `d90bba2edc6601e73db9bd18601b9d97a2b2bef4` | Auditoria concluída: **não integrar a ref inteira**. As capacidades Baileys principais já estão em main/O7; a arquitetura multi-canal antiga não faz parte do produto. |
-| Candidata auditada | branch `integration/beta-candidate-2026-10-02`, `HEAD=445d4cc2747366b3a27976ba0b0046e8fbba102c` | Junção main+O7 num commit local; a auditoria descreve este SHA. O working tree contém agora remediações locais ainda não commitadas nem publicadas. |
+| Base da candidata | branch `integration/beta-candidate-2026-10-02`, commit de remediação `cdaa811ec47243ad17fc2ab24c45b17421329a4f` | Junção main+O7 originalmente auditada em `445d4cc`; remediações validadas e commitadas/pushadas para a branch de handoff. `main` continua em `f67548570f44b8c8fe79082911d7de557a8a3650`. |
 
 **Conclusão da auditoria:** main+O7 já contém o modelo multi-instância Baileys, pairing/readiness, polling de estado, CRUD, settings/profile, integração REST opt-in e os gates mais recentes. As migrations 0038/0039 do PR são byte-a-byte iguais às refs atuais; o candidato conserva também as migrations 0040–0044 de main e 0045–0058 de O7. A ref antiga do PR carrega uma arquitetura multi-canal fora do escopo e uma UI alternativa que remove settings/profile e o atalho Inbox; trazer a branch inteira é regressivo e conflitante. Nenhuma alteração do PR #3 foi copiada.
 
 O possível conflito de nonce foi revisto: o gateway gera nonce aleatório com 18 bytes (144 bits), e a aplicação usa um segredo global de assinatura; a unicidade por workspace/provider é intencional para detetar replay independentemente da instância. Não foi feita alteração ao índice.
 
-Não houve `push`, merge remoto, publicação GHCR, acesso ao Supabase, reset Docker nem teste contra a instância real do utilizador. PR #3 permanece sem alteração remota; o seu destino na plataforma GitHub não foi mudado.
+Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-02` para permitir continuação por outra IA. Não houve merge/push para `main`, publicação GHCR, acesso ao Supabase, reset Docker nem teste contra a instância real do utilizador. O push não disparou workflows; PR #3 permanece sem alteração remota.
 
 ## Alterações feitas apenas na candidata
 
@@ -67,7 +67,7 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 3. Resolver os demais high de segurança e transporte Baileys, inclusive encriptação de auth state, limites de media/body e semântica real de queued/sent/failed.
 4. Fechar os gates de dados e operação: backup/restore completo, readiness, shutdown, email real ou promessa removida, observabilidade e staging controlado.
 5. Repetir typecheck, testes root/gateway, suite PostgreSQL sem skips, builds e workflow no mesmo SHA/digest quando as correções estiverem concluídas.
-6. Manter `publicSignup` fechado até as oito evidências do controlled release estarem comprovadas. Nenhum commit de promoção, push, publicação GHCR ou alteração da instalação Docker foi feito.
+6. Manter `publicSignup` fechado até as oito evidências do controlled release estarem comprovadas. Nenhum commit de promoção em `main`, publicação GHCR ou alteração da instalação Docker foi feito.
 
 ## Próxima ação
 
