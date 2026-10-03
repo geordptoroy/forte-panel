@@ -17,7 +17,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
-    "db:inventory:whatsapp": "tsx scripts/inventory-whatsapp-legacy.ts"
+    "db:inventory:whatsapp": "tsx scripts/inventory-whatsapp-legacy.ts",
+    "db:reconcile:idempotency": "tsx scripts/reconcile-api-idempotency.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
