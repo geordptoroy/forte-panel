@@ -52,6 +52,11 @@ function Invoke-Compose {
     }
 }
 
+Write-Host "Verificando/baixando imagens publicadas do GHCR (sem build local)..."
+Invoke-Compose `
+    -Arguments ($composeArgs + @("pull") + $services) `
+    -FailureMessage "Falha ao baixar imagens do GHCR. O reset foi abortado e nenhum dado local foi removido. Verifique a tag/imagem, a rede e a autenticação GHCR."
+
 if ($Reset) {
     if ($ResetConfirmation -ne "APAGAR-TUDO") {
         throw "Reset abortado. Para apagar containers, volumes, imagens e redes da stack Forte Panel, use -ResetConfirmation APAGAR-TUDO."
@@ -62,11 +67,6 @@ if ($Reset) {
         -Arguments ($composeArgs + @("down", "--volumes", "--remove-orphans", "--rmi", "all")) `
         -FailureMessage "Falha ao remover a stack local."
 }
-
-Write-Host "Baixando imagens publicadas do GHCR (sem build local)..."
-Invoke-Compose `
-    -Arguments ($composeArgs + @("pull") + $services) `
-    -FailureMessage "Falha ao baixar imagens do GHCR. Verifique a rede e a disponibilidade das imagens."
 
 Write-Host "Iniciando Forte Panel a partir das imagens baixadas..."
 Invoke-Compose `

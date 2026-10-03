@@ -1,6 +1,6 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 3 de outubro de 2026, 12:54 (UTC−3)
+**Atualizado:** 3 de outubro de 2026, 13:17 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
 **Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only), `eeaa6d5` (reconciliação idempotente auditável), `a896dbd` (readiness/body do gateway), `bdeff4b` (evidência fail-closed de backup de media), `0a190fb` (documentação de operação), `6582607` (reset de password fail-closed) e `87dfaac` (sink operacional opcional); sem push nesta sessão.
@@ -50,6 +50,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - O proxy autenticado `/manus-storage/*` agora consome a quota `apiRequests` do workspace depois da validação de tenant/key, expõe `X-RateLimit-*` e devolve `429`/`Retry-After` sem pedir presigned URL ao backend quando a quota está esgotada.
 - Os workflows `publish-image` e `postgres-integration` agora passam `DATABASE_URL`, `JWT_SECRET` e todas as credenciais sintéticas Baileys ao validator de produção; o CI deixa de passar sem validar o contrato do único provider. Ambos mantêm o bloqueio de testes skipped; nenhum workflow foi disparado. A tentativa de mover a configuração pnpm foi revertida porque removia o patch Wouter do lockfile; o warning de configuração pnpm permanece pendente.
 - O callback OAuth agora rejeita `code`/`state` acima de 4096 caracteres antes do exchange, mantém o guard de nonce/cookie e redige o erro para apenas nome/classe no log. Foram adicionados testes para payload oversized e state sem cookie; não há contacto com o provider OAuth nos testes.
+- O Compose operacional/local aceita `FORTE_PANEL_IMAGE` e `FORTE_WHATSAPP_IMAGE` para pinagem por tag `sha-*`, mantendo `:latest` apenas como default. `start-docker.ps1` faz `pull` antes do reset destrutivo e aborta sem apagar volumes se a imagem não existir; o procedimento completo está em `docs/TESTE-LOCAL-RESET-E-IMAGEM-PINADA.md`. O SHA `236c44d` ainda não tem imagens GHCR publicadas.
 
 ## Autoridade documental
 

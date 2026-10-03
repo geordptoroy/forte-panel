@@ -12,7 +12,11 @@ services:
     volumes:
       - forte_postgres_panel_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${PANEL_POSTGRES_USER:-forte_panel} -d $${PANEL_POSTGRES_DB:-forte_panel}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${PANEL_POSTGRES_USER:-forte_panel} -d $${PANEL_POSTGRES_DB:-forte_panel}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -33,7 +37,7 @@ services:
     networks: [panel-network]
 
   forte-panel-migrations:
-    image: ghcr.io/geordptoroy/forte-panel:latest
+    image: ${FORTE_PANEL_IMAGE:-ghcr.io/geordptoroy/forte-panel:latest}
     pull_policy: always
     container_name: forte_panel_migrations
     restart: "no"
@@ -47,7 +51,7 @@ services:
     networks: [panel-network]
 
   forte-panel:
-    image: ghcr.io/geordptoroy/forte-panel:latest
+    image: ${FORTE_PANEL_IMAGE:-ghcr.io/geordptoroy/forte-panel:latest}
     pull_policy: always
     container_name: forte_panel
     restart: unless-stopped
@@ -87,7 +91,13 @@ services:
       BAILEYS_INSTANCE_ID: ${BAILEYS_INSTANCE_ID:-default}
     ports: ["${PANEL_PORT:-3002}:3000"]
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -99,7 +109,7 @@ services:
     networks: [panel-network, whatsapp-network]
 
   forte-panel-worker:
-    image: ghcr.io/geordptoroy/forte-panel:latest
+    image: ${FORTE_PANEL_IMAGE:-ghcr.io/geordptoroy/forte-panel:latest}
     pull_policy: always
     container_name: forte_panel_worker
     restart: unless-stopped
@@ -138,7 +148,7 @@ services:
     networks: [panel-network, whatsapp-network]
 
   forte-whatsapp:
-    image: ghcr.io/geordptoroy/forte-whatsapp:latest
+    image: ${FORTE_WHATSAPP_IMAGE:-ghcr.io/geordptoroy/forte-whatsapp:latest}
     pull_policy: always
     container_name: forte_whatsapp
     restart: unless-stopped
@@ -157,7 +167,13 @@ services:
       WHATSAPP_WEBHOOK_MAX_BACKOFF_MS: ${WHATSAPP_WEBHOOK_MAX_BACKOFF_MS:-60000}
     ports: ["127.0.0.1:${BAILEYS_PORT_PUBLIC:-3010}:3010"]
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3010/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 6
