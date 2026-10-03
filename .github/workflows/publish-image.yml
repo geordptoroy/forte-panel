@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_images:
+        description: "Publicar imagens sha-* desta ref candidata"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,7 +21,7 @@ env:
 
 jobs:
   verify:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_images == true)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -95,7 +101,7 @@ jobs:
 
   publish:
     needs: verify
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_images == true)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
