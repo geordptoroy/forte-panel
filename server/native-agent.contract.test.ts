@@ -1,33 +1,15 @@
 import { describe, expect, it } from "vitest";
-import {
-  nativeAgentMutatingToolNames,
-  nativeAgentTools,
-} from "./native-agent";
+import { nativeAgentTools } from "./native-agent";
 
-describe("native agent commercial context contract", () => {
-  it("exposes a read-only commercial context without model-supplied IDs", () => {
-    const contextTool = nativeAgentTools.find(
-      tool => tool.function.name === "consultar_contexto_comercial"
-    );
-    expect(contextTool).toBeDefined();
-    expect(contextTool?.function.parameters).toMatchObject({
+describe("native agent commercial context", () => {
+  it("exposes a read-only context tool without model-controlled identifiers", () => {
+    const tool = nativeAgentTools.find(item => item.function.name === "consultar_contexto_comercial");
+    expect(tool).toBeDefined();
+    expect(tool?.function.parameters).toMatchObject({
       type: "object",
       additionalProperties: false,
       properties: {},
     });
-    expect(nativeAgentMutatingToolNames.has("consultar_contexto_comercial")).toBe(
-      false
-    );
-  });
-
-  it("keeps mutating tools explicit", () => {
-    expect(nativeAgentMutatingToolNames).toEqual(
-      new Set([
-        "atualizar_lead",
-        "registrar_nota",
-        "criar_agendamento",
-        "transferir_humano",
-      ])
-    );
+    expect(JSON.stringify(tool)).not.toContain("workspaceId");
   });
 });

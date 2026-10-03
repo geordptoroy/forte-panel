@@ -1,5 +1,10 @@
 # Auditoria de IA, Console Administrativo e Core do Workspace
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
 **Data:** 2026-09-27
 **Escopo:** inventário do código atual, responsabilidades dos modelos/agentes, roteamento multimodal, segredos, consumo, redesenho do console administrativo e entrega faseada do core pós-login.
 **Status:** auditoria documental concluída; próxima etapa é execução incremental. Esta rodada **não altera código nem desativa rotas**.

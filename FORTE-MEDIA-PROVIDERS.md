@@ -1,61 +1,27 @@
-# Forte Media — arquitetura de provedores
+# Forte Panel — canal WhatsApp
 
-## Decisão
+**Estado atual (2026-10-02): Baileys-only.** Este documento descreve o único canal suportado pelo produto; não há selector de provider.
 
-O Forte Media deixa de depender da PAPI como infraestrutura padrão. A instalação oficial local usa apenas:
+## Arquitetura
 
-- **Baileys nativo**: gateway próprio, executado no serviço `forte-whatsapp`;
-- **WABA / Meta Cloud API**: provedor externo opcional para clientes que preferirem a API oficial da Meta;
-- **Forte Panel**: CRM, inbox, worker, auditoria e configuração multi-tenant.
+- O Panel gere workspaces, permissões e propriedade das instâncias.
+- O serviço `forte-whatsapp` mantém a ligação Baileys e as sessões persistentes.
+- O tráfego entre Panel e gateway é autenticado service-to-service; os callbacks são assinados e deduplicados.
+- A UI não pede nomes de provider nem credenciais de serviços externos. Uma instância só pode ser usada no workspace a que pertence.
+- Valores de canais antigos são rejeitados por novas operações. Migrations históricas não devem ser editadas; qualquer limpeza de dados reais exige inventário e plano de backfill próprios.
 
-A PAPI não faz parte do Compose oficial do Forte Media, não é necessária para iniciar o sistema e não deve receber credenciais no `.env`.
+## Configuração operacional
 
-## Escolha por workspace
+As variáveis do gateway ficam apenas no servidor e seguem o exemplo `.env.local.example`/`.env.docker.example`, incluindo `BAILEYS_BASE_URL`, `BAILEYS_API_KEY`, `BAILEYS_WEBHOOK_SECRET` e `BAILEYS_INSTANCE_ID`. Nunca colocar esses valores no frontend, em prompts de agente ou no Git.
 
-Cada workspace deve escolher um canal ativo:
+O Compose operacional usa os serviços do Forte Panel, PostgreSQL, Redis e o gateway `forte-whatsapp`. A atualização normal usa o script oficial documentado em [`docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`](./docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md) e preserva volumes e sessões.
 
-| Provedor | Quando usar | Requisitos | Custo/limitação |
-| --- | --- | --- | --- |
-| Baileys nativo | Testes locais, beta testers e operação própria | Número conectado por QR Code; sessão persistente | Não oficial; exige manutenção do gateway |
-| WABA / Meta Cloud API | Operação comercial e maior conformidade | Business Manager, número WABA, token e Phone Number ID | Tarifas e políticas da Meta |
+## Segurança e limites
 
-O provedor deve ser configurável por workspace. A simulação de agentes continua local e não chama provedores externos.
+1. O ficheiro `.env` real permanece apenas na máquina/ambiente de deployment e nunca é commitado.
+2. O gateway só envia quando existe instância autorizada e ligada; falhas não devem ser mascaradas como entrega.
+3. QR e estado da sessão são acessíveis apenas a membros autorizados do workspace e não são registados como segredos.
+4. Backups/restores devem incluir o estado cifrado da sessão e ser testados antes de serem considerados operacionais.
+5. Baileys utiliza o protocolo WhatsApp Web/Linked Devices e não é a WhatsApp Business Platform; os riscos de sessão e alterações do protocolo devem ser comunicados honestamente.
 
-## Serviços do Compose oficial
-
-- `postgres_panel`: dados do CRM e entidades multi-tenant;
-- `redis_panel`: filas e eventos;
-- `forte-panel`: API e interface;
-- `forte-panel-worker`: processamento assíncrono de mensagens;
-- `forte-whatsapp`: gateway Baileys com sessão persistente.
-
-Não existem `pastorini_api`, `postgres_papi`, `redis_papi`, `PAPI_API_KEY`, `PAPI_LICENSE_KEY` ou `PAPI_CLOUD_PANEL_TOKEN` no Compose oficial.
-
-## Segurança local
-
-1. O arquivo `.env` fica somente na máquina do operador e não deve ser commitado.
-2. `BAILEYS_API_KEY` autentica chamadas internas ao gateway.
-3. `BAILEYS_WEBHOOK_SECRET` autentica eventos recebidos pelo Panel.
-4. A sessão do WhatsApp fica no volume `forte_whatsapp_sessions`.
-5. O banco fica nos volumes `postgres_panel_data` e `redis_panel_data`.
-6. Ações de suporte continuam exigindo motivo e registro de auditoria.
-
-## WABA futuro
-
-A integração WABA usa as variáveis opcionais abaixo no `.env` do ambiente que possuir credenciais da Meta:
-
-```text
-META_GRAPH_API_VERSION=v23.0
-META_WHATSAPP_ACCESS_TOKEN=
-META_WHATSAPP_PHONE_NUMBER_ID=
-```
-
-Essas credenciais nunca devem ser colocadas no repositório ou compartilhadas no chat.
-
-## Próximos blocos de trabalho
-
-1. Finalizar outbound Baileys para texto, mídia e templates suportados.
-2. Conectar o Platform Console ao status real das instâncias Baileys.
-3. Adicionar onboarding de WABA por workspace.
-4. Remover telas e rotas legadas de PAPI após a migração dos dados existentes.
-5. Adicionar health checks e testes end-to-end dos dois provedores.
+A PAPI pode surgir **apenas** nos documentos de auditoria de engenharia como referência comportamental histórica; não é provider, adapter, dependência nem opção configurável do Forte Panel.

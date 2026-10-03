@@ -19,6 +19,7 @@ import { Pool } from "pg";
 import {
   appointmentsTable,
   agentEffects,
+  agentRuns,
   apiIdempotency,
   auditLogs,
   availability,
@@ -28,8 +29,12 @@ import {
   conversations,
   conversationReads,
   domainEvents,
+  leads,
   messages,
   notifications,
+  opportunities,
+  opportunityStageHistory,
+  opportunityFollowUps,
   onboardingAudioAssets,
   onboardingSessions,
   onboardingConflictResolutions,
@@ -45,11 +50,15 @@ import {
   professionals,
   professionalServices,
   quotes,
+  quoteApprovalHistory,
   quoteItems,
-  paymentLedger,
+  quotePayments,
+  quoteReceipts,
   services,
+  securityRateLimitBuckets,
   users,
   webhookEvents,
+  workerHeartbeats,
   whatsappChannels,
   whatsappGroupParticipants,
   whatsappGroups,
@@ -62,8 +71,18 @@ import {
   workspaces,
   type InsertUser,
 } from "../drizzle/schema";
+import { messageDeliveryRank, type MessageDeliveryStatus } from "../shared/message-delivery";
+import { isFutureNextActionDueAt } from "../shared/inbox-next-action";
+import {
+  initialOpportunityStage,
+  shouldUpsertLeadFromInbound,
+} from "../shared/lead-opportunity";
+import {
+  decodeMediaDataUrl,
+  isSupportedInboxMimeType,
+  isWorkspaceInboxMediaKey,
+} from "./inbox-media-upload";
 import type { WhatsappProvider } from "./integrations/contracts";
-import { isContactStage } from "@shared/contact-stage";
 import {
   OPERATIONAL_WHATSAPP_PROVIDER,
   assertOperationalWhatsappProvider,
@@ -95,10 +114,6 @@ import {
   ScheduleError,
 } from "./schedule";
 import {
-  isDashboardPendingLead,
-  isDashboardStalledQuote,
-} from "./dashboard-contract";
-import {
   dailySummaryEventKey,
   dailySummaryFor,
   notificationForEvent,
@@ -109,18 +124,24 @@ import {
   type NotificationEvent,
 } from "./notification-contract";
 import {
+  capabilityForMessageType,
   decryptProviderSecret,
   encryptProviderSecret,
   maskProviderSecret,
   mergeAgentProviderSettings,
   type AgentProviderSettings,
 } from "./llm-providers";
-import {
-  persistInboundMedia,
-  persistOutboundMedia,
-  resolvePrivateMediaUrl,
-} from "./media-storage";
+import { persistInboundMedia, resolvePrivateMediaUrl } from "./media-storage";
 import { onboardingFollowUpFieldKeys } from "./onboarding-followups";
+import { fingerprintOnboardingProfile } from "./onboarding-review";
+import {
+  SecurityBackendUnavailableError,
+  securityFailClosed,
+} from "./_core/security-mode";
+import {
+  decideAgentRuntimeGate,
+  sanitizeAgentPauseReason,
+} from "./agent-runtime-gate";
 
 const DOMAIN_EVENT_WORKER_ID =
   process.env.WORKER_ID?.trim() || `worker-${crypto.randomUUID()}`;
@@ -198,6 +219,7 @@ export function shouldProvisionDefaultWorkspace(input: {
   return input.demoMode || input.bootstrapEnabled;
 }
 export function isDemoRuntimeAllowed(env: NodeJS.ProcessEnv = process.env) {
+  if (env.NODE_ENV === "production") return false;
   if (env.DEMO_MODE !== "true") return false;
   const runtime = env.DEMO_ENVIRONMENT?.trim().toLowerCase();
   return (
@@ -307,6 +329,13 @@ export function verifyLocalPassword(password: string, stored: string | null) {
   );
 }
 
+export function findLocalPasswordAccount<T extends { passwordHash: string | null }>(
+  accounts: readonly T[],
+  password: string
+) {
+  return accounts.find(account => verifyLocalPassword(password, account.passwordHash));
+}
+
 export async function getUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -316,6 +345,16 @@ export async function getUserByEmail(email: string) {
     .where(eq(users.email, email.trim().toLowerCase()))
     .limit(1);
   return result[0];
+}
+
+export async function getUsersByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(users)
+    .where(eq(users.email, email.trim().toLowerCase()))
+    .orderBy(asc(users.id));
 }
 
 export async function getUserById(userId: number) {
@@ -627,7 +666,10 @@ export async function resetPasswordWithToken(tokenInput: string, password: strin
 
 export async function revokeUserSessions(userId: number) {
   const db = await getDb();
-  if (!db) throw new Error("Database unavailable");
+  if (!db) {
+    if (securityFailClosed()) throw new SecurityBackendUnavailableError();
+    return;
+  }
   await db
     .update(users)
     .set({
@@ -1884,6 +1926,91 @@ export async function findBaileysInstanceOwner(instanceId: string) {
   };
 }
 
+export async function getBaileysWebhookSecret(instanceId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const rows = await db
+    .select({ encryptedWebhookSecret: whatsappInstances.encryptedWebhookSecret })
+    .from(whatsappInstances)
+    .where(
+      and(
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
+      )
+    )
+    .limit(1);
+  const encrypted = rows[0]?.encryptedWebhookSecret;
+  const secret = encrypted ? decryptProviderSecret(encrypted) : "";
+  return secret.trim() || undefined;
+}
+
+export async function rotateBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const secret = crypto.randomBytes(32).toString("base64url");
+  await setBaileysWebhookSecret(workspaceId, instanceId, secret, db);
+  return { instanceId, secret };
+}
+
+async function setBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string,
+  secret: string,
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>
+) {
+  const rows = await db
+    .update(whatsappInstances)
+    .set({
+      encryptedWebhookSecret: encryptProviderSecret(secret),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(whatsappInstances.workspaceId, workspaceId),
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
+      )
+    )
+    .returning({ id: whatsappInstances.id });
+  if (!rows[0]) throw new Error("Instância Baileys não encontrada neste workspace");
+}
+
+export async function replaceBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string,
+  secret: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  await setBaileysWebhookSecret(workspaceId, instanceId, secret, db);
+}
+
+export async function clearBaileysWebhookSecret(
+  workspaceId: number,
+  instanceId: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível");
+  const rows = await db
+    .update(whatsappInstances)
+    .set({ encryptedWebhookSecret: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(whatsappInstances.workspaceId, workspaceId),
+        eq(whatsappInstances.instanceId, instanceId),
+        eq(whatsappInstances.provider, "baileys"),
+        eq(whatsappInstances.active, 1)
+      )
+    )
+    .returning({ id: whatsappInstances.id });
+  if (!rows[0]) throw new Error("Instância Baileys não encontrada neste workspace");
+}
+
 export type OnboardingProfile = {
   businessName: string;
   segment: string;
@@ -1898,6 +2025,32 @@ export type OnboardingProfile = {
   humanHandoffRules: string;
   qualificationRules: string;
 };
+
+const onboardingExampleReviewSettingKey = "onboarding_examples_review";
+type OnboardingExampleReviewMode = "safe" | "ai" | "rollback";
+type OnboardingExampleReviewRecord = {
+  profileFingerprint: string;
+  mode: OnboardingExampleReviewMode;
+  reviewedAt: string;
+  reviewedBy: number;
+};
+
+function parseOnboardingExampleReview(value?: string | null): OnboardingExampleReviewRecord | null {
+  if (!value) return null;
+  try {
+    const record = JSON.parse(value) as Partial<OnboardingExampleReviewRecord>;
+    if (
+      typeof record.profileFingerprint !== "string" ||
+      !/^[a-f0-9]{64}$/.test(record.profileFingerprint) ||
+      !["safe", "ai", "rollback"].includes(String(record.mode)) ||
+      typeof record.reviewedAt !== "string" ||
+      typeof record.reviewedBy !== "number"
+    ) return null;
+    return record as OnboardingExampleReviewRecord;
+  } catch {
+    return null;
+  }
+}
 
 const emptyOnboardingProfile: OnboardingProfile = {
   businessName: "",
@@ -2157,22 +2310,46 @@ export async function pauseOnboardingSession(workspaceId: number) {
   return session;
 }
 
-async function touchOnboardingSession(workspaceId: number, nextStep: string | null, completed: boolean) {
+export async function setOnboardingCurrentStep(
+  workspaceId: number,
+  ownerUserId: number,
+  stepKey: "identity" | "offering" | "operations" | "guardrails" | "review" | "activation"
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const now = new Date();
+  const [session] = await db
+    .update(onboardingSessions)
+    .set({
+      ownerUserId,
+      status: "active",
+      currentStep: stepKey,
+      pausedAt: null,
+      lastActivityAt: now,
+      updatedAt: now,
+    })
+    .where(eq(onboardingSessions.workspaceId, workspaceId))
+    .returning();
+  if (!session) throw new Error("ONBOARDING_SESSION_NOT_FOUND");
+  return session;
+}
+
+async function touchOnboardingSession(workspaceId: number, completed: boolean) {
   const db = await getDb();
   if (!db) return;
   const now = new Date();
-  const existing = completed ? await getOnboardingSession(workspaceId) : undefined;
+  const existing = await getOnboardingSession(workspaceId);
   await db
     .update(onboardingSessions)
     .set({
       status: completed ? "completed" : "active",
-      currentStep: nextStep ?? "review",
+      ...(completed ? { currentStep: "activation" } : {}),
       lastActivityAt: now,
       completedAt: completed ? now : null,
       updatedAt: now,
     })
     .where(eq(onboardingSessions.workspaceId, workspaceId));
-  if (completed && existing)
+  if (completed && existing && existing.status !== "completed")
     await recordOnboardingTelemetry({
       workspaceId,
       sessionId: existing.id,
@@ -2268,63 +2445,6 @@ export function buildOnboardingStepAnswers(profile: OnboardingProfile): Onboardi
       .map(([key]) => key),
     conflicts: [],
   }));
-}
-
-export async function simulateOnboardingMessage(input: {
-  workspaceId: number;
-  profile: OnboardingProfile;
-  message: string;
-}) {
-  const message = input.message.trim();
-  if (!message) throw new Error("ONBOARDING_SIMULATION_MESSAGE_REQUIRED");
-  const snapshot = await getAgendaSnapshot(input.workspaceId, undefined, true);
-  const normalizedMessage = message.toLocaleLowerCase();
-  const matchedService = snapshot.services.find(service => normalizedMessage.includes(service.name.toLocaleLowerCase()));
-  const asksPrice = /preço|preco|valor|custa|quanto/i.test(message);
-  const asksAvailability = /horário|horario|dispon|agenda|atende|aberto/i.test(message);
-  const asksHuman = /humano|pessoa|atendente|reclama|cancel|reembolso/i.test(message);
-  const sources: string[] = [];
-  let response = "Posso ajudar com informações do negócio. Para confirmar preço, prazo ou horário, preciso consultar os dados aprovados.";
-  let handoff = false;
-
-  if (asksHuman || (input.profile.humanHandoffRules.trim() && /urgên|urgenc|risco/i.test(message))) {
-    handoff = true;
-    response = input.profile.humanHandoffRules.trim()
-      ? `Vou encaminhar você para uma pessoa da equipe conforme a regra cadastrada: ${input.profile.humanHandoffRules.trim()}`
-      : "Vou encaminhar você para uma pessoa da equipe.";
-    sources.push("regra de transferência humana");
-  } else if (matchedService && asksPrice) {
-    sources.push(`catálogo: ${matchedService.name}`);
-    response = matchedService.priceCents > 0
-      ? `${matchedService.name} custa ${(matchedService.priceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} e dura ${matchedService.durationMinutes} minutos. Confirme a disponibilidade antes de marcar.`
-      : `Ainda não há preço publicado para ${matchedService.name}. Vou pedir confirmação à equipe antes de informar um valor.`;
-  } else if (matchedService && asksAvailability) {
-    const links = snapshot.serviceLinks.filter(link => link.serviceId === matchedService.id);
-    const professionalIds = links.length ? links.map(link => link.professionalId) : snapshot.professionals.map(professional => professional.id);
-    const slots = snapshot.availability.filter(entry => professionalIds.includes(entry.professionalId));
-    sources.push(`catálogo: ${matchedService.name}`);
-    sources.push("disponibilidade cadastrada");
-    response = slots.length
-      ? `Há disponibilidade cadastrada para ${matchedService.name} em ${Array.from(new Set(slots.map(slot => ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"][slot.weekday]))).join(", ")}. O horário exato precisa ser confirmado na agenda.`
-      : `Não encontrei disponibilidade cadastrada para ${matchedService.name}. Vou encaminhar para confirmação da equipe.`;
-  } else if (input.profile.faq.trim()) {
-    sources.push("FAQ aprovado");
-    response = `Resposta baseada no FAQ aprovado: ${input.profile.faq.trim().slice(0, 600)}`;
-  }
-
-  if (!matchedService && (asksPrice || asksAvailability)) {
-    sources.push("sem correspondência no catálogo");
-    response = "Não encontrei esse serviço no catálogo aprovado. Não vou inventar preço ou horário; a equipe precisa confirmar antes de responder.";
-  }
-  return {
-    input: message,
-    response,
-    sources,
-    handoff,
-    providerCalled: false,
-    catalogServices: snapshot.services.length,
-    availabilityEntries: snapshot.availability.length,
-  };
 }
 
 async function listOnboardingStepAnswers(workspaceId: number) {
@@ -3141,7 +3261,44 @@ export async function persistOnboardingAudioTranscription(
 }
 
 function buildBusinessPrompt(profile: OnboardingProfile, version: number) {
-  return `Você atende clientes da empresa ${profile.businessName || "da empresa configurada"}, do segmento ${profile.segment}. Este é o prompt operacional publicado v${version}.\n\nDescrição do negócio:\n${profile.description || "Não informada."}\n\nServiços, duração e preços:\n${profile.services || "Consultar a equipe antes de prometer preço ou prazo."}\n\nÁrea de atendimento:\n${profile.serviceArea || "Não informada."}\n\nHorários:\n${profile.businessHours || "Consultar disponibilidade real na agenda."}\n\nTom de voz:\n${profile.toneOfVoice || emptyOnboardingProfile.toneOfVoice}\n\nPalavras e condutas proibidas:\n${profile.forbiddenWords || "Não inventar informações, preços, horários ou confirmações."}\n\nPerguntas frequentes e respostas aprovadas:\n${profile.faq || "Não cadastradas."}\n\nPolítica de cancelamento, reagendamento e sinal:\n${profile.cancellationPolicy || "Escalar para atendimento humano quando não houver regra publicada."}\n\nSempre transferir para humano quando:\n${profile.humanHandoffRules || "o cliente pedir humano, houver reclamação, risco, dúvida fora do cadastro ou negociação especial."}\n\nCritérios de qualificação e follow-up:\n${profile.qualificationRules || "Identificar serviço, localização, urgência e próximo passo."}`;
+  return `Você atende clientes da empresa ${profile.businessName || "da empresa configurada"}, do segmento ${profile.segment}. Este é o prompt operacional publicado v${version}.
+
+Descrição do negócio:
+${profile.description || "Não informada."}
+
+Fonte oficial de serviços, preços e duração:
+- Antes de responder sobre serviço, preço, duração, profissional ou horário, consulte a ferramenta consultar_agenda e use os registros ativos do workspace retornados por ela.
+- Interprete preço fixo, preço “a partir de” e “sob consulta” exatamente como cadastrados. “Sob consulta” não autoriza estimar nem apresentar um valor.
+- Se a ferramenta ou o dado atual não estiver disponível, diga que a equipe precisa confirmar e transfira para uma pessoa quando necessário. Não complete lacunas por inferência.
+- As observações livres abaixo são contexto complementar; nunca são fonte oficial de preço, duração, serviço ativo ou disponibilidade.
+
+Observações complementares aprovadas (não usar como tabela de preço ou promessa):
+${profile.services || "Nenhuma observação complementar cadastrada."}
+
+Área de atendimento:
+${profile.serviceArea || "Não informada; confirme com a equipe antes de assumir cobertura."}
+
+Jornada e disponibilidade:
+${profile.businessHours || "Horários não cadastrados; confirmar com a equipe."}
+Use a disponibilidade semanal apenas como jornada de trabalho. Uma faixa de expediente não significa que exista vaga: consulte consultar_agenda para o dia e horário exatos. Só diga que um agendamento foi criado ou confirmado depois que a ferramenta de criação retornar sucesso.
+
+Tom de voz:
+${profile.toneOfVoice || emptyOnboardingProfile.toneOfVoice}
+
+Palavras e condutas proibidas:
+${profile.forbiddenWords || "Não inventar informações, preços, horários ou confirmações."}
+
+Perguntas frequentes e respostas aprovadas:
+${profile.faq || "Não cadastradas."}
+
+Política de cancelamento, reagendamento e sinal:
+${profile.cancellationPolicy || "Escalar para atendimento humano quando não houver regra publicada."}
+
+Sempre transferir para humano quando:
+${profile.humanHandoffRules || "o cliente pedir humano, houver reclamação, risco, dúvida fora do cadastro ou negociação especial."}
+
+Critérios de qualificação e follow-up:
+${profile.qualificationRules || "Identificar serviço, localização, urgência e próximo passo."}`;
 }
 
 export async function getWorkspaceSetting(workspaceId: number, key: string) {
@@ -3187,6 +3344,8 @@ export async function getOnboardingProfile(workspaceId: number) {
       published: false,
       checklist: getOnboardingChecklist(emptyOnboardingProfile, false),
       stepAnswers: [],
+      exampleReview: { isCurrent: false, mode: null, reviewedAt: null },
+      publishCandidateFingerprint: fingerprintOnboardingProfile(emptyOnboardingProfile),
     };
   const profileSetting = await getWorkspaceSetting(
     workspace.id,
@@ -3207,6 +3366,11 @@ export async function getOnboardingProfile(workspaceId: number) {
     : undefined;
   const checklist = getOnboardingChecklist(profile, Boolean(published?.prompt));
   const stepAnswers = await listOnboardingStepAnswers(workspaceId);
+  const publishCandidate = profileFromConfirmedOnboardingAnswers(profile, stepAnswers);
+  const savedExampleReview = parseOnboardingExampleReview(
+    (await getWorkspaceSetting(workspace.id, onboardingExampleReviewSettingKey))?.value
+  );
+  const exampleReviewIsCurrent = savedExampleReview?.profileFingerprint === fingerprintOnboardingProfile(publishCandidate);
   return {
     profile,
     version: published?.version ?? 0,
@@ -3214,6 +3378,10 @@ export async function getOnboardingProfile(workspaceId: number) {
     published: Boolean(published?.prompt),
     checklist,
     stepAnswers,
+    exampleReview: exampleReviewIsCurrent
+      ? { isCurrent: true, mode: savedExampleReview.mode, reviewedAt: savedExampleReview.reviewedAt }
+      : { isCurrent: false, mode: null, reviewedAt: null },
+    publishCandidateFingerprint: fingerprintOnboardingProfile(publishCandidate),
   };
 }
 
@@ -3243,7 +3411,6 @@ export async function saveOnboardingProfile(
   }
   await touchOnboardingSession(
     workspaceId,
-    nextChecklist.nextStep?.id ?? null,
     nextChecklist.nextStep === null
   );
   const nextVersion = current.version + 1;
@@ -3303,6 +3470,36 @@ function profileFromConfirmedOnboardingAnswers(
   return profile;
 }
 
+export async function getOnboardingPublishCandidate(workspaceId: number) {
+  const onboarding = await getOnboardingProfile(workspaceId);
+  return profileFromConfirmedOnboardingAnswers(onboarding.profile, onboarding.stepAnswers);
+}
+
+export async function confirmOnboardingExampleReview(input: {
+  workspaceId: number;
+  reviewedBy: number;
+  mode: "safe" | "ai";
+  profileFingerprint?: string;
+}) {
+  const profile = await getOnboardingPublishCandidate(input.workspaceId);
+  const currentFingerprint = fingerprintOnboardingProfile(profile);
+  if (input.mode === "ai" && input.profileFingerprint !== currentFingerprint)
+    throw new Error("ONBOARDING_EXAMPLE_REVIEW_STALE");
+  const reviewedAt = new Date().toISOString();
+  const record: OnboardingExampleReviewRecord = {
+    profileFingerprint: currentFingerprint,
+    mode: input.mode,
+    reviewedAt,
+    reviewedBy: input.reviewedBy,
+  };
+  await upsertWorkspaceSetting(
+    input.workspaceId,
+    onboardingExampleReviewSettingKey,
+    JSON.stringify(record)
+  );
+  return { isCurrent: true, mode: record.mode, reviewedAt };
+}
+
 export async function listOnboardingPublishedVersions(workspaceId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -3341,6 +3538,11 @@ export async function publishOnboardingDraft(workspaceId: number, publishedBy: n
     const missing = checklist.items.filter(item => item.required && !item.complete).map(item => item.title).join(", ");
     throw new Error(`ONBOARDING_INCOMPLETE:${missing}`);
   }
+  const exampleReview = parseOnboardingExampleReview(
+    (await getWorkspaceSetting(workspaceId, onboardingExampleReviewSettingKey))?.value
+  );
+  if (!exampleReview || exampleReview.profileFingerprint !== fingerprintOnboardingProfile(profile))
+    throw new Error("ONBOARDING_EXAMPLE_REVIEW_REQUIRED");
   const latest = (
     await db
       .select({ id: onboardingPublishedVersions.id, version: onboardingPublishedVersions.version })
@@ -3445,6 +3647,20 @@ export async function rollbackOnboardingPublishedVersion(
     else await tx.insert(workspaceSettings).values({ workspaceId, key: "ai_prompt_published", value, updatedAt: publishedAt });
     await tx.update(workspaceSettings).set({ value: JSON.stringify(profile), updatedAt: publishedAt })
       .where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, "onboarding_profile")));
+    const reviewSetting = (
+      await tx.select({ id: workspaceSettings.id }).from(workspaceSettings)
+        .where(and(eq(workspaceSettings.workspaceId, workspaceId), eq(workspaceSettings.key, onboardingExampleReviewSettingKey)))
+        .orderBy(desc(workspaceSettings.updatedAt), desc(workspaceSettings.id)).limit(1)
+    )[0];
+    const reviewValue = JSON.stringify({
+      profileFingerprint: fingerprintOnboardingProfile(profile),
+      mode: "rollback",
+      reviewedAt: publishedAt.toISOString(),
+      reviewedBy: rolledBackBy,
+    } satisfies OnboardingExampleReviewRecord);
+    if (reviewSetting)
+      await tx.update(workspaceSettings).set({ value: reviewValue, updatedAt: publishedAt }).where(eq(workspaceSettings.id, reviewSetting.id));
+    else await tx.insert(workspaceSettings).values({ workspaceId, key: onboardingExampleReviewSettingKey, value: reviewValue, updatedAt: publishedAt });
     return [inserted];
   });
   await persistOnboardingStepAnswers(workspaceId, profile, rolledBackBy);
@@ -3462,6 +3678,7 @@ export async function getPublishedAiPrompt(workspaceId: number) {
 
 export type NativeAgentConfig = {
   enabled: boolean;
+  killSwitch?: { paused: boolean; reason: string | null; changedAt: string | null };
   model: string;
   systemPrompt: string;
   maxSteps: number;
@@ -3470,6 +3687,50 @@ export type NativeAgentConfig = {
 };
 
 const PLATFORM_GLOBAL_AGENT_WORKSPACE_ID = 0;
+const NATIVE_AGENT_KILL_SWITCH_KEY = "native_agent_kill_switch";
+
+export async function getNativeAgentKillSwitch(workspaceId: number) {
+  const setting = await getWorkspaceSetting(workspaceId, NATIVE_AGENT_KILL_SWITCH_KEY);
+  if (!setting?.value) return { paused: false, reason: null, changedAt: null };
+  try {
+    const parsed = JSON.parse(setting.value) as Partial<{ paused: boolean; reason: string; changedAt: string }>;
+    return {
+      paused: parsed.paused === true,
+      reason: typeof parsed.reason === "string" ? parsed.reason : null,
+      changedAt: typeof parsed.changedAt === "string" ? parsed.changedAt : null,
+    };
+  } catch {
+    return { paused: false, reason: null, changedAt: null };
+  }
+}
+
+export async function setNativeAgentKillSwitch(input: { workspaceId: number; paused: boolean; reason: string; actorUserId: number }) {
+  const changedAt = new Date().toISOString();
+  await upsertWorkspaceSetting(input.workspaceId, NATIVE_AGENT_KILL_SWITCH_KEY, JSON.stringify({ paused: input.paused, reason: sanitizeAgentPauseReason(input.reason), changedAt, changedBy: input.actorUserId }));
+  return getNativeAgentKillSwitch(input.workspaceId);
+}
+
+export async function recordNativeAgentKillSwitchBlock(input: {
+  workspaceId: number;
+  eventId: string;
+  messageType?: string;
+  reason: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const capability = capabilityForMessageType(input.messageType);
+  const reason = sanitizeAgentPauseReason(input.reason);
+  const eventId = input.eventId.replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 120);
+  await db.insert(auditLogs).values({
+    workspaceId: input.workspaceId,
+    action: "native_agent_kill_switch_blocked",
+    summary:
+      `Agente pausado: capability ${capability}; evento ${eventId}; motivo ${reason}`.slice(
+        0,
+        500
+      ),
+  });
+}
 
 async function readStoredNativeAgentConfig(workspaceId?: number) {
   const globalSetting = await getWorkspaceSetting(
@@ -3499,7 +3760,11 @@ async function readStoredNativeAgentConfig(workspaceId?: number) {
 async function applyPlatformAiConnections(settings: AgentProviderSettings) {
   const db = await getDb();
   if (!db) return settings;
-  const rows = await db.select().from(platformAiConnections).where(eq(platformAiConnections.active, 1));
+  const rows = await db
+    .select()
+    .from(platformAiConnections)
+    .where(eq(platformAiConnections.active, 1))
+    .orderBy(asc(platformAiConnections.id));
   const capabilityRoutes = {
     whatsapp_reply: "text",
     admin_support: "text",
@@ -3507,24 +3772,41 @@ async function applyPlatformAiConnections(settings: AgentProviderSettings) {
     image_analysis: "vision",
     document_analysis: "document",
   } as const;
+  const grouped = new Map<string, typeof rows>();
   for (const row of rows) {
     const routeKey = capabilityRoutes[row.capability as keyof typeof capabilityRoutes];
     if (!routeKey || !["nvidia_nim", "google_gemini", "openai_compatible"].includes(row.provider)) continue;
-    const provider = row.provider as keyof AgentProviderSettings["providers"];
-    settings.routing[routeKey] = {
-      ...settings.routing[routeKey],
-      provider,
-      baseUrl: row.baseUrl,
-      apiKey: row.encryptedApiKey,
-      model: row.model,
-    };
-    settings.providers[provider] = {
-      ...settings.providers[provider],
-      enabled: true,
-      baseUrl: row.baseUrl,
-      apiKey: row.encryptedApiKey,
-    };
+    const current = grouped.get(routeKey) ?? [];
+    current.push(row);
+    grouped.set(routeKey, current);
   }
+  grouped.forEach((connections, routeKey) => {
+    const [primary, ...fallbacks] = connections;
+    if (!primary) return;
+    const provider = primary.provider as keyof AgentProviderSettings["providers"];
+    settings.routing[routeKey as keyof AgentProviderSettings["routing"]] = {
+      ...settings.routing[routeKey as keyof AgentProviderSettings["routing"]],
+      provider,
+      baseUrl: primary.baseUrl,
+      apiKey: primary.encryptedApiKey,
+      model: primary.model,
+      fallback: fallbacks.slice(0, 3).map(fallback => ({
+        provider: fallback.provider as keyof AgentProviderSettings["providers"],
+        baseUrl: fallback.baseUrl,
+        apiKey: fallback.encryptedApiKey,
+        model: fallback.model,
+      })),
+    };
+    for (const connection of connections) {
+      const connectionProvider = connection.provider as keyof AgentProviderSettings["providers"];
+      settings.providers[connectionProvider] = {
+        ...settings.providers[connectionProvider],
+        enabled: true,
+        baseUrl: connection.baseUrl,
+        apiKey: connection.encryptedApiKey,
+      };
+    }
+  });
   return settings;
 }
 
@@ -3537,6 +3819,9 @@ async function readNativeAgentConfig(
     provider.apiKey = maskProviderSecret(provider.apiKey);
   for (const route of Object.values(llm.routing))
     if (route.apiKey) route.apiKey = maskProviderSecret(route.apiKey);
+  for (const route of Object.values(llm.routing))
+    for (const fallback of route.fallback ?? [])
+      if (fallback.apiKey) fallback.apiKey = maskProviderSecret(fallback.apiKey);
   return {
     enabled: stored.enabled !== false,
     model: stored.model?.trim() || process.env.AGENT_MODEL || "gpt-5-mini",
@@ -3551,6 +3836,40 @@ export async function getNativeAgentConfig(
   workspaceId: number
 ): Promise<NativeAgentConfig> {
   return readNativeAgentConfig(await getActiveWorkspaceById(workspaceId));
+}
+
+export type WorkspaceAgentPolicy = {
+  enabled: boolean;
+  systemPrompt: string;
+  maxSteps: number;
+};
+
+export async function getWorkspaceAgentPolicy(
+  workspaceId: number
+): Promise<WorkspaceAgentPolicy> {
+  const config = await getNativeAgentConfig(workspaceId);
+  return {
+    enabled: config.enabled,
+    systemPrompt: config.systemPrompt,
+    maxSteps: config.maxSteps,
+  };
+}
+
+export async function saveWorkspaceAgentPolicy(
+  workspaceId: number,
+  input: Partial<WorkspaceAgentPolicy>
+): Promise<WorkspaceAgentPolicy> {
+  const current = await getNativeAgentConfig(workspaceId);
+  const updated = await saveNativeAgentConfig(workspaceId, {
+    enabled: input.enabled ?? current.enabled,
+    systemPrompt: input.systemPrompt ?? current.systemPrompt,
+    maxSteps: input.maxSteps ?? current.maxSteps,
+  });
+  return {
+    enabled: updated.enabled,
+    systemPrompt: updated.systemPrompt,
+    maxSteps: updated.maxSteps,
+  };
 }
 
 export async function getPlatformNativeAgentConfig(
@@ -3608,14 +3927,16 @@ export async function getNativeAgentRuntimeConfig(
 ): Promise<NativeAgentConfig> {
   const workspace = await getActiveWorkspaceById(workspaceId);
   const binding = await getPlatformInstancePromptBinding(instanceId);
+  const killSwitch = await getNativeAgentKillSwitch(workspaceId);
   const stored = await readStoredNativeAgentConfig(
     binding ? undefined : workspace?.id
   );
   const llm = await applyPlatformAiConnections(mergeAgentProviderSettings(stored.llm));
   return {
-    enabled: binding
+    enabled: !killSwitch.paused && (binding
       ? binding.enabled && stored.enabled !== false
-      : stored.enabled !== false,
+      : stored.enabled !== false),
+    killSwitch,
     model:
       binding?.model?.trim() ||
       stored.model?.trim() ||
@@ -3681,6 +4002,14 @@ export async function saveNativeAgentConfig(
       incoming.apiKey && !incoming.apiKey.startsWith("••••")
         ? encryptProviderSecret(incoming.apiKey)
         : previous.apiKey;
+    for (let index = 0; index < (incoming.fallback ?? []).length; index += 1) {
+      const fallback = incoming.fallback![index];
+      const previousFallback = previous.fallback?.[index];
+      fallback.apiKey =
+        fallback.apiKey && !fallback.apiKey.startsWith("••••")
+          ? encryptProviderSecret(fallback.apiKey)
+          : previousFallback?.apiKey;
+    }
   }
   await upsertWorkspaceSetting(
     workspace.id,
@@ -3692,6 +4021,9 @@ export async function saveNativeAgentConfig(
     provider.apiKey = maskProviderSecret(provider.apiKey);
   for (const route of Object.values(response.llm.routing))
     if (route.apiKey) route.apiKey = maskProviderSecret(route.apiKey);
+  for (const route of Object.values(response.llm.routing))
+    for (const fallback of route.fallback ?? [])
+      if (fallback.apiKey) fallback.apiKey = maskProviderSecret(fallback.apiKey);
   return response;
 }
 
@@ -3735,6 +4067,14 @@ export async function savePlatformGlobalNativeAgentConfig(
       incoming.apiKey && !incoming.apiKey.startsWith("••••")
         ? encryptProviderSecret(incoming.apiKey)
         : previous.apiKey;
+    for (let index = 0; index < (incoming.fallback ?? []).length; index += 1) {
+      const fallback = incoming.fallback![index];
+      const previousFallback = previous.fallback?.[index];
+      fallback.apiKey =
+        fallback.apiKey && !fallback.apiKey.startsWith("••••")
+          ? encryptProviderSecret(fallback.apiKey)
+          : previousFallback?.apiKey;
+    }
   }
   await upsertWorkspaceSetting(
     PLATFORM_GLOBAL_AGENT_WORKSPACE_ID,
@@ -4076,6 +4416,90 @@ export async function cleanupWorkspaceUsageBuckets(
   };
 }
 
+export type OperationalRetentionCleanupResult = {
+  skipped: boolean;
+  dryRun: boolean;
+  limit: number;
+  retentionDays: number;
+  webhookEvents: number;
+  domainEvents: number;
+  securityRateLimitBuckets: number;
+  workspaces: Record<string, { webhookEvents: number; domainEvents: number }>;
+};
+
+export async function cleanupOperationalRetention(options: {
+  dryRun?: boolean;
+  limit?: number;
+  retentionDays?: number;
+  now?: Date;
+} = {}): Promise<OperationalRetentionCleanupResult> {
+  const db = await getDb();
+  const dryRun = options.dryRun !== false;
+  const limit = Number.isFinite(options.limit)
+    ? Math.max(1, Math.min(Math.floor(options.limit as number), 10_000))
+    : 1_000;
+  const retentionDays = Number.isFinite(options.retentionDays)
+    ? Math.max(7, Math.min(Math.floor(options.retentionDays as number), 730))
+    : Math.max(7, Number(process.env.FORTE_OPERATIONAL_RETENTION_DAYS ?? 90));
+  const result = {
+    skipped: !db,
+    dryRun,
+    limit,
+    retentionDays,
+    webhookEvents: 0,
+    domainEvents: 0,
+    securityRateLimitBuckets: 0,
+    workspaces: {} as Record<string, { webhookEvents: number; domainEvents: number }>,
+  };
+  if (!db) return result;
+
+  const now = options.now ?? new Date();
+  const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+  const [webhookRows, domainRows, bucketRows] = await Promise.all([
+    db
+      .select({ id: webhookEvents.id, workspaceId: webhookEvents.workspaceId })
+      .from(webhookEvents)
+      .where(and(lt(webhookEvents.createdAt, cutoff), ne(webhookEvents.status, "received")))
+      .orderBy(asc(webhookEvents.id))
+      .limit(limit),
+    db
+      .select({ id: domainEvents.id, workspaceId: domainEvents.workspaceId })
+      .from(domainEvents)
+      .where(and(lt(domainEvents.createdAt, cutoff), ne(domainEvents.status, "pending"), ne(domainEvents.status, "processing")))
+      .orderBy(asc(domainEvents.id))
+      .limit(limit),
+    db
+      .select({ id: securityRateLimitBuckets.id })
+      .from(securityRateLimitBuckets)
+      .where(lt(securityRateLimitBuckets.updatedAt, cutoff))
+      .orderBy(asc(securityRateLimitBuckets.id))
+      .limit(limit),
+  ]);
+
+  const addWorkspace = (workspaceId: number, kind: "webhookEvents" | "domainEvents") => {
+    const key = String(workspaceId);
+    result.workspaces[key] ??= { webhookEvents: 0, domainEvents: 0 };
+    result.workspaces[key][kind] += 1;
+  };
+  webhookRows.forEach(row => addWorkspace(row.workspaceId, "webhookEvents"));
+  domainRows.forEach(row => addWorkspace(row.workspaceId, "domainEvents"));
+  result.webhookEvents = webhookRows.length;
+  result.domainEvents = domainRows.length;
+  result.securityRateLimitBuckets = bucketRows.length;
+
+  if (!dryRun) {
+    await db.transaction(async tx => {
+      if (webhookRows.length)
+        await tx.delete(webhookEvents).where(inArray(webhookEvents.id, webhookRows.map(row => row.id)));
+      if (domainRows.length)
+        await tx.delete(domainEvents).where(inArray(domainEvents.id, domainRows.map(row => row.id)));
+      if (bucketRows.length)
+        await tx.delete(securityRateLimitBuckets).where(inArray(securityRateLimitBuckets.id, bucketRows.map(row => row.id)));
+    });
+  }
+  return result;
+}
+
 export type OnboardingAudioRetentionCleanupResult = {
   skipped: boolean;
   dryRun: boolean;
@@ -4219,15 +4643,6 @@ export async function resetWorkspaceDevelopmentData(workspaceId?: number) {
     await tx
       .delete(appointmentsTable)
       .where(eq(appointmentsTable.workspaceId, workspace.id));
-    await tx
-      .delete(paymentLedger)
-      .where(eq(paymentLedger.workspaceId, workspace.id));
-    await tx.delete(quoteItems).where(
-      inArray(
-        quoteItems.quoteId,
-        sql`(SELECT "id" FROM "quotes" WHERE "workspaceId" = ${workspace.id})`
-      )
-    );
     await tx.delete(quotes).where(eq(quotes.workspaceId, workspace.id));
     await tx
       .delete(professionalServices)
@@ -4655,6 +5070,7 @@ export type AgendaSnapshot = {
     description: string | null;
     durationMinutes: number;
     priceCents: number;
+    priceType: "fixed" | "starting_at" | "quote";
     active: number;
     createdAt: Date;
     updatedAt: Date;
@@ -4837,7 +5253,7 @@ export async function getAgendaSnapshot(
                 : [])
             )
           )
-          .orderBy(availability.weekday)
+          .orderBy(asc(availability.weekday), asc(availability.startMinute))
       : [];
   return {
     timezone: workspace.timezone,
@@ -4853,7 +5269,6 @@ export async function createAgendaAppointment(
   workspaceId: number,
   input: {
     contactId?: number;
-    quoteId?: number;
     serviceId: number;
     professionalId: number;
     startsAt: Date;
@@ -4901,19 +5316,6 @@ export async function createAgendaAppointment(
         "contact_unavailable",
         "Contato não encontrado neste workspace"
       );
-  }
-  if (input.quoteId) {
-    const quote = (
-      await db
-        .select({ id: quotes.id, contactId: quotes.contactId, status: quotes.status })
-        .from(quotes)
-        .where(and(eq(quotes.id, input.quoteId), eq(quotes.workspaceId, workspaceId)))
-        .limit(1)
-    )[0];
-    if (!quote || quote.status !== "aprovado")
-      throw new ScheduleError("contact_unavailable", "O orçamento precisa estar aprovado neste workspace");
-    if (input.contactId !== quote.contactId)
-      throw new ScheduleError("contact_unavailable", "O orçamento não pertence ao contato informado");
   }
   const createdAppointment = await db.transaction(async tx => {
     await tx.execute(
@@ -5074,8 +5476,7 @@ export async function listInboxContacts(
   workspaceId: number,
   viewerUserId?: number,
   instanceIds?: readonly string[] | null,
-  includeGroups = false,
-  assignmentFilter: "all" | "mine" | "unassigned" = "all"
+  includeGroups = false
 ) {
   const db = await getDb();
   if (!db) return [];
@@ -5102,15 +5503,94 @@ export async function listInboxContacts(
     .where(
       and(
         eq(contacts.workspaceId, workspaceId),
-        ...(includeGroups ? [] : [isNull(contacts.groupId)]),
-        ...(assignmentFilter === "mine" && viewerUserId
-          ? [eq(contacts.assignedUserId, viewerUserId)]
-          : assignmentFilter === "unassigned"
-            ? [isNull(contacts.assignedUserId)]
-            : [])
+        ...(includeGroups ? [] : [isNull(contacts.groupId)])
       )
     )
     .orderBy(desc(contacts.lastMessageAt), desc(contacts.id));
+  const leadRows = await db
+    .select({
+      contactId: contacts.id,
+      leadId: leads.id,
+      opportunityId: opportunities.id,
+      opportunityStage: opportunities.stage,
+    })
+    .from(contacts)
+    .leftJoin(
+      leads,
+      and(
+        eq(leads.contactId, contacts.id),
+        eq(leads.workspaceId, workspaceId)
+      )
+    )
+    .leftJoin(
+      opportunities,
+      and(
+        eq(opportunities.leadId, leads.id),
+        eq(opportunities.workspaceId, workspaceId)
+      )
+    )
+    .where(
+      and(
+        eq(contacts.workspaceId, workspaceId),
+        ...(includeGroups ? [] : [isNull(contacts.groupId)])
+      )
+    );
+  const operationalRows = await db
+    .select({
+      contactId: contacts.id,
+      assignedMemberId: workspaceMembers.id,
+      assignedMemberName: users.name,
+      nextActionId: opportunityFollowUps.id,
+      nextActionTitle: opportunityFollowUps.title,
+      nextActionDueAt: opportunityFollowUps.dueAt,
+    })
+    .from(opportunities)
+    .innerJoin(
+      leads,
+      and(
+        eq(leads.id, opportunities.leadId),
+        eq(leads.workspaceId, workspaceId)
+      )
+    )
+    .innerJoin(
+      contacts,
+      and(
+        eq(contacts.id, leads.contactId),
+        eq(contacts.workspaceId, workspaceId)
+      )
+    )
+    .leftJoin(
+      workspaceMembers,
+      and(
+        eq(workspaceMembers.id, opportunities.assignedMemberId),
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.active, 1)
+      )
+    )
+    .leftJoin(users, eq(users.id, workspaceMembers.userId))
+    .leftJoin(
+      opportunityFollowUps,
+      and(
+        eq(opportunityFollowUps.workspaceId, workspaceId),
+        eq(opportunityFollowUps.opportunityId, opportunities.id),
+        eq(opportunityFollowUps.status, "open")
+      )
+    )
+    .where(
+      and(
+        eq(opportunities.workspaceId, workspaceId),
+        eq(contacts.workspaceId, workspaceId),
+        ...(includeGroups ? [] : [isNull(contacts.groupId)])
+      )
+    );
+  const operationalByContactId = new Map(
+    operationalRows.map(row => [row.contactId, row])
+  );
+  const leadByContactId = new Map(leadRows.map(row => [row.contactId, row]));
+  const quoteSummaryByContact = await getActiveQuoteSummaryByContact(
+    workspaceId,
+    contactRows.map(contact => contact.id)
+  );
   const groupIds = contactRows
     .map(contact => contact.groupId)
     .filter((id): id is number => id !== null);
@@ -5247,8 +5727,30 @@ export async function listInboxContacts(
         ? lastMessageByContact.get(contact.id)
         : undefined;
       const group = contact.groupId ? groupById.get(contact.groupId) : undefined;
+      const lead = leadByContactId.get(contact.id);
+      const operational = operationalByContactId.get(contact.id);
+      const quoteSummary = quoteSummaryByContact.get(contact.id);
       return {
         ...contact,
+        quoteCents: quoteSummary?.quotedCents ?? 0,
+        quoteReceivedCents: quoteSummary?.receivedCents ?? 0,
+        quotePendingCents: quoteSummary?.pendingCents ?? 0,
+        activeQuoteId: quoteSummary?.quoteId ?? null,
+        leadId: lead?.leadId ?? null,
+        opportunityId: lead?.opportunityId ?? null,
+        opportunityStage: lead?.opportunityStage ?? null,
+        assignedMemberId: operational?.assignedMemberId ?? null,
+        assignedMemberName: operational?.assignedMemberName ?? null,
+        nextAction:
+          operational?.nextActionId == null ||
+          !operational.nextActionTitle ||
+          !operational.nextActionDueAt
+            ? null
+            : {
+                id: operational.nextActionId,
+                title: operational.nextActionTitle,
+                dueAt: operational.nextActionDueAt,
+              },
         isGroup: Boolean(contact.groupId),
         groupJid: group?.jid ?? null,
         groupSubject: group?.subject ?? null,
@@ -5340,9 +5842,20 @@ export async function getConversationByContact(
   const db = await getDb();
   if (!db) return undefined;
   const result = await db
-    .select()
+    .select({
+      conversation: conversations,
+      opportunityId: opportunities.id,
+      opportunityStage: opportunities.stage,
+    })
     .from(conversations)
     .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+    .leftJoin(
+      opportunities,
+      and(
+        eq(opportunities.id, conversations.opportunityId),
+        eq(opportunities.workspaceId, workspaceId)
+      )
+    )
     .where(
       and(
         eq(conversations.contactId, contactId),
@@ -5350,7 +5863,14 @@ export async function getConversationByContact(
       )
     )
     .limit(1);
-  return result[0]?.conversations;
+  const row = result[0];
+  return row
+    ? {
+        ...row.conversation,
+        opportunityId: row.opportunityId ?? null,
+        opportunityStage: row.opportunityStage ?? null,
+      }
+    : undefined;
 }
 
 export async function listMessagesForContact(
@@ -5505,10 +6025,35 @@ export async function sendManualMessage(
     instanceIds?.length === 1
   )
     route.instanceId = instanceIds[0];
-  if (route.provider === "baileys" && !route.instanceId)
-    throw new Error(
-      "Selecione uma única conexão WhatsApp ou responda à conversa pela instância de origem"
-    );
+  const mediaMessageTypes = ["image", "audio", "video", "document"];
+  if (mediaMessageTypes.includes(messageType)) {
+    const mediaStorageKey = messageMetadata?.mediaStorageKey;
+    const mediaData = messageMetadata?.mediaData;
+    const mediaMimeType = messageMetadata?.mediaMimeType;
+    const mediaSizeBytes = messageMetadata?.mediaSizeBytes;
+    const decodedMediaData =
+      typeof mediaData === "string" ? decodeMediaDataUrl(mediaData) : null;
+    const hasPrivateStorage =
+      typeof mediaStorageKey === "string" &&
+      isWorkspaceInboxMediaKey(workspaceId, mediaStorageKey);
+    const hasTransientMedia =
+      typeof mediaData === "string" &&
+      decodedMediaData !== null &&
+      decodedMediaData.buffer.length > 0 &&
+      decodedMediaData.buffer.length <= 8 * 1024 * 1024;
+    if (
+      typeof mediaMimeType !== "string" ||
+      !isSupportedInboxMimeType(messageType as "image" | "audio" | "video" | "document", mediaMimeType) ||
+      typeof mediaSizeBytes !== "number" ||
+      !Number.isInteger(mediaSizeBytes) ||
+      mediaSizeBytes < 1 ||
+      mediaSizeBytes > 8 * 1024 * 1024 ||
+      (!hasPrivateStorage && !hasTransientMedia) ||
+      (hasTransientMedia && decodedMediaData?.mimeType.split(";", 1)[0].toLowerCase() !== mediaMimeType.split(";", 1)[0].toLowerCase()) ||
+      typeof messageMetadata?.mediaUrl === "string"
+    )
+      throw new Error("Invalid outbound media reference");
+  }
   const createdAt = new Date();
   const metadata = {
     ...(messageMetadata ?? {}),
@@ -5516,18 +6061,6 @@ export async function sendManualMessage(
     ...(route.instanceId ? { instanceId: route.instanceId } : {}),
     ...(route.usedLegacyFallback ? { routingSource: "legacy_default" } : { routingSource: "inbound_origin" }),
   };
-  const persistedMetadata =
-    messageType === "image" ||
-    messageType === "audio" ||
-    messageType === "video" ||
-    messageType === "document"
-      ? await persistOutboundMedia(
-          workspaceId,
-          crypto.randomUUID(),
-          metadata,
-          messageType
-        )
-      : metadata;
   await db.insert(messages).values({
     conversationId: conversation.id,
     direction: "outbound",
@@ -5537,9 +6070,7 @@ export async function sendManualMessage(
       messageType === "text"
         ? content
         : String(messageMetadata?.fileName ?? `[${messageType}]`),
-    metadata: Object.keys(persistedMetadata ?? {}).length
-      ? persistedMetadata
-      : undefined,
+    metadata: Object.keys(metadata).length ? metadata : undefined,
     status: "queued",
     provider: route.provider,
     createdAt,
@@ -5587,158 +6118,216 @@ export async function sendManualMessage(
   return result[0];
 }
 
+export type OpportunityStageChangeSource = "inbox" | "api" | "lead_memory";
+
 export async function moveContactStage(
   workspaceId: number,
   contactId: number,
   stage: string,
-  actorUserId?: number
-) {
-  const db = await getDb();
-  if (!db) throw new Error("Database unavailable");
-  if (!isContactStage(stage)) throw new Error("Estágio de lead inválido");
-  const existing = await getContactById(workspaceId, contactId);
-  if (!existing) throw new Error("Contact not found");
-  if (existing.stage === stage) return existing;
-  const updatedAt = new Date();
-  const updated = await db
-    .update(contacts)
-    .set({ stage, updatedAt })
-    .where(
-      and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
-    )
-    .returning({ id: contacts.id });
-  await db.insert(auditLogs).values({
-    workspaceId,
-    actorUserId,
-    contactId,
-    action: "stage_changed",
-    summary: `Lead movido de ${existing.stage} para ${stage}`,
-  });
-  const contact = await getContactById(workspaceId, contactId);
-  if (contact?.workspaceId) {
-    await enqueueDomainEvent({
-      workspaceId: contact.workspaceId,
-      event: "stage.changed",
-      aggregateType: "contact",
-      aggregateId: contactId,
-      eventKey: `stage.changed:${contactId}:${updatedAt.toISOString()}`,
-      payload: { contactId, stage, actorUserId, changedAt: updatedAt },
-    });
-  }
-}
-
-export async function assignInboxContact(
-  workspaceId: number,
-  contactId: number,
-  assignedUserId: number | null,
-  actorUserId?: number
+  actorUserId?: number,
+  source: OpportunityStageChangeSource = "inbox"
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const contact = await getContactById(workspaceId, contactId);
   if (!contact) throw new Error("Contact not found");
-  if (assignedUserId !== null) {
-    const member = await db
-      .select({ userId: workspaceMembers.userId })
-      .from(workspaceMembers)
-      .where(
-        and(
-          eq(workspaceMembers.workspaceId, workspaceId),
-          eq(workspaceMembers.userId, assignedUserId),
-          eq(workspaceMembers.active, 1)
+  const normalizedStage = initialOpportunityStage(stage);
+
+  // Group records are not commercial Leads/Opportunities. Preserve their legacy
+  // contact-only behavior, but keep it outside the Opportunity history stream.
+  if (contact.groupId !== null) {
+    const previousStage = contact.stage;
+    if (previousStage === normalizedStage)
+      return {
+        contactId,
+        leadId: null,
+        opportunityId: null,
+        previousStage,
+        stage: normalizedStage,
+        changed: false,
+      };
+    const changedAt = new Date();
+    await db.transaction(async tx => {
+      const updated = await tx
+        .update(contacts)
+        .set({ stage: normalizedStage, updatedAt: changedAt })
+        .where(
+          and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
         )
-      )
-      .limit(1);
-    if (!member[0]) throw new Error("Responsável não pertence a este workspace");
-  }
-  const now = new Date();
-  const updated = await db
-    .update(contacts)
-    .set({ assignedUserId, updatedAt: now })
-    .where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId)))
-    .returning();
-  await db.insert(auditLogs).values({
-    workspaceId,
-    actorUserId,
-    contactId,
-    action: "contact_assigned",
-    summary: assignedUserId
-      ? `Lead atribuído ao usuário ${assignedUserId}`
-      : "Atribuição do lead removida",
-  });
-  if (assignedUserId !== null) {
-    await db
-      .insert(notifications)
-      .values({
+        .returning({ id: contacts.id });
+      if (!updated[0]) throw new Error("Contact not found");
+      await tx.insert(auditLogs).values({
         workspaceId,
-        userId: assignedUserId,
-        eventKey: `contact.assigned:${contactId}:${now.getTime()}`,
-        type: "assigned_lead",
-        title: "Lead atribuído",
-        body: `${contact.name} foi atribuído a você no Inbox.`,
-        href: `/inbox?contactId=${contactId}`,
-        createdAt: now,
-      })
-      .onConflictDoNothing({
-        target: [notifications.workspaceId, notifications.userId, notifications.eventKey],
+        actorUserId,
+        contactId,
+        action: "group_stage_changed",
+        summary: `Etapa legada do grupo alterada: ${previousStage} → ${normalizedStage}`,
       });
+      await tx
+        .insert(domainEvents)
+        .values({
+          workspaceId,
+          eventKey: `stage.changed:group:${contactId}:${crypto.randomUUID()}`,
+          eventType: "stage.changed",
+          aggregateType: "contact",
+          aggregateId: contactId,
+          payload: JSON.stringify({
+            contactId,
+            previousStage,
+            stage: normalizedStage,
+            actorUserId: actorUserId ?? null,
+            source,
+            changedAt,
+          }),
+          createdAt: changedAt,
+          updatedAt: changedAt,
+        })
+        .onConflictDoNothing({
+          target: [domainEvents.workspaceId, domainEvents.eventKey],
+        });
+    });
+    return {
+      contactId,
+      leadId: null,
+      opportunityId: null,
+      previousStage,
+      stage: normalizedStage,
+      changed: true,
+    };
   }
-  return updated[0];
-}
 
-export async function setInboxFollowUp(
-  workspaceId: number,
-  contactId: number,
-  input: { followUpAt?: Date | null; note?: string | null; completed?: boolean },
-  actorUserId?: number
-) {
-  const db = await getDb();
-  if (!db) throw new Error("Database unavailable");
-  const contact = await getContactById(workspaceId, contactId);
-  if (!contact) throw new Error("Contact not found");
-  const now = new Date();
-  const completed = input.completed === true;
-  const followUpAt = completed ? contact.followUpAt : input.followUpAt ?? null;
-  const followUpNote = completed
-    ? contact.followUpNote
-    : input.note?.trim().slice(0, 500) || null;
-  const updated = await db
-    .update(contacts)
-    .set({
-      followUpAt,
-      followUpNote,
-      followUpCompletedAt: completed ? now : null,
-      updatedAt: now,
-    })
-    .where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId)))
-    .returning();
-  await db.insert(auditLogs).values({
-    workspaceId,
-    actorUserId,
-    contactId,
-    action: completed ? "follow_up_completed" : "follow_up_scheduled",
-    summary: completed
-      ? "Follow-up concluído"
-      : `Follow-up agendado para ${followUpAt?.toISOString() ?? "sem data"}`,
+  const conversation = await getConversationByContact(workspaceId, contactId);
+  const link = await ensureLeadOpportunityForContact(workspaceId, contact, {
+    source: "crm",
+    conversationId: conversation?.id,
   });
-  if (!completed && followUpAt && contact.assignedUserId) {
-    await db
-      .insert(notifications)
-      .values({
+  if (!link) throw new Error("Opportunity could not be loaded");
+
+  return db.transaction(async tx => {
+    const currentOpportunity = (
+      await tx
+        .select({ stage: opportunities.stage })
+        .from(opportunities)
+        .where(
+          and(
+            eq(opportunities.id, link.opportunityId),
+            eq(opportunities.workspaceId, workspaceId),
+            eq(opportunities.leadId, link.leadId)
+          )
+        )
+        .for("update")
+        .limit(1)
+    )[0];
+    if (!currentOpportunity) throw new Error("Opportunity not found");
+
+    const currentContact = (
+      await tx
+        .select({ stage: contacts.stage })
+        .from(contacts)
+        .where(
+          and(
+            eq(contacts.id, contactId),
+            eq(contacts.workspaceId, workspaceId),
+            isNull(contacts.groupId)
+          )
+        )
+        .for("update")
+        .limit(1)
+    )[0];
+    if (!currentContact) throw new Error("Contact not found");
+
+    const previousStage = currentOpportunity.stage;
+    const changed = previousStage !== normalizedStage;
+    const mirrorNeedsRepair = currentContact.stage !== normalizedStage;
+    if (!changed && !mirrorNeedsRepair)
+      return {
+        contactId,
+        leadId: link.leadId,
+        opportunityId: link.opportunityId,
+        previousStage,
+        stage: normalizedStage,
+        changed: false,
+      };
+
+    const changedAt = new Date();
+    if (changed) {
+      await tx
+        .update(opportunities)
+        .set({ stage: normalizedStage, updatedAt: changedAt })
+        .where(
+          and(
+            eq(opportunities.id, link.opportunityId),
+            eq(opportunities.workspaceId, workspaceId)
+          )
+        );
+      await tx.insert(opportunityStageHistory).values({
         workspaceId,
-        userId: contact.assignedUserId,
-        eventKey: `follow-up:${contactId}:${followUpAt.toISOString()}`,
-        type: "follow_up_due",
-        title: "Follow-up agendado",
-        body: `${contact.name}: ${followUpNote || "retomar contato"}.`,
-        href: `/inbox?contactId=${contactId}`,
-        createdAt: now,
-      })
-      .onConflictDoNothing({
-        target: [notifications.workspaceId, notifications.userId, notifications.eventKey],
+        opportunityId: link.opportunityId,
+        fromStage: previousStage,
+        toStage: normalizedStage,
+        source,
+        actorUserId: actorUserId ?? null,
+        createdAt: changedAt,
       });
-  }
-  return updated[0];
+      await tx.insert(auditLogs).values({
+        workspaceId,
+        actorUserId,
+        contactId,
+        action: "stage_changed",
+        summary: `Etapa da oportunidade alterada: ${previousStage} → ${normalizedStage}`,
+      });
+      await tx
+        .insert(domainEvents)
+        .values({
+          workspaceId,
+          eventKey: `stage.changed:${link.opportunityId}:${crypto.randomUUID()}`,
+          eventType: "stage.changed",
+          aggregateType: "opportunity",
+          aggregateId: link.opportunityId,
+          payload: JSON.stringify({
+            contactId,
+            leadId: link.leadId,
+            opportunityId: link.opportunityId,
+            previousStage,
+            stage: normalizedStage,
+            actorUserId: actorUserId ?? null,
+            source,
+            changedAt,
+          }),
+          createdAt: changedAt,
+          updatedAt: changedAt,
+        })
+        .onConflictDoNothing({
+          target: [domainEvents.workspaceId, domainEvents.eventKey],
+        });
+    }
+
+    if (mirrorNeedsRepair) {
+      await tx
+        .update(contacts)
+        .set({ stage: normalizedStage, updatedAt: changedAt })
+        .where(
+          and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId))
+        );
+      if (!changed)
+        await tx.insert(auditLogs).values({
+          workspaceId,
+          actorUserId,
+          contactId,
+          action: "stage_mirror_repaired",
+          summary: `Espelho da etapa do contato corrigido para ${normalizedStage}`,
+        });
+    }
+
+    return {
+      contactId,
+      leadId: link.leadId,
+      opportunityId: link.opportunityId,
+      previousStage,
+      stage: normalizedStage,
+      changed,
+    };
+  });
 }
 
 export async function getContactById(workspaceId: number, contactId: number) {
@@ -5754,26 +6343,44 @@ export async function getContactById(workspaceId: number, contactId: number) {
   return result[0];
 }
 
-export async function listInboxAssignees(workspaceId: number) {
+export async function getCanonicalContactStage(
+  workspaceId: number,
+  contactId: number
+) {
   const db = await getDb();
-  if (!db) return [];
-  return db
-    .select({
-      userId: workspaceMembers.userId,
-      name: users.name,
-      email: users.email,
-      role: workspaceMembers.role,
-    })
-    .from(workspaceMembers)
-    .innerJoin(users, eq(users.id, workspaceMembers.userId))
-    .where(
-      and(
-        eq(workspaceMembers.workspaceId, workspaceId),
-        eq(workspaceMembers.active, 1)
+  if (!db) return undefined;
+  const row = (
+    await db
+      .select({
+        contactStage: contacts.stage,
+        opportunityStage: opportunities.stage,
+      })
+      .from(contacts)
+      .leftJoin(
+        leads,
+        and(
+          eq(leads.contactId, contacts.id),
+          eq(leads.workspaceId, workspaceId)
+        )
       )
-    )
-    .orderBy(asc(users.name), asc(workspaceMembers.userId));
+      .leftJoin(
+        opportunities,
+        and(
+          eq(opportunities.leadId, leads.id),
+          eq(opportunities.workspaceId, workspaceId)
+        )
+      )
+      .where(
+        and(
+          eq(contacts.id, contactId),
+          eq(contacts.workspaceId, workspaceId)
+        )
+      )
+      .limit(1)
+  )[0];
+  return row?.opportunityStage ?? row?.contactStage;
 }
+
 export async function listContactNotes(workspaceId: number, contactId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -5869,10 +6476,8 @@ export async function getDashboardSnapshot(workspaceId: number) {
       appointmentsToday: 0,
       receivedMonthCents: 0,
       pendingCents: 0,
-      pendingLeads: [],
-      stalledQuotes: [],
-      todayAppointments: [],
-      channelHealth: { status: "not_configured", label: "Sem canal configurado", detail: "Conecte o WhatsApp para receber mensagens." },
+      decisions: [],
+      channelHealth: { status: "not_configured", activeChannels: 0, worker: "unknown" },
       recentEvents: [],
       upcomingAppointments: [],
     };
@@ -5882,24 +6487,6 @@ export async function getDashboardSnapshot(workspaceId: number) {
     .from(appointmentsTable)
     .where(eq(appointmentsTable.workspaceId, workspaceId))
     .orderBy(asc(appointmentsTable.startsAt));
-  const workspaceQuotes = await db
-    .select({ quote: quotes, contact: contacts })
-    .from(quotes)
-    .leftJoin(contacts, eq(quotes.contactId, contacts.id))
-    .where(eq(quotes.workspaceId, workspaceId))
-    .orderBy(desc(quotes.updatedAt), desc(quotes.id));
-  const workspacePayments = await db
-    .select()
-    .from(paymentLedger)
-    .where(eq(paymentLedger.workspaceId, workspaceId));
-  const workspaceChannels = await db
-    .select()
-    .from(whatsappChannels)
-    .where(and(eq(whatsappChannels.workspaceId, workspaceId), eq(whatsappChannels.active, 1)));
-  const workspaceInstances = await db
-    .select()
-    .from(whatsappInstances)
-    .where(and(eq(whatsappInstances.workspaceId, workspaceId), eq(whatsappInstances.active, 1)));
   const contactIds = workspaceContacts.map(contact => contact.id);
   const recentEvents =
     contactIds.length === 0
@@ -5924,50 +6511,19 @@ export async function getDashboardSnapshot(workspaceId: number) {
   const endOfToday = dayBounds.end;
   const monthStart = new Date(startOfToday);
   monthStart.setUTCDate(1);
-  monthStart.setUTCHours(0, 0, 0, 0);
+  const [channelRows, workerRows, receiptRows, pendingApprovalRows] = await Promise.all([
+    db.select({ active: whatsappChannels.active }).from(whatsappChannels).where(eq(whatsappChannels.workspaceId, workspaceId)),
+    db.select({ status: workerHeartbeats.status, observedAt: workerHeartbeats.observedAt, intervalMs: workerHeartbeats.intervalMs }).from(workerHeartbeats).where(eq(workerHeartbeats.service, "forte-panel-worker")).limit(1),
+    db.select({ amountCents: quotePayments.amountCents }).from(quotePayments).where(and(eq(quotePayments.workspaceId, workspaceId), gte(quotePayments.receivedAt, monthStart), lt(quotePayments.receivedAt, now))),
+    db.select({ id: quotes.id }).from(quotes).where(and(eq(quotes.workspaceId, workspaceId), eq(quotes.approvalStatus, "pending"))),
+  ]);
   const activeAppointments = workspaceAppointments.filter(
     appointment => appointment.status !== "cancelled"
   );
-  const openQuotes = workspaceQuotes.filter(({ quote }) =>
-    !["pago", "cancelado"].includes(quote.status)
-  );
-  const pendingCents = openQuotes.reduce(
-    (total, { quote }) => total + Math.max(0, quote.quotedCents - quote.receivedCents),
+  const pendingCents = workspaceContacts.reduce(
+    (total, contact) => total + (contact.quotePendingCents ?? contact.quoteCents),
     0
   );
-  const pendingLeads = workspaceContacts
-    .filter(contact => isDashboardPendingLead(contact, now))
-    .sort((a, b) => (a.followUpAt?.getTime() ?? 0) - (b.followUpAt?.getTime() ?? 0))
-    .slice(0, 8)
-    .map(contact => ({
-      id: contact.id,
-      name: contact.name,
-      stage: contact.stage,
-      needsOperatorResponse: contact.needsOperatorResponse,
-      followUpAt: contact.followUpAt?.toISOString() ?? null,
-      lastMessageAt: contact.lastMessageAt?.toISOString() ?? null,
-    }));
-  const stalledQuotes = openQuotes
-    .filter(({ quote }) => isDashboardStalledQuote(quote.updatedAt, now))
-    .slice(0, 8)
-    .map(({ quote, contact }) => ({
-      id: quote.id,
-      contactId: quote.contactId,
-      contactName: contact?.name ?? "Contato removido",
-      serviceName: quote.serviceName,
-      status: quote.status,
-      pendingCents: Math.max(0, quote.quotedCents - quote.receivedCents),
-      updatedAt: quote.updatedAt.toISOString(),
-    }));
-  const channelInstance = workspaceInstances.find(instance => instance.status === "connected") ?? workspaceInstances[0];
-  const channelHealth = !workspaceChannels.length
-    ? { status: "not_configured", label: "Sem canal configurado", detail: "Conecte o WhatsApp para receber mensagens." }
-    : channelInstance?.status === "connected"
-      ? { status: "connected", label: "WhatsApp conectado", detail: channelInstance.lastSeenAt ? `Última atividade ${channelInstance.lastSeenAt.toLocaleString("pt-BR")}` : "Instância conectada." }
-      : { status: "attention", label: "WhatsApp requer atenção", detail: channelInstance?.lastHealthError ?? "Nenhuma instância conectada no momento." };
-  const todayAppointments = activeAppointments
-    .filter(appointment => appointment.startsAt >= startOfToday && appointment.startsAt < endOfToday)
-    .map(appointment => appointment);
   return {
     newContactsToday: workspaceContacts.filter(
       contact => contact.createdAt >= startOfToday
@@ -5980,22 +6536,28 @@ export async function getDashboardSnapshot(workspaceId: number) {
     urgentOpen: workspaceContacts.filter(
       contact =>
         (contact.urgency === "Alta" || contact.urgency === "Crítica") &&
-        contact.stage !== "Concluído"
+        (contact.opportunityStage ?? contact.stage) !== "Concluído"
     ).length,
     quotesPendingCents: pendingCents,
     appointmentsToday: activeAppointments.filter(
       appointment =>
         appointment.startsAt >= startOfToday &&
-        appointment.startsAt < endOfToday
+        appointment.startsAt <
+          endOfToday
     ).length,
-    receivedMonthCents: workspacePayments
-      .filter(payment => payment.receivedAt >= monthStart)
-      .reduce((total, payment) => total + payment.amountCents, 0),
+    receivedMonthCents: receiptRows.reduce((total, row) => total + row.amountCents, 0),
     pendingCents,
-    pendingLeads,
-    stalledQuotes,
-    todayAppointments,
-    channelHealth,
+    decisions: [
+      { key: "awaiting_response", label: "Responder contatos", count: workspaceContacts.filter(contact => contact.awaitingResponse).length, href: "/inbox", tone: "amber" },
+      { key: "urgent", label: "Tratar urgências", count: workspaceContacts.filter(contact => (contact.urgency === "Alta" || contact.urgency === "Crítica") && (contact.opportunityStage ?? contact.stage) !== "Concluído").length, href: "/kanban", tone: "red" },
+      { key: "quote_approval", label: "Aprovar orçamentos", count: pendingApprovalRows.length, href: "/billing", tone: "blue" },
+      { key: "today_appointments", label: "Operar agenda de hoje", count: activeAppointments.filter(appointment => appointment.startsAt >= startOfToday && appointment.startsAt < endOfToday && appointment.status === "requested").length, href: "/agenda", tone: "green" },
+    ],
+    channelHealth: {
+      status: channelRows.length === 0 ? "not_configured" : channelRows.some(channel => channel.active === 1) ? "ready" : "attention",
+      activeChannels: channelRows.filter(channel => channel.active === 1).length,
+      worker: workerRows[0] ? (Date.now() - workerRows[0].observedAt.getTime() > Math.max(workerRows[0].intervalMs * 3, 180000) ? "stale" : workerRows[0].status) : "unknown",
+    },
     recentEvents,
     upcomingAppointments: activeAppointments
       .filter(appointment => appointment.startsAt >= now)
@@ -6003,394 +6565,139 @@ export async function getDashboardSnapshot(workspaceId: number) {
   };
 }
 
+type QuoteApprovalState = "draft" | "pending" | "approved" | "rejected" | "expired";
+type QuotePaymentState = "unpaid" | "partially_paid" | "paid" | "cancelled";
+type QuoteItemInput = { serviceName: string; description?: string; quantity: number; unitPriceCents: number };
+
+function effectiveQuoteApprovalStatus(quote: { approvalStatus: QuoteApprovalState; validUntil: Date | null }, now = new Date()): QuoteApprovalState {
+  if ((quote.approvalStatus === "pending" || quote.approvalStatus === "approved") && quote.validUntil && quote.validUntil <= now) return "expired";
+  return quote.approvalStatus;
+}
+function legacyQuoteStatus(approvalStatus: QuoteApprovalState, paymentStatus: QuotePaymentState): "orcamento" | "aguardando_aprovacao" | "aprovado" | "sinal_pendente" | "parcialmente_pago" | "pago" | "cancelado" {
+  if (paymentStatus === "cancelled") return "cancelado";
+  if (paymentStatus === "paid") return "pago";
+  if (paymentStatus === "partially_paid") return "parcialmente_pago";
+  if (approvalStatus === "pending") return "aguardando_aprovacao";
+  if (approvalStatus === "approved") return "aprovado";
+  return "orcamento";
+}
+async function assertActiveQuoteActor(tx: any, workspaceId: number, actorUserId: number) {
+  const member = (await tx.select({ id: workspaceMembers.id }).from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, actorUserId), eq(workspaceMembers.active, 1))).limit(1))[0];
+  if (!member) throw new Error("QUOTE_ACTOR_NOT_ACTIVE");
+}
+async function findQuoteOpportunity(tx: any, workspaceId: number, contactId: number, opportunityId?: number) {
+  const rows = await tx.select({ opportunityId: opportunities.id }).from(opportunities).innerJoin(leads, and(eq(leads.id, opportunities.leadId), eq(leads.workspaceId, workspaceId))).where(and(eq(opportunities.workspaceId, workspaceId), eq(leads.contactId, contactId), ...(opportunityId ? [eq(opportunities.id, opportunityId)] : []))).limit(1);
+  return rows[0]?.opportunityId ?? null;
+}
 export async function listQuotes(workspaceId: number) {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db
-    .select({ quote: quotes, contact: contacts })
-    .from(quotes)
-    .leftJoin(contacts, eq(quotes.contactId, contacts.id))
-    .where(eq(quotes.workspaceId, workspaceId))
-    .orderBy(desc(quotes.createdAt));
-  const quoteIds = rows.map(({ quote }) => quote.id);
-  const itemRows = quoteIds.length
-    ? await db.select().from(quoteItems).where(inArray(quoteItems.quoteId, quoteIds))
-    : [];
-  const paymentRows = quoteIds.length
-    ? await db
-        .select()
-        .from(paymentLedger)
-        .where(inArray(paymentLedger.quoteId, quoteIds))
-        .orderBy(asc(paymentLedger.receivedAt), asc(paymentLedger.id))
-    : [];
-  return rows.map(({ quote, contact }) => ({
-    ...quote,
-    items: itemRows.filter(item => item.quoteId === quote.id),
-    payments: paymentRows
-      .filter(payment => payment.quoteId === quote.id)
-      .map(payment => ({ ...payment, receiptId: `FP-${workspaceId}-${payment.id}` })),
-    contactName: contact?.name ?? "Contato removido",
-    contactInitials: (contact?.name ?? "CR")
-      .split(" ")
-      .map(part => part[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase(),
-  }));
+  const rows = await db.select({ quote: quotes, contact: contacts }).from(quotes).leftJoin(contacts, and(eq(quotes.contactId, contacts.id), eq(contacts.workspaceId, workspaceId))).where(eq(quotes.workspaceId, workspaceId)).orderBy(desc(quotes.createdAt));
+  const ids = rows.map(row => row.quote.id);
+  const itemRows = ids.length ? await db.select().from(quoteItems).where(and(eq(quoteItems.workspaceId, workspaceId), inArray(quoteItems.quoteId, ids))).orderBy(asc(quoteItems.position), asc(quoteItems.id)) : [];
+  const itemsByQuote = new Map<number, typeof itemRows>();
+  for (const item of itemRows) itemsByQuote.set(item.quoteId, [...(itemsByQuote.get(item.quoteId) ?? []), item]);
+  const paymentRows = ids.length ? await db.select().from(quotePayments).where(and(eq(quotePayments.workspaceId, workspaceId), inArray(quotePayments.quoteId, ids))).orderBy(desc(quotePayments.receivedAt), desc(quotePayments.id)) : [];
+  const receiptRows = ids.length ? await db.select().from(quoteReceipts).where(and(eq(quoteReceipts.workspaceId, workspaceId), inArray(quoteReceipts.quoteId, ids))).orderBy(desc(quoteReceipts.issuedAt), desc(quoteReceipts.id)) : [];
+  const paymentsByQuote = new Map<number, typeof paymentRows>();
+  const receiptsByQuote = new Map<number, typeof receiptRows>();
+  for (const payment of paymentRows) paymentsByQuote.set(payment.quoteId, [...(paymentsByQuote.get(payment.quoteId) ?? []), payment]);
+  for (const receipt of receiptRows) receiptsByQuote.set(receipt.quoteId, [...(receiptsByQuote.get(receipt.quoteId) ?? []), receipt]);
+  return rows.map(({ quote, contact }) => ({ ...quote, approvalStatus: effectiveQuoteApprovalStatus(quote), items: itemsByQuote.get(quote.id) ?? [], payments: paymentsByQuote.get(quote.id) ?? [], receipts: receiptsByQuote.get(quote.id) ?? [], contactName: contact?.name ?? "Contato removido", contactInitials: (contact?.name ?? "CR").split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase() }));
 }
-
-export async function listQuotesForContact(
-  workspaceId: number,
-  contactId: number
-) {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db
-    .select()
-    .from(quotes)
-    .where(
-      and(eq(quotes.workspaceId, workspaceId), eq(quotes.contactId, contactId))
-    )
-    .orderBy(desc(quotes.updatedAt), desc(quotes.id));
-  const quoteIds = rows.map(quote => quote.id);
-  const itemRows = quoteIds.length
-    ? await db.select().from(quoteItems).where(inArray(quoteItems.quoteId, quoteIds))
-    : [];
-  const paymentRows = quoteIds.length
-    ? await db
-        .select()
-        .from(paymentLedger)
-        .where(inArray(paymentLedger.quoteId, quoteIds))
-        .orderBy(asc(paymentLedger.receivedAt), asc(paymentLedger.id))
-    : [];
-  return rows.map(quote => ({
-    ...quote,
-    items: itemRows.filter(item => item.quoteId === quote.id),
-    payments: paymentRows
-      .filter(payment => payment.quoteId === quote.id)
-      .map(payment => ({ ...payment, receiptId: `FP-${workspaceId}-${payment.id}` })),
-  }));
-}
-
-async function refreshContactQuoteCents(
-  workspaceId: number,
-  contactId: number,
-  db: Awaited<ReturnType<typeof getDb>>
-) {
-  if (!db) return;
-  const totals = await db
-    .select({ total: sql<number>`coalesce(sum(${quotes.quotedCents}), 0)` })
-    .from(quotes)
-    .where(
-      and(
-        eq(quotes.workspaceId, workspaceId),
-        eq(quotes.contactId, contactId),
-        ne(quotes.status, "cancelado")
-      )
-    );
-  await db
-    .update(contacts)
-    .set({ quoteCents: Number(totals[0]?.total ?? 0), updatedAt: new Date() })
-    .where(and(eq(contacts.id, contactId), eq(contacts.workspaceId, workspaceId)));
-}
-export async function createQuote(
-  input: {
-    contactId: number;
-    serviceName: string;
-    description?: string;
-    quotedCents?: number;
-    receivedCents?: number;
-    items?: Array<{ description: string; quantity: number; unitCents: number }>;
-    status?:
-      | "orcamento"
-      | "aguardando_aprovacao"
-      | "sinal_pendente"
-      | "parcialmente_pago"
-      | "pago"
-      | "cancelado";
-    dueDate?: Date;
-    validUntil?: Date;
-    notes?: string;
-  },
-  workspaceId: number,
-  actorUserId?: number
-) {
+export async function createQuote(input: { contactId: number; opportunityId?: number; serviceName: string; description?: string; quotedCents: number; items?: QuoteItemInput[]; validUntil?: Date; dueDate?: Date; notes?: string }, workspaceId: number, actorUserId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const contact = await db
-    .select({ id: contacts.id })
-    .from(contacts)
-    .where(
-      and(
-        eq(contacts.id, input.contactId),
-        eq(contacts.workspaceId, workspaceId),
-        isNull(contacts.groupId)
-      )
-    )
-    .limit(1);
-  if (!contact[0]) throw new Error("Contact not found");
-  const items = input.items?.length
-    ? input.items.map(item => {
-        if (!Number.isInteger(item.quantity) || item.quantity <= 0)
-          throw new Error("Quantidade de item inválida");
-        if (!Number.isInteger(item.unitCents) || item.unitCents < 0)
-          throw new Error("Valor unitário inválido");
-        const totalCents = item.quantity * item.unitCents;
-        if (!Number.isSafeInteger(totalCents)) throw new Error("Total do item inválido");
-        return { ...item, totalCents };
-      })
-    : [
-        {
-          description: input.serviceName,
-          quantity: 1,
-          unitCents: input.quotedCents ?? 0,
-          totalCents: input.quotedCents ?? 0,
-        },
-      ];
-  const quotedCents = items.reduce((total, item) => total + item.totalCents, 0);
-  if (!Number.isSafeInteger(quotedCents)) throw new Error("Total do orçamento inválido");
-  if ((input.receivedCents ?? 0) > quotedCents)
-    throw new Error("Recebimento não pode superar o total do orçamento");
-  const now = new Date();
-  const inserted = await db
-    .insert(quotes)
-    .values({
-      workspaceId,
-      contactId: input.contactId,
-      serviceName: input.serviceName,
-      description: input.description,
-      quotedCents,
-      receivedCents: input.receivedCents ?? 0,
-      status: input.status ?? "orcamento",
-      dueDate: input.dueDate,
-      validUntil: input.validUntil,
-      notes: input.notes,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
-  await db.insert(quoteItems).values(
-    items.map(item => ({
-      quoteId: inserted[0]!.id,
-      description: item.description.trim().slice(0, 240),
-      quantity: item.quantity,
-      unitCents: item.unitCents,
-      totalCents: item.totalCents,
-      createdAt: now,
-    }))
-  );
-  await refreshContactQuoteCents(workspaceId, input.contactId, db);
-  await db.insert(auditLogs).values({
-    workspaceId,
-    actorUserId,
-    contactId: input.contactId,
-    action: "quote_created",
-    summary: `Orçamento criado: ${input.serviceName}`,
+  return db.transaction(async tx => {
+    await assertActiveQuoteActor(tx, workspaceId, actorUserId);
+    const contact = (await tx.select({ id: contacts.id }).from(contacts).where(and(eq(contacts.id, input.contactId), eq(contacts.workspaceId, workspaceId), isNull(contacts.groupId))).limit(1))[0];
+    if (!contact) throw new Error("Contact not found");
+    const opportunityId = await findQuoteOpportunity(tx, workspaceId, input.contactId, input.opportunityId);
+    if (input.opportunityId && !opportunityId) throw new Error("Opportunity not found for contact");
+    if (input.validUntil && input.validUntil <= new Date()) throw new Error("QUOTE_VALID_UNTIL_MUST_BE_FUTURE");
+    const items = (input.items?.length ? input.items : [{ serviceName: input.serviceName, description: input.description, quantity: 1, unitPriceCents: input.quotedCents }]).map(item => ({ ...item, serviceName: item.serviceName.trim(), quantity: Math.floor(item.quantity), unitPriceCents: Math.floor(item.unitPriceCents) }));
+    if (items.some(item => !item.serviceName || item.quantity <= 0 || item.unitPriceCents < 0)) throw new Error("INVALID_QUOTE_ITEM");
+    const totalCents = items.reduce((total, item) => total + item.quantity * item.unitPriceCents, 0);
+    const now = new Date();
+    const inserted = await tx.insert(quotes).values({ workspaceId, contactId: input.contactId, opportunityId, serviceName: items[0].serviceName, description: input.description, quotedCents: totalCents, receivedCents: 0, status: "orcamento", approvalStatus: "draft", paymentStatus: "unpaid", validUntil: input.validUntil ?? null, dueDate: input.dueDate, notes: input.notes, createdAt: now, updatedAt: now }).returning();
+    const quote = inserted[0];
+    if (!quote) throw new Error("QUOTE_CREATE_FAILED");
+    await tx.insert(quoteItems).values(items.map((item, position) => ({ workspaceId, quoteId: quote.id, position, serviceName: item.serviceName, description: item.description?.trim() || null, quantity: item.quantity, unitPriceCents: item.unitPriceCents, totalCents: item.quantity * item.unitPriceCents, createdAt: now })));
+    await tx.insert(quoteApprovalHistory).values({ workspaceId, quoteId: quote.id, fromStatus: null, toStatus: "draft", actorUserId, note: "Orçamento criado como rascunho.", createdAt: now });
+    await tx.update(contacts).set({ quoteCents: totalCents, updatedAt: now }).where(and(eq(contacts.id, input.contactId), eq(contacts.workspaceId, workspaceId)));
+    await tx.insert(auditLogs).values({ workspaceId, actorUserId, contactId: input.contactId, action: "quote_created", summary: `Orçamento ${quote.id} criado como rascunho com ${items.length} item(ns)` });
+    return quote;
   });
-  return inserted[0];
 }
-
-export type OperationalPaymentMethod =
-  | "pix"
-  | "dinheiro"
-  | "cartao"
-  | "transferencia"
-  | "boleto"
-  | "outro";
-
-export async function listQuotePayments(workspaceId: number, quoteId: number) {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db
-    .select()
-    .from(paymentLedger)
-    .where(
-      and(
-        eq(paymentLedger.workspaceId, workspaceId),
-        eq(paymentLedger.quoteId, quoteId)
-      )
-    )
-    .orderBy(asc(paymentLedger.receivedAt), asc(paymentLedger.id));
-  return rows.map(payment => ({
-    ...payment,
-    receiptId: `FP-${workspaceId}-${payment.id}`,
-  }));
-}
-
-export async function createQuotePayment(
-  workspaceId: number,
-  actorUserId: number,
-  input: {
-    quoteId: number;
-    amountCents: number;
-    method: OperationalPaymentMethod;
-    appointmentId?: number;
-    receivedAt?: Date;
-    note?: string;
-  }
-) {
+export async function changeQuoteApproval(id: number, target: "pending" | "approved" | "rejected", workspaceId: number, actorUserId: number, note?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0)
-    throw new Error("O valor recebido precisa ser um inteiro positivo em centavos");
-  const created = await db.transaction(async tx => {
-    await tx.execute(
-      sql`SELECT "id" FROM "quotes" WHERE "id" = ${input.quoteId} AND "workspaceId" = ${workspaceId} FOR UPDATE`
-    );
-    const quote = (
-      await tx
-        .select({
-          id: quotes.id,
-          contactId: quotes.contactId,
-          quotedCents: quotes.quotedCents,
-          receivedCents: quotes.receivedCents,
-          status: quotes.status,
-        })
-        .from(quotes)
-        .where(and(eq(quotes.id, input.quoteId), eq(quotes.workspaceId, workspaceId)))
-        .limit(1)
-    )[0];
-    if (!quote) throw new Error("Orçamento não encontrado neste workspace");
-    if (quote.status === "cancelado") throw new Error("Não é possível receber um orçamento cancelado");
-    if (quote.status !== "aprovado" && quote.status !== "sinal_pendente" && quote.status !== "parcialmente_pago")
-      throw new Error("O orçamento precisa estar aprovado antes do recebimento");
-    if (input.appointmentId) {
-      const appointment = (
-        await tx
-          .select({ id: appointmentsTable.id, contactId: appointmentsTable.contactId, quoteId: appointmentsTable.quoteId })
-          .from(appointmentsTable)
-          .where(and(eq(appointmentsTable.id, input.appointmentId), eq(appointmentsTable.workspaceId, workspaceId)))
-          .limit(1)
-      )[0];
-      if (!appointment || appointment.contactId !== quote.contactId || appointment.quoteId !== quote.id)
-        throw new Error("O agendamento não está vinculado ao orçamento e contato informados");
-    }
-    const prior = (
-      await tx
-        .select({ total: sql<number>`coalesce(sum(${paymentLedger.amountCents}), 0)` })
-        .from(paymentLedger)
-        .where(and(eq(paymentLedger.workspaceId, workspaceId), eq(paymentLedger.quoteId, quote.id)))
-    )[0]?.total ?? 0;
-    const ledgerReceived = Number(prior);
-    const legacyReceived = Math.max(0, quote.receivedCents - ledgerReceived);
-    const receivedBefore = legacyReceived + ledgerReceived;
-    if (receivedBefore + input.amountCents > quote.quotedCents)
-      throw new Error("O recebimento não pode superar o total do orçamento");
-    const inserted = await tx
-      .insert(paymentLedger)
-      .values({
-        workspaceId,
-        quoteId: quote.id,
-        contactId: quote.contactId,
-        appointmentId: input.appointmentId,
-        amountCents: input.amountCents,
-        method: input.method,
-        receivedAt: input.receivedAt ?? new Date(),
-        note: input.note,
-        createdByUserId: actorUserId,
-      })
-      .returning();
-    const totalReceived = receivedBefore + input.amountCents;
-    const nextStatus = totalReceived >= quote.quotedCents ? "pago" : "parcialmente_pago";
-    await tx
-      .update(quotes)
-      .set({ receivedCents: totalReceived, status: nextStatus, updatedAt: new Date() })
-      .where(and(eq(quotes.id, quote.id), eq(quotes.workspaceId, workspaceId)));
-    await tx.insert(auditLogs).values({
-      workspaceId,
-      actorUserId,
-      contactId: quote.contactId,
-      action: "payment_received",
-      summary: `Recebimento de ${input.amountCents} centavos registrado no orçamento ${quote.id}`,
-    });
-    return inserted[0];
+  return db.transaction(async tx => {
+    await assertActiveQuoteActor(tx, workspaceId, actorUserId);
+    const existing = (await tx.select().from(quotes).where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId))).for("update").limit(1))[0];
+    if (!existing) throw new Error("Quote not found");
+    const current = effectiveQuoteApprovalStatus(existing);
+    if (current === "expired") throw new Error("QUOTE_EXPIRED");
+    if (target === "pending" && current !== "draft") throw new Error("QUOTE_NOT_DRAFT");
+    if ((target === "approved" || target === "rejected") && current !== "pending") throw new Error("QUOTE_NOT_PENDING");
+    if (target === "approved" && existing.validUntil && existing.validUntil <= new Date()) throw new Error("QUOTE_EXPIRED");
+    const now = new Date();
+    const updated = (await tx.update(quotes).set({ approvalStatus: target, status: legacyQuoteStatus(target, existing.paymentStatus), approvedAt: target === "approved" ? now : null, approvedByUserId: target === "approved" ? actorUserId : null, rejectedAt: target === "rejected" ? now : null, rejectedByUserId: target === "rejected" ? actorUserId : null, updatedAt: now }).where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId))).returning())[0];
+    await tx.insert(quoteApprovalHistory).values({ workspaceId, quoteId: id, fromStatus: existing.approvalStatus, toStatus: target, actorUserId, note: note?.trim() || null, createdAt: now });
+    await tx.insert(auditLogs).values({ workspaceId, actorUserId, contactId: existing.contactId, action: `quote_${target}`, summary: `Orçamento ${id}: ${target}` });
+    return updated;
   });
-  if (!created) throw new Error("Não foi possível registrar o recebimento");
-  return {
-    ...created,
-    receiptId: `FP-${workspaceId}-${created.id}`,
-    quoteId: created.quoteId,
-    amountCents: created.amountCents,
-  };
 }
-
-export async function updateQuotePayment(
-  id: number,
-  receivedCents: number,
-  status:
-    | "orcamento"
-    | "aguardando_aprovacao"
-    | "sinal_pendente"
-    | "cancelado",
-  workspaceId: number,
-  actorUserId?: number
-) {
+export async function updateQuotePayment(id: number, receivedCents: number, workspaceId: number, actorUserId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const existing = await db
-    .select()
-    .from(quotes)
-    .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
-    .limit(1);
-  if (!existing[0]) throw new Error("Quote not found");
-  if (receivedCents !== existing[0].receivedCents)
-    throw new Error("Use o registro de recebimento para alterar valores financeiros");
-  if (receivedCents > existing[0].quotedCents)
-    throw new Error("Recebimento não pode superar o total do orçamento");
-  const updated = await db
-    .update(quotes)
-    .set({ receivedCents, status, updatedAt: new Date() })
-    .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
-    .returning();
-  await refreshContactQuoteCents(workspaceId, existing[0].contactId, db);
-  await db.insert(auditLogs).values({
-    workspaceId,
-    actorUserId,
-    contactId: existing[0].contactId,
-    action: "quote_updated",
-    summary: `Recebimento do orçamento atualizado para ${receivedCents} centavos`,
+  return db.transaction(async tx => {
+    await assertActiveQuoteActor(tx, workspaceId, actorUserId);
+    const existing = (await tx.select().from(quotes).where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId))).for("update").limit(1))[0];
+    if (!existing) throw new Error("Quote not found");
+    if (effectiveQuoteApprovalStatus(existing) !== "approved") throw new Error("QUOTE_NOT_APPROVED");
+    if (receivedCents < existing.receivedCents) throw new Error("QUOTE_RECEIVED_CENTS_CANNOT_DECREASE");
+    if (receivedCents > existing.quotedCents) throw new Error("QUOTE_RECEIVED_CENTS_EXCEEDS_TOTAL");
+    if (existing.paymentStatus === "cancelled" && receivedCents > 0) throw new Error("QUOTE_CANCELLED");
+    const paymentStatus: QuotePaymentState = receivedCents === 0 ? "unpaid" : receivedCents >= existing.quotedCents ? "paid" : "partially_paid";
+    const now = new Date();
+    const updated = (await tx.update(quotes).set({ receivedCents, paymentStatus, status: legacyQuoteStatus(existing.approvalStatus, paymentStatus), updatedAt: now }).where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId))).returning())[0];
+    await tx.insert(auditLogs).values({ workspaceId, actorUserId, contactId: existing.contactId, action: "quote_payment_updated", summary: `Recebimento do orçamento ${id} atualizado para ${receivedCents} centavos` });
+    return updated;
   });
-  return updated[0];
 }
-
-export async function approveQuote(
-  id: number,
-  workspaceId: number,
-  actorUserId?: number
-) {
+export async function registerQuotePayment(input: { quoteId: number; amountCents: number; method: "pix" | "cash" | "card" | "transfer" | "other"; receivedAt?: Date; notes?: string }, workspaceId: number, actorUserId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const existing = await db
-    .select()
-    .from(quotes)
-    .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
-    .limit(1);
-  const quote = existing[0];
-  if (!quote) throw new Error("Quote not found");
-  if (quote.status === "cancelado")
-    throw new Error("Orçamento cancelado não pode ser aprovado");
-  if (quote.validUntil && quote.validUntil.getTime() < Date.now())
-    throw new Error("Orçamento expirado; atualize a validade antes de aprovar");
-  if (quote.status === "aprovado") return quote;
-  const now = new Date();
-  const updated = await db
-    .update(quotes)
-    .set({
-      status: "aprovado",
-      approvedAt: now,
-      approvedByUserId: actorUserId,
-      updatedAt: now,
-    })
-    .where(and(eq(quotes.id, id), eq(quotes.workspaceId, workspaceId)))
-    .returning();
-  await db.insert(auditLogs).values({
-    workspaceId,
-    actorUserId,
-    contactId: quote.contactId,
-    action: "quote_approved",
-    summary: `Orçamento ${id} aprovado`,
+  return db.transaction(async tx => {
+    await assertActiveQuoteActor(tx, workspaceId, actorUserId);
+    if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) throw new Error("PAYMENT_AMOUNT_MUST_BE_POSITIVE");
+    const existing = (await tx.select().from(quotes).where(and(eq(quotes.id, input.quoteId), eq(quotes.workspaceId, workspaceId))).for("update").limit(1))[0];
+    if (!existing) throw new Error("Quote not found");
+    if (effectiveQuoteApprovalStatus(existing) !== "approved") throw new Error("QUOTE_NOT_APPROVED");
+    if (existing.paymentStatus === "cancelled") throw new Error("QUOTE_CANCELLED");
+    const nextReceivedCents = existing.receivedCents + input.amountCents;
+    if (nextReceivedCents > existing.quotedCents) throw new Error("QUOTE_RECEIVED_CENTS_EXCEEDS_TOTAL");
+    const now = new Date();
+    const receivedAt = input.receivedAt ?? now;
+    if (receivedAt > now) throw new Error("PAYMENT_DATE_CANNOT_BE_IN_FUTURE");
+    const payment = (await tx.insert(quotePayments).values({ workspaceId, quoteId: input.quoteId, amountCents: input.amountCents, method: input.method, receivedAt, notes: input.notes?.trim() || null, actorUserId, createdAt: now }).returning())[0];
+    if (!payment) throw new Error("PAYMENT_CREATE_FAILED");
+    const paymentStatus: QuotePaymentState = nextReceivedCents >= existing.quotedCents ? "paid" : "partially_paid";
+    const quote = (await tx.update(quotes).set({ receivedCents: nextReceivedCents, paymentStatus, status: legacyQuoteStatus(existing.approvalStatus, paymentStatus), updatedAt: now }).where(and(eq(quotes.id, input.quoteId), eq(quotes.workspaceId, workspaceId))).returning())[0];
+    const receipt = (await tx.insert(quoteReceipts).values({ workspaceId, quoteId: input.quoteId, paymentId: payment.id, receiptNumber: `FP-${workspaceId}-${input.quoteId}-${payment.id}`, issuedAt: now, issuedByUserId: actorUserId, createdAt: now }).returning())[0];
+    if (!receipt || !quote) throw new Error("RECEIPT_CREATE_FAILED");
+    await tx.insert(auditLogs).values({ workspaceId, actorUserId, contactId: existing.contactId, action: "quote_payment_registered", summary: `Recebimento ${payment.id} de ${input.amountCents} centavos registrado no orçamento ${input.quoteId}; recibo ${receipt.receiptNumber}` });
+    return { payment, receipt, quote };
   });
-  return updated[0];
+}
+export async function getActiveQuoteSummaryByContact(workspaceId: number, contactIds: number[]) {
+  const db = await getDb();
+  if (!db || !contactIds.length) return new Map<number, { quotedCents: number; receivedCents: number; pendingCents: number; quoteId: number }>();
+  const rows = await db.select({ quote: quotes, contactId: leads.contactId }).from(quotes).innerJoin(opportunities, and(eq(opportunities.id, quotes.opportunityId), eq(opportunities.workspaceId, workspaceId))).innerJoin(leads, and(eq(leads.id, opportunities.leadId), eq(leads.workspaceId, workspaceId))).where(and(eq(quotes.workspaceId, workspaceId), inArray(leads.contactId, contactIds), eq(quotes.approvalStatus, "approved"))).orderBy(desc(quotes.approvedAt), desc(quotes.createdAt));
+  const result = new Map<number, { quotedCents: number; receivedCents: number; pendingCents: number; quoteId: number }>();
+  for (const row of rows) if (effectiveQuoteApprovalStatus(row.quote) === "approved" && row.quote.paymentStatus !== "cancelled" && !result.has(row.contactId)) result.set(row.contactId, { quotedCents: row.quote.quotedCents, receivedCents: row.quote.receivedCents, pendingCents: Math.max(0, row.quote.quotedCents - row.quote.receivedCents), quoteId: row.quote.id });
+  return result;
 }
 
 export async function getApiIdempotency(workspaceId: number, key: string) {
@@ -6587,6 +6894,168 @@ export async function claimAgentEffect(input: {
   return { claimed: false, inProgress: true, record: existing };
 }
 
+export async function recordAgentRun(input: {
+  workspaceId: number;
+  eventId: string;
+  contactId: number;
+  provider?: string | null;
+  capability?: string | null;
+  model?: string;
+  outcome: "resolved" | "transferred" | "pending_confirmation" | "failed";
+  providerAttempts?: number;
+  failureCode?: string | null;
+  transcriptionProvider?: string | null;
+  transcriptionAttempts?: number;
+  mediaAnalysisProvider?: string | null;
+  mediaAnalysisAttempts?: number;
+  steps: number;
+  toolCalls: number;
+  transferred: boolean;
+  pendingConfirmation: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  latencyMs: number;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(agentRuns).values({
+    ...input,
+    transferred: input.transferred ? 1 : 0,
+    pendingConfirmation: input.pendingConfirmation ? 1 : 0,
+  }).onConflictDoNothing({ target: [agentRuns.workspaceId, agentRuns.eventId] });
+}
+
+export async function getAgentMetrics(workspaceId: number, windowDays: number) {
+  const db = await getDb();
+  if (!db) return {
+    windowDays, runs: 0, resolved: 0, transferred: 0, pendingConfirmation: 0, failed: 0, fallbackRuns: 0,
+    resolutionRate: 0, transferRate: 0, avgLatencyMs: 0, totalTokens: 0, inputTokens: 0, outputTokens: 0,
+    receivedRevenueCents: 0, revenueAttribution: "workspace_total_not_attributed" as const,
+    capabilities: [], failures: [],
+  };
+  const since = new Date(Date.now() - windowDays * 86_400_000);
+  const [runRows, revenueRows, capabilityRows, failureRows] = await Promise.all([
+    db.select({
+      runs: sql<number>`count(*)`,
+      resolved: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'resolved' then 1 else 0 end), 0)`,
+      transferred: sql<number>`coalesce(sum(${agentRuns.transferred}), 0)`,
+      pendingConfirmation: sql<number>`coalesce(sum(${agentRuns.pendingConfirmation}), 0)`,
+      failed: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'failed' then 1 else 0 end), 0)`,
+      fallbackRuns: sql<number>`coalesce(sum(case when ${agentRuns.providerAttempts} > 1 then 1 else 0 end), 0)`,
+      avgLatencyMs: sql<number>`coalesce(avg(${agentRuns.latencyMs}), 0)`,
+      totalTokens: sql<number>`coalesce(sum(${agentRuns.totalTokens}), 0)`,
+      inputTokens: sql<number>`coalesce(sum(${agentRuns.inputTokens}), 0)`,
+      outputTokens: sql<number>`coalesce(sum(${agentRuns.outputTokens}), 0)`,
+    }).from(agentRuns).where(and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since))),
+    db.select({ received: sql<number>`coalesce(sum(${quotePayments.amountCents}), 0)` }).from(quotePayments).where(and(eq(quotePayments.workspaceId, workspaceId), gte(quotePayments.receivedAt, since))),
+    db.select({
+      capability: agentRuns.capability,
+      runs: sql<number>`count(*)`,
+      failed: sql<number>`coalesce(sum(case when ${agentRuns.outcome} = 'failed' then 1 else 0 end), 0)`,
+      fallbackRuns: sql<number>`coalesce(sum(case when ${agentRuns.providerAttempts} > 1 then 1 else 0 end), 0)`,
+    }).from(agentRuns).where(and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since))).groupBy(agentRuns.capability),
+    db.select({
+      failureCode: agentRuns.failureCode,
+      occurrences: sql<number>`count(*)`,
+    }).from(agentRuns).where(and(eq(agentRuns.workspaceId, workspaceId), gte(agentRuns.createdAt, since), eq(agentRuns.outcome, "failed"))).groupBy(agentRuns.failureCode).orderBy(sql`count(*) desc`).limit(10),
+  ]);
+  const row = runRows[0];
+  const runs = Number(row?.runs ?? 0);
+  return {
+    windowDays,
+    runs,
+    resolved: Number(row?.resolved ?? 0),
+    transferred: Number(row?.transferred ?? 0),
+    pendingConfirmation: Number(row?.pendingConfirmation ?? 0),
+    failed: Number(row?.failed ?? 0),
+    fallbackRuns: Number(row?.fallbackRuns ?? 0),
+    resolutionRate: runs ? Number(row?.resolved ?? 0) / runs : 0,
+    transferRate: runs ? Number(row?.transferred ?? 0) / runs : 0,
+    avgLatencyMs: Math.round(Number(row?.avgLatencyMs ?? 0)),
+    totalTokens: Number(row?.totalTokens ?? 0),
+    inputTokens: Number(row?.inputTokens ?? 0),
+    outputTokens: Number(row?.outputTokens ?? 0),
+    receivedRevenueCents: Number(revenueRows[0]?.received ?? 0),
+    revenueAttribution: "workspace_total_not_attributed" as const,
+    capabilities: capabilityRows.map(row => ({
+      capability: row.capability ?? "unknown",
+      runs: Number(row.runs ?? 0),
+      failed: Number(row.failed ?? 0),
+      fallbackRuns: Number(row.fallbackRuns ?? 0),
+    })),
+    failures: failureRows.map(row => ({
+      failureCode: row.failureCode ?? "unknown",
+      occurrences: Number(row.occurrences ?? 0),
+    })),
+  };
+}
+
+export async function createAgentEffectProposal(input: {
+  workspaceId: number;
+  eventId: string;
+  toolCallId: string;
+  toolName: string;
+  fingerprint: string;
+  proposal: unknown;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const inserted = await db
+    .insert(agentEffects)
+    .values({
+      workspaceId: input.workspaceId,
+      eventId: input.eventId,
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+      fingerprint: input.fingerprint,
+      status: "pending_confirmation",
+      result: JSON.stringify(input.proposal),
+      updatedAt: new Date(),
+    })
+    .onConflictDoNothing({
+      target: [agentEffects.workspaceId, agentEffects.eventId, agentEffects.toolCallId],
+    })
+    .returning();
+  if (inserted[0]) return inserted[0];
+  return (await db.select().from(agentEffects).where(and(
+    eq(agentEffects.workspaceId, input.workspaceId),
+    eq(agentEffects.eventId, input.eventId),
+    eq(agentEffects.toolCallId, input.toolCallId),
+    eq(agentEffects.fingerprint, input.fingerprint),
+    eq(agentEffects.toolName, input.toolName),
+  )).limit(1))[0];
+}
+
+export async function listPendingAgentEffectProposals(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(agentEffects).where(and(
+    eq(agentEffects.workspaceId, workspaceId),
+    eq(agentEffects.status, "pending_confirmation"),
+  )).orderBy(desc(agentEffects.createdAt));
+}
+
+export async function claimAgentEffectProposal(workspaceId: number, id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return (await db.update(agentEffects).set({ status: "processing", updatedAt: new Date() }).where(and(
+    eq(agentEffects.id, id),
+    eq(agentEffects.workspaceId, workspaceId),
+    eq(agentEffects.status, "pending_confirmation"),
+  )).returning())[0];
+}
+
+export async function rejectAgentEffectProposal(workspaceId: number, id: number, reason: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return (await db.update(agentEffects).set({ status: "rejected", result: JSON.stringify({ rejected: true, reason }), updatedAt: new Date() }).where(and(
+    eq(agentEffects.id, id),
+    eq(agentEffects.workspaceId, workspaceId),
+    eq(agentEffects.status, "pending_confirmation"),
+  )).returning())[0];
+}
+
 export async function completeAgentEffect(input: {
   workspaceId: number;
   eventId: string;
@@ -6638,30 +7107,41 @@ export async function failAgentEffect(input: {
     );
 }
 
+const WEBHOOK_EVENT_LEASE_MS = 10 * 60 * 1000;
+
 export async function registerWebhookEvent(input: {
   eventId: string;
   provider: string;
   payload: unknown;
   workspaceId: number;
+  instanceId?: string;
+  webhookNonce?: string;
+  webhookTimestamp?: Date;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const payload = JSON.stringify(input.payload);
+  const now = new Date();
+  const leaseToken = crypto.randomUUID();
+  const leaseUntil = new Date(now.getTime() + WEBHOOK_EVENT_LEASE_MS);
   const inserted = await db
     .insert(webhookEvents)
     .values({
       eventId: input.eventId,
       provider: input.provider,
+      instanceId: input.instanceId,
+      webhookNonce: input.webhookNonce,
+      webhookTimestamp: input.webhookTimestamp,
       payload,
       workspaceId: input.workspaceId,
       status: "received",
+      leaseToken,
+      leaseUntil,
     })
-    .onConflictDoNothing({
-      target: [webhookEvents.workspaceId, webhookEvents.eventId],
-    })
+    .onConflictDoNothing()
     .returning();
   if (inserted[0])
-    return { duplicate: false, conflict: false, event: inserted[0] };
+    return { duplicate: false, conflict: false, event: inserted[0], leaseToken };
   const existing = await db
     .select()
     .from(webhookEvents)
@@ -6672,22 +7152,54 @@ export async function registerWebhookEvent(input: {
       )
     )
     .limit(1);
+  if (!existing[0] && input.webhookNonce) {
+    const replay = await db
+      .select()
+      .from(webhookEvents)
+      .where(
+        and(
+          eq(webhookEvents.workspaceId, input.workspaceId),
+          eq(webhookEvents.provider, input.provider),
+          eq(webhookEvents.webhookNonce, input.webhookNonce)
+        )
+      )
+      .limit(1);
+    if (replay[0]) return { duplicate: true, conflict: false, replay: true, event: replay[0] };
+  }
   if (existing[0]) {
     if (existing[0].payload !== payload)
       return { duplicate: true, conflict: true, event: existing[0] };
-    if (existing[0].status === "failed") {
+    const leaseExpired = !existing[0].leaseUntil || existing[0].leaseUntil <= now;
+    const canReclaim = existing[0].status === "failed" ||
+      (existing[0].status === "received" && leaseExpired);
+    if (canReclaim) {
       const retried = await db
         .update(webhookEvents)
-        .set({ status: "received", payload, processedAt: null })
+        .set({
+          status: "received",
+          payload,
+          instanceId: input.instanceId,
+          webhookNonce: input.webhookNonce,
+          webhookTimestamp: input.webhookTimestamp,
+          processedAt: null,
+          leaseToken,
+          leaseUntil,
+        })
         .where(
           and(
             eq(webhookEvents.id, existing[0].id),
-            eq(webhookEvents.status, "failed")
+            or(
+              eq(webhookEvents.status, "failed"),
+              and(
+                eq(webhookEvents.status, "received"),
+                or(isNull(webhookEvents.leaseUntil), lte(webhookEvents.leaseUntil, now))
+              )
+            )
           )
         )
         .returning();
       if (retried[0])
-        return { duplicate: false, conflict: false, event: retried[0] };
+        return { duplicate: false, conflict: false, event: retried[0], leaseToken };
     }
     return { duplicate: true, conflict: false, event: existing[0] };
   }
@@ -6697,20 +7209,80 @@ export async function registerWebhookEvent(input: {
 export async function markWebhookEvent(
   workspaceId: number,
   eventId: string,
-  status: "processed" | "failed"
+  status: "processed" | "failed",
+  leaseToken: string
 ) {
   const db = await getDb();
   if (!db) return;
   await db
     .update(webhookEvents)
-    .set({ status, processedAt: new Date() })
+    .set({ status, processedAt: new Date(), leaseToken: null, leaseUntil: null })
     .where(
       and(
         eq(webhookEvents.workspaceId, workspaceId),
         eq(webhookEvents.eventId, eventId),
-        eq(webhookEvents.status, "received")
+        eq(webhookEvents.status, "received"),
+        eq(webhookEvents.leaseToken, leaseToken)
       )
     );
+}
+
+export async function reconcileBaileysDeliveryStatus(input: {
+  workspaceId: number;
+  instanceId: string;
+  messageId: string;
+  status: MessageDeliveryStatus;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const matching = await db
+    .select({ id: messages.id, metadata: messages.metadata })
+    .from(messages)
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+    .where(
+      and(
+        eq(contacts.workspaceId, input.workspaceId),
+        eq(messages.externalId, input.messageId),
+        eq(messages.provider, "baileys"),
+        eq(messages.direction, "outbound"),
+        eq(messages.status, "sent"),
+        sql`${messages.metadata}->>'instanceId' = ${input.instanceId}`
+      )
+    )
+    .limit(1);
+  if (!matching[0]) return false;
+
+  const existingStatus = matching[0].metadata?.deliveryStatus;
+  const incomingRank = messageDeliveryRank(input.status);
+  if (messageDeliveryRank(existingStatus) >= incomingRank) return true;
+
+  await db
+    .update(messages)
+    .set({
+      metadata: sql`jsonb_set(
+        COALESCE(${messages.metadata}, '{}'::jsonb),
+        '{deliveryStatus}',
+        to_jsonb(${input.status}::text),
+        true
+      )`,
+    })
+    .where(
+      and(
+        eq(messages.id, matching[0].id),
+        eq(messages.externalId, input.messageId),
+        eq(messages.provider, "baileys"),
+        eq(messages.direction, "outbound"),
+        eq(messages.status, "sent"),
+        sql`${messages.metadata}->>'instanceId' = ${input.instanceId}`,
+        sql`CASE COALESCE(${messages.metadata}->>'deliveryStatus', 'sent')
+          WHEN 'read' THEN 3
+          WHEN 'delivered' THEN 2
+          ELSE 1
+        END <= ${incomingRank}`
+      )
+    );
+  return true;
 }
 
 export async function getCorePipelineSnapshot(workspaceId: number) {
@@ -6800,6 +7372,18 @@ export async function getCorePipelineSnapshot(workspaceId: number) {
 
 export async function ingestInboundWhatsApp(
   workspaceId: number,
+  input: Parameters<typeof ingestInboundWhatsAppCore>[2]
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx =>
+    ingestInboundWhatsAppCore(tx, workspaceId, input)
+  );
+}
+
+async function ingestInboundWhatsAppCore(
+  db: any,
+  workspaceId: number,
   input: {
     eventId: string;
     phone: string;
@@ -6824,8 +7408,6 @@ export async function ingestInboundWhatsApp(
     receivedAt?: Date;
   }
 ) {
-  const db = await getDb();
-  if (!db) throw new Error("Database unavailable");
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const sourceMetadata = input.metadata ?? {};
@@ -6895,7 +7477,7 @@ export async function ingestInboundWhatsApp(
   const metadata = await persistInboundMedia(workspace.id, input.eventId, {
     ...sourceMetadata,
     ...(normalizedJid ? { jid: normalizedJid } : {}),
-  }, messageType === "image" || messageType === "audio" || messageType === "video" || messageType === "document" ? messageType : "document");
+  });
   const priorMessage = await db
     .select({
       messageId: messages.id,
@@ -7083,6 +7665,18 @@ export async function ingestInboundWhatsApp(
     )[0];
   }
   if (!conversation) throw new Error("Conversation could not be created");
+  const leadLink = shouldUpsertLeadFromInbound({
+    isGroup: groupId !== undefined,
+    fromMe,
+    historySync: isHistorical,
+    ignored: false,
+  })
+      ? await ensureLeadOpportunityForContact(workspace.id, contact, {
+        source: "whatsapp",
+        activityAt: receivedAt,
+        conversationId: conversation.id,
+      }, db)
+    : undefined;
   const created = await db
     .insert(messages)
     .values({
@@ -7113,6 +7707,9 @@ export async function ingestInboundWhatsApp(
         messageId: created[0].id,
         contactId: contact.id,
         conversationId: conversation.id,
+        leadId: leadLink?.leadId ?? null,
+        opportunityId: leadLink?.opportunityId ?? null,
+        opportunityStage: leadLink?.opportunityStage ?? null,
         phone: contact.externalPhone,
         content: input.content,
         messageType: input.messageType ?? "text",
@@ -7139,6 +7736,13 @@ export async function ingestInboundWhatsApp(
     contactId: contact.id,
     conversationId: conversation.id,
     messageId: created[0]?.id,
+    ...(leadLink
+      ? {
+          leadId: leadLink.leadId,
+          opportunityId: leadLink.opportunityId,
+          opportunityStage: leadLink.opportunityStage,
+        }
+      : {}),
     duplicate: false,
   };
 }
@@ -7185,13 +7789,21 @@ export async function upsertApiContact(
         updatedAt: new Date(),
       })
       .where(eq(contacts.id, existing.id));
-    return (
+    const updated = (
       await db
         .select()
         .from(contacts)
         .where(eq(contacts.id, existing.id))
         .limit(1)
     )[0];
+    if (updated) {
+      const conversation = await getConversationByContact(workspace.id, updated.id);
+      await ensureLeadOpportunityForContact(workspace.id, updated, {
+        source: "api",
+        conversationId: conversation?.id,
+      });
+    }
+    return updated;
   }
   await db
     .insert(contacts)
@@ -7222,6 +7834,11 @@ export async function upsertApiContact(
       .limit(1)
   )[0];
   if (created) {
+    const conversation = await getConversationByContact(workspace.id, created.id);
+    const link = await ensureLeadOpportunityForContact(workspace.id, created, {
+      source: "api",
+      conversationId: conversation?.id,
+    });
     await enqueueDomainEvent({
       workspaceId: workspace.id,
       event: "contact.created",
@@ -7233,6 +7850,8 @@ export async function upsertApiContact(
         phone: created.externalPhone,
         name: created.name,
         stage: created.stage,
+        leadId: link?.leadId ?? null,
+        opportunityId: link?.opportunityId ?? null,
       },
     });
   }
@@ -7292,12 +7911,6 @@ export async function queueOutboundMessage(
   const selectedProvider = assertOperationalWhatsappProvider(
     provider ?? OPERATIONAL_WHATSAPP_PROVIDER
   );
-  if (
-    selectedProvider === "baileys" &&
-    (typeof metadata?.instanceId !== "string" ||
-      metadata.instanceId.trim().length === 0)
-  )
-    throw new Error("instanceId é obrigatório para enfileirar mensagem Baileys");
   const contact = await getContactById(workspaceId, contactId);
   if (!contact) throw new Error("Contact not found");
   const channels = await listWhatsappChannels(workspaceId);
@@ -7315,6 +7928,11 @@ export async function queueOutboundMessage(
     conversation = await getConversationByContact(workspaceId, contactId);
   }
   if (!conversation) throw new Error("Conversation not found");
+  await linkExistingOpportunityToConversation(
+    workspaceId,
+    contactId,
+    conversation.id
+  );
   const createdAt = new Date();
   const latestInbound = await db
     .select({ metadata: messages.metadata })
@@ -7331,10 +7949,36 @@ export async function queueOutboundMessage(
     typeof latestInbound[0]?.metadata?.jid === "string"
       ? latestInbound[0].metadata.jid
       : undefined;
+  const outboundMediaTypes = ["image", "audio", "video", "document"];
+  const isOutboundMedia = outboundMediaTypes.includes(messageType);
+  if (
+    typeof metadata?.mediaData === "string" ||
+    typeof metadata?.mediaUrl === "string"
+  )
+    throw new Error("Outbound media must use a private storage reference");
+  if (isOutboundMedia) {
+    const mediaStorageKey = metadata?.mediaStorageKey;
+    const mediaMimeType = metadata?.mediaMimeType;
+    const mediaSizeBytes = metadata?.mediaSizeBytes;
+    if (
+      typeof mediaStorageKey !== "string" ||
+      !isWorkspaceInboxMediaKey(workspaceId, mediaStorageKey) ||
+      typeof mediaMimeType !== "string" ||
+      !isSupportedInboxMimeType(messageType as "image" | "audio" | "video" | "document", mediaMimeType) ||
+      typeof mediaSizeBytes !== "number" ||
+      !Number.isInteger(mediaSizeBytes) ||
+      mediaSizeBytes < 1 ||
+      mediaSizeBytes > 8 * 1024 * 1024
+    )
+      throw new Error("Invalid or non-private outbound media reference");
+  }
   const resolvedMetadata = {
     ...metadata,
     ...(!metadata?.jid && inboundJid ? { jid: inboundJid } : {}),
   };
+  const storedContent = isOutboundMedia
+    ? String(metadata?.fileName ?? `[${messageType}]`)
+    : content;
   const created = await db
     .insert(messages)
     .values({
@@ -7342,7 +7986,7 @@ export async function queueOutboundMessage(
       direction: "outbound",
       senderType,
       messageType,
-      content,
+      content: storedContent,
       metadata: Object.keys(resolvedMetadata).length
         ? resolvedMetadata
         : undefined,
@@ -7355,7 +7999,7 @@ export async function queueOutboundMessage(
     .update(contacts)
     .set({
       ...(senderType === "human" ? { aiEnabled: 0, unreadCount: 0 } : {}),
-      lastMessagePreview: content.slice(0, 500),
+      lastMessagePreview: storedContent.slice(0, 500),
       lastMessageAt: createdAt,
       updatedAt: createdAt,
     })
@@ -7409,63 +8053,63 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
   let failed = 0;
   let throttled = 0;
   for (const item of pending) {
-    const claimed = await db
-      .update(messages)
-      .set({
-        status: "processing",
-      })
-      .where(
-        and(eq(messages.id, item.message.id), eq(messages.status, "queued"))
-      )
-      .returning({ id: messages.id });
-    if (claimed.length === 0) continue;
     if (item.workspaceId) {
       const usage = await consumeWorkspaceUsage(
         item.workspaceId,
         "outboundMessages"
       );
       if (!usage.allowed) {
-        await db
-          .update(messages)
-          .set({ status: "queued" })
-          .where(
-            and(
-              eq(messages.id, item.message.id),
-              eq(messages.status, "processing")
-            )
-          );
         throttled += 1;
         continue;
       }
     }
-    await db
+    const claimed = await db
       .update(messages)
-      .set({ attemptCount: sql`${messages.attemptCount} + 1` })
+      .set({
+        status: "processing",
+        attemptCount: sql`${messages.attemptCount} + 1`,
+      })
       .where(
-        and(
-          eq(messages.id, item.message.id),
-          eq(messages.status, "processing")
-        )
-      );
+        and(eq(messages.id, item.message.id), eq(messages.status, "queued"))
+      )
+      .returning({ id: messages.id });
+    if (claimed.length === 0) continue;
     try {
       const selectedProvider = assertOperationalWhatsappProvider(
         item.message.provider
       );
       const adapter = getWhatsappAdapter(selectedProvider);
-      const mediaUrl = await resolvePrivateMediaUrl(item.message.metadata ?? undefined);
-      const outboundMetadata = mediaUrl
-        ? { ...(item.message.metadata ?? {}), mediaData: mediaUrl }
-        : item.message.metadata ?? undefined;
       const instanceId =
         typeof item.message.metadata?.instanceId === "string"
           ? item.message.metadata.instanceId
           : undefined;
+      let sendContent = item.message.content;
+      let sendMetadata = item.message.metadata ?? undefined;
+      if (["image", "audio", "video", "document"].includes(item.message.messageType)) {
+        const transientMediaData =
+          typeof sendMetadata?.mediaData === "string"
+            ? sendMetadata.mediaData
+            : undefined;
+        const mediaUrl = transientMediaData
+          ? undefined
+          : await resolvePrivateMediaUrl(sendMetadata);
+        if (!transientMediaData && !mediaUrl)
+          throw new Error("Outbound attachment is missing or unavailable");
+        sendContent = transientMediaData ?? mediaUrl!;
+        const {
+          mediaStorageKey: _key,
+          mediaSizeBytes: _size,
+          mediaData: _data,
+          ...providerMetadata
+        } = sendMetadata ?? {};
+        sendMetadata = providerMetadata;
+      }
       const result = await adapter.sendMessage({
         idempotencyKey: `forte-message-${item.message.id}`,
         phone: item.phone,
-        content: mediaUrl ?? item.message.content,
+        content: sendContent,
         messageType: item.message.messageType,
-        metadata: outboundMetadata,
+        metadata: sendMetadata,
         instanceId,
         provider: selectedProvider,
       });
@@ -7476,6 +8120,15 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
           externalId: result.externalId,
           sentAt: new Date(),
           lastError: null,
+          ...(item.message.metadata?.mediaData
+            ? {
+                metadata: Object.fromEntries(
+                  Object.entries(item.message.metadata).filter(
+                    ([key]) => key !== "mediaData"
+                  )
+                ),
+              }
+            : {}),
         })
         .where(eq(messages.id, item.message.id));
       await db.insert(auditLogs).values({
@@ -7550,11 +8203,6 @@ export async function cancelAgendaAppointment(
       .limit(1)
   )[0];
   if (!appointment) return undefined;
-  if (appointment.status === "completed" || appointment.status === "no_show")
-    throw new ScheduleError(
-      "invalid_period",
-      "Um atendimento encerrado não pode ser cancelado"
-    );
   const updatedAt = new Date();
   await db
     .update(appointmentsTable)
@@ -7634,7 +8282,8 @@ export async function rescheduleAgendaAppointment(
   workspaceId: number,
   appointmentId: number,
   startsAt: Date,
-  endsAt: Date
+  endsAt: Date,
+  restrictToProfessionalId?: number
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -7652,16 +8301,18 @@ export async function rescheduleAgendaAppointment(
       "O horário final precisa ser maior que o inicial"
     );
   return db.transaction(async tx => {
+    const appointmentFilters = [
+      eq(appointmentsTable.id, appointmentId),
+      eq(appointmentsTable.workspaceId, workspaceId),
+      ...(restrictToProfessionalId === undefined
+        ? []
+        : [eq(appointmentsTable.professionalId, restrictToProfessionalId)]),
+    ];
     const appointment = (
       await tx
         .select()
         .from(appointmentsTable)
-        .where(
-          and(
-            eq(appointmentsTable.id, appointmentId),
-            eq(appointmentsTable.workspaceId, workspaceId)
-          )
-        )
+        .where(and(...appointmentFilters))
         .limit(1)
     )[0];
     if (!appointment) return undefined;
@@ -7706,20 +8357,8 @@ export async function rescheduleAgendaAppointment(
     const updated = await tx
       .update(appointmentsTable)
       .set({ startsAt, endsAt, status: "requested", updatedAt: new Date() })
-      .where(
-        and(
-          eq(appointmentsTable.id, appointmentId),
-          eq(appointmentsTable.workspaceId, workspaceId)
-        )
-      )
+      .where(and(...appointmentFilters))
       .returning();
-    if (updated[0]?.contactId)
-      await tx.insert(auditLogs).values({
-        workspaceId,
-        contactId: updated[0].contactId,
-        action: "appointment_rescheduled",
-        summary: `Agendamento ${appointmentId} reagendado para ${startsAt.toISOString()}`,
-      });
     return updated[0];
   });
 }
@@ -7740,6 +8379,7 @@ export async function leadMemoryOperation(
       serviceRequested?: string;
       urgency?: "Baixa" | "Média" | "Alta" | "Crítica";
       stage?: string;
+      quoteCents?: number;
       aiEnabled?: boolean;
     };
     note?: string;
@@ -7782,7 +8422,16 @@ export async function leadMemoryOperation(
       )
       .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
       .limit(20);
-    return { exists: true, lead: contact, notes, audit };
+    const canonicalStage = await getCanonicalContactStage(
+      workspace.id,
+      contact.id
+    );
+    return {
+      exists: true,
+      lead: { ...contact, stage: canonicalStage ?? contact.stage },
+      notes,
+      audit,
+    };
   }
 
   if (input.action === "atualizar_lead" && !contact)
@@ -7798,14 +8447,24 @@ export async function leadMemoryOperation(
       serviceRequested: fields.serviceRequested ?? input.serviceRequested,
     });
     if (!contact) throw new Error("Contact could not be created");
-    if (
-      fields.urgency ||
-      fields.aiEnabled !== undefined
-    ) {
+    if (fields.stage !== undefined)
+      await moveContactStage(
+        workspace.id,
+        contact.id,
+        fields.stage,
+        undefined,
+        "lead_memory"
+      );
+    const hasNonStageUpdates =
+      Boolean(fields.urgency) ||
+      fields.quoteCents !== undefined ||
+      fields.aiEnabled !== undefined;
+    if (hasNonStageUpdates) {
       await db
         .update(contacts)
         .set({
           urgency: fields.urgency,
+          quoteCents: fields.quoteCents,
           aiEnabled:
             fields.aiEnabled === undefined
               ? undefined
@@ -7814,23 +8473,37 @@ export async function leadMemoryOperation(
                 : 0,
           updatedAt: new Date(),
         })
-        .where(eq(contacts.id, contact.id));
+        .where(
+          and(
+            eq(contacts.id, contact.id),
+            eq(contacts.workspaceId, workspace.id),
+            isNull(contacts.groupId)
+          )
+        );
+    }
+    if (fields.stage !== undefined || hasNonStageUpdates) {
       contact = (
         await db
           .select()
           .from(contacts)
-          .where(eq(contacts.id, contact.id))
+          .where(
+            and(
+              eq(contacts.id, contact.id),
+              eq(contacts.workspaceId, workspace.id)
+            )
+          )
           .limit(1)
       )[0];
     }
-    if (fields.stage !== undefined) {
-      await moveContactStage(workspaceId, contact.id, fields.stage);
-      contact = (await getContactById(workspaceId, contact.id)) ?? contact;
-    }
+    if (!contact) throw new Error("Contact could not be loaded");
+    const canonicalStage = await getCanonicalContactStage(
+      workspace.id,
+      contact.id
+    );
     return {
       exists: true,
       updated: input.action === "atualizar_lead",
-      lead: contact,
+      lead: { ...contact, stage: canonicalStage ?? contact.stage },
     };
   }
 
@@ -7860,7 +8533,16 @@ export async function leadMemoryOperation(
     )
     .orderBy(desc(contactNotes.id))
     .limit(1);
-  return { exists: true, noteCreated: true, lead: contact, note: created[0] };
+  const canonicalStage = await getCanonicalContactStage(
+    workspace.id,
+    contact.id
+  );
+  return {
+    exists: true,
+    noteCreated: true,
+    lead: { ...contact, stage: canonicalStage ?? contact.stage },
+    note: created[0],
+  };
 }
 
 export async function recoverProcessingDomainEvents() {
@@ -7888,7 +8570,11 @@ export async function recoverProcessingDomainEvents() {
   return recovered.length;
 }
 
-export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
+export async function processDomainEventsOnce(
+  limit = 10,
+  maxAttempts = 5,
+  workspaceId?: number
+) {
   const db = await getDb();
   if (!db) return { processed: 0, delivered: 0, failed: 0, skipped: true };
   const now = new Date();
@@ -7896,15 +8582,20 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
     .select()
     .from(domainEvents)
     .where(
-      or(
-        and(
-          eq(domainEvents.status, "pending"),
-          lte(domainEvents.availableAt, now)
+      and(
+        or(
+          and(
+            eq(domainEvents.status, "pending"),
+            lte(domainEvents.availableAt, now)
+          ),
+          and(
+            eq(domainEvents.status, "processing"),
+            or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, now))
+          )
         ),
-        and(
-          eq(domainEvents.status, "processing"),
-          or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, now))
-        )
+        ...(workspaceId !== undefined
+          ? [eq(domainEvents.workspaceId, workspaceId)]
+          : [])
       )
     )
     .orderBy(asc(domainEvents.availableAt), asc(domainEvents.id))
@@ -8131,7 +8822,34 @@ export async function processDomainEventsOnce(limit = 10, maxAttempts = 5) {
           item.workspaceId,
           eventInstanceId
         );
-        if (!config.enabled) {
+        const runtimeGate = decideAgentRuntimeGate(config);
+        if (runtimeGate.action !== "execute") {
+          if (runtimeGate.action === "requeue") {
+            await recordNativeAgentKillSwitchBlock({
+              workspaceId: item.workspaceId,
+              eventId: item.eventKey,
+              messageType: String(eventPayload.messageType ?? "text"),
+              reason: runtimeGate.reason,
+            });
+            await db
+              .update(domainEvents)
+              .set({
+                status: "pending",
+                workerId: null,
+                claimedAt: null,
+                leaseUntil: null,
+                availableAt: new Date(Date.now() + 30_000),
+                lastError: `native_agent_kill_switch:${runtimeGate.reason}`,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(domainEvents.id, item.id),
+                  eq(domainEvents.workerId, DOMAIN_EVENT_WORKER_ID)
+                )
+              );
+            continue;
+          }
           await db
             .update(domainEvents)
             .set({
@@ -8265,4 +8983,487 @@ export async function renameContact(
     summary: `Nome alterado de “${contact.name}” para “${name}”`,
   });
   return getContactById(workspaceId, contactId);
+}
+
+
+type LeadOpportunitySource = "whatsapp" | "api" | "crm";
+
+async function ensureLeadOpportunityForContact(
+  workspaceId: number,
+  contact: typeof contacts.$inferSelect,
+  options: {
+    source: LeadOpportunitySource;
+    activityAt?: Date;
+    conversationId?: number;
+  },
+  database?: any
+) {
+  const db = database ?? (await getDb());
+  if (!db) throw new Error("Database unavailable");
+  if (contact.workspaceId !== workspaceId)
+    throw new Error("Lead contact does not belong to this workspace");
+  if (contact.groupId !== null) return undefined;
+
+  const now = options.activityAt ?? new Date();
+  const activityUpdate = options.activityAt
+    ? {
+        lastActivityAt: sql`GREATEST(COALESCE(${leads.lastActivityAt}, ${options.activityAt}), ${options.activityAt})`,
+        updatedAt: sql`GREATEST(${leads.updatedAt}, ${options.activityAt})`,
+      }
+    : { updatedAt: now };
+  const run = async (tx: any) => {
+    const leadRows = await tx
+      .insert(leads)
+      .values({
+        workspaceId,
+        contactId: contact.id,
+        source: options.source,
+        lastActivityAt: options.activityAt ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [leads.workspaceId, leads.contactId],
+        set: {
+          ...activityUpdate,
+          ...(options.source === "whatsapp"
+            ? {
+                source: sql`CASE WHEN ${leads.source} = 'migration' THEN 'whatsapp' ELSE ${leads.source} END`,
+              }
+            : {}),
+        },
+      })
+      .returning({ id: leads.id });
+    const leadId = leadRows[0]?.id;
+    if (!leadId) throw new Error("Lead could not be created or loaded");
+
+    await tx
+      .insert(opportunities)
+      .values({
+        workspaceId,
+        leadId,
+        stage: initialOpportunityStage(contact.stage),
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing({
+        target: [opportunities.workspaceId, opportunities.leadId],
+      });
+    const opportunity = (
+      await tx
+        .select({ id: opportunities.id, stage: opportunities.stage })
+        .from(opportunities)
+        .where(
+          and(
+            eq(opportunities.workspaceId, workspaceId),
+            eq(opportunities.leadId, leadId)
+          )
+        )
+        .for("update")
+        .limit(1)
+    )[0];
+    if (!opportunity)
+      throw new Error("Opportunity could not be created or loaded");
+
+    const baseline = (
+      await tx
+        .select({ id: opportunityStageHistory.id })
+        .from(opportunityStageHistory)
+        .where(
+          and(
+            eq(opportunityStageHistory.workspaceId, workspaceId),
+            eq(opportunityStageHistory.opportunityId, opportunity.id),
+            isNull(opportunityStageHistory.fromStage)
+          )
+        )
+        .limit(1)
+    )[0];
+    if (!baseline)
+      await tx.insert(opportunityStageHistory).values({
+        workspaceId,
+        opportunityId: opportunity.id,
+        fromStage: null,
+        toStage: opportunity.stage,
+        source: options.source,
+        createdAt: now,
+      });
+
+    if (options.activityAt) {
+      await tx
+        .update(opportunities)
+        .set({
+          updatedAt: sql`GREATEST(${opportunities.updatedAt}, ${options.activityAt})`,
+        })
+        .where(
+          and(
+            eq(opportunities.id, opportunity.id),
+            eq(opportunities.workspaceId, workspaceId)
+          )
+        );
+    }
+
+    if (options.conversationId) {
+      const linked = await tx
+        .update(conversations)
+        .set({
+          opportunityId: opportunity.id,
+          updatedAt: options.activityAt
+            ? sql`GREATEST(${conversations.updatedAt}, ${options.activityAt})`
+            : now,
+        })
+        .where(
+          and(
+            eq(conversations.id, options.conversationId),
+            eq(conversations.contactId, contact.id)
+          )
+        )
+        .returning({ id: conversations.id });
+      if (!linked[0])
+        throw new Error("Conversation could not be linked to the Opportunity");
+    }
+
+    return {
+      leadId,
+      opportunityId: opportunity.id,
+      opportunityStage: opportunity.stage,
+    };
+  };
+  return database ? run(database) : db.transaction(run);
+}
+async function linkExistingOpportunityToConversation(
+  workspaceId: number,
+  contactId: number,
+  conversationId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const contact = (
+    await db
+      .select({ id: contacts.id, groupId: contacts.groupId })
+      .from(contacts)
+      .where(
+        and(
+          eq(contacts.id, contactId),
+          eq(contacts.workspaceId, workspaceId)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!contact) throw new Error("Contact not found");
+  if (contact.groupId !== null) return undefined;
+
+  const opportunity = (
+    await db
+      .select({ id: opportunities.id })
+      .from(leads)
+      .innerJoin(
+        opportunities,
+        and(
+          eq(opportunities.leadId, leads.id),
+          eq(opportunities.workspaceId, workspaceId)
+        )
+      )
+      .where(
+        and(
+          eq(leads.workspaceId, workspaceId),
+          eq(leads.contactId, contactId)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!opportunity) return undefined;
+
+  const linked = await db
+    .update(conversations)
+    .set({
+      opportunityId: opportunity.id,
+      updatedAt: sql`GREATEST(${conversations.updatedAt}, now())`,
+    })
+    .where(
+      and(
+        eq(conversations.id, conversationId),
+        eq(conversations.contactId, contactId)
+      )
+    )
+    .returning({ id: conversations.id });
+  if (!linked[0])
+    throw new Error("Conversation could not be linked to the Opportunity");
+  return opportunity.id;
+}
+
+
+export async function listInboxAssignableMembers(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: workspaceMembers.id,
+      name: users.name,
+      role: workspaceMembers.role,
+    })
+    .from(workspaceMembers)
+    .leftJoin(users, eq(users.id, workspaceMembers.userId))
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.active, 1)
+      )
+    )
+    .orderBy(asc(users.name), asc(workspaceMembers.id));
+}
+
+type DatabaseTransaction = Parameters<
+  Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]
+>[0];
+
+async function findWorkspaceOpportunityForContact(
+  tx: DatabaseTransaction,
+  workspaceId: number,
+  contactId: number
+) {
+  return (
+    await tx
+      .select({
+        id: opportunities.id,
+        contactId: contacts.id,
+      })
+      .from(opportunities)
+      .innerJoin(
+        leads,
+        and(
+          eq(leads.id, opportunities.leadId),
+          eq(leads.workspaceId, workspaceId)
+        )
+      )
+      .innerJoin(
+        contacts,
+        and(
+          eq(contacts.id, leads.contactId),
+          eq(contacts.workspaceId, workspaceId)
+        )
+      )
+      .where(
+        and(
+          eq(opportunities.workspaceId, workspaceId),
+          eq(contacts.id, contactId),
+          isNull(contacts.groupId)
+        )
+      )
+      .limit(1)
+  )[0];
+}
+
+export async function assignInboxOpportunity(
+  workspaceId: number,
+  contactId: number,
+  assignedMemberId: number | null,
+  actorUserId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx => {
+    const target = await findWorkspaceOpportunityForContact(
+      tx,
+      workspaceId,
+      contactId
+    );
+    if (!target) return undefined;
+    await tx.execute(
+      sql`SELECT "id" FROM "opportunities" WHERE "id" = ${target.id} AND "workspaceId" = ${workspaceId} FOR UPDATE`
+    );
+    if (assignedMemberId !== null) {
+      const member = (
+        await tx
+          .select({ id: workspaceMembers.id })
+          .from(workspaceMembers)
+          .where(
+            and(
+              eq(workspaceMembers.id, assignedMemberId),
+              eq(workspaceMembers.workspaceId, workspaceId),
+              eq(workspaceMembers.active, 1)
+            )
+          )
+          .limit(1)
+      )[0];
+      if (!member) throw new Error("MEMBER_NOT_ASSIGNABLE");
+    }
+    const current = (
+      await tx
+        .select({ assignedMemberId: opportunities.assignedMemberId })
+        .from(opportunities)
+        .where(
+          and(
+            eq(opportunities.id, target.id),
+            eq(opportunities.workspaceId, workspaceId)
+          )
+        )
+        .limit(1)
+    )[0];
+    if (!current) return undefined;
+    if ((current.assignedMemberId ?? null) === assignedMemberId)
+      return { opportunityId: target.id, assignedMemberId, changed: false };
+
+    await tx
+      .update(opportunities)
+      .set({ assignedMemberId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(opportunities.id, target.id),
+          eq(opportunities.workspaceId, workspaceId)
+        )
+      );
+    await tx.insert(auditLogs).values({
+      workspaceId,
+      actorUserId,
+      contactId,
+      action: "opportunity_assigned",
+      summary: assignedMemberId === null
+        ? `Opportunity ${target.id} ficou sem responsável`
+        : `Opportunity ${target.id} atribuída ao membro ${assignedMemberId}`,
+    });
+    return { opportunityId: target.id, assignedMemberId, changed: true };
+  });
+}
+
+export async function setOpportunityNextAction(
+  workspaceId: number,
+  contactId: number,
+  input: { title: string; dueAt: Date },
+  actorUserId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const title = input.title.trim();
+  const now = new Date();
+  if (title.length < 3 || title.length > 180)
+    throw new Error("INVALID_NEXT_ACTION_TITLE");
+  if (!isFutureNextActionDueAt(input.dueAt, now))
+    throw new Error("INVALID_NEXT_ACTION_DUE_AT");
+
+  return db.transaction(async tx => {
+    const target = await findWorkspaceOpportunityForContact(
+      tx,
+      workspaceId,
+      contactId
+    );
+    if (!target) return undefined;
+    await tx.execute(
+      sql`SELECT "id" FROM "opportunities" WHERE "id" = ${target.id} AND "workspaceId" = ${workspaceId} FOR UPDATE`
+    );
+    const existing = (
+      await tx
+        .select()
+        .from(opportunityFollowUps)
+        .where(
+          and(
+            eq(opportunityFollowUps.workspaceId, workspaceId),
+            eq(opportunityFollowUps.opportunityId, target.id),
+            eq(opportunityFollowUps.status, "open")
+          )
+        )
+        .limit(1)
+    )[0];
+    const saved = existing
+      ? (
+          await tx
+            .update(opportunityFollowUps)
+            .set({ title, dueAt: input.dueAt, updatedAt: now })
+            .where(
+              and(
+                eq(opportunityFollowUps.id, existing.id),
+                eq(opportunityFollowUps.workspaceId, workspaceId),
+                eq(opportunityFollowUps.opportunityId, target.id),
+                eq(opportunityFollowUps.status, "open")
+              )
+            )
+            .returning()
+        )[0]
+      : (
+          await tx
+            .insert(opportunityFollowUps)
+            .values({
+              workspaceId,
+              opportunityId: target.id,
+              title,
+              dueAt: input.dueAt,
+              status: "open",
+              createdByUserId: actorUserId,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning()
+        )[0];
+    if (!saved) throw new Error("NEXT_ACTION_SAVE_FAILED");
+    await tx.insert(auditLogs).values({
+      workspaceId,
+      actorUserId,
+      contactId,
+      action: existing
+        ? "opportunity_next_action_rescheduled"
+        : "opportunity_next_action_created",
+      summary: `Próxima ação do Opportunity ${target.id} ${existing ? "reagendada" : "criada"} para ${input.dueAt.toISOString()}`,
+    });
+    return saved;
+  });
+}
+
+export async function completeOpportunityNextAction(
+  workspaceId: number,
+  contactId: number,
+  actorUserId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx => {
+    const target = await findWorkspaceOpportunityForContact(
+      tx,
+      workspaceId,
+      contactId
+    );
+    if (!target) return undefined;
+    await tx.execute(
+      sql`SELECT "id" FROM "opportunities" WHERE "id" = ${target.id} AND "workspaceId" = ${workspaceId} FOR UPDATE`
+    );
+    const open = (
+      await tx
+        .select({ id: opportunityFollowUps.id })
+        .from(opportunityFollowUps)
+        .where(
+          and(
+            eq(opportunityFollowUps.workspaceId, workspaceId),
+            eq(opportunityFollowUps.opportunityId, target.id),
+            eq(opportunityFollowUps.status, "open")
+          )
+        )
+        .limit(1)
+    )[0];
+    if (!open) return { completed: false as const };
+    const now = new Date();
+    const completed = await tx
+      .update(opportunityFollowUps)
+      .set({
+        status: "completed",
+        completedAt: now,
+        completedByUserId: actorUserId,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(opportunityFollowUps.id, open.id),
+          eq(opportunityFollowUps.workspaceId, workspaceId),
+          eq(opportunityFollowUps.opportunityId, target.id),
+          eq(opportunityFollowUps.status, "open")
+        )
+      )
+      .returning({ id: opportunityFollowUps.id });
+    if (!completed[0]) return { completed: false as const };
+    await tx.insert(auditLogs).values({
+      workspaceId,
+      actorUserId,
+      contactId,
+      action: "opportunity_next_action_completed",
+      summary: `Próxima ação ${open.id} do Opportunity ${target.id} concluída`,
+    });
+    return { completed: true as const, followUpId: open.id };
+  });
 }

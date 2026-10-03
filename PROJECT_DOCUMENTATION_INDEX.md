@@ -1,121 +1,33 @@
 # Forte Panel — índice de documentação
 
-Este arquivo organiza a documentação do projeto e aponta qual documento consultar em cada decisão.
+**Atualizado:** 2026-10-02. Este índice substitui as instruções antigas sobre branches, tags e próximos passos.
 
-> **Fonte única de verdade consolidada (2026-09-29):** consulte [`FORTE-PANEL-FONTE-DE-VERDADE.md`](./FORTE-PANEL-FONTE-DE-VERDADE.md) primeiro. Ele consolida produto, arquitetura, Console Admin, IA, prompt canônico, UX, auditoria documental e roadmap. Os documentos abaixo são referências especialistas ou registros históricos; quando houver conflito, a fonte única de verdade e o código atual prevalecem.
+## Leia primeiro — autoridade atual
 
-> **Fila de execução ativa:** consulte [`ROADMAP-EXECUCAO-FORTE-PANEL.md`](./ROADMAP-EXECUCAO-FORTE-PANEL.md). Cada mensagem `próximo` executa a primeira fatia pendente, atualiza o estado, registra validações e publica um commit no Git.
+1. [`AGENTS.md`](./AGENTS.md) — regras permanentes para agentes e colaboradores.
+2. [`docs/STATUS-ATUAL.md`](./docs/STATUS-ATUAL.md) — estado da candidata, decisões, gates e próxima ação.
+3. [`docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`](./docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md) — fluxo único baseado em `main`, publicação GHCR `latest` e script local.
+4. [`PRODUCT_SCOPE.md`](./PRODUCT_SCOPE.md) — escopo do produto; o único canal WhatsApp é Baileys.
+5. [`API_CONTRACT.md`](./API_CONTRACT.md) — contratos REST e do gateway.
 
-> **Auditoria e proteção de ingestão WhatsApp/IA (2026-09-28):** consulte [`docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md`](./docs/AUDITORIA-WHATSAPP-IA-2026-09-28.md). A primeira fatia de proteção agora filtra `append`/backfill e texto-placeholder e verifica ownership da instância antes de salvar mídia; a importação histórica e o Console unificado de IA continuam pendentes.
->
-> **Core ativo (2026-09-27):** consulte [`WHATSAPP-CONNECTION-FLOW-2026-09-27.md`](./WHATSAPP-CONNECTION-FLOW-2026-09-27.md) para a fase 1: CRUD de instâncias Baileys, consumo, decisões de escopo e sequência solicitada das próximas etapas. Não iniciar o console de modelos nem respostas automáticas antes da revisão do usuário.
->
-> **Limpeza estrutural Baileys-only (execução em fatias):** [`MIGRACAO-PAPI-BAILEYS.md`](./MIGRACAO-PAPI-BAILEYS.md) registra a remoção do adapter Cloud e dos helpers/configurações legados sem consumidores ativos. O schema e as migrations históricas ainda preservam valores antigos para permitir migração segura de dados; não apagar volumes nem editar migrations já aplicadas. A 0042 só foi corrigida porque o CI confirmou que sua versão original não aplicava em banco vazio.
->
-> **Inventário de dados antes da convergência:** [`docs/BAILEYS-DATA-INVENTORY.md`](./docs/BAILEYS-DATA-INVENTORY.md) documenta o backup, restore separado e o comando read-only que mede provider, instâncias, mensagens pendentes, settings legados e colisões de `instanceId` sem retornar secrets ou alterar registros. O ambiente de desenvolvimento inventariado tem 1 workspace e nenhuma entidade WhatsApp persistida.
->
-> **Auditoria de IA/Admin:** [`AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`](./AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md) registra capacidades, agentes, credenciais e redesign futuro; é referência da etapa 2, não do código ativo agora.
->
-> **Roadmap do Console Admin de suporte:** [`docs/PLATFORM-ADMIN-SUPPORT-ROADMAP.md`](./docs/PLATFORM-ADMIN-SUPPORT-ROADMAP.md) filtra as decisões úteis da arquitetura conceitual: isolamento por workspace, sessões `read_only`/`operator`, auditoria e sequência de instâncias, Inbox, operação e diagnóstico. Ideias teóricas não comprovadas permanecem explicitamente fora do escopo atual.
->
-> **Ambiente e integrações:** [`DEVELOPMENT-CONTEXT-AND-INTEGRATION-POLICY.md`](./DEVELOPMENT-CONTEXT-AND-INTEGRATION-POLICY.md) registra Docker/WSL/PowerShell, OCI como destino futuro, ausência de n8n, API REST empresarial fechada por padrão e preferência de commits/push por fatia.
->
-> **Publicação/teste local:** [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) documenta o comando PowerShell de reset do projeto, pull de imagens `dev` publicadas e inicialização sem build local.
+Em caso de conflito, seguir esta ordem e confirmar o estado atual do Git. Os ficheiros antigos com o banner **DOCUMENTO HISTÓRICO** são registos datados; não executar neles branches, comandos, tags ou tarefas pendentes.
 
-## Começar pela continuidade
+## WhatsApp — implementação ativa
 
-0. [`FORTE-PANEL-FONTE-DE-VERDADE.md`](./FORTE-PANEL-FONTE-DE-VERDADE.md) — decisão consolidada e roadmap único.
+- [`docs/BAILEYS-INTEGRATION.md`](./docs/BAILEYS-INTEGRATION.md) — contrato técnico entre Panel e gateway Baileys.
+- [`forte-whatsapp/README.md`](./forte-whatsapp/README.md) — execução, pairing e testes do gateway.
+- [`FORTE-MEDIA-PROVIDERS.md`](./FORTE-MEDIA-PROVIDERS.md) — arquitetura operacional Baileys-only.
 
-1. [`ROADMAP-EXECUCAO-FORTE-PANEL.md`](./ROADMAP-EXECUCAO-FORTE-PANEL.md) — fila operacional por fatias e estado a atualizar a cada `próximo`.
-2. [`AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md`](./AUDITORIA-SUPERFICIES-RELEASE-2026-09-29.md) — matriz atual de rotas, dados demo, simulações e prontidão pública.
-3. [`HANDOFF-CONTINUIDADE-FORTE-PANEL.md`](./HANDOFF-CONTINUIDADE-FORTE-PANEL.md) — histórico de execução, decisões e próximo passo.
-4. [`HANDOFF-PROXIMO-CHAT-IA.md`](./HANDOFF-PROXIMO-CHAT-IA.md) — contexto operacional para o próximo chat continuar O3.7.
-5. [`O1.1-ENTREGA-ONBOARDING-WIZARD.md`](./O1.1-ENTREGA-ONBOARDING-WIZARD.md) — decisões e critérios da entrega do wizard de seis passos.
-6. [`O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`](./O1.2-ENTREGA-CATALOGO-OPERACIONAL.md) — catálogo persistido de serviços, profissionais e disponibilidade no onboarding.
-7. [`O1.3-ENTREGA-REGRAS-E-SIMULACAO.md`](./O1.3-ENTREGA-REGRAS-E-SIMULACAO.md) — regras aprovadas, simulação sem provider e revisão de exemplos antes da publicação.
-8. [`O1.4-ENTREGA-RETOMADA-E-RESILIENCIA.md`](./O1.4-ENTREGA-RETOMADA-E-RESILIENCIA.md) — retomada, autosave serializado e estados resilientes de loading/erro/vazio.
-9. [`O2.1-ENTREGA-SAUDE-WHATSAPP.md`](./O2.1-ENTREGA-SAUDE-WHATSAPP.md) — prontidão multi-instância, ciclo de conexão e erros acionáveis.
-10. [`O2.2-ENTREGA-INBOUND-IDEMPOTENTE.md`](./O2.2-ENTREGA-INBOUND-IDEMPOTENTE.md) — deduplicação, histórico, grupos, fromMe e outbox durável.
-11. [`O2.3-ENTREGA-OUTBOUND-FILA-RECONCILIACAO.md`](./O2.3-ENTREGA-OUTBOUND-FILA-RECONCILIACAO.md) — instanceId obrigatório, fila, cota e reconciliação por externalId.
-12. [`O2.4-ENTREGA-MIDIA-PRIVADA-COMPOSER.md`](./O2.4-ENTREGA-MIDIA-PRIVADA-COMPOSER.md) — MIME, limites, storage privado e composer multimídia.
-13. [`O3.1-ENTREGA-LEAD-UNIFICADO.md`](./O3.1-ENTREGA-LEAD-UNIFICADO.md) — vínculo canônico entre telefone, contato, conversa e oportunidades.
-14. [`O3.2-ENTREGA-INBOX-ASSIGNMENT-FOLLOWUP.md`](./O3.2-ENTREGA-INBOX-ASSIGNMENT-FOLLOWUP.md) — responsável, próxima ação, filtros e pendências do Inbox.
-15. [`O3.3-ENTREGA-FUNIL-CANONICO.md`](./O3.3-ENTREGA-FUNIL-CANONICO.md) — contrato único de estágios, auditoria e fonte de verdade comercial.
-16. [`O3.4-ENTREGA-ORCAMENTO-ITEMIZADO.md`](./O3.4-ENTREGA-ORCAMENTO-ITEMIZADO.md) — itens, total calculado, validade e aprovação auditada.
-17. [`O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md`](./O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md) — conflitos, disponibilidade, transições, reagendamento e quote aprovado.
-18. [`O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md`](./O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md) — recebimentos append-only, recibo operacional e projeção de saldo.
-19. [`O3.7-ENTREGA-DASHBOARD-DECISOES-DIA.md`](./O3.7-ENTREGA-DASHBOARD-DECISOES-DIA.md) — decisões operacionais do dia, pendências, agenda, ledger e saúde do canal.
-20. [`O4.1-ENTREGA-CONTEXTO-COMERCIAL-SEGURO.md`](./O4.1-ENTREGA-CONTEXTO-COMERCIAL-SEGURO.md) — read model comercial tenant-scoped para o agente sem argumentos mutáveis de IDs.
-7. [`todo.md`](./todo.md) — checklist vivo da implementação.
-7. [`PLANO-INTERMEDIARIO-FORTE-PANEL.md`](./PLANO-INTERMEDIARIO-FORTE-PANEL.md) — sequência de blocos técnicos e riscos.
-8. [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — manual histórico de operação, migrations, quotas e segurança.
-9. [`STATUS-COMPLETO-E-PLANO-BETA.md`](./STATUS-COMPLETO-E-PLANO-BETA.md) — visão histórica do que funciona e pendências.
-10. [`AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md`](./AUDITORIA-DOCUMENTACAO-E-ROADMAP-2026-09-26.md) — auditoria de divergências e roadmap histórico.
-11. [`PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md`](./PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md) — plano histórico P0–P3.
-12. [`AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md`](./AUDITORIA-FEEDBACK-E-HANDOFF-2026-09-27.md) — auditoria e decisões históricas.
-13. [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md) — referência especialista de onboarding e financeiro.
-14. [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md) — referência especialista de onboarding.
-15. [`GUIA-CONVITES-E-PERMISSOES.md`](./GUIA-CONVITES-E-PERMISSOES.md) — referência especialista de RBAC/ABAC.
-16. [`GUIA-UX-CLAREZA-E-FACILIDADE.md`](./GUIA-UX-CLAREZA-E-FACILIDADE.md) — referência especialista de UX.
-17. [`CAPABILITY-MATRIX.md`](./CAPABILITY-MATRIX.md) — capacidade, código, evidência e ambiente validado.
-18. [`LOCAL-DOCKER-TESTE.md`](./LOCAL-DOCKER-TESTE.md) — reset opcional, Docker, migrations e PostgreSQL local.
+## Engenharia e histórico técnico
 
-## Produto e tenancy
+- [`MIGRACAO-PAPI-BAILEYS.md`](./MIGRACAO-PAPI-BAILEYS.md) — **referência de engenharia apenas**: histórico da remoção de código legado; não define providers do produto.
+- [`docs/AUDITORIA-API-OPERACIONAL-PAPI-1.5.1.md`](./docs/AUDITORIA-API-OPERACIONAL-PAPI-1.5.1.md) e [`docs/AUDITORIA-REVERSA-PAPI-1.5.1-PARA-FORTE.md`](./docs/AUDITORIA-REVERSA-PAPI-1.5.1-PARA-FORTE.md) — análise técnica de comportamento upstream, sem dependência ou integração no produto.
+- [`docs/AUDITORIA-BAILEYS-INTERACTIVE-AUDIO.md`](./docs/AUDITORIA-BAILEYS-INTERACTIVE-AUDIO.md), [`docs/MATRIZ-COBERTURA-INBOX-EVENTOS.md`](./docs/MATRIZ-COBERTURA-INBOX-EVENTOS.md) e [`docs/PLANO-CORRECAO-INBOX-BAILEYS.md`](./docs/PLANO-CORRECAO-INBOX-BAILEYS.md) — auditorias e plano técnico da Inbox.
+- [`docs/AUDITORIA-UNIFICACAO-REPOSITORIO-E-PRONTIDAO-PUBLICA.md`](./docs/AUDITORIA-UNIFICACAO-REPOSITORIO-E-PRONTIDAO-PUBLICA.md) — comparação das histórias Git, decisão sobre PR #3 e prontidão.
 
-- [`PRODUCT_SCOPE.md`](./PRODUCT_SCOPE.md) — limites do produto, público e modelo multi-conta.
-- [`ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`](./ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md) — estratégia de produto público multi-tenant.
-- [`FASE-1-SEGURANCA-CONTENCAO.md`](./FASE-1-SEGURANCA-CONTENCAO.md) — regras de contenção e segurança da primeira fase.
-- [`AUDITORIA-TECNICA-E-ROADMAP.md`](./AUDITORIA-TECNICA-E-ROADMAP.md) — auditoria, prioridades e riscos técnicos.
+## Operação e beta
 
-> Para decisões atuais, use o roadmap datado acima. Os planos intermediários e handoffs continuam como histórico de execução e não substituem a fonte de verdade atual.
+- [`BETA-OPERATIONS-CHECKLIST.md`](./BETA-OPERATIONS-CHECKLIST.md) — checklist a rever contra o estado atual antes de qualquer beta.
+- [`docs/AUDITORIA-COMPLETA-INBOX-BAILEYS.md`](./docs/AUDITORIA-COMPLETA-INBOX-BAILEYS.md) — evidências, limites e testes da auditoria da Inbox.
 
-## API, agente e integrações
-
-- [`API_CONTRACT.md`](./API_CONTRACT.md) — endpoints REST, payloads, idempotência, webhooks, quotas e erros.
-- [`docs/BAILEYS-INTEGRATION.md`](./docs/BAILEYS-INTEGRATION.md) — contrato técnico ativo gateway ↔ Panel e ciclo tenant-scoped de instâncias.
-- [`forte-whatsapp/README.md`](./forte-whatsapp/README.md) — operação e validação do gateway Baileys.
-- [`CONFIGURACAO-MULTIMODEL-AGENTE.md`](./CONFIGURACAO-MULTIMODEL-AGENTE.md) — configuração multi-modelo do agente.
-- [`AI_AGENT_PROMPT_FORTE_PANEL.md`](./AI_AGENT_PROMPT_FORTE_PANEL.md) — prompt operacional do agente.
-- [`AI_AGENT_PROMPT_GABRIEL_FORTE_PANEL_COMPLETO.md`](./AI_AGENT_PROMPT_GABRIEL_FORTE_PANEL_COMPLETO.md) — prompt completo de referência.
-- [`CONTINUATION_2026-09-24_IN_APP_NOTIFICATIONS.md`](./CONTINUATION_2026-09-24_IN_APP_NOTIFICATIONS.md) — contrato e histórico das notificações internas.
-- [`CONTINUATION_2026-09-24_CATALOG_AND_ISOLATION.md`](./CONTINUATION_2026-09-24_CATALOG_AND_ISOLATION.md) — catálogo e isolamento.
-- [`CONTINUATION_2026-09-24_PROFESSIONAL_PORTAL.md`](./CONTINUATION_2026-09-24_PROFESSIONAL_PORTAL.md) — portal profissional.
-- [`CONTINUATION_2026-09-24_SCHEDULE_VALIDATION.md`](./CONTINUATION_2026-09-24_SCHEDULE_VALIDATION.md) — agenda, fuso e validações.
-
-## Cadastro, onboarding e financeiro
-
-- [`PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md`](./PLANO-CADASTRO-AUDIO-E-PAGAMENTOS-2026-09-27.md) — funil de cadastro por áudio, checklist de onboarding, modelo de orçamento, chave Pix, registro manual de recebimentos e recibos.
-- [`GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md`](./GUIA-LEVANTAMENTO-ONBOARDING-ASSISTIDO-IA.md) — guia operacional do núcleo obrigatório, perguntas condicionais, prompt rascunho/publicado, revisão do prestador e suporte do administrador.
-
-## Infraestrutura e desenvolvimento
-
-- [`infra/LOCAL_TEST.md`](./infra/LOCAL_TEST.md) — comandos de execução/teste local.
-- [`infra/VPS_STACK.md`](./infra/VPS_STACK.md) — stack de VPS e produção.
-- [`ATUALIZACAO-STACK-DESENVOLVIMENTO.md`](./ATUALIZACAO-STACK-DESENVOLVIMENTO.md) — atualização da stack.
-
-## Regras de manutenção documental
-
-Ao concluir um bloco técnico:
-
-1. atualizar `todo.md`;
-2. anexar um registro datado ao handoff;
-3. atualizar o plano intermediário;
-4. atualizar `API_CONTRACT.md` se houver mudança de contrato;
-5. atualizar este índice se surgir documentação nova;
-6. registrar validações reais e o que continua dependente de PostgreSQL;
-7. publicar o commit apenas após `pnpm check`, `pnpm test`, `pnpm build` e `git diff --check`.
-
-## Estado atual resumido
-
-- Tenancy explícito nas superfícies CRM, Inbox, onboarding, agente, Baileys, idempotência, eventos e auditoria.
-- Segredos de IA e webhook criptografados em repouso e mascarados nas respostas.
-- Quotas por workspace e usuário com janela de um minuto.
-- Painel de consumo em Integrações.
-- Worker protegido para IA e outbound.
-- Alertas in-app de 70% e 90% para gestores.
-- Retenção de buckets, readiness `/api/v1/ready` e heartbeat JSON do worker.
-- Validação PostgreSQL no CI aprovada com migrations limpas e nenhuma suíte ignorada; staging real ainda pendente.
-- Console interno de plataforma possui código, migration, UI e cobertura de autorização, sessões, mutações, auditoria e saúde; staging real ainda pendente.
-- Configuração da IA possui rascunho, simulação local, publicação, histórico e rollback; validação visual/staging e fallback explícito continuam pendentes.
-- Auditoria de 27/09 encontrou `/kanban` sem rota, retorno administrativo inadequado, dead-end de workspace suspenso, divergência entre mensagens/contatos/unread/stages, QR abaixo da primeira dobra mobile, billing ainda com caminho demo e ausência de modelo SaaS/LGPD; o bloco P0 foi executado, mas os gates de staging continuam antes de novos convites.
-- A auditoria de melhoria contínua de 27/09 acrescentou 26 achados novos; signup inicial, convites, recuperação, limite/origem, onboarding textual owner/admin e governança de fontes já avançaram. O funil de áudio agora possui migration, upload privado, `voice.transcribe` tenant-aware, UI MediaRecorder com preview/retry, worker diário de retenção, proposta estruturada em draft, perguntas de acompanhamento para missing/conflicts, telemetria e publicação versionada com rollback; falta validação PostgreSQL/staging antes do beta. O mesmo documento planeja o financeiro operacional completo (itens, plano de pagamento, meios, ledger, recibo e conciliação).
+Não existem providers selecionáveis além do canal Baileys. Referências técnicas antigas ficam limitadas aos documentos de engenharia acima e às migrations históricas necessárias para upgrades seguros; não adicionar credenciais, variáveis, adapters ou UI para outros canais.

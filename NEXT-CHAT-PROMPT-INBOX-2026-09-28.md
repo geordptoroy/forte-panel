@@ -1,5 +1,11 @@
 # Prompt para o próximo chat — continuar Inbox/Baileys
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
+
 Você está continuando o trabalho no repositório `geordptoroy/forte-panel`, branch `main`, em sandbox inicial. Leia primeiro:
 
 1. `PROJECT_DOCUMENTATION_INDEX.md`

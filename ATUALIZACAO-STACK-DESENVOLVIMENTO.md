@@ -1,5 +1,10 @@
 # Atualização histórica da stack — provider legado
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
 > **Não usar este arquivo para operar a stack atual.** Ele preserva o procedimento de uma versão anterior baseada em PAPI. Para o estado vigente, use [`infra/LOCAL_TEST.md`](./infra/LOCAL_TEST.md), [`infra/VPS_STACK.md`](./infra/VPS_STACK.md) e [`docs/BAILEYS-INTEGRATION.md`](./docs/BAILEYS-INTEGRATION.md). O Compose atual usa somente o gateway `forte-whatsapp`/Baileys; não execute os comandos legados deste documento.
 
 A arquitetura operacional agora é:

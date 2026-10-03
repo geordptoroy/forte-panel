@@ -1,5 +1,7 @@
 # Plano review-only: Forte Panel com Baileys como único provider
 
+> **REGISTO DE ENGENHARIA APENAS — revisto em 2026-10-02.** As referências à PAPI neste documento servem exclusivamente para auditar comportamento upstream e a remoção de legado; não representam provider, adapter ou dependência do produto. O estado mais recente está nas secções de execução no fim deste ficheiro; secções de plano mais antigas são históricas. O produto suporta somente Baileys.
+
 **Data:** 2026-09-27
 **Estado:** plano para revisão do usuário — nenhuma remoção de código, migration, registro de banco, volume Docker ou histórico Git foi executada nesta etapa.
 **Alvo:** remover por completo do estado final do projeto o suporte, nomes, configurações e documentação de PAPI e Meta Cloud API; manter Baileys como único transporte WhatsApp.

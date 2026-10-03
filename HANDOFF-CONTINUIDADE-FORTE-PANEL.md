@@ -1,15 +1,9 @@
 
 
-## 30. Interatividade nativa Baileys concluída — 2026-09-29
+## 46. O7.15 — Métricas e auditoria do reconciliador — 2026-09-30
 
-A camada de mensagens interativas foi fechada no código, sem depender de teste manual para descobrir a integração:
+O reconciliador agora limita paginação para evitar loops, mantém dry-run padrão e retorna métricas agregadas sem chaves de storage: runId, workspace, páginas, referências, protegidos, candidatos, desconhecidos, removidos, itens sem etag e duração. O delete continua condicionado por etag.
 
-- **Botões** continuam com 1–3 opções.
-- **Listas** agora são montadas no `instance-manager` com `sections`, `rows`, `buttonText`, título e rodapé.
-- **Enquetes** agora usam o formato nativo `{ poll: { name, values, selectableCount } }` do Baileys.
-- **Carousel** aceita o `InteractiveMessage.carouselMessage` nativo via relay do socket, com validação para impedir payload arbitrário sem a estrutura nativa.
-- O Inbox ganhou composer para botões, listas e enquetes; carousel pode ser enviado pelo editor JSON do `InteractiveMessage` documentado pelo Baileys.
-- O histórico reconhece carousel e o renderiza como mensagem estruturada.
-- Foi criada a migration `0044_carousel_message_type.sql`.
+Validação local: política/provider 5 testes, `pnpm check` e `git diff --check` passaram. Auditoria persistida, alertas, provider Forge com list/delete e restore rehearsal real continuam pendentes.
 
-Validação automatizada: typecheck e build do Panel, 6 testes focados do backend, 64 testes do gateway Baileys, build TypeScript do gateway e `git diff --check`.
+**Próximo passo:** O7.16 — provider real, auditoria persistida e restore rehearsal.

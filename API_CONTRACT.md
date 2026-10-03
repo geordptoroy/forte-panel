@@ -8,7 +8,7 @@ Com a API de integração fechada, permanecem disponíveis somente `GET /api/v1/
 
 ## Canais WhatsApp
 
-O domínio usa um contrato único `WhatsappAdapter`. O único canal operacional do core é o **Baileys nativo**, executado pelo gateway `forte-whatsapp`. PAPI e Meta não são providers selecionáveis nem fazem parte do Compose oficial. Valores históricos podem permanecer no banco até a migration de convergência, mas não são aceitos por novas operações.
+O único canal WhatsApp do produto é o **Baileys**, executado pelo gateway interno `forte-whatsapp`. Não existe seleção de canal no produto. Valores diferentes de Baileys são rejeitados por novas operações; dados antigos, se existirem, só podem ser tratados por migrations de compatibilidade.
 
 Cada mensagem enfileirada registra Baileys e a instância de origem; o worker seleciona o gateway sem alterar Inbox, contatos ou agenda. O transporte usa `BAILEYS_BASE_URL`, `BAILEYS_API_KEY`, `BAILEYS_WEBHOOK_SECRET` e `BAILEYS_INSTANCE_ID`, sempre no servidor.
 
@@ -56,7 +56,9 @@ Quando `FORTE_PUBLIC_API_ENABLED` não for exatamente `true` no **servidor**, as
 
 Os parâmetros opcionais `serviceId` e `professionalId` restringem a consulta. Quando um `serviceId` é informado, a lista de profissionais traz somente quem executa aquele serviço, segundo a tabela `professionalServices`. Sem essa tabela, todos os profissionais ativos permanecem disponíveis como compatibilidade.
 
-Cada profissional traz `serviceIds` e `weeklyAvailability` (faixas com `weekday`, `startMinute` e `endMinute`); cada serviço traz `professionalIds`. `weekday` segue a convenção JavaScript (`0` domingo, `1` segunda, …, `6` sábado), e minutos são contados desde a meia-noite no fuso horário informado em `timezone`. Isso permite ao agente sugerir horários dentro da jornada configurada.
+Cada profissional traz `serviceIds` e `weeklyAvailability` (faixas com `weekday`, `startMinute` e `endMinute`); cada serviço traz `id`, `name`, `description`, `durationMinutes`, `priceCents`, `priceType` e `professionalIds`. `priceType` é `fixed`, `starting_at` ou `quote`; `priceCents` é expresso em centavos e vale zero para `quote` ou quando o valor ainda não foi informado. Não apresente zero como preço gratuito. Para `quote`, nunca estime um valor; para valor ausente, confirme com a equipe. `weekday` segue a convenção JavaScript (`0` domingo, `1` segunda, …, `6` sábado), e minutos são contados desde a meia-noite no fuso horário informado em `timezone`.
+
+A disponibilidade semanal representa jornada de trabalho, não uma vaga reservada. Consulte os agendamentos do dia/horário solicitado e só informe confirmação depois que a criação de agendamento for aceita.
 
 `appointments` mostra apenas horários ainda não encerrados e não cancelados, com `startsAt`, `endsAt`, `status`, `serviceName`, `professionalName` e `contactName`. O agente deve usar o `professionalId` retornado por essa consulta ao chamar `POST /api/v1/appointments`. O servidor valida novamente no momento da reserva: recusa serviço sem vínculo (`409 service_not_linked`), período inválido (`400 invalid_period`), profissional inativo (`409 professional_unavailable`), profissional sem jornada cadastrada (`409 schedule_not_configured`), horário fora da janela semanal (`409 outside_working_hours`) e sobreposição com outro agendamento não cancelado (`409 appointment_conflict`). As mesmas verificações são executadas em reagendamentos. Reservas para o mesmo profissional são serializadas no banco durante a validação do horário, evitando que duas requisições concorrentes ocupem o mesmo intervalo. Intervalos adjacentes são aceitos; atravessar a meia-noite não é permitido pelo formato atual de jornada.
 
@@ -64,11 +66,19 @@ Cada profissional traz `serviceIds` e `weeklyAvailability` (faixas com `weekday`
 
 O evento deve conter `eventId`, `phone`, `content` e `receivedAt`; `name`, `messageType` e `metadata` são opcionais. Toda requisição exige `Idempotency-Key` igual ao `eventId`; o `eventId` deve ser único por instância/canal. Ele também é gravado em `messages.externalId` sob índice único, impedindo duplicação no histórico mesmo se um processamento anterior falhar depois da gravação. A mesma chave com outro payload retorna conflito. Eventos com status `failed` podem ser reprocessados; eventos em `received` ou `processed` são tratados como duplicados. O endpoint poderá exigir `X-Webhook-Signature` com HMAC quando `WEBHOOK_SIGNING_SECRET` estiver configurado.
 
-O callback interno `/api/v1/webhooks/providers/baileys` pode responder `202 accepted` com `ignored: true` quando o gateway/API filtrar história/backfill, corpo vazio ou texto-placeholder. O evento ignorado é reconhecido para encerrar a outbox e não cria lead, conversa ou mensagem. A resposta inclui `eventId` e o motivo em `data.reason`; não significa que o histórico foi importado.
+O callback interno `/api/v1/webhooks/providers/baileys` pode responder `202 accepted` com `ignored: true` quando o gateway/API filtrar história/backfill, corpo vazio, texto-placeholder ou histórico não importável (por exemplo, sem telefone ou conteúdo). O evento ignorado é reconhecido para encerrar a outbox e não cria lead, conversa ou mensagem. A resposta inclui `eventId` e o motivo em `data.reason`; não significa que o histórico foi importado.
+
+O mesmo callback interno aceita eventos de recibo `eventType: "message_status"` com `eventId`, `instanceId`, `messageId`, `status` (`sent`, `delivered` ou `read`) e `fromMe: true`. A outbox cria IDs idempotentes por instância/mensagem/status; o Panel só atualiza uma mensagem outbound já confirmada como `sent` quando workspace, instância e `externalId` coincidem. A atualização é monotônica (`sent` → `delivered` → `read`), portanto um recibo atrasado não regride o Inbox.
 
 ### Operações de memória comercial
 
 Use o Forte Panel como fonte única para CRM, anotações e agenda; não mantenha uma segunda base privada de estado do lead. A API disponível para clientes autorizados é `POST /api/v1/lead-memory`, que aceita `buscar_lead`, `criar_lead`, `atualizar_lead` ou `registrar_nota` com `phone`, `fields` e `note` conforme a ação. Buscar é somente leitura; as outras ações usam `Idempotency-Key`.
+
+O CRM separa `Contact` (identidade) de `Lead` (registro comercial) e `Opportunity` (negociação/estágio). Inicialmente, o par `(workspaceId, contactId)` determina um único Lead e cada Lead tem uma Opportunity; a `Conversation` referencia a Opportunity. A criação/recuperação do vínculo persiste Lead, Opportunity, baseline de histórico e associação à Conversation na mesma transação. `Opportunity.stage` é canônico e `contacts.stage` é mantido como espelho compatível. Inbox, Kanban/CRM, Agenda, REST e `leadMemoryOperation` leem primeiro o estágio canônico; o Contact só é fallback para contatos sem Opportunity.
+
+Toda transição comercial via Inbox, `PATCH /api/v1/contacts/:id/stage` ou ferramenta de memória usa o mesmo serviço tenant-scoped. A transação bloqueia a Opportunity, grava estágio anterior/novo, origem e ator em `opportunityStageHistory`, atualiza Opportunity e espelho Contact, registra audit log e inclui `stage.changed` na outbox com aggregate Opportunity. Repetir o estágio atual é no-op; se o espelho legado divergir, uma chamada válida o repara sem criar transição falsa. Grupos mantêm comportamento de Contact legado e não recebem Opportunity/history comercial.
+
+Somente inbound individual aceito ao vivo promove ou atualiza Lead/Opportunity. `fromMe`, grupos, `append`/backfill, placeholders inválidos e eventos ignorados não criam registro comercial. O evento de domínio `message.received` inclui `leadId`, `opportunityId` e `opportunityStage` para que consumidores autorizados não precisem inferir o funil a partir de um Contact isolado.
 
 Mensagens enviadas por `POST /api/v1/messages` entram com status `queued` e não são declaradas como entregues antes do worker confirmar o envio. Toda mutação exige `Idempotency-Key`; retries iguais retornam a resposta original e o mesmo key com body diferente conflita. O payload aceita `contactId` ou `phone`, `provider`, `senderType: "ai" | "human"` (padrão `human`), `messageType`, `instanceId` e `metadata`. Para Baileys, o fluxo preserva o JID completo recebido no webhook e usa a instância do workspace; não há fallback global entre tenants. Mensagens `ai` não desligam `aiEnabled` nem ativam `humanControlled`; mensagens `human` mantêm o comportamento de takeover do painel.
 
@@ -77,15 +87,15 @@ O gateway Baileys suporta estes formatos no worker:
 | `messageType`       | `content`                  | `metadata`                                 | Operação Baileys                       |
 | ------------------- | -------------------------- | ------------------------------------------ | -------------------------------------- |
 | `text` (padrão)     | Texto da mensagem          | Opcional                                   | `POST /api/instances/:instanceId/send` |
-| `audio`             | URL ou conteúdo compatível | `{ "ptt": true, "mimetype": "audio/ogg" }` | `POST /api/instances/:instanceId/send` |
-| `image`             | URL ou conteúdo compatível | `caption?`, `mimetype?`                    | `POST /api/instances/:instanceId/send` |
-| `video`             | URL ou conteúdo compatível | `caption?`, `mimetype?`, `ptv?`            | `POST /api/instances/:instanceId/send` |
-| `document`          | URL ou conteúdo compatível | `fileName`, `mimetype?`                    | `POST /api/instances/:instanceId/send` |
+| `audio`             | URL HTTPS assinada de storage privado | `{ "ptt": true, "mimetype": "audio/ogg" }` | `POST /api/instances/:instanceId/send` |
+| `image`             | URL HTTPS assinada de storage privado | `caption?`, `mimetype?`                    | `POST /api/instances/:instanceId/send` |
+| `video`             | URL HTTPS assinada de storage privado | `caption?`, `mimetype?`, `ptv?`            | `POST /api/instances/:instanceId/send` |
+| `document`          | URL HTTPS assinada de storage privado | `fileName`, `mimetype?`                    | `POST /api/instances/:instanceId/send` |
 | `button`/interativo | Texto do corpo             | `buttons`, `footer?` e payload compatível  | `POST /api/instances/:instanceId/send` |
 
 O gateway usa `Authorization: Bearer <BAILEYS_API_KEY>`. Tipos avançados devem ser enviados no payload genérico e só podem ser apresentados na interface quando houver suporte comprovado no canal selecionado. O worker recupera jobs presos após reinício e tenta novamente até `WORKER_MAX_ATTEMPTS` antes de marcar `failed`. A chave idempotente protege a fila do painel; a confirmação final de entrega depende da resposta do canal.
 
-O composer manual do Inbox aceita arquivos de até 8 MB para `image`, `audio`, `video` e `document`. Na implementação atual o arquivo é convertido para data URL e enviado em `metadata.mediaData`; o worker usa esse valor para o gateway, enquanto o banco guarda um rótulo no campo `content`. A migração para storage privado com URL assinada é obrigatória antes de arquivos grandes em produção.
+O composer manual do Inbox aceita arquivos de até 8 MB para `image`, `audio`, `video` e `document`. `inbox.uploadAttachment` e `platform.supportInbox.uploadAttachment` exigem autenticação apropriada, allowlist de MIME/type e workspace; os bytes são gravados em storage privado sob o prefixo do workspace. A fila persiste somente `mediaStorageKey`, MIME, tamanho e nome; data URLs e URLs fornecidas pelo cliente são rejeitadas. No momento do envio, o worker gera URL assinada HTTPS de curta duração e encaminha somente essa URL ao gateway. O gateway rejeita data URLs, HTTP, hosts locais/privados e mídia sem URL HTTPS. Chaves internas de storage não devem ser expostas como links públicos.
 
 ```json
 {
@@ -138,4 +148,16 @@ O gateway `forte-whatsapp` preserva o contrato `WhatsappAdapter` e não altera a
 
 Para evitar materializar histórico como conversa nova, o caminho live só encaminha `messages.upsert` com `type: "notify"` e sem `requestId`. `append` e backfill são ignorados. `messaging-history.set/status` registra apenas contagens/progresso; ainda não existe importação automática do histórico. Fallback textual desconhecido é marcado como placeholder e ignorado antes de criar lead, enquanto placeholders de mídia continuam válidos conforme `messageType`. Antes de persistir mídia, o backend confirma que a instância Baileys está ativa e pertence ao workspace autenticado.
 
-Ainda são pendências de produção: storage privado de mídia com URL assinada, store de sessão durável/criptografado, lifecycle multi-instância e E2E real em staging. Iniciar chamada não é tratado como envio normal de mensagem; requer signaling próprio.
+Storage privado de mídia com URL assinada, sessão persistente/criptografada e lifecycle multi-instância já estão implementados; ainda faltam prova de limpeza de objetos órfãos, restore e E2E real em staging. Iniciar chamada não é tratado como envio normal de mensagem; requer signaling próprio.
+
+
+## Inbox: assignment e próxima ação (tRPC interno)
+
+Estas operações não adicionam endpoints à REST API opcional (que continua fechada por padrão); são procedures tRPC autenticadas pelo workspace ativo:
+
+- `inbox.assignmentOptions` retorna membros ativos do workspace somente a quem tem capacidade de gestão; agentes recebem lista vazia.
+- `inbox.assignOpportunity` aceita `contactId` e `assignedMemberId` (ou `null` para desatribuir), exige owner/admin/manager e valida que o contato tenha Opportunity e que a membership-alvo esteja ativa no mesmo workspace. A atribuição persiste em `opportunities.assignedMemberId` e registra auditoria.
+- `inbox.setNextAction` recebe `contactId`, título e `dueAt` ISO-8601 no futuro; membros ativos com acesso ao Inbox podem criar ou reagendar a única próxima ação aberta da Opportunity. A chave por workspace/Opportunity e o bloqueio transacional evitam ações abertas duplicadas.
+- `inbox.completeNextAction` conclui a ação aberta de forma idempotente; criar, reagendar e concluir registram auditoria. O Inbox projeta nome do responsável, título e prazo e calcula estados agendado/atrasado.
+
+Uma próxima ação é um lembrete operacional interno: não chama worker, WhatsApp, provider externo ou scheduler, não envia mensagens e não altera estágio. Membros inativos deixam de ser elegíveis e, ao desativar uma membership já atribuída, o responsável da Opportunity é limpo.

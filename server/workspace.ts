@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   auditLogs,
   availability,
+  opportunities,
   professionals,
   professionalServices,
   services,
@@ -12,9 +13,19 @@ import {
 } from "../drizzle/schema";
 import { getDb, type WorkspaceMembershipContext } from "./db";
 import { defaultNotificationPreferences, parseNotificationPreferences, type NotificationPreferences } from "./notification-contract";
+import type { ServicePriceType } from "../shared/service-price";
+import { validateWeeklyAvailabilityEntries } from "./schedule";
 
 export type WorkspaceMemberRole = "owner" | "admin" | "manager" | "agent";
 export type OperationalRole = "human_attendant" | "ai_attendant" | "professional";
+
+export type AvailabilityEntryInput = {
+  weekday: number;
+  startMinute: number;
+  endMinute: number;
+};
+
+export const validateAvailabilityEntries = validateWeeklyAvailabilityEntries;
 
 export type WorkspaceAccess = {
   userId: number;
@@ -131,7 +142,7 @@ export async function listServices(workspaceId: number, options: { includeInacti
   }));
 }
 
-export async function createService(workspaceId: number, input: { name: string; description?: string; durationMinutes?: number; priceCents?: number }) {
+export async function createService(workspaceId: number, input: { name: string; description?: string; durationMinutes?: number; priceCents?: number; priceType?: ServicePriceType }) {
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const created = await db.insert(services).values({
@@ -139,21 +150,24 @@ export async function createService(workspaceId: number, input: { name: string; 
     name: input.name.trim(),
     description: input.description?.trim() || null,
     durationMinutes: input.durationMinutes ?? 60,
-    priceCents: input.priceCents ?? 0,
+    priceCents: input.priceType === "quote" ? 0 : input.priceCents ?? 0,
+    priceType: input.priceType ?? "fixed",
   }).returning();
   return created[0];
 }
 
-export async function updateService(workspaceId: number, id: number, input: { name?: string; description?: string | null; durationMinutes?: number; priceCents?: number; active?: boolean }) {
+export async function updateService(workspaceId: number, id: number, input: { name?: string; description?: string | null; durationMinutes?: number; priceCents?: number; priceType?: ServicePriceType; active?: boolean }) {
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const existing = (await db.select().from(services).where(and(eq(services.id, id), eq(services.workspaceId, workspaceId))).limit(1))[0];
   if (!existing) return undefined;
+  const priceType = input.priceType ?? existing.priceType;
   const updated = await db.update(services).set({
     name: input.name?.trim() ?? existing.name,
     description: input.description === undefined ? existing.description : (input.description?.trim() || null),
     durationMinutes: input.durationMinutes ?? existing.durationMinutes,
-    priceCents: input.priceCents ?? existing.priceCents,
+    priceCents: priceType === "quote" ? 0 : input.priceCents ?? existing.priceCents,
+    priceType,
     active: input.active === undefined ? existing.active : input.active ? 1 : 0,
     updatedAt: new Date(),
   }).where(and(eq(services.id, id), eq(services.workspaceId, workspaceId))).returning();
@@ -165,8 +179,10 @@ export async function setServiceProfessionals(workspaceId: number, serviceId: nu
   if (!db) throw new Error("Workspace indisponível");
   const service = (await db.select().from(services).where(and(eq(services.id, serviceId), eq(services.workspaceId, workspaceId))).limit(1))[0];
   if (!service) throw new Error("Serviço não encontrado neste workspace");
-  const validProfessionals = professionalIds.length === 0 ? [] : await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.workspaceId, workspaceId), inArray(professionals.id, professionalIds)));
+  const requestedIds = Array.from(new Set(professionalIds));
+  const validProfessionals = requestedIds.length === 0 ? [] : await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.workspaceId, workspaceId), inArray(professionals.id, requestedIds)));
   const validIds = validProfessionals.map((row) => row.id);
+  if (validIds.length !== requestedIds.length) throw new Error("Um ou mais profissionais não pertencem a este workspace");
   await db.delete(professionalServices).where(and(eq(professionalServices.workspaceId, workspaceId), eq(professionalServices.serviceId, serviceId)));
   if (validIds.length > 0) {
     await db.insert(professionalServices).values(validIds.map((professionalId) => ({ workspaceId: workspaceId, professionalId, serviceId, active: 1 })));
@@ -229,18 +245,21 @@ export async function setProfessionalServices(workspaceId: number, professionalI
   return validIds;
 }
 
-export async function replaceAvailability(workspaceId: number, professionalId: number, entries: { weekday: number; startMinute: number; endMinute: number }[]) {
+export async function replaceAvailability(workspaceId: number, professionalId: number, entries: AvailabilityEntryInput[]) {
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const professional = await getProfessionalInWorkspace(workspaceId, professionalId);
   if (!professional) throw new Error("Profissional não encontrado neste workspace");
+  const validationError = validateAvailabilityEntries(entries);
+  if (validationError) throw new Error(validationError);
+  const normalizedEntries = [...entries].sort((a, b) => a.weekday - b.weekday || a.startMinute - b.startMinute);
   await db.transaction(async (tx) => {
     // Use the same per-professional lock as reservation checks, so changing
     // weekly hours cannot race with a booking using the previous schedule.
     await tx.execute(sql`SELECT "id" FROM "professionals" WHERE "id" = ${professionalId} AND "workspaceId" = ${workspaceId} FOR UPDATE`);
     await tx.delete(availability).where(and(eq(availability.workspaceId, workspaceId), eq(availability.professionalId, professionalId)));
-    if (entries.length > 0) {
-      await tx.insert(availability).values(entries.map((entry) => ({
+    if (normalizedEntries.length > 0) {
+      await tx.insert(availability).values(normalizedEntries.map((entry) => ({
         workspaceId: workspaceId,
         professionalId,
         weekday: entry.weekday,
@@ -250,7 +269,7 @@ export async function replaceAvailability(workspaceId: number, professionalId: n
       })));
     }
   });
-  return entries;
+  return normalizedEntries;
 }
 
 /* ------------------------------------------------------------------ */
@@ -315,8 +334,17 @@ export async function setMemberProfile(workspaceId: number, memberId: number, in
     await db.update(users).set({ operationalRole: input.operationalRole, updatedAt: new Date() }).where(eq(users.id, member.userId));
   }
   if (input.active === false) {
-    await db.update(users).set({ sessionVersion: sql`${users.sessionVersion} + 1`, updatedAt: new Date() }).where(eq(users.id, member.userId));
-  }
+      await db.update(users).set({ sessionVersion: sql`${users.sessionVersion} + 1`, updatedAt: new Date() }).where(eq(users.id, member.userId));
+      await db
+        .update(opportunities)
+        .set({ assignedMemberId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(opportunities.workspaceId, workspaceId),
+            eq(opportunities.assignedMemberId, memberId)
+          )
+        );
+    }
   return updated[0];
 }
 

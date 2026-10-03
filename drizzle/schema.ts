@@ -12,6 +12,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { servicePriceTypes } from "../shared/service-price";
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 export const operationalRoleEnum = pgEnum("operational_role", [
   "human_attendant",
@@ -165,6 +166,20 @@ export const quoteStatusEnum = pgEnum("quote_status", [
   "pago",
   "cancelado",
 ]);
+export const quoteApprovalStatusEnum = pgEnum("quote_approval_status", [
+  "draft",
+  "pending",
+  "approved",
+  "rejected",
+  "expired",
+]);
+export const quotePaymentStatusEnum = pgEnum("quote_payment_status", [
+  "unpaid",
+  "partially_paid",
+  "paid",
+  "cancelled",
+]);
+export const servicePriceTypeEnum = pgEnum("service_price_type", servicePriceTypes);
 
 export const users = pgTable(
   "users",
@@ -508,6 +523,50 @@ export const workspaces = pgTable("workspaces", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
+export const platformIncidents = pgTable(
+  "platformIncidents",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    severity: varchar("severity", { length: 20 }).default("medium").notNull(),
+    status: varchar("status", { length: 20 }).default("open").notNull(),
+    title: varchar("title", { length: 180 }).notNull(),
+    details: text("details").notNull(),
+    openedByPlatformAdminId: integer("openedByPlatformAdminId").notNull(),
+    resolvedByPlatformAdminId: integer("resolvedByPlatformAdminId"),
+    resolvedAt: timestamp("resolvedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    index("platform_incidents_workspace_status_idx").on(table.workspaceId, table.status, table.createdAt),
+  ]
+);
+
+/** Platform operators are intentionally separate from workspace roles. */
+export const platformSupportTickets = pgTable(
+  "platformSupportTickets",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    supportSessionId: integer("supportSessionId").notNull(),
+    openedByPlatformAdminId: integer("openedByPlatformAdminId").notNull(),
+    assignedToPlatformAdminId: integer("assignedToPlatformAdminId"),
+    status: varchar("status", { length: 20 }).default("open").notNull(),
+    priority: varchar("priority", { length: 20 }).default("normal").notNull(),
+    subject: varchar("subject", { length: 180 }).notNull(),
+    description: text("description").notNull(),
+    resolution: text("resolution"),
+    closedAt: timestamp("closedAt"),
+    closedByPlatformAdminId: integer("closedByPlatformAdminId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    index("platform_support_tickets_workspace_status_idx").on(table.workspaceId, table.status, table.createdAt),
+    index("platform_support_tickets_session_idx").on(table.supportSessionId, table.createdAt),
+  ]
+);
 /** Platform operators are intentionally separate from workspace roles. */
 export const platformAdmins = pgTable(
   "platformAdmins",
@@ -793,9 +852,6 @@ export const platformAiConnections = pgTable(
   table => [
     index("platform_ai_connections_capability_idx").on(table.capability, table.active),
     uniqueIndex("platform_ai_connections_name_unique_idx").on(table.name),
-    uniqueIndex("platform_ai_connections_active_capability_unique_idx")
-      .on(table.capability)
-      .where(sql`${table.active} = 1`),
   ]
 );
 export const workspaceUsageBuckets = pgTable(
@@ -963,6 +1019,39 @@ export const agentEffects = pgTable(
   ]
 );
 
+export const agentRuns = pgTable(
+  "agentRuns",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    eventId: varchar("eventId", { length: 180 }).notNull(),
+    contactId: integer("contactId").notNull(),
+    provider: varchar("provider", { length: 80 }),
+    capability: varchar("capability", { length: 32 }),
+    model: varchar("model", { length: 180 }),
+    outcome: varchar("outcome", { length: 40 }).notNull(),
+    providerAttempts: integer("providerAttempts").default(0).notNull(),
+    failureCode: varchar("failureCode", { length: 80 }),
+    transcriptionProvider: varchar("transcriptionProvider", { length: 80 }),
+    transcriptionAttempts: integer("transcriptionAttempts").default(0).notNull(),
+    mediaAnalysisProvider: varchar("mediaAnalysisProvider", { length: 80 }),
+    mediaAnalysisAttempts: integer("mediaAnalysisAttempts").default(0).notNull(),
+    steps: integer("steps").default(0).notNull(),
+    toolCalls: integer("toolCalls").default(0).notNull(),
+    transferred: integer("transferred").default(0).notNull(),
+    pendingConfirmation: integer("pendingConfirmation").default(0).notNull(),
+    inputTokens: integer("inputTokens"),
+    outputTokens: integer("outputTokens"),
+    totalTokens: integer("totalTokens"),
+    latencyMs: integer("latencyMs").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("agent_runs_workspace_event_unique_idx").on(table.workspaceId, table.eventId),
+    index("agent_runs_workspace_created_idx").on(table.workspaceId, table.createdAt),
+  ]
+);
+
 export const webhookEvents = pgTable(
   "webhookEvents",
   {
@@ -970,8 +1059,13 @@ export const webhookEvents = pgTable(
     workspaceId: integer("workspaceId").notNull(),
     eventId: varchar("eventId", { length: 180 }).notNull(),
     provider: varchar("provider", { length: 60 }).default("whatsapp").notNull(),
+    instanceId: varchar("instanceId", { length: 160 }),
+    webhookNonce: varchar("webhookNonce", { length: 180 }),
+    webhookTimestamp: timestamp("webhookTimestamp"),
     payload: text("payload").notNull(),
     status: webhookStatusEnum("status").default("received").notNull(),
+    leaseToken: varchar("leaseToken", { length: 64 }),
+    leaseUntil: timestamp("leaseUntil"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     processedAt: timestamp("processedAt"),
   },
@@ -980,6 +1074,32 @@ export const webhookEvents = pgTable(
       table.workspaceId,
       table.eventId
     ),
+    uniqueIndex("webhook_events_workspace_provider_nonce_unique_idx").on(
+      table.workspaceId,
+      table.provider,
+      table.webhookNonce
+    ),
+    index("webhook_events_status_lease_idx").on(table.status, table.leaseUntil),
+  ]
+);
+
+export const securityRateLimitBuckets = pgTable(
+  "securityRateLimitBuckets",
+  {
+    id: serial("id").primaryKey(),
+    bucketType: varchar("bucketType", { length: 40 }).notNull(),
+    scopeKey: varchar("scopeKey", { length: 320 }).notNull(),
+    failures: integer("failures").default(0).notNull(),
+    firstFailureAt: timestamp("firstFailureAt").notNull(),
+    blockedUntil: timestamp("blockedUntil"),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("security_rate_limit_bucket_unique_idx").on(
+      table.bucketType,
+      table.scopeKey
+    ),
+    index("security_rate_limit_bucket_updated_idx").on(table.updatedAt),
   ]
 );
 
@@ -1088,10 +1208,6 @@ export const contacts = pgTable(
     serviceRequested: varchar("serviceRequested", { length: 180 }),
     urgency: urgencyEnum("urgency").default("Média").notNull(),
     stage: varchar("stage", { length: 80 }).default("Novo contato").notNull(),
-    assignedUserId: integer("assignedUserId"),
-    followUpAt: timestamp("followUpAt"),
-    followUpNote: varchar("followUpNote", { length: 500 }),
-    followUpCompletedAt: timestamp("followUpCompletedAt"),
     aiEnabled: integer("aiEnabled").default(1).notNull(),
     quoteCents: integer("quoteCents").default(0).notNull(),
     unreadCount: integer("unreadCount").default(0).notNull(),
@@ -1108,11 +1224,6 @@ export const contacts = pgTable(
     uniqueIndex("contacts_whatsapp_group_unique_idx")
       .on(table.groupId)
       .where(sql`${table.groupId} IS NOT NULL`),
-    index("contacts_workspace_assignment_idx").on(
-      table.workspaceId,
-      table.assignedUserId,
-      table.followUpAt
-    ),
   ]
 );
 
@@ -1125,11 +1236,114 @@ export const contactNotes = pgTable("contactNotes", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const leads = pgTable(
+  "leads",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    contactId: integer("contactId")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    source: varchar("source", { length: 32 }).default("whatsapp").notNull(),
+    lastActivityAt: timestamp("lastActivityAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("leads_workspace_contact_unique_idx").on(
+      table.workspaceId,
+      table.contactId
+    ),
+    index("leads_workspace_updated_idx").on(
+      table.workspaceId,
+      table.updatedAt
+    ),
+  ]
+);
+
+export const opportunities = pgTable(
+  "opportunities",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    leadId: integer("leadId")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    stage: varchar("stage", { length: 80 }).default("Novo contato").notNull(),
+    assignedMemberId: integer("assignedMemberId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("opportunities_workspace_lead_unique_idx").on(
+      table.workspaceId,
+      table.leadId
+    ),
+    index("opportunities_workspace_assignee_updated_idx").on(
+      table.workspaceId,
+      table.assignedMemberId,
+      table.updatedAt
+    ),
+    index("opportunities_workspace_stage_updated_idx").on(
+      table.workspaceId,
+      table.stage,
+      table.updatedAt
+    ),
+  ]
+);
+
+export const opportunityStageHistory = pgTable(
+  "opportunityStageHistory",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    opportunityId: integer("opportunityId")
+      .notNull()
+      .references(() => opportunities.id, { onDelete: "cascade" }),
+    fromStage: varchar("fromStage", { length: 80 }),
+    toStage: varchar("toStage", { length: 80 }).notNull(),
+    source: varchar("source", { length: 24 }).notNull(),
+    actorUserId: integer("actorUserId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("opportunity_stage_history_timeline_idx").on(
+      table.workspaceId,
+      table.opportunityId,
+      table.createdAt,
+      table.id
+    ),
+    uniqueIndex("opportunity_stage_history_baseline_unique_idx")
+      .on(table.workspaceId, table.opportunityId)
+      .where(sql`${table.fromStage} IS NULL`),
+    check(
+      "opportunity_stage_history_source_check",
+      sql`${table.source} in ('whatsapp', 'api', 'crm', 'inbox', 'lead_memory', 'migration')`
+    ),
+    check(
+      "opportunity_stage_history_change_check",
+      sql`${table.fromStage} IS NULL OR ${table.fromStage} <> ${table.toStage}`
+    ),
+  ]
+);
+
 export const conversations = pgTable(
   "conversations",
   {
     id: serial("id").primaryKey(),
     contactId: integer("contactId").notNull(),
+    opportunityId: integer("opportunityId").references(
+      () => opportunities.id,
+      { onDelete: "set null" }
+    ),
     status: conversationStatusEnum("status").default("open").notNull(),
     humanControlled: integer("humanControlled").default(0).notNull(),
     lastMessageAt: timestamp("lastMessageAt"),
@@ -1137,7 +1351,46 @@ export const conversations = pgTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("conversations_contact_unique_idx").on(table.contactId)]
+  table => [
+    uniqueIndex("conversations_contact_unique_idx").on(table.contactId),
+    uniqueIndex("conversations_opportunity_unique_idx")
+      .on(table.opportunityId)
+      .where(sql`${table.opportunityId} IS NOT NULL`),
+  ]
+);
+
+export const opportunityFollowUps = pgTable(
+  "opportunityFollowUps",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    opportunityId: integer("opportunityId").notNull(),
+    title: varchar("title", { length: 180 }).notNull(),
+    dueAt: timestamp("dueAt").notNull(),
+    status: varchar("status", { length: 16 }).default("open").notNull(),
+    createdByUserId: integer("createdByUserId").notNull(),
+    completedByUserId: integer("completedByUserId"),
+    completedAt: timestamp("completedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("opportunity_follow_ups_one_open_unique_idx")
+      .on(table.workspaceId, table.opportunityId)
+      .where(sql`${table.status} = 'open'`),
+    index("opportunity_follow_ups_open_due_idx")
+      .on(table.workspaceId, table.dueAt, table.opportunityId)
+      .where(sql`${table.status} = 'open'`),
+    index("opportunity_follow_ups_history_idx").on(
+      table.workspaceId,
+      table.opportunityId,
+      table.createdAt
+    ),
+    check(
+      "opportunity_follow_ups_status_check",
+      sql`${table.status} in ('open', 'completed')`
+    ),
+  ]
 );
 
 /** Per-operator read cursor; the shared unread counters remain legacy data. */
@@ -1205,6 +1458,7 @@ export const services = pgTable(
     description: text("description"),
     durationMinutes: integer("durationMinutes").default(60).notNull(),
     priceCents: integer("priceCents").default(0).notNull(),
+    priceType: servicePriceTypeEnum("priceType").default("fixed").notNull(),
     active: integer("active").default(1).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -1287,6 +1541,7 @@ export const appointmentsTable = pgTable(
   },
   table => [
     index("appointments_workspace_idx").on(table.workspaceId, table.startsAt),
+    index("appointments_quote_idx").on(table.quoteId),
     index("appointments_professional_idx").on(
       table.professionalId,
       table.startsAt
@@ -1298,15 +1553,20 @@ export const quotes = pgTable("quotes", {
   id: serial("id").primaryKey(),
   workspaceId: integer("workspaceId").notNull(),
   contactId: integer("contactId").notNull(),
+  opportunityId: integer("opportunityId"),
   serviceName: varchar("serviceName", { length: 160 }).notNull(),
   description: text("description"),
   quotedCents: integer("quotedCents").default(0).notNull(),
   receivedCents: integer("receivedCents").default(0).notNull(),
   status: quoteStatusEnum("status").default("orcamento").notNull(),
-  dueDate: timestamp("dueDate"),
+  approvalStatus: quoteApprovalStatusEnum("approvalStatus").default("draft").notNull(),
+  paymentStatus: quotePaymentStatusEnum("paymentStatus").default("unpaid").notNull(),
   validUntil: timestamp("validUntil"),
   approvedAt: timestamp("approvedAt"),
   approvedByUserId: integer("approvedByUserId"),
+  rejectedAt: timestamp("rejectedAt"),
+  rejectedByUserId: integer("rejectedByUserId"),
+  dueDate: timestamp("dueDate"),
   notes: varchar("notes", { length: 1000 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -1315,33 +1575,100 @@ export const quoteItems = pgTable(
   "quoteItems",
   {
     id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
     quoteId: integer("quoteId").notNull(),
-    description: varchar("description", { length: 240 }).notNull(),
+    position: integer("position").default(0).notNull(),
+    serviceName: varchar("serviceName", { length: 160 }).notNull(),
+    description: text("description"),
     quantity: integer("quantity").default(1).notNull(),
-    unitCents: integer("unitCents").default(0).notNull(),
+    unitPriceCents: integer("unitPriceCents").default(0).notNull(),
     totalCents: integer("totalCents").default(0).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
-  table => [index("quote_items_quote_idx").on(table.quoteId)]
+  table => [
+    uniqueIndex("quote_items_workspace_quote_position_unique_idx").on(
+      table.workspaceId,
+      table.quoteId,
+      table.position
+    ),
+    index("quote_items_workspace_quote_idx").on(table.workspaceId, table.quoteId),
+  ]
 );
-export const paymentLedger = pgTable(
-  "paymentLedger",
+export const quoteApprovalHistory = pgTable(
+  "quoteApprovalHistory",
   {
     id: serial("id").primaryKey(),
     workspaceId: integer("workspaceId").notNull(),
     quoteId: integer("quoteId").notNull(),
-    contactId: integer("contactId").notNull(),
-    appointmentId: integer("appointmentId"),
-    amountCents: integer("amountCents").notNull(),
-    method: varchar("method", { length: 40 }).notNull(),
-    receivedAt: timestamp("receivedAt").defaultNow().notNull(),
-    note: varchar("note", { length: 500 }),
-    createdByUserId: integer("createdByUserId"),
+    fromStatus: quoteApprovalStatusEnum("fromStatus"),
+    toStatus: quoteApprovalStatusEnum("toStatus").notNull(),
+    actorUserId: integer("actorUserId"),
+    note: varchar("note", { length: 1000 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => [
-    index("payment_ledger_workspace_idx").on(table.workspaceId, table.receivedAt),
-    index("payment_ledger_quote_idx").on(table.quoteId, table.createdAt),
+    index("quote_approval_history_workspace_quote_idx").on(
+      table.workspaceId,
+      table.quoteId,
+      table.createdAt,
+      table.id
+    ),
+  ]
+);
+
+export const quotePayments = pgTable(
+  "quotePayments",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    quoteId: integer("quoteId").notNull(),
+    amountCents: integer("amountCents").notNull(),
+    method: varchar("method", { length: 30 }).notNull(),
+    receivedAt: timestamp("receivedAt").notNull(),
+    notes: varchar("notes", { length: 500 }),
+    actorUserId: integer("actorUserId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("quote_payments_workspace_id_unique_idx").on(
+      table.workspaceId,
+      table.id
+    ),
+    index("quote_payments_workspace_quote_idx").on(
+      table.workspaceId,
+      table.quoteId,
+      table.receivedAt,
+      table.id
+    ),
+  ]
+);
+
+export const quoteReceipts = pgTable(
+  "quoteReceipts",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull(),
+    quoteId: integer("quoteId").notNull(),
+    paymentId: integer("paymentId").notNull(),
+    receiptNumber: varchar("receiptNumber", { length: 80 }).notNull(),
+    issuedAt: timestamp("issuedAt").notNull(),
+    issuedByUserId: integer("issuedByUserId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("quote_receipts_workspace_number_unique_idx").on(
+      table.workspaceId,
+      table.receiptNumber
+    ),
+    uniqueIndex("quote_receipts_workspace_payment_unique_idx").on(
+      table.workspaceId,
+      table.paymentId
+    ),
+    index("quote_receipts_workspace_quote_idx").on(
+      table.workspaceId,
+      table.quoteId,
+      table.issuedAt
+    ),
   ]
 );
 
@@ -1419,6 +1746,8 @@ export type Workspace = typeof workspaces.$inferSelect;
 export type InsertWorkspace = typeof workspaces.$inferInsert;
 export type PlatformAdmin = typeof platformAdmins.$inferSelect;
 export type InsertPlatformAdmin = typeof platformAdmins.$inferInsert;
+export type PlatformSupportTicket = typeof platformSupportTickets.$inferSelect;
+export type InsertPlatformSupportTicket = typeof platformSupportTickets.$inferInsert;
 export type SupportSession = typeof supportSessions.$inferSelect;
 export type InsertSupportSession = typeof supportSessions.$inferInsert;
 export type AgentPromptVersion = typeof agentPromptVersions.$inferSelect;
@@ -1471,5 +1800,13 @@ export type Appointment = typeof appointmentsTable.$inferSelect;
 export type InsertAppointment = typeof appointmentsTable.$inferInsert;
 export type Quote = typeof quotes.$inferSelect;
 export type InsertQuote = typeof quotes.$inferInsert;
+export type QuoteItem = typeof quoteItems.$inferSelect;
+export type InsertQuoteItem = typeof quoteItems.$inferInsert;
+export type QuoteApprovalHistory = typeof quoteApprovalHistory.$inferSelect;
+export type InsertQuoteApprovalHistory = typeof quoteApprovalHistory.$inferInsert;
+export type QuotePayment = typeof quotePayments.$inferSelect;
+export type InsertQuotePayment = typeof quotePayments.$inferInsert;
+export type QuoteReceipt = typeof quoteReceipts.$inferSelect;
+export type InsertQuoteReceipt = typeof quoteReceipts.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;

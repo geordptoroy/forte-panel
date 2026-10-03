@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildOnboardingStepAnswers,
   getOnboardingChecklist,
-  simulateOnboardingMessage,
   validateOnboardingRetentionPolicy,
   validateOnboardingAnswerMetadata,
   type OnboardingProfile,
@@ -71,18 +70,5 @@ describe("onboarding checklist", () => {
     expect(validateOnboardingRetentionPolicy({ rawArtifactDays: 91, derivedDataDays: 180 }).errors).toContain("raw_artifact_days_out_of_range");
     expect(validateOnboardingRetentionPolicy({ rawArtifactDays: 30, derivedDataDays: 29 }).errors).toContain("derived_data_days_out_of_range");
     expect(validateOnboardingRetentionPolicy({ rawArtifactDays: 60, derivedDataDays: 30 }).errors).toContain("raw_retention_exceeds_derived_retention");
-  });
-});
-
-describe("onboarding safe simulation", () => {
-  it("keeps simulation provider-free and refuses to invent catalog facts", async () => {
-    const result = await simulateOnboardingMessage({
-      workspaceId: -1,
-      profile: completeProfile,
-      message: "Qual é o preço e horário de um serviço que não existe?",
-    });
-    expect(result.providerCalled).toBe(false);
-    expect(result.response).toContain("Não encontrei esse serviço no catálogo aprovado");
-    expect(result.sources).toContain("sem correspondência no catálogo");
   });
 });

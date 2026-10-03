@@ -1,8 +1,11 @@
 import http from "node:http";
+import crypto from "node:crypto";
 import QRCode from "qrcode";
 import { config } from "./config.js";
 import { parseBaileysInstanceSettings } from "./instance-settings.js";
 import type { InstanceRegistry } from "./instance-registry.js";
+import { isAllowedOutboundMediaReference } from "./media-reference.js";
+import { SendLedgerError } from "./send-ledger.js";
 
 export function createServer(registry: InstanceRegistry) {
   return http.createServer(async (req, res) => {
@@ -75,6 +78,14 @@ export function createServer(registry: InstanceRegistry) {
       }
       if (action === "profile" && req.method === "GET")
         return json(res, 200, await registry.profile(instanceId));
+      if (action === "webhook-secret" && req.method === "PATCH") {
+        const body = await readJson(req);
+        const secret = typeof body.secret === "string" ? body.secret.trim() : "";
+        if (secret.length < 32 || secret.length > 256)
+          return json(res, 400, { error: "webhook_secret_length_invalid" });
+        const status = registry.rotateWebhookSecret(instanceId, secret);
+        return json(res, 200, { success: true, instanceId, status });
+      }
       if (action === "settings" && req.method === "PATCH") {
         const body = await readJson(req);
         let settings;
@@ -119,6 +130,9 @@ export function createServer(registry: InstanceRegistry) {
       if (action === "logout" && req.method === "POST")
         return json(res, 200, await registry.disconnect(instanceId, true));
       if (action === "send-text" && req.method === "POST") {
+        const idempotencyKey = requiredIdempotencyKey(req);
+        if (!idempotencyKey)
+          return json(res, 400, { error: "idempotency_key_required" });
         const body = await readJson(req);
         const phone = String(body.phone ?? body.jid ?? "");
         const text = String(body.text ?? body.message ?? "");
@@ -128,11 +142,16 @@ export function createServer(registry: InstanceRegistry) {
           instanceId,
           phone,
           "text",
-          text
+          text,
+          {},
+          idempotencyKey
         );
         return json(res, 200, { success: true, externalId, status: "sent" });
       }
       if (action === "send" && req.method === "POST") {
+        const idempotencyKey = requiredIdempotencyKey(req);
+        if (!idempotencyKey)
+          return json(res, 400, { error: "idempotency_key_required" });
         const body = await readJson(req);
         const phone = String(body.phone ?? body.jid ?? "");
         const messageType = String(body.messageType ?? body.type ?? "text");
@@ -142,11 +161,17 @@ export function createServer(registry: InstanceRegistry) {
             ? (body.metadata as Record<string, unknown>)
             : body;
         if (!phone) return json(res, 400, { error: "phone_required" });
+        if (
+          ["image", "audio", "video", "document"].includes(messageType) &&
+          !isAllowedOutboundMediaReference(content)
+        )
+          return json(res, 400, { error: "private_media_reference_required" });
         if (body.payload && typeof body.payload === "object") {
           const externalId = await registry.sendPayload(
             instanceId,
             phone,
-            body.payload as never
+            body.payload as never,
+            idempotencyKey
           );
           return json(res, 200, {
             success: true,
@@ -164,7 +189,8 @@ export function createServer(registry: InstanceRegistry) {
           phone,
           messageType,
           content,
-          metadata
+          metadata,
+          idempotencyKey
         );
         return json(res, 200, {
           success: true,
@@ -175,6 +201,11 @@ export function createServer(registry: InstanceRegistry) {
       }
       return json(res, 404, { error: "not_found" });
     } catch (error) {
+      if (error instanceof SendLedgerError)
+        return json(res, error.code === "idempotency_conflict" ? 409 : 425, {
+          error: error.code,
+          message: error.message,
+        });
       const message =
         error instanceof Error ? error.message : "gateway_request_failed";
       const status = message.includes("não encontrada") ? 404 : 400;
@@ -184,7 +215,21 @@ export function createServer(registry: InstanceRegistry) {
 }
 
 function authorized(req: http.IncomingMessage) {
-  return req.headers.authorization === `Bearer ${config.apiKey}`;
+  const provided = req.headers.authorization ?? "";
+  const expected = `Bearer ${config.apiKey}`;
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+  return (
+    providedBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+  );
+}
+
+function requiredIdempotencyKey(req: http.IncomingMessage) {
+  const value = req.headers["idempotency-key"];
+  if (typeof value !== "string") return undefined;
+  const key = value.trim();
+  return key.length >= 8 && key.length <= 180 ? key : undefined;
 }
 
 function json(res: http.ServerResponse, status: number, value: unknown) {

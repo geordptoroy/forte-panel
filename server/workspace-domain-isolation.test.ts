@@ -39,9 +39,14 @@ describe.skipIf(!hasDatabase)("workspace-scoped catalog", () => {
   });
 
   it("creates services in the workspace explicitly supplied by the caller", async () => {
-    const created = await createService(workspaceAId, { name: `Tenant A service ${suffix}` });
+    const created = await createService(workspaceAId, { name: `Tenant A service ${suffix}`, durationMinutes: 45, priceCents: 2500, priceType: "starting_at" });
     serviceAId = created!.id;
-    expect(created).toMatchObject({ workspaceId: workspaceAId, name: `Tenant A service ${suffix}` });
+    expect(created).toMatchObject({ workspaceId: workspaceAId, name: `Tenant A service ${suffix}`, durationMinutes: 45, priceCents: 2500, priceType: "starting_at" });
+  });
+
+  it("stores quote-only pricing without retaining a numeric amount", async () => {
+    const updated = await updateService(workspaceAId, serviceAId, { priceType: "quote", priceCents: 7500 });
+    expect(updated).toMatchObject({ priceType: "quote", priceCents: 0 });
   });
 
   it("does not list or mutate another workspace's service or professional by guessed ID", async () => {
@@ -53,7 +58,7 @@ describe.skipIf(!hasDatabase)("workspace-scoped catalog", () => {
     await expect(getProfessionalInWorkspace(workspaceAId, professionalBId)).resolves.toBeUndefined();
     await expect(updateProfessional(workspaceAId, professionalBId, { name: "tampered" })).resolves.toBeUndefined();
     await expect(setServiceProfessionals(workspaceAId, serviceBId, [])).rejects.toThrow(/não encontrado neste workspace/i);
-    await expect(setServiceProfessionals(workspaceAId, serviceAId, [professionalBId])).resolves.toEqual([]);
+    await expect(setServiceProfessionals(workspaceAId, serviceAId, [professionalBId])).rejects.toThrow(/não pertencem a este workspace/i);
   });
 
   it("leaves the other workspace's records unchanged after rejected cross-tenant mutations", async () => {

@@ -10,7 +10,7 @@ Separar as entidades, mesmo quando a UI usa linguagem simples:
 
 - **Usuário/login:** master ou funcionário, identidade individual com credenciais próprias.
 - **Empresa/workspace/tenant:** fronteira dos dados, configurações e permissões de um negócio.
-- **Conexão WhatsApp:** número/sessão de um provider vinculado a uma empresa; não é o workspace nem o login.
+- **Conexão WhatsApp:** sessão Baileys vinculada a uma empresa; não é o workspace nem o login.
 
 Na primeira versão comercial: uma conta master cria uma empresa e administra logins individuais de funcionários; alvo inicial de uma conexão WhatsApp por empresa. Permitir mais de uma empresa/conexão por conta poderá ser considerado depois, sem enfraquecer isolamento.
 
@@ -38,15 +38,19 @@ O sistema deve provar isso com testes PostgreSQL reais envolvendo no mínimo doi
 
 Easy!Appointments e Clientverse não são a fonte de verdade do produto. O Forte Panel mantém contatos, conversas, mensagens, funil, agenda, serviços, profissionais, tarefas, notas, tags, métricas e auditoria.
 
-WhatsApp deve ser acessado por adapters desacoplados:
+O único canal WhatsApp do produto é Baileys, por meio do gateway interno `forte-whatsapp`. A UI não oferece seleção de provider; o Panel resolve a propriedade da instância/workspace e o gateway não decide tenancy. Não adicionar adapters, credenciais ou configuração para outros canais.
 
-1. **PAPI atual:** provider de transição para desenvolvimento/beta, já integrado ao adapter.
-2. **Meta WhatsApp Cloud API:** opção oficial que pode ser mantida como alternativa.
-3. **PAPI própria baseada em fork ou Baileys:** objetivo futuro, não parte do primeiro marco público.
+Baileys é uma biblioteca independente sobre WhatsApp Web/Linked Devices, não a API oficial WhatsApp Business. A implementação ativa precisa informar os riscos de sessão, desconexão, mudanças de protocolo, políticas do WhatsApp, privacidade e suporte. Não usar spam, envio indiscriminado ou automação abusiva.
 
-A hipótese de que `intrategica/papi-free` já usa Baileys foi levantada pelo usuário. A imagem é usada pelos Compose deste projeto na tag `1.5.2`; a tag `1.5.1` também existe. A listagem pública do Docker Hub não informa um código-fonte associado ou licença da imagem. Antes de derivar código, confirmar com o mantenedor a origem, licença e permissões de uso/fork/distribuição. O MIT declarado para o projeto Baileys não concede direitos sobre a PAPI ou sua imagem.
+### Identidade comercial no CRM
 
-Baileys é uma biblioteca independente sobre WhatsApp Web/Linked Devices, não a API oficial WhatsApp Business. Qualquer implementação será opcional, transparente ao cliente e sujeita a revisão dos termos/políticas e riscos de desconexão, banimento, mudanças de protocolo, privacidade e suporte. Não usar spam, envio indiscriminado ou automação abusiva.
+`Contact` representa a identidade operacional da pessoa; `Lead` representa o registro comercial tenant-scoped associado a esse contato; `Opportunity` representa a negociação e mantém o estágio do funil. Na primeira entrega, há no máximo um Lead por `(workspaceId, contactId)` e uma Opportunity por Lead; suportar múltiplas negociações para a mesma pessoa pode ser avaliado em uma fatia posterior. `Conversation` guarda o vínculo direto com a Opportunity ativa. `Opportunity.stage` é a fonte canônica; `contacts.stage` permanece como espelho compatível e é atualizado junto.
+
+Uma mensagem individual aceita e recebida ao vivo pode criar/atualizar Lead e Opportunity. Mensagens próprias (`fromMe`), grupos, histórico/backfill, eventos ignorados ou payloads inválidos não devem ser promovidos como novo lead comercial. A migration aditiva faz backfill de contatos individuais existentes sem mover dados entre workspaces.
+
+### Assignment e próxima ação no Inbox
+
+O dono de uma negociação é uma membership ativa do mesmo workspace, armazenada na Opportunity; somente owner, admin ou manager pode atribuir/reatribuir. Um agente não vê opções de outros workspaces nem memberships inativas. Cada Opportunity mantém no máximo uma próxima ação aberta com texto e prazo futuros; membros ativos com acesso ao Inbox podem criar/reagendar/concluir, e cada mudança é auditada. A UI mostra dono, prazo e atraso. Concluir a próxima ação não envia mensagem, não agenda automação e não muda o estágio automaticamente; o operador decide o próximo passo.
 
 ## Módulos de produto
 
@@ -64,7 +68,7 @@ Baileys é uma biblioteca independente sobre WhatsApp Web/Linked Devices, não a
 | Relatórios | Conversão, resposta, ocupação, receita e equipe | P1 |
 | Planos/limites/cobrança | Limites de empresas, funcionários, conversas, automações e canais | P2, decisão posterior |
 | Console interno da plataforma | Contas beta, suporte, saúde, quotas e configuração versionada do agente por workspace | P0 — antes do beta |
-| Gateway REST próprio | Fork PAPI autorizado ou serviço próprio Baileys | Futuro condicionado |
+| Gateway WhatsApp | Serviço interno Baileys, isolado do CRM e tenant-scoped | P0 — manter como único canal |
 
 ## Fluxo principal
 
@@ -78,20 +82,21 @@ página do produto → cadastro de master → criação de empresa
 
 A IA pode sugerir uma configuração estruturada de empresa e agente, mas owner revisa e aprova antes de publicar. Não inserir credenciais no prompt. Simulação, versionamento e rollback fazem parte do caminho seguro.
 
-## API e providers
+## API e gateway WhatsApp
 
 Manter endpoints versionados e webhooks assinados por tenant. A API de negócio deve incluir os endpoints existentes para contatos, mensagens, disponibilidade e agendamentos, todos autenticados, idempotentes e auditados.
 
-A interface REST interna do futuro gateway WhatsApp deve ficar separada da API pública de CRM. O gateway deve usar autenticação service-to-service, scopes por conexão, callbacks assinados, idempotência e armazenamento seguro das sessões. Nenhuma chave PAPI/Baileys é enviada ao frontend.
+A interface REST interna do gateway WhatsApp fica separada da API de CRM. O gateway usa autenticação service-to-service, scopes por conexão, callbacks assinados, idempotência e armazenamento seguro das sessões. Nenhuma credencial é enviada ao frontend.
 
 ## Fases e ordem
 
 1. **Tenancy/autenticação real:** owner ↔ empresa, membership, remoção do workspace global/demo, revogação de sessão e testes de isolamento.
 2. **Multi-login:** cadastro master e criação de logins de funcionários com papéis, senha temporária e reset/revogação.
 3. **Autoatendimento:** onboarding de empresa, checklist, UI sem configuração técnica e perfil IA revisável.
-4. **Canal:** uma conexão WhatsApp por tenant no provider aprovado; staging com E2E, idempotência e takeover humano.
+4. **Canal:** uma conexão Baileys por tenant; staging com E2E, idempotência e takeover humano.
 5. **Operação do beta:** console interno de contas/suporte, configuração versionada do agente, backup/restore, observabilidade, rate limits, privacidade e operação.
 6. **Lançamento:** cadastro público por e-mail/senha, autosserviço do owner, suporte delegado, planos/cobrança e critérios de produção. Confirmação de e-mail e Google OAuth entram depois, desligados até configuração e testes do provedor.
-7. **Depois:** avaliar source/license e prototipar fork PAPI ou gateway Baileys; múltiplos canais entram após validação de produto.
+7. **Depois:** evoluir, proteger e operar o gateway Baileys; não adicionar outros canais ao produto.
 
-Detalhamento, testes de aceite e fontes estão em `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`. As tarefas vigentes estão em `todo.md`; recomendações antigas para iniciar pelo ledger/fencing não substituem a nova prioridade de tenancy e login master.
+O estado e a próxima ação estão em [`docs/STATUS-ATUAL.md`](./docs/STATUS-ATUAL.md); o processo de alterações e release está em [`docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`](./docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md). Planos datados antigos não substituem esses documentos.
+Cada transição passa pelo mesmo serviço tenant-scoped e grava estágio anterior/novo, origem e ator em histórico imutável, com audit log e evento de domínio na mesma transação. Repetir a etapa atual é no-op; leituras de Inbox, CRM, Agenda, REST e agente preferem `Opportunity.stage`, usando `contacts.stage` só como fallback legado/espelho.

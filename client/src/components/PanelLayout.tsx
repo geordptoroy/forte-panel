@@ -9,6 +9,7 @@ import {
 import {
   BarChart3,
   Bell,
+  Bot,
   CalendarDays,
   CheckCheck,
   ClipboardList,
@@ -32,7 +33,6 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { CORE_ONLY_MODE, CORE_USAGE_ROUTE } from "@/core-mode";
-import { CORE_NAV_ROUTES } from "@/release-catalog";
 
 type NavIcon = ComponentType<{
   size?: number;
@@ -172,6 +172,12 @@ const managementNav: NavGroup[] = [
         description: "Preferências do painel",
         icon: Settings,
       },
+      {
+        href: "/ai-agent",
+        label: "Agente de IA",
+        description: "Prompt e comportamento do atendimento",
+        icon: Bot,
+      },
     ],
   },
 ];
@@ -309,14 +315,7 @@ const workspaceUsageNav: NavGroup[] = [
   },
 ];
 
-const coreOnlyNav: NavGroup[] = [
-  {
-    label: "Operação",
-    items: managementNav[0].items.filter(item =>
-      CORE_NAV_ROUTES.includes(item.href as (typeof CORE_NAV_ROUTES)[number])
-    ),
-  },
-];
+const coreOnlyNav: NavGroup[] = [onboardingNav[0], ...managementNav];
 
 type PanelLayoutProps = {
   children: ReactNode;

@@ -50,16 +50,43 @@ import PanelLayout, {
 } from "@/components/PanelLayout";
 import { PlatformShell } from "./PlatformAdminPage";
 import { trpc } from "@/lib/trpc";
-import { CONTACT_STAGE_ORDER } from "@shared/contact-stage";
+import { getNextActionState } from "@shared/inbox-next-action";
 import {
   WhatsappConnectionPage,
   WorkspaceUsagePage,
 } from "./WhatsappConnectionPage";
 export { WhatsappConnectionPage, WorkspaceUsagePage };
 
-const stageOrder = CONTACT_STAGE_ORDER;
+const stageOrder = [
+  "Novo contato",
+  "Triagem",
+  "Aguardando foto",
+  "Avaliação pendente",
+  "Orçamento enviado",
+  "Aguardando decisão",
+  "Visita solicitada",
+  "Agendado",
+  "Concluído",
+  "Sem retorno",
+  "Perdido",
+] as const;
 const formatCurrency = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+function toLocalDateTimeInput(value?: string | null) {
+  const date = value ? new Date(value) : new Date(Date.now() + 60 * 60 * 1000);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+
+function formatNextActionDue(value: string) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })
+    : "Prazo inválido";
+}
 
 function ChannelStatusBanner({
   loading,
@@ -147,11 +174,6 @@ type ContactLike = {
   lastMessage: string;
   lastMessageAt: string;
   quote: number;
-  assignedUserId?: number | null;
-  followUpAt?: string | null;
-  followUpNote?: string | null;
-  followUpCompletedAt?: string | null;
-  followUpDue?: boolean;
   daysNoReply: number;
   initials: string;
   isGroup?: boolean;
@@ -167,6 +189,10 @@ type ContactLike = {
   }>;
   pushName?: string | null;
   nameSource?: string;
+  opportunityId?: string | null;
+  assignedMemberId?: string | null;
+  assignedMemberName?: string | null;
+  nextAction?: { id: string; title: string; dueAt: string } | null;
 };
 type Message = {
   id: string | number;
@@ -175,6 +201,7 @@ type Message = {
   text: string;
   messageType?: string;
   metadata?: Record<string, unknown> | null;
+  status?: string;
 };
 
 function formatChatTime(value: string) {
@@ -210,7 +237,7 @@ export function DashboardPage() {
     <PanelLayout
       eyebrow="Operação / Overview"
       title="Dashboard"
-      description="Acompanhe o atendimento do Gabriel em um único lugar."
+      description="Veja o que precisa de atenção hoje, a receita realizada e a saúde do canal."
     >
       <div className="stat-grid">
         <PageLink href="/contacts">
@@ -286,60 +313,26 @@ export function DashboardPage() {
           />
         </PageLink>
       </div>
-      <section style={{ marginTop: 20 }}>
-        <SectionTitle
-          eyebrow="Decisões de hoje"
-          title="O que precisa de atenção"
-          action={
-            <StatusBadge tone={snapshot?.channelHealth.status === "connected" ? "green" : "amber"}>
-              {snapshot?.channelHealth.label ?? "Verificando canal"}
+      <section className="surface" style={{ padding: 18, marginTop: 20 }}>
+        <SectionTitle eyebrow="Prioridade operacional" title="Decisões do dia" />
+        <div className="dashboard-decision-grid">
+          {(snapshot?.decisions ?? []).map(decision => (
+            <PageLink href={decision.href} className="dashboard-decision" key={decision.key}>
+              <div>
+                <strong>{decision.label}</strong>
+                <small>{decision.count === 0 ? "Nenhuma pendência" : `${decision.count} pendência(s)`}</small>
+              </div>
+              <StatusBadge tone={decision.count === 0 ? "green" : decision.tone as "amber" | "red" | "blue" | "green"}>{String(decision.count).padStart(2, "0")}</StatusBadge>
+            </PageLink>
+          ))}
+          <div className="dashboard-decision">
+            <div>
+              <strong>Saúde do canal</strong>
+              <small>{snapshot?.channelHealth?.activeChannels ?? 0} canal(is) ativo(s) · worker {snapshot?.channelHealth?.worker ?? "unknown"}</small>
+            </div>
+            <StatusBadge tone={snapshot?.channelHealth?.status === "ready" ? "green" : "amber"}>
+              {snapshot?.channelHealth?.status === "ready" ? "Operando" : snapshot?.channelHealth?.status === "attention" ? "Atenção" : "Configurar"}
             </StatusBadge>
-          }
-        />
-        <div className="decisions-grid">
-          <div className="surface" style={{ padding: "0 17px" }}>
-            <div className="event-row">
-              <div className="event-icon"><MessageCircle size={15} /></div>
-              <div className="row-copy"><strong>Leads para responder</strong><small>Conversas com resposta ou follow-up vencido.</small></div>
-              <span className="row-meta">{snapshot?.pendingLeads.length ?? 0}</span>
-            </div>
-            {(snapshot?.pendingLeads ?? []).slice(0, 4).map(lead => (
-              <PageLink href={`/contacts/${lead.id}`} className="event-row" key={lead.id}>
-                <div className="row-copy"><strong>{lead.name}</strong><small>{lead.stage} · {lead.needsOperatorResponse ? "resposta pendente" : "follow-up vencido"}</small></div>
-                <ArrowUpRight size={13} />
-              </PageLink>
-            ))}
-            {(snapshot?.pendingLeads ?? []).length === 0 && <EmptyState icon={Check} title="Nenhuma pendência de resposta" description="O atendimento está em dia." />}
-          </div>
-          <div className="surface" style={{ padding: "0 17px" }}>
-            <div className="event-row">
-              <div className="event-icon"><FileText size={15} /></div>
-              <div className="row-copy"><strong>Orçamentos parados</strong><small>Sem atualização há mais de 48 horas.</small></div>
-              <span className="row-meta">{snapshot?.stalledQuotes.length ?? 0}</span>
-            </div>
-            {(snapshot?.stalledQuotes ?? []).slice(0, 4).map(quote => (
-              <PageLink href="/billing" className="event-row" key={quote.id}>
-                <div className="row-copy"><strong>{quote.contactName}</strong><small>{quote.serviceName} · {money(quote.pendingCents)}</small></div>
-                <ArrowUpRight size={13} />
-              </PageLink>
-            ))}
-            {(snapshot?.stalledQuotes ?? []).length === 0 && <EmptyState icon={Check} title="Nenhum orçamento parado" description="Não há proposta sem movimentação por 48 horas." />}
-          </div>
-          <div className="surface" style={{ padding: "0 17px" }}>
-            <div className="event-row">
-              <div className="event-icon"><Wifi size={15} /></div>
-              <div className="row-copy"><strong>Saúde do canal</strong><small>{snapshot?.channelHealth.detail ?? "Consultando o WhatsApp."}</small></div>
-            </div>
-            <div className="event-row">
-              <div className="event-icon"><CalendarCheck2 size={15} /></div>
-              <div className="row-copy"><strong>Agenda de hoje</strong><small>{snapshot?.appointmentsToday ?? 0} atendimento(s) no dia.</small></div>
-              <PageLink href="/agenda" className="btn-ghost">Abrir</PageLink>
-            </div>
-            <div className="event-row">
-              <div className="event-icon"><WalletCards size={15} /></div>
-              <div className="row-copy"><strong>Recebido no mês</strong><small>Ledger operacional append-only.</small></div>
-              <strong>{money(snapshot?.receivedMonthCents ?? 0)}</strong>
-            </div>
           </div>
         </div>
       </section>
@@ -426,8 +419,8 @@ export function DashboardPage() {
         </section>
         <section>
           <SectionTitle
-            eyebrow="Decisão do dia"
-            title="Agenda de hoje"
+            eyebrow="Próximos horários"
+            title="Agenda"
             action={
               <PageLink href="/agenda" className="btn-ghost">
                 Abrir agenda <ArrowUpRight size={13} />
@@ -435,8 +428,8 @@ export function DashboardPage() {
             }
           />
           <div className="surface" style={{ padding: "0 17px" }}>
-            {(snapshot?.todayAppointments ?? []).length > 0 ? (
-              snapshot?.todayAppointments.map(appointment => (
+            {(snapshot?.upcomingAppointments ?? []).length > 0 ? (
+              snapshot?.upcomingAppointments.map(appointment => (
                 <div className="appointment-row" key={appointment.id}>
                   <div className="time-block">
                     {new Date(appointment.startsAt).toLocaleTimeString(
@@ -466,7 +459,7 @@ export function DashboardPage() {
               <EmptyState
                 icon={CalendarCheck2}
                 title="Agenda livre"
-                description="Nenhum atendimento previsto para hoje."
+                description="Nenhum próximo horário confirmado."
               />
             )}
           </div>
@@ -509,9 +502,25 @@ function ConversationList({
               )}
             </div>
             <div className="conversation-preview">{contact.lastMessage}</div>
+            {!contact.isGroup && (() => {
+              const actionState = getNextActionState(contact.nextAction?.dueAt);
+              return (
+                <div className="conversation-operational-state">
+                  <span className="conversation-assignee">
+                    {contact.assignedMemberName || "Sem responsável"}
+                  </span>
+                  <span className={`next-action-chip is-${actionState}`}>
+                    {actionState === "none"
+                      ? "Sem próxima ação"
+                      : actionState === "overdue"
+                        ? "Ação atrasada"
+                        : `Até ${formatNextActionDue(contact.nextAction!.dueAt)}`}
+                  </span>
+                </div>
+              );
+            })()}
             <div className="conversation-bottom">
               <span>{formatChatTime(contact.lastMessageAt)}</span>
-              {contact.followUpDue && <StatusBadge tone="red">Follow-up vencido</StatusBadge>}
               <span
                 className={`ai-indicator ${contact.aiEnabled ? "" : "paused"}`}
               >
@@ -560,8 +569,19 @@ function MessageBubble({ message }: { message: Message }) {
     ? new Date(message.time).toLocaleTimeString("pt-BR", {
         hour: "2-digit",
         minute: "2-digit",
-      })
+    })
     : message.time;
+  const deliveryStatus =
+    message.sender !== "lead" && message.sender !== "system"
+      ? metadata.deliveryStatus
+      : undefined;
+  const deliveryLabel = deliveryStatus === "read"
+    ? "Lida"
+    : deliveryStatus === "delivered"
+      ? "Entregue"
+      : deliveryStatus === "sent"
+        ? "Enviada"
+        : undefined;
   const mediaUrlValue =
     typeof metadata.mediaUrl === "string"
       ? metadata.mediaUrl
@@ -701,10 +721,13 @@ function MessageBubble({ message }: { message: Message }) {
         <div className="message-time">
           {time}{" "}
           {message.sender !== "system" && (
-            <Check
-              size={10}
-              style={{ display: "inline", verticalAlign: "middle" }}
-            />
+            <>
+              <Check
+                size={10}
+                style={{ display: "inline", verticalAlign: "middle" }}
+              />
+              {deliveryLabel && <span className="message-delivery-status" aria-label={`Status da mensagem: ${deliveryLabel}`}> · {deliveryLabel}</span>}
+            </>
           )}
         </div>
       </div>
@@ -717,20 +740,16 @@ function ConversationProfile({
   isOpen,
   onClose,
   onRenamed,
-  assignees = [],
   platformAdmin = false,
 }: {
   contact: ContactLike;
   isOpen: boolean;
   onClose: () => void;
   onRenamed: () => void;
-  assignees?: Array<{ userId: number; name: string | null; email: string | null }>;
   platformAdmin?: boolean;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(contact.name);
-  const [followUpDraft, setFollowUpDraft] = useState("");
-  const [followUpNoteDraft, setFollowUpNoteDraft] = useState("");
   const inbox = (platformAdmin ? trpc.platform.supportInbox : trpc.inbox) as typeof trpc.inbox;
   const renameMutation = inbox.renameContact.useMutation({
     onSuccess: () => {
@@ -738,14 +757,38 @@ function ConversationProfile({
       onRenamed();
     },
   });
-  const assignMutation = trpc.inbox.assign.useMutation({ onSuccess: onRenamed });
-  const followUpMutation = trpc.inbox.followUp.useMutation({ onSuccess: onRenamed });
+  const assignmentOptionsQuery = trpc.inbox.assignmentOptions.useQuery(
+    undefined,
+    { enabled: isOpen && !platformAdmin }
+  );
+  const assignMutation = trpc.inbox.assignOpportunity.useMutation({
+    onSuccess: onRenamed,
+  });
+  const nextActionMutation = trpc.inbox.setNextAction.useMutation({
+    onSuccess: onRenamed,
+  });
+  const completeNextActionMutation = trpc.inbox.completeNextAction.useMutation({
+    onSuccess: onRenamed,
+  });
+  const [nextActionTitle, setNextActionTitle] = useState(
+    contact.nextAction?.title ?? ""
+  );
+  const [nextActionDueAt, setNextActionDueAt] = useState(
+    toLocalDateTimeInput(contact.nextAction?.dueAt)
+  );
   useEffect(() => {
     setNameDraft(contact.name);
     setEditingName(false);
-    setFollowUpDraft(contact.followUpAt ? contact.followUpAt.slice(0, 16) : "");
-    setFollowUpNoteDraft(contact.followUpNote ?? "");
-  }, [contact.id, contact.name, contact.followUpAt, contact.followUpNote]);
+  }, [contact.id, contact.name]);
+  useEffect(() => {
+    setNextActionTitle(contact.nextAction?.title ?? "");
+    setNextActionDueAt(toLocalDateTimeInput(contact.nextAction?.dueAt));
+  }, [
+    contact.id,
+    contact.nextAction?.id,
+    contact.nextAction?.title,
+    contact.nextAction?.dueAt,
+  ]);
   useEffect(() => {
     if (!isOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -760,6 +803,16 @@ function ConversationProfile({
       name: nameDraft.trim(),
     });
   };
+  const saveNextAction = () => {
+    const dueAt = new Date(nextActionDueAt);
+    if (!Number.isFinite(dueAt.getTime())) return;
+    nextActionMutation.mutate({
+      contactId: Number(contact.id),
+      title: nextActionTitle.trim(),
+      dueAt: dueAt.toISOString(),
+    });
+  };
+  const nextActionState = getNextActionState(contact.nextAction?.dueAt);
   return (
     <div className={`inbox-profile-drawer ${isOpen ? "is-open" : ""}`}>
       <button
@@ -926,78 +979,135 @@ function ConversationProfile({
                 <div className="profile-field">
                   <span>Próxima ação</span>
                   <strong>
-                    {contact.daysNoReply > 0 ? "Fazer follow-up" : "Aguardar retorno"}
+                    {nextActionState === "none"
+                      ? "Sem próxima ação"
+                      : nextActionState === "overdue"
+                        ? "Ação atrasada"
+                        : `Agendada · ${formatNextActionDue(contact.nextAction!.dueAt)}`}
                   </strong>
                 </div>
-                <div className="profile-field">
-                  <span>Responsável</span>
-                  <select
-                    className="select-control"
-                    value={contact.assignedUserId ?? ""}
-                    onChange={event =>
-                      assignMutation.mutate({
-                        contactId: Number(contact.id),
-                        assignedUserId: event.target.value ? Number(event.target.value) : null,
-                      })
-                    }
-                    disabled={platformAdmin || assignMutation.isPending || assignees.length === 0}
-                  >
-                    <option value="">Sem responsável</option>
-                    {assignees.map(assignee => (
-                      <option key={assignee.userId} value={assignee.userId}>
-                        {assignee.name || assignee.email || `Usuário ${assignee.userId}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
-              <div className="profile-follow-up">
-                <strong>Follow-up</strong>
-                <input
-                  className="input-control"
-                  type="datetime-local"
-                  value={followUpDraft}
-                  onChange={event => setFollowUpDraft(event.target.value)}
-                />
-                <input
-                  className="input-control"
-                  maxLength={500}
-                  value={followUpNoteDraft}
-                  onChange={event => setFollowUpNoteDraft(event.target.value)}
-                  placeholder="Próxima ação para este lead"
-                />
-                <div className="profile-name-actions">
+              {!platformAdmin && (
+                <section
+                  className="inbox-operational-panel"
+                  aria-label="Responsável e próxima ação"
+                >
+                  <h4>Responsável</h4>
+                  {assignmentOptionsQuery.data?.canAssign ? (
+                    <label>
+                      <span>Responsável comercial</span>
+                      <select
+                        className="select-control"
+                        value={contact.assignedMemberId ?? ""}
+                        disabled={
+                          !contact.opportunityId || assignMutation.isPending
+                        }
+                        onChange={event =>
+                          assignMutation.mutate({
+                            contactId: Number(contact.id),
+                            assignedMemberId: event.target.value
+                              ? Number(event.target.value)
+                              : null,
+                          })
+                        }
+                      >
+                        <option value="">Sem responsável</option>
+                        {assignmentOptionsQuery.data.members.map(member => (
+                          <option key={member.id} value={member.id}>
+                            {member.name} · {member.role}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <div className="profile-field">
+                      <span>Responsável atual</span>
+                      <strong>{contact.assignedMemberName || "Sem responsável"}</strong>
+                    </div>
+                  )}
+                  {assignMutation.error && (
+                    <small className="profile-error" role="alert">
+                      {assignMutation.error.message}
+                    </small>
+                  )}
+                  {!contact.opportunityId && (
+                    <small>Este contato ainda não possui uma oportunidade operacional.</small>
+                  )}
+
+                  <div className="next-action-current">
+                    <span>Próxima ação registrada</span>
+                    <strong>
+                      {contact.nextAction?.title || "Nenhuma ação agendada"}
+                    </strong>
+                    {contact.nextAction && (
+                      <small>
+                        {formatNextActionDue(contact.nextAction.dueAt)}
+                      </small>
+                    )}
+                    {contact.nextAction && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={completeNextActionMutation.isPending}
+                        onClick={() =>
+                          completeNextActionMutation.mutate({
+                            contactId: Number(contact.id),
+                          })
+                        }
+                      >
+                        {completeNextActionMutation.isPending
+                          ? "Concluindo..."
+                          : "Marcar como concluída"}
+                      </button>
+                    )}
+                  </div>
+                  <label>
+                    <span>Descrição da próxima ação</span>
+                    <input
+                      className="input-control"
+                      maxLength={180}
+                      value={nextActionTitle}
+                      disabled={!contact.opportunityId}
+                      onChange={event => setNextActionTitle(event.target.value)}
+                      placeholder="Ex.: Retornar com o orçamento"
+                    />
+                  </label>
+                  <label>
+                    <span>Prazo</span>
+                    <input
+                      className="input-control"
+                      type="datetime-local"
+                      value={nextActionDueAt}
+                      disabled={!contact.opportunityId}
+                      onChange={event => setNextActionDueAt(event.target.value)}
+                    />
+                  </label>
+                  {(nextActionMutation.error ||
+                    completeNextActionMutation.error) && (
+                    <small className="profile-error" role="alert">
+                      {nextActionMutation.error?.message ||
+                        completeNextActionMutation.error?.message}
+                    </small>
+                  )}
                   <button
                     type="button"
                     className="btn-primary"
-                    disabled={platformAdmin || followUpMutation.isPending || !followUpDraft}
-                    onClick={() =>
-                      followUpMutation.mutate({
-                        contactId: Number(contact.id),
-                        followUpAt: new Date(followUpDraft),
-                        note: followUpNoteDraft || null,
-                      })
+                    disabled={
+                      !contact.opportunityId ||
+                      nextActionMutation.isPending ||
+                      nextActionTitle.trim().length < 3 ||
+                      !nextActionDueAt
                     }
+                    onClick={saveNextAction}
                   >
-                    {followUpMutation.isPending ? "Salvando..." : "Agendar follow-up"}
+                    {nextActionMutation.isPending
+                      ? "Salvando..."
+                      : contact.nextAction
+                        ? "Atualizar próxima ação"
+                        : "Agendar próxima ação"}
                   </button>
-                  {contact.followUpAt && !contact.followUpCompletedAt && (
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      disabled={platformAdmin || followUpMutation.isPending}
-                      onClick={() =>
-                        followUpMutation.mutate({
-                          contactId: Number(contact.id),
-                          completed: true,
-                        })
-                      }
-                    >
-                      Concluir
-                    </button>
-                  )}
-                </div>
-              </div>
+                </section>
+              )}
               <div className="profile-actions">
                 <PageLink href={`/contacts/${contact.id}`} className="btn-secondary">
                   <UserRound size={13} /> Abrir ficha completa
@@ -1038,12 +1148,23 @@ function InboxChrome({
   );
 }
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("Não foi possível ler o anexo."));
+    reader.onerror = () => reject(new Error("Não foi possível ler o anexo."));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean } = {}) {
   const [selectedId, setSelectedId] = useState("");
   const [location] = useLocation();
   const [search, setSearch] = useState("");
   const [kindFilter, setKindFilter] = useState<"Todas" | "Individuais" | "Grupos">("Todas");
-  const [assignmentFilter, setAssignmentFilter] = useState<"all" | "mine" | "unassigned">("all");
   const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[] | null>(null);
   const [sendInstanceId, setSendInstanceId] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
@@ -1051,16 +1172,21 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   const [interactiveType, setInteractiveType] = useState<"text" | "button" | "list" | "poll" | "carousel">("text");
   const [interactiveOptions, setInteractiveOptions] = useState("Sim\nNão");
   const [interactiveButtonText, setInteractiveButtonText] = useState("Ver opções");
+  const [interactiveHeader, setInteractiveHeader] = useState("");
+  const [interactiveFooter, setInteractiveFooter] = useState("");
   const [carouselPayload, setCarouselPayload] = useState('{"cards":[]}');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingError, setRecordingError] = useState("");
   const [attachment, setAttachment] = useState<{
+    file: File;
     name: string;
     type: "image" | "audio" | "video" | "document";
     mimeType: string;
-    dataUrl: string;
     previewUrl?: string;
+    storageKey?: string;
+    mediaData?: string;
+    sizeBytes?: number;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
@@ -1095,12 +1221,11 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     []
   );
   const inbox = (platformAdmin ? trpc.platform.supportInbox : trpc.inbox) as typeof trpc.inbox;
+  const uploadAttachmentMutation = inbox.uploadAttachment.useMutation();
   const instancesQuery = inbox.instances.useQuery();
-  const assigneesQuery = trpc.inbox.assignees.useQuery(undefined, { enabled: !platformAdmin });
   const contactsQuery = inbox.contacts.useQuery({
     instanceIds: selectedInstanceIds,
     includeGroups: true,
-    assignment: assignmentFilter,
   });
   const remoteContacts = contactsQuery.data ?? [];
   const items = remoteContacts;
@@ -1173,6 +1298,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   );
   const threadQuery = inbox.thread.useQuery(threadInput, {
     enabled: selectedNumericId > 0,
+    refetchInterval: selectedNumericId > 0 ? 10_000 : false,
   });
   const latestMessageId =
     threadQuery.data?.messages?.[threadQuery.data.messages.length - 1]?.id ??
@@ -1210,8 +1336,13 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       setDraft("");
       setInteractiveType("text");
       setInteractiveOptions("Sim\nNão");
+      setInteractiveHeader("");
+      setInteractiveFooter("");
       clearAttachment();
       await refresh();
+    },
+    onError: error => {
+      setRecordingError(error.message || "Não foi possível enviar a mensagem.");
     },
   });
   if (!selected)
@@ -1255,14 +1386,70 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       enabled: !selected.aiEnabled,
     });
   };
-  const send = () => {
-    if (!draft.trim() && !attachment) return;
+  const send = async () => {
+    if (!draft.trim() && !attachment && interactiveType === "text") return;
     if (platformAdmin && !sendInstanceId) {
       setRecordingError("Selecione a instância que fará o envio.");
       return;
     }
     const outboundInstanceIds = platformAdmin ? [sendInstanceId] : selectedInstanceIds;
     const currentAttachment = attachment;
+    if (currentAttachment) {
+      const caption = draft.trim();
+      if (caption.length > 1024) {
+        setRecordingError("A legenda do anexo pode ter no máximo 1.024 caracteres.");
+        return;
+      }
+      setRecordingError("");
+      try {
+        const uploaded = currentAttachment.storageKey
+          ? {
+              storageKey: currentAttachment.storageKey,
+              fileName: currentAttachment.name,
+              mimeType: currentAttachment.mimeType,
+              sizeBytes: currentAttachment.sizeBytes ?? currentAttachment.file.size,
+            }
+          : await uploadAttachmentMutation.mutateAsync({
+              fileName: currentAttachment.name,
+              messageType: currentAttachment.type,
+              mimeType: currentAttachment.mimeType,
+              dataUrl: await readFileAsDataUrl(currentAttachment.file),
+            });
+        setAttachment(current =>
+          current?.file === currentAttachment.file
+            ? {
+                ...current,
+                name: uploaded.fileName,
+                mimeType: uploaded.mimeType,
+                storageKey: uploaded.storageKey,
+                mediaData: uploaded.mediaData,
+                sizeBytes: uploaded.sizeBytes,
+              }
+            : current
+        );
+        sendMutation.mutate({
+          contactId: selectedNumericId,
+          content: caption || uploaded.fileName,
+          messageType: currentAttachment.type,
+          metadata: {
+            ...(uploaded.storageKey ? { mediaStorageKey: uploaded.storageKey } : {}),
+            ...(uploaded.mediaData ? { mediaData: uploaded.mediaData } : {}),
+            mediaMimeType: uploaded.mimeType,
+            mediaSizeBytes: uploaded.sizeBytes,
+            fileName: uploaded.fileName,
+            ...(caption ? { caption } : {}),
+          },
+          instanceIds: outboundInstanceIds,
+        });
+      } catch (error) {
+        setRecordingError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível guardar o anexo com segurança."
+        );
+      }
+      return;
+    }
     const options = interactiveOptions
       .split("\n")
       .map(option => option.trim())
@@ -1288,6 +1475,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     const interactiveMetadata =
       interactiveType === "button"
         ? {
+            ...(interactiveHeader.trim() ? { title: interactiveHeader.trim() } : {}),
+            ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
             buttons: options.slice(0, 3).map((option, index) => ({
               buttonId: `option-${index + 1}`,
               buttonText: { displayText: option },
@@ -1295,24 +1484,30 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           }
         : interactiveType === "list"
           ? {
+              ...(interactiveHeader.trim() ? { title: interactiveHeader.trim() } : {}),
+              ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
               buttonText: interactiveButtonText,
               sections: [{ title: "Opções", rows: options.slice(0, 10).map((option, index) => ({ rowId: `option-${index + 1}`, title: option })) }],
             }
-          : interactiveType === "poll"
-            ? { payload: { poll: { name: draft.trim(), values: options.slice(0, 12), selectableCount: 1 } } }
+            : interactiveType === "poll"
+            ? {
+                ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
+                payload: { poll: { name: draft.trim() || "Enquete", values: options.slice(0, 12), selectableCount: 1 } },
+              }
             : undefined;
     sendMutation.mutate({
       contactId: selectedNumericId,
-      content: currentAttachment?.dataUrl ?? draft.trim(),
-      messageType: currentAttachment?.type ?? interactiveType,
-      metadata: currentAttachment
-        ? {
-            mediaData: currentAttachment.dataUrl,
-            mediaMimeType: currentAttachment.mimeType,
-            fileName: currentAttachment.name,
-            ...(draft.trim() ? { caption: draft.trim() } : {}),
-          }
-        : interactiveMetadata,
+      content:
+        draft.trim() ||
+        (interactiveType === "button"
+          ? "Escolha uma opção"
+          : interactiveType === "list"
+            ? "Selecione uma opção"
+            : interactiveType === "poll"
+              ? "Enquete"
+              : "Carrossel"),
+      messageType: interactiveType,
+      metadata: interactiveMetadata,
       instanceIds: outboundInstanceIds,
     });
   };
@@ -1320,32 +1515,6 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
       setRecordingError("O áudio/anexo excede o limite de 8 MB.");
-      return;
-    }
-    const mimeType = file.type.split(";", 1)[0].toLowerCase();
-    const allowedMime = new Set([
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-      "image/gif",
-      "audio/ogg",
-      "audio/mpeg",
-      "audio/mp4",
-      "audio/webm",
-      "audio/wav",
-      "video/mp4",
-      "video/webm",
-      "video/quicktime",
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/vnd.ms-excel",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "text/plain",
-      "text/csv",
-    ]);
-    if (!allowedMime.has(mimeType)) {
-      setRecordingError("Este tipo de arquivo não é permitido pelo WhatsApp.");
       return;
     }
     if (attachmentPreviewUrlRef.current)
@@ -1360,24 +1529,14 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           : "document";
     const previewUrl = type === "audio" ? URL.createObjectURL(file) : undefined;
     attachmentPreviewUrlRef.current = previewUrl ?? "";
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string")
-        setAttachment({
-          name: file.name,
-          type,
-          mimeType,
-          dataUrl: reader.result,
-          previewUrl,
-        });
-    };
-    reader.onerror = () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      attachmentPreviewUrlRef.current = "";
-      setRecordingError("Não foi possível ler o arquivo selecionado.");
-    };
+    setAttachment({
+      file,
+      name: file.name,
+      type,
+      mimeType: file.type || "application/octet-stream",
+      previewUrl,
+    });
     setRecordingError("");
-    reader.readAsDataURL(file);
   };
   const stopRecording = () => {
     if (mediaRecorderRef.current?.state === "recording")
@@ -1393,15 +1552,21 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
       recordingChunksRef.current = [];
-      const preferredMime = [
+      const mimeCandidates = [
         "audio/webm;codecs=opus",
         "audio/ogg;codecs=opus",
         "audio/mp4",
-      ].find(type => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(
-        stream,
-        preferredMime ? { mimeType: preferredMime } : undefined
-      );
+      ].filter(type => MediaRecorder.isTypeSupported(type));
+      let recorder: MediaRecorder | undefined;
+      for (const mimeType of mimeCandidates) {
+        try {
+          recorder = new MediaRecorder(stream, { mimeType });
+          break;
+        } catch {
+          // Alguns navegadores declaram suporte, mas rejeitam o MIME no construtor.
+        }
+      }
+      if (!recorder) recorder = new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
       recorder.ondataavailable = event => {
         if (event.data.size > 0) recordingChunksRef.current.push(event.data);
@@ -1447,10 +1612,31 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           stopRecording();
         }
       }, 1000);
-    } catch {
+    } catch (error) {
       mediaStreamRef.current?.getTracks().forEach(track => track.stop());
       mediaStreamRef.current = null;
-      setRecordingError("Permita o acesso ao microfone para gravar um áudio.");
+      const name = error instanceof DOMException ? error.name : "";
+      console.warn("[inbox] microphone request failed", {
+        name,
+        origin: window.location.origin,
+        secureContext: window.isSecureContext,
+        mediaDevicesAvailable: Boolean(navigator.mediaDevices?.getUserMedia),
+      });
+      const message =
+        name === "SecurityError" || !window.isSecureContext
+          ? "O microfone só funciona em uma origem segura. Acesse exatamente http://localhost:3002 e recarregue a página."
+          : name === "NotAllowedError"
+            ? "A permissão do microfone está negada para esta origem. Abra as configurações do site ao lado do endereço, altere Microfone para Permitir e recarregue a página."
+          : name === "NotFoundError"
+            ? "Nenhum microfone foi encontrado neste computador."
+            : name === "NotReadableError"
+              ? "O microfone está ocupado por outro aplicativo. Feche-o e tente novamente."
+              : name === "OverconstrainedError"
+                ? "O microfone selecionado não está disponível. Escolha outro microfone no sistema."
+                : error instanceof Error && error.message
+                  ? `Não foi possível iniciar o microfone: ${error.message}`
+                  : "Não foi possível iniciar o microfone. Verifique o dispositivo e tente novamente.";
+      setRecordingError(message);
     }
   };
   return (
@@ -1479,20 +1665,6 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             </button>
           ))}
         </div>
-        {!platformAdmin && (
-          <select
-            className="select-control"
-            value={assignmentFilter}
-            onChange={event =>
-              setAssignmentFilter(event.target.value as "all" | "mine" | "unassigned")
-            }
-            aria-label="Filtrar por responsável"
-          >
-            <option value="all">Todos os responsáveis</option>
-            <option value="mine">Meus leads</option>
-            <option value="unassigned">Sem responsável</option>
-          </select>
-        )}
         <details className="inbox-instance-filter">
           <summary className="btn-secondary">
             <Filter size={13} /> Instâncias: {selectedInstanceIds === null ? "Todas" : `${selectedInstanceIds.length} selecionada(s)`}
@@ -1676,6 +1848,14 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
                 <span>Opções, uma por linha</span>
                 <textarea className="textarea-control" value={interactiveOptions} onChange={event => setInteractiveOptions(event.target.value)} rows={3} />
               </label>}
+              {interactiveType !== "poll" && <label>
+                <span>Cabeçalho (opcional)</span>
+                <input className="input-control" value={interactiveHeader} onChange={event => setInteractiveHeader(event.target.value)} placeholder="Ex.: Atendimento Forte" maxLength={120} />
+              </label>}
+              {interactiveType !== "poll" && <label>
+                <span>Rodapé (opcional)</span>
+                <input className="input-control" value={interactiveFooter} onChange={event => setInteractiveFooter(event.target.value)} placeholder="Ex.: Escolha uma opção" maxLength={200} />
+              </label>}
               {interactiveType === "list" && (
                 <label>
                   <span>Texto do botão</span>
@@ -1709,6 +1889,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               className="icon-button"
               type="button"
               aria-label="Anexar arquivo"
+              disabled={isRecording || sendMutation.isPending || uploadAttachmentMutation.isPending}
               onClick={() => fileInputRef.current?.click()}
             >
               <Paperclip size={16} />
@@ -1718,7 +1899,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               type="button"
               aria-label="Anexar arquivo de áudio"
               title="Anexar um áudio existente"
-              disabled={isRecording || sendMutation.isPending}
+              disabled={isRecording || sendMutation.isPending || uploadAttachmentMutation.isPending}
               onClick={() => audioFileInputRef.current?.click()}
             >
               <Headphones size={16} />
@@ -1729,7 +1910,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               aria-label={isRecording ? "Parar gravação" : "Gravar áudio"}
               aria-pressed={isRecording}
               title={isRecording ? "Parar gravação" : "Gravar áudio pelo microfone"}
-              disabled={sendMutation.isPending}
+              disabled={sendMutation.isPending || uploadAttachmentMutation.isPending}
               onClick={() => (isRecording ? stopRecording() : void startRecording())}
             >
               {isRecording ? <Square size={14} /> : <Mic size={16} />}
@@ -1739,7 +1920,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               type="button"
               aria-label="Mensagem interativa"
               title="Enviar botões, lista ou enquete"
-              disabled={isRecording || sendMutation.isPending || Boolean(attachment)}
+              disabled={isRecording || sendMutation.isPending || uploadAttachmentMutation.isPending || Boolean(attachment)}
               onClick={() => setInteractiveType(current => current === "text" ? "button" : "text")}
             >
               <ClipboardList size={16} />
@@ -1748,17 +1929,18 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
               className="input-control"
               value={draft}
               onChange={event => setDraft(event.target.value)}
+              disabled={sendMutation.isPending || uploadAttachmentMutation.isPending || isRecording}
               onKeyDown={event => {
-                if (event.key === "Enter" && !event.shiftKey) send();
+                if (event.key === "Enter" && !event.shiftKey) void send();
               }}
               placeholder={selected.isGroup ? "Mensagem para o grupo..." : "Escrever resposta..."}
             />
             <button
               className="btn-primary"
-              onClick={send}
-              disabled={sendMutation.isPending || isRecording || (!draft.trim() && !attachment) || (platformAdmin && !sendInstanceId)}
-              aria-label="Enviar mensagem"
-              title={platformAdmin && !sendInstanceId ? "Selecione a instância de envio" : "Enviar mensagem"}
+              onClick={() => void send()}
+              disabled={sendMutation.isPending || uploadAttachmentMutation.isPending || isRecording || (interactiveType === "text" && !draft.trim() && !attachment) || (platformAdmin && !sendInstanceId)}
+              aria-label={uploadAttachmentMutation.isPending ? "Enviando anexo para armazenamento privado" : "Enviar mensagem"}
+              title={platformAdmin && !sendInstanceId ? "Selecione a instância de envio" : uploadAttachmentMutation.isPending ? "Guardando anexo com segurança…" : "Enviar mensagem"}
             >
               <Send size={14} />
             </button>
@@ -1769,7 +1951,6 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           isOpen={profileOpen}
           onClose={() => setProfileOpen(false)}
           onRenamed={refresh}
-          assignees={assigneesQuery.data ?? []}
           platformAdmin={platformAdmin}
         />
       </div>
@@ -1957,6 +2138,9 @@ export function AgendaPage() {
   const cancelMutation = trpc.agenda.cancel.useMutation({
     onSuccess: () => agendaQuery.refetch(),
   });
+  const rescheduleMutation = trpc.agenda.reschedule.useMutation({
+    onSuccess: () => agendaQuery.refetch(),
+  });
   const days = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
   const serviceOptions = agendaQuery.data?.services ?? [];
   const professionalOptions = agendaQuery.data?.professionals ?? [];
@@ -1994,6 +2178,8 @@ export function AgendaPage() {
         status: statusLabel(item.status),
         rawStatus: item.status,
         notes: item.notes ?? "",
+        startsAt,
+        endsAt,
       };
     }
   );
@@ -2025,6 +2211,15 @@ export function AgendaPage() {
       endsAt,
       notes: notes || undefined,
     });
+  };
+  const rescheduleAppointment = (appointment: (typeof agendaItems)[number]) => {
+    const nextDate = window.prompt("Nova data (AAAA-MM-DD)", appointment.startsAt.toISOString().slice(0, 10));
+    if (!nextDate) return;
+    const nextTime = window.prompt("Novo horário (HH:MM)", appointment.time);
+    if (!nextTime) return;
+    const startsAt = new Date(`${nextDate}T${nextTime}:00`);
+    const endsAt = new Date(startsAt.getTime() + Number.parseInt(appointment.duration, 10) * 60000);
+    rescheduleMutation.mutate({ id: Number(appointment.id), startsAt, endsAt });
   };
   return (
     <PanelLayout
@@ -2256,6 +2451,16 @@ export function AgendaPage() {
                                   }
                                 >
                                   Cancelar
+                                </button>
+                              )}
+                            {appointment.status !== "Cancelado" &&
+                              appointment.status !== "Concluído" && (
+                                <button
+                                  className="btn-secondary"
+                                  disabled={rescheduleMutation.isPending}
+                                  onClick={() => rescheduleAppointment(appointment)}
+                                >
+                                  Reagendar
                                 </button>
                               )}
                           </div>
@@ -2626,7 +2831,6 @@ export function ContactDetailPage() {
           {[
             ["overview", "Visão geral"],
             ["conversation", "Conversa"],
-            ["opportunities", "Oportunidades"],
             ["appointments", "Agendamentos"],
             ["notes", "Notas internas"],
             ["history", "Histórico de eventos"],
@@ -2719,36 +2923,6 @@ export function ContactDetailPage() {
                   icon={MessageCircle}
                   title="Nenhuma mensagem ainda"
                   description="As mensagens deste contato aparecerão aqui."
-                />
-              )}
-            </div>
-          )}
-          {tab === "opportunities" && (
-            <div className="list-stack">
-              {(threadQuery.data?.quotes ?? []).length > 0 ? (
-                (threadQuery.data?.quotes ?? []).map(quote => (
-                  <div className="quote-row" key={quote.id}>
-                    <div className="avatar">R$</div>
-                    <div className="row-copy">
-                      <strong>{quote.serviceName}</strong>
-                      <small>{quote.description || "Sem descrição"}</small>
-                      <small>
-                        Atualizado em {new Date(quote.updatedAt).toLocaleDateString("pt-BR")}
-                      </small>
-                    </div>
-                    <div className="quote-amount">
-                      <strong>{formatCurrency(quote.quotedCents / 100)}</strong>
-                      <StatusBadge tone={quote.status === "pago" ? "green" : quote.status === "cancelado" ? "red" : "amber"}>
-                        {quote.status}
-                      </StatusBadge>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <EmptyState
-                  icon={WalletCards}
-                  title="Nenhuma oportunidade vinculada"
-                  description="Orçamentos criados no Billing para este lead aparecerão aqui."
                 />
               )}
             </div>

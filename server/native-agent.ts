@@ -3,24 +3,30 @@ import { type Message, type Tool } from "./_core/llm";
 import {
   createAgendaAppointment,
   getAgendaSnapshot,
+  getActiveQuoteSummaryByContact,
+  getCanonicalContactStage,
   getContactById,
   getOnboardingProfile,
   leadMemoryOperation,
   listMessagesForContact,
-  listQuotesForContact,
-  listBaileysInstances,
+  listContactNotes,
   queueOutboundMessage,
-  claimAgentEffect,
+  recordAgentRun,
   completeAgentEffect,
+  createAgentEffectProposal,
   failAgentEffect,
   setContactAi,
 } from "./db";
 import {
   capabilityForMessageType,
   invokeConfiguredLLM,
+  type LLMInvocationTelemetry,
   type AgentProviderSettings,
 } from "./llm-providers";
 import { resolvePrivateMediaUrl } from "./media-storage";
+import { inspectAgentInput, safetyHandoffMessage } from "./agent-safety";
+import { transcribeAudio } from "./audio-transcription";
+import { analyzeMedia } from "./media-analysis";
 
 export type NativeAgentEvent = {
   eventId: string;
@@ -50,7 +56,7 @@ const tools: Tool[] = [
     function: {
       name: "consultar_contexto_comercial",
       description:
-        "Consulta somente leitura o contexto comercial do contato atual: lead, histórico recente, orçamentos, pagamentos e agendamentos vinculados. Não use para alterar dados.",
+        "Consulta o contexto comercial real e aprovado do contato atual: etapa canônica, serviço solicitado, urgência, orçamento aprovado e notas internas recentes. Use antes de responder sobre preço, etapa ou próximos passos.",
       parameters: {
         type: "object",
         properties: {},
@@ -94,6 +100,7 @@ const tools: Tool[] = [
                 enum: ["Baixa", "Média", "Alta", "Crítica"],
               },
               stage: { type: "string" },
+              quoteCents: { type: "number" },
               aiEnabled: { type: "boolean" },
             },
             additionalProperties: false,
@@ -122,7 +129,7 @@ const tools: Tool[] = [
     function: {
       name: "consultar_agenda",
       description:
-        "Consulta serviços, profissionais, disponibilidade e próximos agendamentos do Forte Panel.",
+        "Consulta serviços ativos do catálogo operacional, preço fixo/a partir de/sob consulta, duração, profissionais vinculados, jornada semanal e próximos agendamentos do Forte Panel. A jornada não garante uma vaga; verifique os agendamentos do horário exato.",
       parameters: {
         type: "object",
         properties: {},
@@ -195,10 +202,54 @@ function fallbackPrompt(profilePrompt: string) {
   return `${profilePrompt}\n\nVocê é o agente nativo do Forte Panel. Você atende pelo WhatsApp em português do Brasil. Use as ferramentas para consultar e alterar dados reais; nunca invente disponibilidade, preço, cadastro ou confirmação. Antes de criar agendamento, confirme explicitamente serviço, profissional, data e horário. Quando houver pedido de humano, reclamação, risco, negociação especial ou incerteza, use transferir_humano. Depois de executar uma ferramenta, responda de forma curta, clara e cordial.`;
 }
 
-export async function runNativeAgent(
+async function runNativeAgentCore(
   event: NativeAgentEvent,
   config: AgentConfig
 ) {
+  const safety = inspectAgentInput({
+    content: event.content,
+    messages: event.messages,
+  });
+  if (safety.decision === "handoff" && safety.reason) {
+    await setContactAi(event.workspaceId, event.contactId, false);
+    const response = safetyHandoffMessage(safety.reason);
+    await queueOutboundMessage(
+      event.workspaceId,
+      event.contactId,
+      response,
+      undefined,
+      "ai",
+      "text",
+      {
+        agent: true,
+        safetyGate: true,
+        safetyReason: safety.reason,
+        eventId: event.eventId,
+        ...(event.instanceId ? { instanceId: event.instanceId } : {}),
+      }
+    );
+    return {
+      response,
+      steps: 0,
+      model: `safety-gate:${safety.reason}`,
+      toolCalls: 0,
+      transferred: true,
+      pendingConfirmation: false,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      latencyMs: 0,
+      telemetry: {
+        capability: capabilityForMessageType(event.messageType),
+        provider: null,
+        attempts: 0,
+        fallbackUsed: false,
+        failureCode: `safety_${safety.reason}`,
+      },
+      transcriptionTelemetry: undefined,
+      mediaAnalysisTelemetry: undefined,
+    };
+  }
   const contact = await getContactById(event.workspaceId, event.contactId);
   if (!contact) throw new Error("Contato do evento não encontrado");
   const thread = await listMessagesForContact(
@@ -227,7 +278,38 @@ export async function runNativeAgent(
     typeof event.metadata?.mediaMimeType === "string"
       ? event.metadata.mediaMimeType
       : undefined;
-  const entryText = `Nova entrada (${event.messageType ?? "text"}) de ${contact.name} (${contact.externalPhone}):\n${event.content}`;
+  const isAudio = event.messageType === "audio";
+  const mediaAnalysisCapability =
+    event.messageType === "image"
+      ? "vision"
+      : event.messageType === "document"
+        ? "document"
+        : undefined;
+  if ((isAudio || mediaAnalysisCapability) && !mediaData)
+    throw new Error(`${isAudio ? "audio" : mediaAnalysisCapability}_media_unavailable`);
+  let normalizedContent = event.content;
+  let transcriptionTelemetry: LLMInvocationTelemetry | undefined;
+  let mediaAnalysisTelemetry: LLMInvocationTelemetry | undefined;
+  if (isAudio && mediaData) {
+    const transcription = await transcribeAudio(config.llm, {
+      mediaUrl: mediaData,
+      mimeType: mediaMimeType,
+      model: config.model || defaultModel,
+    });
+    normalizedContent = `[Transcrição do áudio]\n${transcription.text}`;
+    transcriptionTelemetry = transcription.telemetry;
+  }
+  if (mediaAnalysisCapability && mediaData) {
+    const analysis = await analyzeMedia(config.llm, {
+      capability: mediaAnalysisCapability,
+      mediaUrl: mediaData,
+      mimeType: mediaMimeType,
+      model: config.model || defaultModel,
+    });
+    normalizedContent = `[Análise de ${mediaAnalysisCapability === "vision" ? "imagem" : "documento"}]\n${analysis.text}`;
+    mediaAnalysisTelemetry = analysis.telemetry;
+  }
+  const entryText = `Nova entrada (${event.messageType ?? "text"}) de ${contact.name} (${contact.externalPhone}):\n${normalizedContent}`;
   const entryContent: Message["content"] =
     mediaData && event.messageType === "image"
       ? [
@@ -235,6 +317,8 @@ export async function runNativeAgent(
           { type: "image_url", image_url: { url: mediaData, detail: "auto" } },
         ]
       : mediaData &&
+          !isAudio &&
+          !mediaAnalysisCapability &&
           ["audio", "document", "video"].includes(event.messageType ?? "")
         ? [
             { type: "text", text: entryText },
@@ -259,10 +343,30 @@ export async function runNativeAgent(
   history.push({ role: "user", content: entryContent });
   let messages: Message[] = [{ role: "system", content: system }, ...history];
   const maxSteps = Math.max(1, Math.min(8, config.maxSteps || 6));
+  const startedAt = Date.now();
+  let toolCalls = 0;
+  let transferred = false;
+  let pendingConfirmation = false;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let totalTokens = 0;
+  const capability =
+    isAudio || mediaAnalysisCapability
+      ? "text"
+      : capabilityForMessageType(event.messageType);
+  let telemetry: LLMInvocationTelemetry = {
+    capability,
+    provider: null,
+    attempts: 0,
+    fallbackUsed: false,
+    failureCode: null,
+  };
+  if (transcriptionTelemetry) telemetry = transcriptionTelemetry;
+  if (mediaAnalysisTelemetry) telemetry = mediaAnalysisTelemetry;
   for (let step = 0; step < maxSteps; step += 1) {
     const response = await invokeConfiguredLLM(
       config.llm,
-      capabilityForMessageType(event.messageType),
+      capability,
       {
         model: config.model || defaultModel,
         messages,
@@ -271,6 +375,10 @@ export async function runNativeAgent(
         maxTokens: 1800,
       }
     );
+    telemetry = response.telemetry;
+    inputTokens += response.usage?.prompt_tokens ?? 0;
+    outputTokens += response.usage?.completion_tokens ?? 0;
+    totalTokens += response.usage?.total_tokens ?? 0;
     const assistant = response.choices[0]?.message;
     if (!assistant) throw new Error("O modelo não retornou resposta");
     messages.push({
@@ -296,9 +404,10 @@ export async function runNativeAgent(
             ...(event.instanceId ? { instanceId: event.instanceId } : {}),
           }
         );
-      return { response: text, steps: step + 1, model: response.model };
+      return { response: text, steps: step + 1, model: response.model, toolCalls, transferred, pendingConfirmation, inputTokens, outputTokens, totalTokens, latencyMs: Date.now() - startedAt, telemetry, transcriptionTelemetry, mediaAnalysisTelemetry };
     }
     for (const call of assistant.tool_calls) {
+      toolCalls += 1;
       const args = asObject(JSON.parse(call.function.arguments || "{}"));
       const result = await executeTool(
         call.function.name,
@@ -306,6 +415,9 @@ export async function runNativeAgent(
         event,
         call.id
       );
+      const flags = result as { transferred?: boolean; pendingConfirmation?: boolean };
+      transferred ||= flags.transferred === true;
+      pendingConfirmation ||= flags.pendingConfirmation === true;
       messages.push({
         role: "tool",
         tool_call_id: call.id,
@@ -316,7 +428,50 @@ export async function runNativeAgent(
   throw new Error("O agente excedeu o número máximo de etapas");
 }
 
-export const nativeAgentMutatingToolNames = new Set([
+export async function runNativeAgent(event: NativeAgentEvent, config: AgentConfig) {
+  const startedAt = Date.now();
+  try {
+    const result = await runNativeAgentCore(event, config);
+    await recordAgentRun({
+      workspaceId: event.workspaceId,
+      eventId: event.eventId,
+      contactId: event.contactId,
+      model: result.model,
+      outcome: result.pendingConfirmation ? "pending_confirmation" : result.transferred ? "transferred" : "resolved",
+      steps: result.steps,
+      toolCalls: result.toolCalls,
+      transferred: result.transferred,
+      pendingConfirmation: result.pendingConfirmation,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      totalTokens: result.totalTokens,
+      latencyMs: result.latencyMs,
+      provider: result.telemetry.provider,
+      capability: result.telemetry.capability,
+      providerAttempts: result.telemetry.attempts,
+      failureCode: result.telemetry.failureCode,
+      transcriptionProvider: result.transcriptionTelemetry?.provider,
+      transcriptionAttempts: result.transcriptionTelemetry?.attempts,
+      mediaAnalysisProvider: result.mediaAnalysisTelemetry?.provider,
+      mediaAnalysisAttempts: result.mediaAnalysisTelemetry?.attempts,
+    });
+    return result;
+  } catch (error) {
+    const telemetry = error && typeof error === "object" && "telemetry" in error
+      ? (error as { telemetry: LLMInvocationTelemetry }).telemetry
+      : {
+          capability: capabilityForMessageType(event.messageType),
+          provider: null,
+          attempts: 0,
+          fallbackUsed: false,
+          failureCode: "agent_runtime_error",
+        };
+    await recordAgentRun({ workspaceId: event.workspaceId, eventId: event.eventId, contactId: event.contactId, outcome: "failed", steps: 0, toolCalls: 0, transferred: false, pendingConfirmation: false, latencyMs: Date.now() - startedAt, provider: telemetry.provider, capability: telemetry.capability, providerAttempts: telemetry.attempts, failureCode: telemetry.failureCode });
+    throw error;
+  }
+}
+
+const mutatingTools = new Set([
   "atualizar_lead",
   "registrar_nota",
   "criar_agendamento",
@@ -329,43 +484,56 @@ async function executeTool(
   event: NativeAgentEvent,
   toolCallId: string
 ) {
-  if (!nativeAgentMutatingToolNames.has(name)) return executeToolEffect(name, args, event);
+  if (!mutatingTools.has(name)) return executeToolEffect(name, args, event);
   const fingerprint = crypto
     .createHash("sha256")
     .update(JSON.stringify({ name, args }))
     .digest("hex");
-  const claim = await claimAgentEffect({
+  const proposal = await createAgentEffectProposal({
     workspaceId: event.workspaceId,
     eventId: event.eventId,
     toolCallId,
     toolName: name,
     fingerprint,
+    proposal: {
+      kind: "human_confirmation_required",
+      action: name,
+      args,
+      event: {
+        eventId: event.eventId,
+        workspaceId: event.workspaceId,
+        contactId: event.contactId,
+        conversationId: event.conversationId,
+        instanceId: event.instanceId,
+      },
+    },
   });
-  if (claim.completed) return claim.result;
-  if (claim.conflict)
-    throw new Error(`Efeito do agente em conflito para ${name}`);
-  if (claim.inProgress || !claim.claimed)
-    throw new Error(
-      `Efeito do agente ainda está em processamento para ${name}`
-    );
+  if (!proposal) throw new Error("Não foi possível registrar a confirmação");
+  return {
+    pendingConfirmation: true,
+    confirmationId: proposal.id,
+    action: name,
+    message: "A ação foi preparada e aguarda confirmação humana.",
+  };
+}
+
+export async function confirmNativeAgentEffect(input: {
+  workspaceId: number;
+  effect: { id: number; eventId: string; toolCallId: string; toolName: string; result: string | null };
+  actorUserId: number;
+}) {
+  if (!input.effect.result) throw new Error("Proposta do agente sem payload");
+  const proposal = JSON.parse(input.effect.result) as {
+    args: Record<string, unknown>;
+    event: NativeAgentEvent;
+  };
+  const event = { ...proposal.event, workspaceId: input.workspaceId };
   try {
-    const result = await executeToolEffect(name, args, event);
-    await completeAgentEffect({
-      workspaceId: event.workspaceId,
-      eventId: event.eventId,
-      toolCallId,
-      result,
-    });
+    const result = await executeToolEffect(input.effect.toolName, proposal.args, event);
+    await completeAgentEffect({ workspaceId: input.workspaceId, eventId: input.effect.eventId, toolCallId: input.effect.toolCallId, result: { ...result, confirmedByUserId: input.actorUserId } });
     return result;
   } catch (error) {
-    await failAgentEffect({
-      workspaceId: event.workspaceId,
-      eventId: event.eventId,
-      toolCallId,
-      result: {
-        error: error instanceof Error ? error.message : "Falha na ferramenta",
-      },
-    });
+    await failAgentEffect({ workspaceId: input.workspaceId, eventId: input.effect.eventId, toolCallId: input.effect.toolCallId, result: { error: error instanceof Error ? error.message : "Falha na ferramenta" } });
     throw error;
   }
 }
@@ -376,77 +544,39 @@ async function executeToolEffect(
   event: NativeAgentEvent
 ) {
   if (name === "consultar_contexto_comercial") {
-    const [lead, thread, quotes, agenda, instances] = await Promise.all([
-      getContactById(event.workspaceId, event.contactId),
-      listMessagesForContact(event.workspaceId, event.contactId, { limit: 30 }),
-      listQuotesForContact(event.workspaceId, event.contactId),
-      getAgendaSnapshot(event.workspaceId),
-      listBaileysInstances(event.workspaceId),
+    const currentContact = await getContactById(event.workspaceId, event.contactId);
+    if (!currentContact) throw new Error("Contato do evento não encontrado");
+    const [stage, quoteSummary, notes] = await Promise.all([
+      getCanonicalContactStage(event.workspaceId, event.contactId),
+      getActiveQuoteSummaryByContact(event.workspaceId, [event.contactId]),
+      listContactNotes(event.workspaceId, event.contactId),
     ]);
-    if (!lead) throw new Error("Contato do evento não encontrado");
+    const approvedQuote = quoteSummary.get(event.contactId);
     return {
-      lead: {
-        id: lead.id,
-        name: lead.name,
-        phone: lead.externalPhone,
-        stage: lead.stage,
-        urgency: lead.urgency,
-        serviceRequested: lead.serviceRequested,
-        assignedUserId: lead.assignedUserId,
-        followUpAt: lead.followUpAt,
-        followUpCompletedAt: lead.followUpCompletedAt,
-        aiEnabled: lead.aiEnabled === 1,
+      source: "workspace_commercial_context",
+      contact: {
+        id: currentContact.id,
+        name: currentContact.name,
+        city: currentContact.city,
+        neighborhood: currentContact.neighborhood,
+        serviceRequested: currentContact.serviceRequested,
+        urgency: currentContact.urgency,
       },
-      recentMessages: thread.slice(-20).map(message => ({
-        direction: message.direction,
-        senderType: message.senderType,
-        status: message.status,
-        content: message.content,
-        createdAt: message.createdAt,
+      opportunity: { stage: stage ?? null },
+      approvedQuote: approvedQuote
+        ? {
+            quoteId: approvedQuote.quoteId,
+            quotedCents: approvedQuote.quotedCents,
+            receivedCents: approvedQuote.receivedCents,
+            pendingCents: approvedQuote.pendingCents,
+          }
+        : null,
+      recentNotes: notes.slice(0, 5).map(note => ({
+        content: note.content,
+        createdAt: note.createdAt,
       })),
-      quotes: quotes.map(quote => ({
-        id: quote.id,
-        serviceName: quote.serviceName,
-        description: quote.description,
-        quotedCents: quote.quotedCents,
-        receivedCents: quote.receivedCents,
-        status: quote.status,
-        dueDate: quote.dueDate,
-        validUntil: quote.validUntil,
-        approvedAt: quote.approvedAt,
-        items: quote.items.map(item => ({
-          description: item.description,
-          quantity: item.quantity,
-          unitCents: item.unitCents,
-          totalCents: item.totalCents,
-        })),
-        payments: quote.payments.map(payment => ({
-          amountCents: payment.amountCents,
-          method: payment.method,
-          receivedAt: payment.receivedAt,
-          note: payment.note,
-          receiptId: payment.receiptId,
-        })),
-      })),
-      appointments: agenda.appointments
-        .filter(appointment => appointment.contactId === event.contactId)
-        .map(appointment => ({
-          id: appointment.id,
-          quoteId: appointment.quoteId,
-          serviceName: appointment.serviceName,
-          professionalName: appointment.professionalName,
-          startsAt: appointment.startsAt,
-          endsAt: appointment.endsAt,
-          status: appointment.status,
-          notes: appointment.notes,
-        })),
-      timezone: agenda.timezone,
-      channelHealth: instances.map(instance => ({
-        instanceId: instance.instanceId,
-        name: instance.name,
-        status: instance.status,
-        lastSeenAt: instance.lastSeenAt,
-      })),
+      guardrail:
+        "Dados somente leitura do workspace do contato; não trate observação livre como preço, disponibilidade ou confirmação.",
     };
   }
   if (name === "buscar_lead")

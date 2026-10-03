@@ -316,6 +316,111 @@
       "when": 1790690000000,
       "tag": "0044_carousel_message_type",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1790734100128,
+      "tag": "0045_service_price_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1790736508485,
+      "tag": "0046_webhook_processing_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1790738138246,
+      "tag": "0047_unified_leads_opportunities",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790765100000,
+      "tag": "0048_opportunity_assignment_followup",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1790767867837,
+      "tag": "0049_opportunity_stage_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1790769000000,
+      "tag": "0050_quote_items_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790770000000,
+      "tag": "0051_quote_payments_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1790780197266,
+      "tag": "0052_agent_runs_metrics",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1790780836663,
+      "tag": "0053_platform_incidents",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790782000000,
+      "tag": "0054_platform_support_tickets",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1790783000054,
+      "tag": "0055_webhook_anti_replay",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1790783000055,
+      "tag": "0056_security_rate_limit_buckets",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1790815887538,
+      "tag": "0057_agent_runs_provider_observability",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1790818200000,
+      "tag": "0058_platform_ai_connection_fallbacks",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1790989187538,
+      "tag": "0059_appointment_quote_link",
+      "breakpoints": true
     }
   ]
 }

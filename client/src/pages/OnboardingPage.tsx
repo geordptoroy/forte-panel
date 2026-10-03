@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  CalendarClock,
   CheckCircle2,
   Clock3,
+  DollarSign,
   Info,
   ListChecks,
   Loader2,
@@ -12,11 +14,15 @@ import {
   Sparkles,
   Square,
   UploadCloud,
+  UserPlus,
   Volume2,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
+import { formatServicePrice, type ServicePriceType } from "../../../shared/service-price";
+import { onboardingReviewExamples, type OnboardingSimulationResult } from "../../../shared/onboarding-simulation";
+import { getOnboardingStepIndex, isSameOnboardingDraft } from "../../../shared/onboarding-progress";
 
 type Profile = {
   businessName: string;
@@ -32,42 +38,6 @@ type Profile = {
   humanHandoffRules: string;
   qualificationRules: string;
 };
-
-type CatalogService = {
-  id: number;
-  name: string;
-  description: string | null;
-  durationMinutes: number;
-  priceCents: number;
-  active: boolean;
-  professionalIds: number[];
-};
-
-type CatalogProfessional = {
-  id: number;
-  name: string;
-  specialty: string | null;
-  color: string;
-  active: boolean;
-  serviceIds: number[];
-  availability: { weekday: number; startMinute: number; endMinute: number }[];
-};
-
-const weekdayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function parsePriceCents(value: string) {
-  const normalized = value.replace(/\./g, "").replace(",", ".");
-  const amount = Number(normalized);
-  return Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) : 0;
-}
-
-function formatMinute(minute: number) {
-  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-}
 
 const emptyProfile: Profile = {
   businessName: "",
@@ -109,6 +79,24 @@ const fieldTitles: Record<string, string> = {
 
 const voiceStepKeys = ["identity", "offering", "operations", "guardrails", "voice"] as const;
 type VoiceStepKey = (typeof voiceStepKeys)[number];
+type AvailabilityEntry = { weekday: number; startMinute: number; endMinute: number };
+const weekdays = [
+  { value: 0, label: "Domingo", short: "DOM" },
+  { value: 1, label: "Segunda", short: "SEG" },
+  { value: 2, label: "Terça", short: "TER" },
+  { value: 3, label: "Quarta", short: "QUA" },
+  { value: 4, label: "Quinta", short: "QUI" },
+  { value: 5, label: "Sexta", short: "SEX" },
+  { value: 6, label: "Sábado", short: "SÁB" },
+];
+const minuteToTime = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+const timeToMinute = (value: string) => {
+  const [hours, minutes] = value.split(":").map(Number);
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : 0;
+};
+const catalogGuidance = "Use somente os serviços ativos do catálogo operacional para informar serviço, preço e duração. Se um dado não estiver no catálogo, confirme com a equipe. Consulte a agenda para cada horário; jornada semanal não confirma uma vaga.";
+const deferredCatalogGuidance = "Cadastro de serviços adiado pelo responsável. Não informe preço, duração ou disponibilidade sem consultar a equipe e as fontes operacionais reais.";
+const deferredHoursGuidance = "Horários ainda não cadastrados. Confirme com a equipe e consulte a agenda real antes de sugerir ou confirmar qualquer horário.";
 
 function formatRecordingDuration(durationMs: number) {
   const seconds = Math.floor(durationMs / 1000);
@@ -139,8 +127,10 @@ export default function OnboardingPage() {
   const sessionStarted = useRef(false);
   const startSession = trpc.onboarding.start.useMutation({
     onSuccess: () => void sessionQuery.refetch(),
-    onError: () => {
-      sessionStarted.current = false;
+  });
+  const saveCurrentStep = trpc.onboarding.setCurrentStep.useMutation({
+    onSuccess: session => {
+      utils.onboarding.session.setData(undefined, session);
     },
   });
   const governanceQuery = trpc.onboarding.governance.useQuery();
@@ -155,52 +145,64 @@ export default function OnboardingPage() {
     onSuccess: () => setLocation("/dashboard"),
   });
   const profileQuery = trpc.onboarding.profile.useQuery();
-  const servicesQuery = trpc.workspace.services.useQuery();
+  const catalogQuery = trpc.workspace.services.useQuery();
   const professionalsQuery = trpc.workspace.professionalsDetailed.useQuery();
-  const createService = trpc.workspace.createService.useMutation({
-    onSuccess: () => void servicesQuery.refetch(),
-  });
-  const updateService = trpc.workspace.updateService.useMutation({
-    onSuccess: () => void servicesQuery.refetch(),
-  });
-  const setServiceProfessionals = trpc.workspace.setServiceProfessionals.useMutation({
-    onSuccess: () => {
-      void servicesQuery.refetch();
-      void professionalsQuery.refetch();
-    },
-  });
-  const createProfessional = trpc.workspace.createProfessional.useMutation({
-    onSuccess: () => void professionalsQuery.refetch(),
-  });
-  const setProfessionalAvailability = trpc.workspace.setProfessionalAvailability.useMutation({
-    onSuccess: () => void professionalsQuery.refetch(),
-  });
   const metricsQuery = trpc.onboarding.metrics.useQuery({ windowDays: 30 });
   const versionsQuery = trpc.onboarding.versions.useQuery();
   const [profile, setProfile] = useState<Profile>(emptyProfile);
-  const [newService, setNewService] = useState({ name: "", price: "", durationMinutes: 60 });
-  const [newProfessionalName, setNewProfessionalName] = useState("");
+  const [simulationResult, setSimulationResult] = useState<OnboardingSimulationResult | null>(null);
+  const [simulationMessage, setSimulationMessage] = useState("");
+  const [serviceName, setServiceName] = useState("");
+  const [serviceDescription, setServiceDescription] = useState("");
+  const [serviceDuration, setServiceDuration] = useState("60");
+  const [servicePrice, setServicePrice] = useState("");
+  const [servicePriceType, setServicePriceType] = useState<ServicePriceType>("quote");
+  const [serviceProfessionalIds, setServiceProfessionalIds] = useState<number[]>([]);
   const [catalogMessage, setCatalogMessage] = useState("");
+  const [professionalName, setProfessionalName] = useState("");
+  const [professionalSpecialty, setProfessionalSpecialty] = useState("");
+  const [availabilityProfessionalId, setAvailabilityProfessionalId] = useState<number | null>(null);
+  const [availabilityDraft, setAvailabilityDraft] = useState<AvailabilityEntry[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
   const [published, setPublished] = useState(false);
   const [savedVersion, setSavedVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [autosaveState, setAutosaveState] = useState<"idle" | "waiting" | "saving" | "saved" | "error">("idle");
-  const latestProfileRef = useRef(profile);
-  const autosavePayloadRef = useRef<Profile | null>(null);
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const profileRevisionRef = useRef(0);
+  const autosaveRevisionRef = useRef(0);
+  const saveRevisionRef = useRef(0);
+  const markDraftDirty = () => {
+    profileRevisionRef.current += 1;
+    dirtyRef.current = true;
+    setDirty(true);
+  };
   const autosave = trpc.onboarding.autosave.useMutation({
-    onSuccess: () => {
-      const changedWhileSaving = latestProfileRef.current !== autosavePayloadRef.current;
-      setDirty(changedWhileSaving);
-      setAutosaveState(changedWhileSaving ? "waiting" : "saved");
+    onMutate: () => {
+      autosaveRevisionRef.current = profileRevisionRef.current;
+    },
+    onSuccess: (_result, variables) => {
+      const isCurrent = autosaveRevisionRef.current === profileRevisionRef.current &&
+        isSameOnboardingDraft(profileRef.current, variables.profile);
+      dirtyRef.current = !isCurrent;
+      setDirty(!isCurrent);
+      setAutosaveState(isCurrent ? "saved" : "waiting");
       void utils.onboarding.profile.invalidate();
     },
     onError: () => {
+      dirtyRef.current = true;
       setDirty(true);
       setAutosaveState("error");
     },
   });
   const confirmStep = trpc.onboarding.confirmStep.useMutation({
+    onSuccess: () => void utils.onboarding.profile.invalidate(),
+  });
+  const simulateExamplesMutation = trpc.onboarding.simulateExamples.useMutation();
+  const reviewExamplesMutation = trpc.onboarding.reviewExamples.useMutation({
     onSuccess: () => void utils.onboarding.profile.invalidate(),
   });
   const resolveConflict = trpc.onboarding.resolveConflict.useMutation({
@@ -213,17 +215,46 @@ export default function OnboardingPage() {
     onSuccess: () => void utils.onboarding.profile.invalidate(),
   });
   const saveMutation = trpc.onboarding.save.useMutation({
-    onSuccess: result => {
+    onMutate: () => {
+      saveRevisionRef.current = profileRevisionRef.current;
+    },
+    onSuccess: (result, variables) => {
       setPublished(result.published);
       setSavedVersion(result.version);
-      setDirty(false);
-      setAutosaveState("saved");
+      const isCurrent = saveRevisionRef.current === profileRevisionRef.current &&
+        isSameOnboardingDraft(profileRef.current, variables.profile);
+      dirtyRef.current = !isCurrent;
+      setDirty(!isCurrent);
+      setAutosaveState(isCurrent ? "saved" : "waiting");
       void utils.onboarding.profile.invalidate();
       void utils.onboarding.versions.invalidate();
     },
   });
-  const [simulationMessage, setSimulationMessage] = useState("");
-  const simulation = trpc.onboarding.simulate.useMutation();
+  const createCatalogService = trpc.workspace.createService.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.services.invalidate();
+    },
+  });
+  const linkCatalogService = trpc.workspace.setServiceProfessionals.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.services.invalidate();
+      await utils.workspace.professionalsDetailed.invalidate();
+    },
+  });
+  const createCatalogProfessional = trpc.workspace.createProfessional.useMutation({
+    onSuccess: async professional => {
+      setAvailabilityProfessionalId(professional.id);
+      setProfessionalName("");
+      setProfessionalSpecialty("");
+      await utils.workspace.professionalsDetailed.invalidate();
+    },
+  });
+  const saveProfessionalAvailability = trpc.workspace.setProfessionalAvailability.useMutation({
+    onSuccess: async () => {
+      await utils.workspace.professionalsDetailed.invalidate();
+      setCatalogMessage("Disponibilidade semanal salva no catálogo operacional.");
+    },
+  });
   const rollbackMutation = trpc.onboarding.rollback.useMutation({
     onSuccess: result => {
       setPublished(true);
@@ -243,6 +274,10 @@ export default function OnboardingPage() {
   const [voiceCorrectionMode, setVoiceCorrectionMode] = useState(false);
   const [proposalMessage, setProposalMessage] = useState("");
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
+  const catalogServices = catalogQuery.data ?? [];
+  const professionals = professionalsQuery.data ?? [];
+  const activeProfessionals = professionals.filter(professional => professional.active);
+  const selectedAvailabilityProfessional = professionals.find(professional => professional.id === availabilityProfessionalId) ?? activeProfessionals[0];
   const onboardingSteps = [
     { id: "identity", title: "Negócio", description: "Identidade e posicionamento" },
     { id: "offering", title: "Serviços", description: "Oferta, preços e duração" },
@@ -252,8 +287,15 @@ export default function OnboardingPage() {
     { id: "activation", title: "Ativação", description: "Publicar e conectar canal" },
   ] as const;
   const currentStepId = onboardingSteps[currentStep]?.id ?? "identity";
-  const goToNextStep = () => setCurrentStep(step => Math.min(onboardingSteps.length - 1, step + 1));
-  const goToPreviousStep = () => setCurrentStep(step => Math.max(0, step - 1));
+  const navigateToStep = (index: number) => {
+    const nextIndex = Math.min(onboardingSteps.length - 1, Math.max(0, index));
+    const step = onboardingSteps[nextIndex];
+    setCurrentStep(nextIndex);
+    if (step && sessionQuery.data?.id)
+      saveCurrentStep.mutate({ stepKey: step.id });
+  };
+  const goToNextStep = () => navigateToStep(currentStep + 1);
+  const goToPreviousStep = () => navigateToStep(currentStep - 1);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
@@ -292,18 +334,36 @@ export default function OnboardingPage() {
     setFollowUpDrafts(current => ({ ...current, [key]: value }));
 
   useEffect(() => {
-    latestProfileRef.current = profile;
-  }, [profile]);
-
-  useEffect(() => {
-    if (profileQuery.data && !dirty) {
+    if (
+      profileQuery.data &&
+      !dirtyRef.current &&
+      !autosave.isPending &&
+      !saveMutation.isPending
+    ) {
       setProfile(profileQuery.data.profile);
       setPublished(profileQuery.data.published);
       setSavedVersion(profileQuery.data.version);
+      profileRevisionRef.current = 0;
+      dirtyRef.current = false;
       setDirty(false);
       setAutosaveState("idle");
     }
-  }, [dirty, profileQuery.data]);
+  }, [autosave.isPending, profileQuery.data, saveMutation.isPending]);
+
+  useEffect(() => {
+    const resumedStep = getOnboardingStepIndex(sessionQuery.data?.currentStep);
+    if (resumedStep !== null) setCurrentStep(resumedStep);
+  }, [sessionQuery.data?.currentStep]);
+
+  useEffect(() => {
+    if (!activeProfessionals.length) return;
+    if (!activeProfessionals.some(professional => professional.id === availabilityProfessionalId))
+      setAvailabilityProfessionalId(activeProfessionals[0]!.id);
+  }, [activeProfessionals, availabilityProfessionalId]);
+
+  useEffect(() => {
+    setAvailabilityDraft(selectedAvailabilityProfessional?.availability.map(entry => ({ ...entry })) ?? []);
+  }, [selectedAvailabilityProfessional?.id, selectedAvailabilityProfessional?.availability]);
 
   useEffect(() => {
     if (governanceQuery.data?.retention) {
@@ -323,19 +383,19 @@ export default function OnboardingPage() {
   }, [sessionQuery.data, sessionQuery.isLoading, startSession.mutate]);
 
   useEffect(() => {
-    if (!dirty) return;
-    if (autosave.isPending) {
-      setAutosaveState("waiting");
-      return;
-    }
+    if (
+      !dirty ||
+      !profileQuery.data ||
+      autosave.isPending ||
+      saveMutation.isPending
+    ) return;
     setAutosaveState("waiting");
     const timeout = window.setTimeout(() => {
       setAutosaveState("saving");
-      autosavePayloadRef.current = profile;
       autosave.mutate({ profile });
     }, 1200);
     return () => window.clearTimeout(timeout);
-  }, [autosave.isPending, autosave.mutate, dirty, profile]);
+  }, [autosave.isPending, autosave.mutate, dirty, profile, profileQuery.data, saveMutation.isPending]);
 
   useEffect(() => () => {
     streamRef.current?.getTracks().forEach(track => track.stop());
@@ -451,7 +511,7 @@ export default function OnboardingPage() {
   const insertTranscriptIntoFaq = () => {
     if (!voiceTranscript.trim()) return;
     const prefix = profile.faq.trim() ? `${profile.faq.trim()}\n\n` : "";
-    setDirty(true);
+    markDraftDirty();
     setProfile(current => ({
       ...current,
       faq: `${prefix}Transcrição do onboarding (${stepTitles[voiceStepKey]}):\n${voiceTranscript.trim()}`,
@@ -459,48 +519,87 @@ export default function OnboardingPage() {
   };
 
   const update = (key: keyof Profile, value: string) => {
-    setDirty(true);
+    markDraftDirty();
     setProfile(current => ({ ...current, [key]: value }));
   };
-  const addService = () => {
-    if (!newService.name.trim()) return;
-    setCatalogMessage("");
-    createService.mutate({
-      name: newService.name.trim(),
-      durationMinutes: newService.durationMinutes,
-      priceCents: parsePriceCents(newService.price),
-    }, {
-      onSuccess: () => setNewService({ name: "", price: "", durationMinutes: 60 }),
-      onError: error => setCatalogMessage(error.message),
-    });
+  const updateIfBlank = (key: keyof Profile, value: string) => {
+    if (profile[key].trim()) return;
+    markDraftDirty();
+    setProfile(current => current[key].trim() ? current : { ...current, [key]: value });
   };
-  const addProfessional = () => {
-    if (!newProfessionalName.trim()) return;
+  const addOperationalService = async () => {
     setCatalogMessage("");
-    createProfessional.mutate({ name: newProfessionalName.trim() }, {
-      onSuccess: () => setNewProfessionalName(""),
-      onError: error => setCatalogMessage(error.message),
-    });
+    const durationMinutes = Number(serviceDuration);
+    const parsedPrice = Number(servicePrice.replace(",", "."));
+    try {
+      const created = await createCatalogService.mutateAsync({
+        name: serviceName,
+        description: serviceDescription || undefined,
+        durationMinutes: Number.isInteger(durationMinutes) && durationMinutes >= 5 ? durationMinutes : 60,
+        priceCents: servicePriceType === "quote" ? 0 : Number.isFinite(parsedPrice) && parsedPrice >= 0 ? Math.round(parsedPrice * 100) : 0,
+        priceType: servicePriceType,
+      });
+      if (serviceProfessionalIds.length)
+        await linkCatalogService.mutateAsync({ serviceId: created.id, professionalIds: serviceProfessionalIds });
+      setServiceName("");
+      setServiceDescription("");
+      setServiceDuration("60");
+      setServicePrice("");
+      setServicePriceType("quote");
+      setServiceProfessionalIds([]);
+      updateIfBlank("services", catalogGuidance);
+      setCatalogMessage("Serviço salvo no catálogo operacional. Revise e confirme este bloco antes de publicar.");
+      await catalogQuery.refetch();
+    } catch (error) {
+      setCatalogMessage(error instanceof Error ? error.message : "Não foi possível salvar o serviço.");
+      await catalogQuery.refetch();
+    }
   };
-  const toggleWeekday = (professional: CatalogProfessional, weekday: number) => {
-    const current = professional.availability;
-    const existing = current.find(entry => entry.weekday === weekday);
-    const next = existing
-      ? current.filter(entry => entry.weekday !== weekday)
-      : [...current, { weekday, startMinute: 9 * 60, endMinute: 18 * 60 }];
-    setProfessionalAvailability.mutate({ professionalId: professional.id, entries: next });
+  const addOperationalProfessional = async () => {
+    setCatalogMessage("");
+    try {
+      await createCatalogProfessional.mutateAsync({ name: professionalName, specialty: professionalSpecialty || undefined });
+      setCatalogMessage("Profissional cadastrado. Defina os dias e horários de trabalho abaixo.");
+    } catch (error) {
+      setCatalogMessage(error instanceof Error ? error.message : "Não foi possível cadastrar o profissional.");
+    }
+  };
+  const saveAvailability = async () => {
+    if (!selectedAvailabilityProfessional) return;
+    setCatalogMessage("");
+    try {
+      await saveProfessionalAvailability.mutateAsync({
+        professionalId: selectedAvailabilityProfessional.id,
+        entries: [...availabilityDraft].sort((a, b) => a.weekday - b.weekday),
+      });
+      updateIfBlank("businessHours", "Use a disponibilidade semanal registrada para a equipe como jornada de trabalho. Ela não confirma uma vaga; verifique a agenda real antes de sugerir horários.");
+    } catch (error) {
+      setCatalogMessage(error instanceof Error ? error.message : "Não foi possível salvar os horários.");
+    }
   };
   const confirmedStepKeys = new Set(
     (profileQuery.data?.stepAnswers ?? [])
       .filter(answer => answer.status === "confirmed")
       .map(answer => answer.stepKey)
   );
+  const exampleReviewIsCurrent = profileQuery.data?.exampleReview.isCurrent === true;
+  const requiredBlocksConfirmed = requiredStepKeys.every(stepKey => confirmedStepKeys.has(stepKey));
   const readyForHumanApprovedPublish =
+    !dirty && autosaveState !== "error" &&
     profileQuery.data?.checklist.readyToPublish === true &&
-    requiredStepKeys.every(stepKey => confirmedStepKeys.has(stepKey));
+    requiredBlocksConfirmed &&
+    exampleReviewIsCurrent;
   const confirmedRequiredCount = requiredStepKeys.filter(stepKey => confirmedStepKeys.has(stepKey)).length;
+  const simulationMatchesDraft = Boolean(
+    simulationResult &&
+    !dirty &&
+    simulationResult.profileFingerprint === profileQuery.data?.publishCandidateFingerprint
+  );
   const transcriptionConsentGranted = governanceQuery.data?.consents.some(
     consent => consent.source === "transcription" && consent.status === "granted"
+  ) === true;
+  const llmConsentGranted = governanceQuery.data?.consents.some(
+    consent => consent.source === "llm" && consent.status === "granted"
   ) === true;
   const field = (
     key: keyof Profile,
@@ -531,27 +630,108 @@ export default function OnboardingPage() {
     </div>
   );
 
-  if (sessionQuery.isLoading || profileQuery.isLoading) {
-    return (
-      <PanelLayout eyebrow="Sistema / Configuração" title="Configuração da empresa" description="Carregando o rascunho salvo com segurança.">
-        <div className="surface" style={{ padding: 22 }} role="status">
-          <div style={{ display: "flex", gap: 8, alignItems: "center", color: "#bbb", fontSize: 12 }}><Loader2 size={15} className="animate-spin" /> Recuperando sua configuração...</div>
-        </div>
-      </PanelLayout>
-    );
-  }
+  const simulateRuleExamples = async () => {
+    if (!llmConsentGranted) {
+      setSimulationMessage("Conceda o consentimento para processamento por IA ou revise os exemplos seguros sem IA.");
+      return;
+    }
+    setSimulationMessage("");
+    try {
+      await autosave.mutateAsync({ profile });
+      await profileQuery.refetch();
+      const result = await simulateExamplesMutation.mutateAsync();
+      setSimulationResult(result);
+      setSimulationMessage("Prévia gerada para revisão. Nada foi confirmado ou publicado.");
+    } catch (error) {
+      setSimulationMessage(error instanceof Error ? error.message : "Não foi possível simular as respostas agora.");
+    }
+  };
 
-  if (sessionQuery.error || profileQuery.error) {
-    const error = sessionQuery.error ?? profileQuery.error;
+  const deferSafely = async () => {
+    try {
+      if (dirtyRef.current) {
+        const snapshot = profileRef.current;
+        const revision = profileRevisionRef.current;
+        setAutosaveState("saving");
+        await autosave.mutateAsync({ profile: snapshot });
+        if (
+          revision !== profileRevisionRef.current ||
+          !isSameOnboardingDraft(profileRef.current, snapshot)
+        ) {
+          setAutosaveState("waiting");
+          return;
+        }
+      }
+      await deferSession.mutateAsync();
+    } catch {
+      // The relevant mutation exposes its own error; leave the persisted draft state intact.
+    }
+  };
+
+  const markExamplesReviewed = async (mode: "safe" | "ai") => {
+    if (dirty || autosaveState === "waiting" || autosaveState === "saving" || autosaveState === "error") {
+      setSimulationMessage("Aguarde o salvamento do rascunho ou corrija o erro de autosave antes de confirmar a revisão.");
+      return;
+    }
+    if (mode === "ai" && (!simulationResult || !simulationMatchesDraft)) {
+      setSimulationMessage("Esta simulação não corresponde mais ao rascunho atual. Gere outra antes de confirmá-la.");
+      return;
+    }
+    setSimulationMessage("");
+    try {
+      await reviewExamplesMutation.mutateAsync(mode === "ai"
+        ? { mode, profileFingerprint: simulationResult!.profileFingerprint }
+        : { mode });
+      setSimulationMessage("Revisão humana registrada para este rascunho. A publicação ainda exige confirmar os blocos obrigatórios.");
+    } catch (error) {
+      setSimulationMessage(error instanceof Error ? error.message : "Não foi possível registrar a revisão.");
+    }
+  };
+
+  const addSimulationExampleToFaq = (example: OnboardingSimulationResult["examples"][number]) => {
+    if (!simulationMatchesDraft) {
+      setSimulationMessage("A simulação está desatualizada; gere uma nova antes de reutilizar uma resposta.");
+      return;
+    }
+    const entry = `Pergunta: ${example.customerMessage}\nResposta sugerida: ${example.suggestedReply}`;
+    if (profile.faq.includes(entry)) {
+      setSimulationMessage("Esse exemplo já está no FAQ do rascunho.");
+    } else {
+      update("faq", [profile.faq.trim(), entry].filter(Boolean).join("\n\n"));
+      setSimulationMessage("Adicionado ao FAQ como rascunho. Revise a resposta no passo Atendimento e confirme o bloco manualmente.");
+    }
+    navigateToStep(3);
+  };
+
+  if (profileQuery.isLoading || sessionQuery.isLoading)
     return (
-      <PanelLayout eyebrow="Sistema / Configuração" title="Não foi possível carregar o onboarding" description="O rascunho não foi alterado. Tente novamente antes de continuar.">
-        <div className="surface" style={{ padding: 22 }} role="alert">
-          <div className="demo-banner" style={{ margin: 0 }}><Info size={15} /> {error?.message ?? "Falha temporária ao recuperar a configuração."}</div>
-          <button type="button" className="btn-primary" style={{ marginTop: 14 }} onClick={() => { void sessionQuery.refetch(); void profileQuery.refetch(); }}>Tentar novamente</button>
-        </div>
+      <PanelLayout eyebrow="Sistema / Configuração" title="Configuração da empresa" description="Carregando seu rascunho salvo.">
+        <section className="surface" style={{ padding: 22 }} role="status">
+          <Loader2 size={18} className="animate-spin" /> Buscando o rascunho e a etapa da última sessão…
+        </section>
       </PanelLayout>
     );
-  }
+
+  if (profileQuery.isError || sessionQuery.isError || startSession.isError)
+    return (
+      <PanelLayout eyebrow="Sistema / Configuração" title="Configuração da empresa" description="Não foi possível recuperar a configuração salva com segurança.">
+        <section className="surface" style={{ padding: 22 }} role="alert">
+          <h2 style={{ marginTop: 0 }}>Rascunho indisponível</h2>
+          <p className="muted">Nenhum formulário vazio foi carregado por cima dos seus dados. Confira a conexão e tente buscar novamente.</p>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              sessionStarted.current = false;
+              startSession.reset();
+              void Promise.all([sessionQuery.refetch(), profileQuery.refetch()]);
+            }}
+          >
+            <RotateCcw size={13} /> Tentar novamente
+          </button>
+        </section>
+      </PanelLayout>
+    );
 
   return (
     <PanelLayout
@@ -575,7 +755,8 @@ export default function OnboardingPage() {
               type="button"
               className={index === currentStep ? "btn-primary" : index < currentStep ? "btn-secondary" : "btn-ghost"}
               style={{ minWidth: 0, padding: "8px 5px", fontSize: 9 }}
-              onClick={() => setCurrentStep(index)}
+              onClick={() => navigateToStep(index)}
+              disabled={!sessionQuery.data?.id || saveCurrentStep.isPending}
               aria-current={index === currentStep ? "step" : undefined}
             >{index + 1}. {step.title}</button>
           ))}
@@ -583,10 +764,11 @@ export default function OnboardingPage() {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
           <span className="muted" style={{ fontSize: 10 }}>O rascunho é salvo automaticamente.</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn-secondary" onClick={goToPreviousStep} disabled={currentStep === 0}>Voltar</button>
-            <button type="button" className="btn-primary" onClick={goToNextStep} disabled={currentStep === onboardingSteps.length - 1}>Próximo</button>
+            <button type="button" className="btn-secondary" onClick={goToPreviousStep} disabled={currentStep === 0 || !sessionQuery.data?.id || saveCurrentStep.isPending}>Voltar</button>
+            <button type="button" className="btn-primary" onClick={goToNextStep} disabled={currentStep === onboardingSteps.length - 1 || !sessionQuery.data?.id || saveCurrentStep.isPending}>Próximo</button>
           </div>
         </div>
+        {saveCurrentStep.error && <div className="form-error" role="alert"><Info size={13} /> Não foi possível salvar a etapa para continuar depois: {saveCurrentStep.error.message}</div>}
       </section>
       <div className="surface" style={{ padding: 18, marginBottom: 18 }}>
         <div className="demo-banner" style={{ margin: 0 }}>
@@ -598,13 +780,8 @@ export default function OnboardingPage() {
         </div>
         {sessionQuery.data?.status === "paused" && (
           <p className="muted" style={{ margin: "10px 0 0", fontSize: 11 }}>
-            Rascunho pausado encontrado. Retomando automaticamente...
+            Retomando o rascunho salvo anteriormente...
           </p>
-        )}
-        {startSession.error && (
-          <div className="demo-banner" style={{ margin: "10px 0 0" }} role="alert">
-            <Info size={14} /> Não foi possível retomar a sessão. O rascunho continua preservado. <button type="button" className="btn-ghost" style={{ padding: "3px 6px", fontSize: 9 }} onClick={() => { sessionStarted.current = true; startSession.mutate(); }}>Tentar retomar</button>
-          </div>
         )}
       </div>
       {governanceQuery.data && (
@@ -772,37 +949,6 @@ export default function OnboardingPage() {
           </div>
         </section>
       )}
-      <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
-        <SectionTitle eyebrow="Simulação segura" title="Revise exemplos antes de publicar" />
-        <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11, lineHeight: 1.5 }}>
-          Teste uma mensagem com o rascunho atual. A resposta é determinística, não chama um provider e só usa o catálogo, disponibilidade e regras aprovadas deste workspace.
-        </p>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-          {["Qual é o preço do meu serviço?", "Quais horários estão disponíveis?", "Quero falar com uma pessoa."].map(example => (
-            <button key={example} type="button" className="btn-ghost" style={{ padding: "5px 8px", fontSize: 9 }} onClick={() => setSimulationMessage(example)}>{example}</button>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-          <div className="form-field" style={{ flex: 1 }}>
-            <label htmlFor="onboarding-simulation-message">Mensagem de teste</label>
-            <input id="onboarding-simulation-message" className="input-control" value={simulationMessage} onChange={event => setSimulationMessage(event.target.value)} placeholder="Ex.: Quanto custa a consulta inicial?" maxLength={2000} />
-          </div>
-          <button type="button" className="btn-primary" disabled={!simulationMessage.trim() || simulation.isPending} onClick={() => simulation.mutate({ profile, message: simulationMessage })}>
-            <Sparkles size={13} /> {simulation.isPending ? "Testando..." : "Simular"}
-          </button>
-        </div>
-        {simulation.error && <div className="demo-banner" style={{ marginTop: 10, fontSize: 10 }}><Info size={13} /> {simulation.error.message}</div>}
-        {simulation.data && (
-          <div style={{ marginTop: 12, padding: 12, border: `1px solid ${simulation.data.handoff ? "rgba(240,184,74,.25)" : "rgba(86,214,138,.22)"}`, background: simulation.data.handoff ? "rgba(240,184,74,.035)" : "rgba(86,214,138,.035)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-              <strong style={{ color: simulation.data.handoff ? "var(--amber)" : "#b9e4c7", fontSize: 11 }}>{simulation.data.handoff ? "Transferência indicada" : "Resposta simulada"}</strong>
-              <span className="muted" style={{ fontSize: 9 }}>sem provider externo</span>
-            </div>
-            <p style={{ margin: "9px 0 0", color: "#c8c8c8", fontSize: 11, lineHeight: 1.5 }}>{simulation.data.response}</p>
-            <div className="muted" style={{ marginTop: 8, fontSize: 9 }}>Fontes: {simulation.data.sources.length ? simulation.data.sources.join(" · ") : "nenhuma fonte específica"}</div>
-          </div>
-        )}
-      </section>
       {metricsQuery.data && (
         <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
           <SectionTitle eyebrow="Medição · últimos 30 dias" title="Qualidade do onboarding" action={<span className="muted" style={{ fontSize: 10 }}>sem conteúdo de respostas</span>} />
@@ -845,18 +991,78 @@ export default function OnboardingPage() {
           {rollbackMutation.error && <div className="demo-banner" style={{ marginTop: 10, fontSize: 10 }}><Info size={13} /> {rollbackMutation.error.message}</div>}
         </section>
       )}
-      {profileQuery.data && currentStepId === "review" && (
+      <section className="surface" aria-label="Revisão de exemplos de atendimento" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
+        <SectionTitle
+          eyebrow="Simulação antes de ativar"
+          title="Confira como as regras devem se comportar"
+          action={<span className={exampleReviewIsCurrent ? "green" : "muted"} style={{ fontSize: 10 }}>{exampleReviewIsCurrent ? "Revisão humana registrada" : "Revisão necessária para publicar"}</span>}
+        />
+        <p className="muted" style={{ margin: "-5px 0 12px", fontSize: 10, lineHeight: 1.55 }}>
+          Os casos seguros abaixo não usam IA. A simulação opcional gera respostas para o rascunho atual, mas não consulta agenda/catálogo em tempo real, não salva as respostas e nunca confirma nem publica regras. A revisão humana fica vinculada ao conteúdo exato que será publicado.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
+          {onboardingReviewExamples.map(example => (
+            <div key={example.key} style={{ padding: 11, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.012)" }}>
+              <strong style={{ display: "block", color: "#ddd", fontSize: 10 }}>{example.title}</strong>
+              <small className="muted" style={{ display: "block", marginTop: 6 }}>Cliente: “{example.customerMessage}”</small>
+              <small style={{ display: "block", marginTop: 7, color: "#b9e4c7", lineHeight: 1.45 }}>Esperado: {example.expectedBehavior}</small>
+              <small className="muted" style={{ display: "block", marginTop: 5 }}>
+                {example.requiresHuman ? "Encaminhar à equipe quando necessário" : "Sem transferência automática"}
+                {example.requiresLiveAgenda ? " · consultar agenda real" : ""}
+              </small>
+            </div>
+          ))}
+        </div>
+        <div className="form-actions" style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!llmConsentGranted || simulateExamplesMutation.isPending || autosave.isPending}
+            title={!llmConsentGranted ? "Conceda o consentimento para processamento por IA na seção Governança" : undefined}
+            onClick={() => void simulateRuleExamples()}
+          >
+            {simulateExamplesMutation.isPending || autosave.isPending ? <><Loader2 size={13} className="animate-spin" /> Simulando...</> : <><Sparkles size={13} /> Simular respostas com IA</>}
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={reviewExamplesMutation.isPending || dirty || autosaveState === "waiting" || autosaveState === "saving" || autosaveState === "error" || !profileQuery.data?.publishCandidateFingerprint || (exampleReviewIsCurrent && !simulationMatchesDraft)}
+            onClick={() => void markExamplesReviewed(simulationMatchesDraft ? "ai" : "safe")}
+          >
+            <CheckCircle2 size={13} /> {reviewExamplesMutation.isPending ? "Registrando revisão..." : simulationMatchesDraft ? "Confirmar revisão da simulação" : exampleReviewIsCurrent ? "Exemplos revisados" : "Confirmar revisão dos exemplos seguros"}
+          </button>
+          {exampleReviewIsCurrent && profileQuery.data?.exampleReview.reviewedAt && (
+            <small className="green" style={{ alignSelf: "center", fontSize: 9 }}>
+              Revisado em {new Date(profileQuery.data.exampleReview.reviewedAt).toLocaleString("pt-BR")} ({profileQuery.data.exampleReview.mode === "ai" ? "simulação IA" : profileQuery.data.exampleReview.mode === "rollback" ? "versão restaurada" : "casos seguros"})
+            </small>
+          )}
+        </div>
+        {!llmConsentGranted && <p className="muted" style={{ margin: "8px 0 0", fontSize: 9 }}>A prévia por IA exige consentimento explícito para processamento por IA. Você ainda pode revisar os casos seguros sem enviar dados.</p>}
+        {simulationMessage && <div className="demo-banner" role="status" style={{ margin: "10px 0 0", fontSize: 10 }}><Info size={13} /> {simulationMessage}</div>}
+        {simulationResult && (
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {!simulationMatchesDraft && <div className="demo-banner" role="alert" style={{ margin: 0, fontSize: 10 }}><Info size={13} /> O rascunho mudou desde esta simulação. Gere outra para revisar ou reutilizar as respostas; você ainda pode confirmar os casos seguros acima.</div>}
+            {simulationResult.examples.map(example => (
+              <div key={example.key} style={{ padding: 11, border: "1px solid rgba(86,214,138,.16)" }}>
+                <strong style={{ display: "block", color: "#ddd", fontSize: 10 }}>{example.title} · resposta sugerida (rascunho)</strong>
+                <p style={{ margin: "6px 0", color: "#c8c8c8", fontSize: 10, lineHeight: 1.5 }}>{example.suggestedReply}</p>
+                <small className="muted" style={{ display: "block", lineHeight: 1.45 }}>Base da sugestão: {example.basisNote}</small>
+                <button type="button" className="btn-secondary" style={{ marginTop: 8, padding: "5px 8px", fontSize: 9 }} disabled={!simulationMatchesDraft} onClick={() => addSimulationExampleToFaq(example)}>
+                  Usar no FAQ como rascunho
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      {(profileQuery.data?.stepAnswers ?? []).length > 0 && (
         <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
           <SectionTitle
             eyebrow="Revisão humana"
             title="Confirme cada bloco antes de publicar"
             action={<span className="muted" style={{ fontSize: 10 }}>{confirmedRequiredCount}/{requiredStepKeys.length} obrigatórios confirmados</span>}
           />
-          {(profileQuery.data.stepAnswers ?? []).length === 0 ? (
-            <div className="muted" style={{ padding: 14, border: "1px dashed rgba(255,255,255,.12)", fontSize: 10, lineHeight: 1.5 }}>
-              Ainda não há respostas estruturadas para revisar. Preencha os blocos do formulário e salve o rascunho; as respostas humanas aparecerão aqui antes da confirmação.
-            </div>
-          ) : <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gap: 10 }}>
             {(profileQuery.data?.stepAnswers ?? []).map(step => {
               const required = requiredStepKeys.includes(step.stepKey as (typeof requiredStepKeys)[number]);
               const confirmed = step.status === "confirmed";
@@ -957,7 +1163,7 @@ export default function OnboardingPage() {
                 </div>
               );
             })}
-          </div>}
+          </div>
           {(confirmStep.error || resolveConflict.error) && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} /> {(confirmStep.error || resolveConflict.error)?.message}</div>}
         </section>
       )}
@@ -981,74 +1187,86 @@ export default function OnboardingPage() {
       <section className="surface" style={{ padding: 22, display: currentStepId === "offering" ? undefined : "none" }}>
         <SectionTitle eyebrow="Oferta" title="Serviços que sua empresa oferece" />
         <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11 }}>
-          Cadastre o que pode ser apresentado ao cliente. O catálogo é a fonte usada para preço e duração; se ainda não quiser detalhar, o texto livre continua disponível como rascunho.
+          Os serviços, preços e durações são salvos no catálogo operacional. Você pode cadastrar só o primeiro agora e completar o restante depois.
         </p>
-        <div style={{ display: "grid", gap: 9, marginBottom: 14 }}>
-          {(servicesQuery.data ?? []).map((service: CatalogService) => (
-            <div key={service.id} style={{ display: "grid", gridTemplateColumns: "minmax(180px, 1.4fr) 120px 110px auto", gap: 8, alignItems: "center", padding: "10px 11px", border: "1px solid rgba(255,255,255,.08)" }}>
-              <div>
-                <strong style={{ color: "#ddd", fontSize: 11 }}>{service.name}</strong>
-                <div className="muted" style={{ fontSize: 9, marginTop: 3 }}>{service.active ? "Ativo no catálogo" : "Pausado"} · {service.professionalIds.length ? `${service.professionalIds.length} profissional(is)` : "equipe geral"}</div>
+        <div className="team-table" style={{ marginBottom: 18 }}>
+          {catalogQuery.isLoading ? <p className="muted">Carregando catálogo...</p> : catalogServices.length === 0 ? (
+            <p className="muted">Nenhum serviço operacional cadastrado. Se ainda não quiser definir a oferta, use “Decidir depois” abaixo; a orientação ficará sem preço ou prazo inventado.</p>
+          ) : catalogServices.map(service => (
+            <div className="team-row" key={service.id} style={{ flexWrap: "wrap" }}>
+              <div className="row-copy" style={{ minWidth: 220 }}>
+                <strong>{service.name}{service.active ? "" : " · inativo"}</strong>
+                <small>{service.description || "Sem descrição"}</small>
+                <small style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 5 }}>
+                  <span><Clock3 size={11} style={{ verticalAlign: "middle", marginRight: 4 }} />{service.durationMinutes} min</span>
+                  <span><DollarSign size={11} style={{ verticalAlign: "middle", marginRight: 4 }} />{formatServicePrice(service.priceType, service.priceCents)}</span>
+                </small>
               </div>
-              <span style={{ fontSize: 11 }}>{formatCents(service.priceCents)}</span>
-              <span className="muted" style={{ fontSize: 10 }}><Clock3 size={12} /> {service.durationMinutes} min</span>
-              <button className="btn-secondary" style={{ padding: "5px 8px", fontSize: 9 }} disabled={updateService.isPending} onClick={() => updateService.mutate({ serviceId: service.id, active: !service.active })}>{service.active ? "Pausar" : "Ativar"}</button>
+              <small className="muted">{service.professionalIds.length ? service.professionalIds.map(id => professionals.find(person => person.id === id)?.name).filter(Boolean).join(", ") : "Sem profissional vinculado"}</small>
             </div>
           ))}
-          {servicesQuery.isLoading && <div className="muted" style={{ padding: 12, fontSize: 10 }}><Loader2 size={13} className="animate-spin" /> Carregando catálogo...</div>}
-          {servicesQuery.error && <div className="demo-banner" style={{ margin: 0, fontSize: 10 }}><Info size={13} /> Não foi possível carregar os serviços. Tente novamente.</div>}
-          {!servicesQuery.isLoading && !(servicesQuery.data ?? []).length && <div className="muted" style={{ padding: 12, border: "1px dashed rgba(255,255,255,.12)", fontSize: 10 }}>Nenhum serviço cadastrado ainda. Você pode decidir depois e continuar com o rascunho.</div>}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(180px, 1.5fr) 110px 110px auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
-          <div className="form-field"><label htmlFor="onboarding-new-service">Novo serviço</label><input id="onboarding-new-service" className="input-control" value={newService.name} onChange={event => setNewService(current => ({ ...current, name: event.target.value }))} placeholder="Ex.: Consulta inicial" /></div>
-          <div className="form-field"><label htmlFor="onboarding-new-price">Preço (R$)</label><input id="onboarding-new-price" className="input-control" inputMode="decimal" value={newService.price} onChange={event => setNewService(current => ({ ...current, price: event.target.value }))} placeholder="250,00" /></div>
-          <div className="form-field"><label htmlFor="onboarding-new-duration">Duração</label><input id="onboarding-new-duration" className="input-control" type="number" min={5} max={1440} value={newService.durationMinutes} onChange={event => setNewService(current => ({ ...current, durationMinutes: Number(event.target.value) || 60 }))} /></div>
-          <button className="btn-primary" onClick={addService} disabled={!newService.name.trim() || createService.isPending}><Plus size={13} /> Adicionar</button>
-        </div>
+        <SectionTitle eyebrow="Catálogo persistido" title="Adicionar serviço" />
         <div className="form-grid">
-          {field("services", "Rascunho / regras de orçamento", "Use para explicar preços variáveis, exceções ou serviços que serão detalhados depois.", true)}
+          <div className="form-field"><label htmlFor="onboarding-service-name">Nome do serviço</label><input id="onboarding-service-name" className="input-control" value={serviceName} onChange={event => setServiceName(event.target.value)} placeholder="Ex.: Consulta inicial" /></div>
+          <div className="form-field"><label htmlFor="onboarding-service-duration">Duração (minutos)</label><input id="onboarding-service-duration" className="input-control" type="number" min={5} max={1440} value={serviceDuration} onChange={event => setServiceDuration(event.target.value)} /></div>
+          <div className="form-field"><label htmlFor="onboarding-service-price-type">Como informar o preço</label><select id="onboarding-service-price-type" className="select-control" value={servicePriceType} onChange={event => setServicePriceType(event.target.value as ServicePriceType)}><option value="fixed">Preço fixo</option><option value="starting_at">A partir de</option><option value="quote">Sob consulta</option></select></div>
+          {servicePriceType !== "quote" && <div className="form-field"><label htmlFor="onboarding-service-price">{servicePriceType === "starting_at" ? "Preço inicial (R$)" : "Preço fixo (R$)"}</label><input id="onboarding-service-price" className="input-control" type="number" min={0} step="0.01" value={servicePrice} onChange={event => setServicePrice(event.target.value)} placeholder="0,00" /></div>}
+          <div className="form-field full"><label htmlFor="onboarding-service-description">Descrição (opcional)</label><input id="onboarding-service-description" className="input-control" value={serviceDescription} onChange={event => setServiceDescription(event.target.value)} placeholder="O que está incluído" /></div>
+          <div className="form-field full"><label>Profissionais que executam (opcional)</label>
+            {activeProfessionals.length === 0 ? <small className="muted">Você pode cadastrar um profissional no passo Operação e vincular depois.</small> : <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {activeProfessionals.map(person => <label key={person.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11 }}><input type="checkbox" checked={serviceProfessionalIds.includes(person.id)} onChange={event => setServiceProfessionalIds(current => event.target.checked ? [...current, person.id] : current.filter(id => id !== person.id))} />{person.name}</label>)}
+            </div>}
+          </div>
         </div>
-        {catalogMessage && <div className="demo-banner" style={{ marginTop: 12 }}><Info size={13} /> {catalogMessage}</div>}
+        <div className="form-actions">
+          <button className="btn-primary" disabled={createCatalogService.isPending || linkCatalogService.isPending || serviceName.trim().length < 2} onClick={() => void addOperationalService()}><Plus size={13} />{createCatalogService.isPending || linkCatalogService.isPending ? "Salvando..." : "Salvar no catálogo"}</button>
+        </div>
+        <div style={{ marginTop: 20 }}>
+          <SectionTitle eyebrow="Orientação aprovada" title="Como o atendimento deve tratar a oferta" />
+          <p className="muted" style={{ margin: "-5px 0 10px", fontSize: 10 }}>O campo livre abaixo é complementar; não substitui o catálogo nem autoriza prometer preço, duração ou vaga.</p>
+          {field("services", "Observações complementares (opcional)", "Não repita preços como fonte oficial. Use para contexto que não cabe no catálogo.", true)}
+          <div className="form-actions">
+            <button type="button" className="btn-secondary" onClick={() => update("services", catalogGuidance)}>Usar o catálogo como fonte oficial</button>
+            <button type="button" className="btn-secondary" onClick={() => update("services", deferredCatalogGuidance)}>Decidir depois</button>
+          </div>
+        </div>
+        {catalogMessage && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} />{catalogMessage}</div>}
       </section>
       <section className="surface" style={{ padding: 22, display: currentStepId === "operations" ? undefined : "none" }}>
         <SectionTitle eyebrow="Funcionamento" title="Onde e quando sua equipe atende" />
         <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11 }}>
-          A disponibilidade cadastrada aqui é a fonte real para orientar horários. Você pode começar com uma equipe geral e detalhar profissionais depois.
+          Configure a jornada semanal real por profissional. Ela não garante uma vaga: horários específicos precisam ser consultados na agenda.
         </p>
-        <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
-          {(professionalsQuery.data ?? []).map((professional: CatalogProfessional) => (
-            <div key={professional.id} style={{ padding: 11, border: "1px solid rgba(255,255,255,.08)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                <div><strong style={{ color: "#ddd", fontSize: 11 }}>{professional.name}</strong><div className="muted" style={{ fontSize: 9, marginTop: 3 }}>{professional.specialty || "Profissional da equipe"}</div></div>
-                <span className="muted" style={{ fontSize: 9 }}>{professional.availability.length ? `${professional.availability.length} dia(s) configurado(s)` : "sem horário"}</span>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
-                {weekdayLabels.map((label, weekday) => {
-                  const active = professional.availability.some(entry => entry.weekday === weekday);
-                  return <button key={label} type="button" className={active ? "btn-primary" : "btn-ghost"} style={{ padding: "5px 8px", fontSize: 9 }} onClick={() => toggleWeekday(professional, weekday)} disabled={setProfessionalAvailability.isPending}>{label}</button>;
-                })}
-              </div>
-              <div className="muted" style={{ fontSize: 9, marginTop: 8 }}>Serviços executados</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 5 }}>
-                {(servicesQuery.data ?? []).map((service: CatalogService) => {
-                  const linked = service.professionalIds.includes(professional.id);
-                  return <label key={service.id} style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 9, color: linked ? "#b9e4c7" : "#999" }}><input type="checkbox" checked={linked} onChange={() => setServiceProfessionals.mutate({ serviceId: service.id, professionalIds: linked ? service.professionalIds.filter(id => id !== professional.id) : [...service.professionalIds, professional.id] })} /> {service.name}</label>;
-                })}
-              </div>
-              {professional.availability.length > 0 && <div className="muted" style={{ fontSize: 9, marginTop: 8 }}>{professional.availability.map(entry => `${weekdayLabels[entry.weekday]} ${formatMinute(entry.startMinute)}–${formatMinute(entry.endMinute)}`).join(" · ")}</div>}
-            </div>
-          ))}
-          {professionalsQuery.isLoading && <div className="muted" style={{ padding: 12, fontSize: 10 }}><Loader2 size={13} className="animate-spin" /> Carregando profissionais...</div>}
-          {professionalsQuery.error && <div className="demo-banner" style={{ margin: 0, fontSize: 10 }}><Info size={13} /> Não foi possível carregar os profissionais. Tente novamente.</div>}
-          {!professionalsQuery.isLoading && !(professionalsQuery.data ?? []).length && <div className="muted" style={{ padding: 12, border: "1px dashed rgba(255,255,255,.12)", fontSize: 10 }}>Nenhum profissional cadastrado. O catálogo pode funcionar com equipe geral por enquanto.</div>}
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "end", marginBottom: 14 }}>
-          <div className="form-field" style={{ flex: 1 }}><label htmlFor="onboarding-new-professional">Adicionar profissional</label><input id="onboarding-new-professional" className="input-control" value={newProfessionalName} onChange={event => setNewProfessionalName(event.target.value)} placeholder="Ex.: Ana Souza" /></div>
-          <button className="btn-primary" onClick={addProfessional} disabled={!newProfessionalName.trim() || createProfessional.isPending}><Plus size={13} /> Adicionar</button>
-        </div>
         <div className="form-grid">
           {field("serviceArea", "Cidade e área de atendimento", "Cidades, bairros, deslocamento e limites", true)}
-          {field("businessHours", "Observações operacionais", "Exceções, intervalos, deslocamento e regras que ainda não foram detalhadas no catálogo", true)}
+          {field("businessHours", "Orientação sobre horários (complementar)", "Explique exceções ou use a disponibilidade semanal salva abaixo", true)}
+        </div>
+        <div style={{ marginTop: 18 }}>
+          <SectionTitle eyebrow="Equipe executora" title="Profissionais e disponibilidade semanal" />
+          {activeProfessionals.length > 0 && <div className="form-grid" style={{ marginBottom: 14 }}>
+            <div className="form-field"><label htmlFor="onboarding-availability-professional">Profissional</label><select id="onboarding-availability-professional" className="select-control" value={selectedAvailabilityProfessional?.id ?? ""} onChange={event => setAvailabilityProfessionalId(Number(event.target.value))}>{activeProfessionals.map(person => <option key={person.id} value={person.id}>{person.name}{person.specialty ? ` · ${person.specialty}` : ""}</option>)}</select></div>
+            <div className="form-field"><label>Serviços vinculados</label><small className="muted">{selectedAvailabilityProfessional?.serviceIds.length ? selectedAvailabilityProfessional.serviceIds.map(id => catalogServices.find(service => service.id === id)?.name).filter(Boolean).join(", ") : "Nenhum serviço vinculado ainda"}</small></div>
+          </div>}
+          {selectedAvailabilityProfessional ? <div className="team-table">{weekdays.map(day => {
+            const dayEntries = availabilityDraft.filter(item => item.weekday === day.value);
+            return <div className="team-row" key={day.value} style={{ flexWrap: "wrap" }}>
+              <strong style={{ width: 48, fontSize: 10 }}>{day.short}</strong>
+              <div className="row-copy" style={{ flex: 1, minWidth: 190 }}><small>{day.label}</small>{dayEntries.length ? dayEntries.map((entry, index) => <div key={`${day.value}-${index}`} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}><input aria-label={`${day.label} intervalo ${index + 1} início`} className="input-control" style={{ maxWidth: 120 }} type="time" value={minuteToTime(entry.startMinute)} onChange={event => setAvailabilityDraft(current => current.map((item, itemIndex) => item.weekday === day.value && itemIndex === availabilityDraft.findIndex(candidate => candidate === entry) ? { ...item, startMinute: timeToMinute(event.target.value) } : item))} /><span className="muted">até</span><input aria-label={`${day.label} intervalo ${index + 1} fim`} className="input-control" style={{ maxWidth: 120 }} type="time" value={minuteToTime(entry.endMinute)} onChange={event => setAvailabilityDraft(current => current.map((item, itemIndex) => item.weekday === day.value && itemIndex === availabilityDraft.findIndex(candidate => candidate === entry) ? { ...item, endMinute: timeToMinute(event.target.value) } : item))} /><button type="button" className="btn-ghost" onClick={() => setAvailabilityDraft(current => { let seen = -1; return current.filter(item => item.weekday !== day.value || (++seen !== index)); })}>Remover</button></div>) : <small className="muted" style={{ display: "block", marginTop: 4 }}>Não trabalha neste dia</small>}</div>
+              <button type="button" className="btn-ghost" onClick={() => setAvailabilityDraft(current => [...current, { weekday: day.value, startMinute: dayEntries.length ? 14 * 60 : 9 * 60, endMinute: 18 * 60 }])}>Adicionar intervalo</button>
+            </div>;
+          })}</div> : <p className="muted">Ainda não há profissionais ativos. Você pode cadastrar alguém agora ou deixar a capacidade para depois.</p>}
+          {selectedAvailabilityProfessional && <button type="button" className="btn-primary" style={{ marginTop: 12 }} disabled={saveProfessionalAvailability.isPending} onClick={() => void saveAvailability()}><CalendarClock size={13} />{saveProfessionalAvailability.isPending ? "Salvando..." : "Salvar disponibilidade"}</button>}
+          <div className="surface" style={{ padding: 14, marginTop: 16 }}>
+            <SectionTitle eyebrow="Novo executor" title="Cadastrar profissional" />
+            <div className="form-grid"><div className="form-field"><label htmlFor="onboarding-professional-name">Nome</label><input id="onboarding-professional-name" className="input-control" value={professionalName} onChange={event => setProfessionalName(event.target.value)} placeholder="Ex.: Ana Souza" /></div><div className="form-field"><label htmlFor="onboarding-professional-specialty">Especialidade (opcional)</label><input id="onboarding-professional-specialty" className="input-control" value={professionalSpecialty} onChange={event => setProfessionalSpecialty(event.target.value)} placeholder="Ex.: Consultoria" /></div></div>
+            <button type="button" className="btn-secondary" disabled={createCatalogProfessional.isPending || professionalName.trim().length < 2} onClick={() => void addOperationalProfessional()}><UserPlus size={13} />{createCatalogProfessional.isPending ? "Salvando..." : "Cadastrar profissional"}</button>
+          </div>
+          <div className="form-actions">
+            <button type="button" className="btn-secondary" onClick={() => update("businessHours", "Use a jornada semanal registrada por profissional apenas como referência. Consulte a agenda real para confirmar horários específicos.")}>Usar jornadas salvas como referência</button>
+            <button type="button" className="btn-secondary" onClick={() => update("businessHours", deferredHoursGuidance)}>Ainda não sei: decidir depois</button>
+          </div>
+          {catalogMessage && <div className="demo-banner" style={{ margin: "12px 0 0" }}><Info size={14} />{catalogMessage}</div>}
         </div>
       </section>
       <section className="surface" style={{ padding: 22, display: currentStepId === "activation" ? undefined : "none" }}>
@@ -1061,7 +1279,7 @@ export default function OnboardingPage() {
             className="btn-primary"
             disabled={saveMutation.isPending || !readyForHumanApprovedPublish}
             onClick={() => saveMutation.mutate({ profile, publish: true })}
-            title={!readyForHumanApprovedPublish ? "Revise e confirme os quatro blocos obrigatórios antes de publicar" : undefined}
+            title={!readyForHumanApprovedPublish ? exampleReviewIsCurrent ? "Revise e confirme os quatro blocos obrigatórios antes de publicar" : "Revise e confirme os exemplos de atendimento antes de publicar" : undefined}
           >
             <Sparkles size={13} /> {saveMutation.isPending ? "Publicando..." : "Publicar configuração"}
           </button>
@@ -1070,7 +1288,7 @@ export default function OnboardingPage() {
           </button>
           {published && <span className="green" style={{ fontSize: 11 }}><CheckCircle2 size={13} /> Configuração v{savedVersion} publicada</span>}
         </div>
-        {!readyForHumanApprovedPublish && <p className="muted" style={{ margin: "12px 0 0", fontSize: 10 }}>Ainda faltam blocos obrigatórios confirmados. Volte à Revisão para ver exatamente o que falta.</p>}
+        {!readyForHumanApprovedPublish && <p className="muted" style={{ margin: "12px 0 0", fontSize: 10 }}>{!exampleReviewIsCurrent ? "Revise os exemplos de atendimento no passo Revisão; qualquer alteração posterior exige revisar novamente." : "Ainda faltam blocos obrigatórios confirmados. Volte à Revisão para ver exatamente o que falta."}</p>}
         {saveMutation.error && <div className="demo-banner" style={{ marginTop: 14, marginBottom: 0 }}><Info size={14} /> {saveMutation.error.message}</div>}
       </section>
       <section className="surface" style={{ padding: 22, marginTop: 18, display: currentStepId === "guardrails" ? undefined : "none" }}>
@@ -1126,7 +1344,7 @@ export default function OnboardingPage() {
         >
           <button
             className="btn-secondary"
-            disabled={saveMutation.isPending}
+            disabled={saveMutation.isPending || autosave.isPending || autosaveState === "waiting" || autosaveState === "saving"}
             onClick={() => saveMutation.mutate({ profile, publish: false })}
           >
             <Save size={13} /> Salvar rascunho
@@ -1135,24 +1353,25 @@ export default function OnboardingPage() {
             className="btn-primary"
             disabled={saveMutation.isPending || !readyForHumanApprovedPublish}
             onClick={() => saveMutation.mutate({ profile, publish: true })}
-            title={!readyForHumanApprovedPublish ? "Salve o rascunho e confirme os blocos obrigatórios antes de publicar" : undefined}
+            title={!readyForHumanApprovedPublish ? exampleReviewIsCurrent ? "Salve o rascunho e confirme os blocos obrigatórios antes de publicar" : "Revise os exemplos no passo Revisão antes de publicar" : undefined}
           >
             <Sparkles size={13} />{" "}
-            {saveMutation.isPending ? "Gerando..." : readyForHumanApprovedPublish ? "Gerar e publicar prompt" : "Confirme os blocos obrigatórios"}
+            {saveMutation.isPending ? "Gerando..." : readyForHumanApprovedPublish ? "Gerar e publicar prompt" : !exampleReviewIsCurrent ? "Revise os exemplos antes de ativar" : "Confirme os blocos obrigatórios"}
           </button>
           <small className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             {autosaveState === "waiting" && "Alterações pendentes..."}
             {autosaveState === "saving" && "Salvando rascunho..."}
             {autosaveState === "saved" && "Rascunho salvo"}
-            {autosaveState === "error" && <><span>Autosave indisponível.</span> <button type="button" className="btn-ghost" style={{ padding: "2px 5px", fontSize: 9 }} disabled={autosave.isPending} onClick={() => { setAutosaveState("saving"); autosavePayloadRef.current = latestProfileRef.current; autosave.mutate({ profile: latestProfileRef.current }); }}>Tentar novamente</button></>}
+            {autosaveState === "error" && "Autosave indisponível; use Salvar rascunho."}
           </small>
           <button
             className="btn-secondary"
-            disabled={deferSession.isPending || saveMutation.isPending}
-            onClick={() => deferSession.mutate()}
+            disabled={deferSession.isPending || saveMutation.isPending || autosave.isPending || autosaveState === "waiting" || autosaveState === "saving"}
+            onClick={() => void deferSafely()}
           >
             Fazer depois
           </button>
+          {deferSession.error && <span className="form-error" role="alert">Não foi possível pausar a sessão: {deferSession.error.message}</span>}
           {published && (
             <span
               className="green"

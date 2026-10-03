@@ -231,6 +231,11 @@ export class PanelMessageEchoTracker {
     while (this.ids.size > 256) this.ids.delete(this.ids.keys().next().value!);
   }
 
+  hasSentId(id: string | null | undefined) {
+    this.prune();
+    return Boolean(id && this.ids.has(id));
+  }
+
   rememberSentMessage(
     id: string | undefined,
     jid: string,

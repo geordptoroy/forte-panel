@@ -11,6 +11,7 @@ import {
   completeApiIdempotency,
   failApiIdempotency,
   getContactById,
+  getCanonicalContactStage,
   getActiveWorkspaceById,
   getCorePipelineSnapshot,
   getNativeAgentRuntimeConfig,
@@ -21,7 +22,9 @@ import {
   listMessagesForContact,
   listWhatsappChannels,
   findBaileysInstanceOwner,
+  getBaileysWebhookSecret,
   markWebhookEvent,
+  reconcileBaileysDeliveryStatus,
   moveContactStage,
   queueOutboundMessage,
   registerWebhookEvent,
@@ -33,8 +36,38 @@ import { professionalCanExecuteService } from "./agenda";
 import { ScheduleError } from "./schedule";
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { OPERATIONAL_WHATSAPP_PROVIDER } from "./integrations/baileys-policy";
+import { messageDeliveryStatuses } from "../shared/message-delivery";
+import {
+  validateWebhookReplay,
+  type WebhookReplayValidation,
+} from "./webhook-anti-replay";
 
 const api = express.Router();
+const webhookSecretCache = new Map<
+  string,
+  { secret: string; expiresAt: number }
+>();
+const webhookSecretInflight = new Map<string, Promise<string | undefined>>();
+const WEBHOOK_SECRET_CACHE_MS = 5_000;
+
+async function getCachedBaileysWebhookSecret(instanceId: string) {
+  const cached = webhookSecretCache.get(instanceId);
+  if (cached && cached.expiresAt > Date.now()) return cached.secret;
+  const inflight = webhookSecretInflight.get(instanceId);
+  if (inflight) return inflight;
+  const request = getBaileysWebhookSecret(instanceId)
+    .then(secret => {
+      if (secret)
+        webhookSecretCache.set(instanceId, {
+          secret,
+          expiresAt: Date.now() + WEBHOOK_SECRET_CACHE_MS,
+        });
+      return secret;
+    })
+    .finally(() => webhookSecretInflight.delete(instanceId));
+  webhookSecretInflight.set(instanceId, request);
+  return request;
+}
 const internalApiPaths = new Set([
   "/health",
   "/ready",
@@ -300,18 +333,19 @@ async function requireApiWorkspaceId(
   return workspaceId;
 }
 
-function hasValidWebhookSignature(req: Request) {
-  const secret = process.env.WEBHOOK_SIGNING_SECRET;
-  if (!secret) return false;
-  const provided = req.header("X-Webhook-Signature") ?? "";
-  const expected = `sha256=${crypto
-    .createHmac("sha256", secret)
-    .update(JSON.stringify(req.body ?? {}))
-    .digest("hex")}`;
-  return (
-    provided.length === expected.length &&
-    crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
-  );
+function webhookReplayFor(
+  req: Request,
+  secret: string
+): WebhookReplayValidation {
+  return validateWebhookReplay({
+    secret,
+    body: JSON.stringify(req.body ?? {}),
+    headers: {
+      timestamp: req.header("X-Webhook-Timestamp") ?? "",
+      nonce: req.header("X-Webhook-Nonce") ?? "",
+      signature: req.header("X-Webhook-Signature") ?? "",
+    },
+  });
 }
 
 async function idempotent(
@@ -566,7 +600,9 @@ api.post("/contacts/upsert", async (req, res) => {
             id: contact?.id,
             phone: contact?.externalPhone,
             name: contact?.name,
-            stage: contact?.stage,
+            stage: contact
+              ? await getCanonicalContactStage(workspaceId, contact.id)
+              : undefined,
           },
           created:
             !contact?.createdAt ||
@@ -645,7 +681,9 @@ api.get("/contacts/:id", async (req, res) => {
         city: contact.city,
         neighborhood: contact.neighborhood,
         serviceRequested: contact.serviceRequested,
-        stage: contact.stage,
+        stage:
+          (await getCanonicalContactStage(workspaceId, contact.id)) ??
+          contact.stage,
         urgency: contact.urgency,
         aiEnabled: Boolean(contact.aiEnabled),
         quoteCents: contact.quoteCents,
@@ -725,6 +763,7 @@ api.get("/availability", async (req, res) => {
         description: service.description,
         durationMinutes: service.durationMinutes,
         priceCents: service.priceCents,
+        priceType: service.priceType,
         professionalIds: snapshot.serviceLinks
           .filter(link => link.serviceId === service.id && link.active === 1)
           .map(link => link.professionalId),
@@ -1049,10 +1088,16 @@ api.patch("/contacts/:id/stage", async (req, res) => {
           statusCode: 404,
           body: { error: "not_found", message: "Contato não encontrado" },
         };
-      await moveContactStage(workspaceId, id, parsed.data.stage);
+      const transition = await moveContactStage(
+        workspaceId,
+        id,
+        parsed.data.stage,
+        undefined,
+        "api"
+      );
       return {
         statusCode: 200,
-        body: { data: { id, stage: parsed.data.stage } },
+        body: { data: { id, stage: transition.stage } },
       };
     });
   } catch (error) {
@@ -1154,7 +1199,11 @@ api.post("/appointments/:id/reschedule", async (req, res) => {
 });
 
 api.post("/webhooks/inbound/whatsapp", async (req, res) => {
-  if (!hasValidWebhookSignature(req) && !requireApiKey(req, res)) return;
+  const replay = webhookReplayFor(
+    req,
+    process.env.WEBHOOK_SIGNING_SECRET?.trim() ?? ""
+  );
+  if (!replay.ok && !requireApiKey(req, res)) return;
   const parsed = webhookSchema.safeParse(req.body);
   if (!parsed.success)
     return fail(res, 400, "Evento de WhatsApp inválido", "invalid_payload");
@@ -1179,12 +1228,16 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
     );
   const workspaceId = await requireApiWorkspaceId(res);
   if (!workspaceId) return;
+  let eventLeaseToken: string | undefined;
   try {
     const registered = await registerWebhookEvent({
       eventId: parsed.data.eventId,
       provider: "whatsapp",
       payload: parsed.data,
       workspaceId,
+      ...(replay.ok
+        ? { webhookNonce: replay.nonce, webhookTimestamp: replay.timestamp }
+        : {}),
     });
     if (registered.conflict)
       return fail(
@@ -1199,8 +1252,15 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
         duplicate: true,
         eventId: parsed.data.eventId,
       });
+    eventLeaseToken = registered.leaseToken;
+    if (!eventLeaseToken) throw new Error("Webhook lease token unavailable");
     const result = await ingestInboundWhatsApp(workspaceId, parsed.data);
-    await markWebhookEvent(workspaceId, parsed.data.eventId, "processed");
+    await markWebhookEvent(
+      workspaceId,
+      parsed.data.eventId,
+      "processed",
+      eventLeaseToken
+    );
     return res.status(202).json({
       accepted: true,
       duplicate: "duplicate" in result && result.duplicate === true,
@@ -1209,7 +1269,13 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
       data: result,
     });
   } catch (error) {
-    await markWebhookEvent(workspaceId, parsed.data.eventId, "failed");
+    if (eventLeaseToken)
+      await markWebhookEvent(
+        workspaceId,
+        parsed.data.eventId,
+        "failed",
+        eventLeaseToken
+      );
     return fail(
       res,
       500,
@@ -1219,29 +1285,160 @@ api.post("/webhooks/inbound/whatsapp", async (req, res) => {
   }
 });
 
+const baileysDeliveryEventSchema = z.object({
+  eventType: z.literal("message_status"),
+  eventId: z.string().trim().min(8).max(180),
+  instanceId: z.string().trim().min(1).max(160),
+  messageId: z.string().trim().min(1).max(180),
+  status: z.enum(messageDeliveryStatuses),
+  fromMe: z.literal(true),
+});
+
+async function handleBaileysDeliveryStatusWebhook(
+  req: Request,
+  res: Response,
+  replay: WebhookReplayValidation
+) {
+  const parsed = baileysDeliveryEventSchema.safeParse(req.body);
+  if (!parsed.success)
+    return fail(
+      res,
+      400,
+      "Atualização de entrega Baileys inválida",
+      "invalid_delivery_status"
+    );
+
+  let leaseToken: string | undefined;
+  let workspaceId: number | undefined;
+  try {
+    const owner = await findBaileysInstanceOwner(parsed.data.instanceId);
+    if (!owner?.active)
+      return fail(
+        res,
+        404,
+        "Instância Baileys não registrada ou inativa",
+        "unknown_baileys_instance"
+      );
+    workspaceId = owner.workspaceId;
+    const registered = await registerWebhookEvent({
+      eventId: parsed.data.eventId,
+      provider: "baileys",
+      payload: parsed.data,
+      workspaceId,
+      instanceId: parsed.data.instanceId,
+      ...(replay.ok
+        ? { webhookNonce: replay.nonce, webhookTimestamp: replay.timestamp }
+        : {}),
+    });
+    if (registered.conflict)
+      return fail(
+        res,
+        409,
+        "O evento Baileys já foi usado com outro payload",
+        "idempotency_conflict"
+      );
+    if (registered.duplicate)
+      return res.status(200).json({
+        accepted: true,
+        duplicate: true,
+        eventId: parsed.data.eventId,
+      });
+    leaseToken = registered.leaseToken;
+    if (!leaseToken) throw new Error("Webhook lease token unavailable");
+
+    const matched = await reconcileBaileysDeliveryStatus({
+      workspaceId,
+      instanceId: parsed.data.instanceId,
+      messageId: parsed.data.messageId,
+      status: parsed.data.status,
+    });
+    if (!matched) {
+      await markWebhookEvent(
+        workspaceId,
+        parsed.data.eventId,
+        "failed",
+        leaseToken
+      );
+      leaseToken = undefined;
+      return fail(
+        res,
+        503,
+        "Mensagem enviada ainda não encontrada; o callback será repetido",
+        "outbound_message_not_ready"
+      );
+    }
+    await markWebhookEvent(
+      workspaceId,
+      parsed.data.eventId,
+      "processed",
+      leaseToken
+    );
+    return res
+      .status(202)
+      .json({ accepted: true, eventId: parsed.data.eventId });
+  } catch (error) {
+    if (workspaceId && leaseToken)
+      await markWebhookEvent(
+        workspaceId,
+        parsed.data.eventId,
+        "failed",
+        leaseToken
+      );
+    return fail(
+      res,
+      500,
+      error instanceof Error
+        ? error.message
+        : "Falha ao reconciliar status Baileys",
+      "internal_error"
+    );
+  }
+}
+
 async function handleBaileysWebhook(req: Request, res: Response) {
-  const configuredSecret = process.env.BAILEYS_WEBHOOK_SECRET?.trim() ?? "";
-  const providedSecret = req.header("X-Webhook-Secret") ?? "";
-  const secretAccepted = Boolean(
-    configuredSecret &&
-      providedSecret &&
-      configuredSecret.length === providedSecret.length &&
-      crypto.timingSafeEqual(
-        Buffer.from(configuredSecret),
-        Buffer.from(providedSecret)
-      )
+  const instanceHint =
+    typeof req.body?.instanceId === "string" ? req.body.instanceId.trim() : "";
+  const instanceSecret = instanceHint
+    ? await getCachedBaileysWebhookSecret(instanceHint).catch(() => undefined)
+    : undefined;
+  // Once an instance has a rotated secret, the process-wide secret is no
+  // longer accepted for that instance. Instances without a stored secret keep
+  // the legacy environment-secret path until their first rotation.
+  const configuredSecret =
+    instanceSecret || process.env.BAILEYS_WEBHOOK_SECRET?.trim() || "";
+  const replay = webhookReplayFor(req, configuredSecret);
+  const genericReplay = webhookReplayFor(
+    req,
+    instanceSecret ? "" : (process.env.WEBHOOK_SIGNING_SECRET?.trim() ?? "")
   );
-  if (
-    !secretAccepted &&
-    !hasValidWebhookSignature(req) &&
-    !requireApiKey(req, res)
-  )
-    return;
+  const secretAccepted = replay.ok;
+  if (!secretAccepted && !genericReplay.ok) {
+    if (instanceSecret)
+      return fail(
+        res,
+        401,
+        "Assinatura da instância Baileys inválida",
+        "invalid_instance_webhook_signature"
+      );
+    if (!requireApiKey(req, res)) return;
+  }
+  const acceptedReplay = replay.ok ? replay : genericReplay;
+  if (req.body?.eventType === "message_status")
+    return handleBaileysDeliveryStatusWebhook(req, res, acceptedReplay);
   let eventId = "baileys-unknown-event";
   let workspaceId: number | undefined;
+  let eventLeaseToken: string | undefined;
   try {
     const normalized = getWhatsappAdapter("baileys").normalizeInbound(req.body);
     eventId = normalized.eventId;
+    const isHistorical = normalized.metadata?.historySync === true;
+    if (isHistorical)
+      return res.status(202).json({
+        accepted: true,
+        ignored: true,
+        eventId,
+        data: { ignored: true, reason: "historical_payload_not_importable" },
+      });
     const instanceId =
       typeof normalized.metadata?.instanceId === "string"
         ? normalized.metadata.instanceId
@@ -1307,6 +1504,13 @@ async function handleBaileysWebhook(req: Request, res: Response) {
       provider: "baileys",
       payload: req.body,
       workspaceId,
+      instanceId,
+      ...(acceptedReplay.ok
+        ? {
+            webhookNonce: acceptedReplay.nonce,
+            webhookTimestamp: acceptedReplay.timestamp,
+          }
+        : {}),
     });
     if (registered.conflict)
       return fail(
@@ -1317,6 +1521,8 @@ async function handleBaileysWebhook(req: Request, res: Response) {
       );
     if (registered.duplicate)
       return res.status(200).json({ accepted: true, duplicate: true, eventId });
+    eventLeaseToken = registered.leaseToken;
+    if (!eventLeaseToken) throw new Error("Webhook lease token unavailable");
     const result = await ingestInboundWhatsApp(workspaceId, {
       ...normalized,
       metadata: {
@@ -1325,7 +1531,7 @@ async function handleBaileysWebhook(req: Request, res: Response) {
         ...(instanceId ? { instanceId } : {}),
       },
     });
-    await markWebhookEvent(workspaceId, eventId, "processed");
+    await markWebhookEvent(workspaceId, eventId, "processed", eventLeaseToken);
     return res.status(202).json({
       accepted: true,
       duplicate: "duplicate" in result && result.duplicate === true,
@@ -1339,7 +1545,8 @@ async function handleBaileysWebhook(req: Request, res: Response) {
       eventId,
       error: error instanceof Error ? error.message : String(error),
     });
-    if (workspaceId) await markWebhookEvent(workspaceId, eventId, "failed");
+    if (workspaceId && eventLeaseToken)
+      await markWebhookEvent(workspaceId, eventId, "failed", eventLeaseToken);
     return fail(
       res,
       500,

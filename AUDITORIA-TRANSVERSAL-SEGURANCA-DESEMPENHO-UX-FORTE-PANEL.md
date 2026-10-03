@@ -1,5 +1,10 @@
 # Forte Panel — Auditoria transversal completa
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
 **Data:** 2026-09-28  
 **Escopo:** segurança, autorização, desempenho, escalabilidade, engenharia, dados, migrações, testes, CI/CD, operação, confiabilidade, UI/UX, acessibilidade e aderência ao produto.  
 **Decisões fixas:** somente Baileys; gateway Node.js/TypeScript; beta com 10 empresas; Console Admin com controle total temporário dos workspaces, sempre auditado; branding Forte Panel preservado.

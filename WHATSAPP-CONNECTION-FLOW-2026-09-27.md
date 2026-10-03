@@ -1,5 +1,11 @@
 # Core do Forte Panel — instâncias Baileys
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
+
 **Documento canônico desta etapa · 27/09/2026**
 **Estado:** O usuário confirmou o pareamento real no celular; a revisão `850b5a9` refatora a tela de instâncias, atualiza o reconhecimento do estado e separa consumo em `/plans-usage`. Os checks `verify`, `postgres-integration` e `publish` passaram; as tags públicas `ghcr.io/geordptoroy/forte-panel:dev` e `ghcr.io/geordptoroy/forte-whatsapp:dev` respondem a pull anônimo. Nesta revisão, 158 testes do monorepo passaram (41 dependentes de banco skipped no sandbox), incluindo 33 do gateway; typecheck e builds de frontend/backend também passaram. Resta o smoke test visual no Docker do usuário. **A sessão WhatsApp já conectada deve ser preservada**: para testar a atualização visual, usar `pull`/`up` sem reset.
 **Fonte de verdade para esta fatia:** este documento, `todo.md` e `PROJECT_DOCUMENTATION_INDEX.md`.

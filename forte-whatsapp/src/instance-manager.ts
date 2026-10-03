@@ -29,7 +29,15 @@ import {
   requestPairingCodeWhenReady,
   shouldUseRemoteLogout,
 } from "./pairing-code.js";
+import { reconnectDelayMs } from "./reconnect-policy.js";
+import { normalizeBaileysMessageStatus, type DeliveryStatus } from "./delivery-status.js";
+import {
+  decodeAllowedOutboundMediaData,
+  isAllowedOutboundMediaReference,
+} from "./media-reference.js";
+import { SendLedger, stableFingerprint } from "./send-ledger.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
+import { buildNativeInteractivePayload } from "./interactive-payload.js";
 import {
   normalizeBaileysMessage,
   normalizeBaileysOutgoingMessage,
@@ -42,6 +50,20 @@ function instanceScopedEventId(instanceId: string, sourceId: string) {
     .createHash("sha256")
     .update(`${instanceId}\0${sourceId}`)
     .digest("hex")}`;
+}
+
+function isNativeInteractivePayload(payload: AnyMessageContent) {
+  const record = payload as Record<string, unknown>;
+  const viewOnce = record.viewOnceMessage;
+  if (viewOnce && typeof viewOnce === "object") {
+    const message = (viewOnce as Record<string, unknown>).message;
+    return Boolean(
+      message &&
+        typeof message === "object" &&
+        "interactiveMessage" in (message as Record<string, unknown>)
+    );
+  }
+  return "interactiveMessage" in record;
 }
 
 export type InstanceStatus =
@@ -62,6 +84,7 @@ export type InstanceSnapshot = {
   lastError?: string;
   settings: BaileysInstanceSettings;
   webhookOutboxPending?: number;
+  webhookOutboxDeadLetter?: number;
   webhookLastError?: string;
   updatedAt: string;
 };
@@ -84,8 +107,14 @@ export class InstanceManager {
   private pairingCleanup?: Promise<void>;
   private credsSaveQueue: Promise<void> = Promise.resolve();
   private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private reconnectAttempts = 0;
   private readonly webhookOutbox: WebhookOutbox;
+  private readonly sendLedger: SendLedger;
   private readonly panelMessageEchoes = new PanelMessageEchoTracker();
+  private readonly pendingDeliveryUpdates = new Map<
+    string,
+    { status: DeliveryStatus; expiresAt: number }
+  >();
   private readonly groupSubjectCache = new Map<
     string,
     { subject: string; expiresAt: number }
@@ -119,6 +148,9 @@ export class InstanceManager {
       maxBackoffMs: config.webhookMaxBackoffMs,
       logger,
     });
+    this.sendLedger = new SendLedger(
+      path.join(config.sessionDir, instanceId, "send-ledger")
+    );
   }
 
   getStatus(): InstanceSnapshot {
@@ -126,8 +158,14 @@ export class InstanceManager {
     return {
       ...this.snapshot,
       webhookOutboxPending: outbox.pending,
+      webhookOutboxDeadLetter: outbox.deadLetter,
       webhookLastError: outbox.lastError,
     };
+  }
+
+  rotateWebhookSecret(secret: string) {
+    this.webhookOutbox.setSecret(secret);
+    return this.getStatus();
   }
 
   async getProfile(): Promise<InstanceProfile> {
@@ -219,6 +257,9 @@ export class InstanceManager {
       socket.ev.on("messages.upsert", ({ messages, type, requestId }) =>
         this.handleMessages(messages, type, requestId)
       );
+      socket.ev.on("messages.update", updates => {
+        for (const update of updates) this.handleMessageStatusUpdate(update);
+      });
       socket.ev.on("messaging-history.set", ({ chats, contacts, messages, syncType, progress, isLatest, chunkOrder }) => {
         logger.info(
           {
@@ -253,6 +294,7 @@ export class InstanceManager {
         lastError: error instanceof Error ? error.message : "connection failed",
       });
       await this.releaseSessionLock();
+      this.scheduleReconnect();
       throw error;
     } finally {
       this.starting = false;
@@ -262,6 +304,7 @@ export class InstanceManager {
   async stop(logout = false): Promise<void> {
     this.suppressReconnectUntil = Date.now() + 5_000;
     this.clearReconnectTimer();
+    this.reconnectAttempts = 0;
     const pairingWasPending = this.pairingAwaitingAcceptance;
     this.pairingAwaitingAcceptance = false;
     this.pairingAcceptedRestartPending = false;
@@ -288,6 +331,7 @@ export class InstanceManager {
   async deleteSession(): Promise<void> {
     this.suppressReconnectUntil = Date.now() + 5_000;
     this.clearReconnectTimer();
+    this.reconnectAttempts = 0;
     const pairingWasPending = this.pairingAwaitingAcceptance;
     this.pairingAwaitingAcceptance = false;
     this.pairingAcceptedRestartPending = false;
@@ -394,6 +438,33 @@ export class InstanceManager {
     }
   }
 
+  private scheduleReconnect() {
+    if (
+      Date.now() < this.suppressReconnectUntil ||
+      this.snapshot.status === "logged_out"
+    ) return;
+    this.clearReconnectTimer();
+    const attempt = this.reconnectAttempts + 1;
+    const delayMs = reconnectDelayMs(attempt);
+    this.reconnectAttempts = attempt;
+    logger.warn(
+      { instanceId: this.instanceId, attempt, delayMs },
+      "scheduling WhatsApp reconnect"
+    );
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      void this.start().catch(error =>
+        logger.error(
+          {
+            instanceId: this.instanceId,
+            message: error instanceof Error ? error.message : String(error),
+          },
+          "automatic WhatsApp reconnect failed"
+        )
+      );
+    }, delayMs);
+  }
+
   private waitForPairingReady(socket: WASocket): Promise<void> {
     if (this.socket !== socket)
       return Promise.reject(
@@ -475,19 +546,43 @@ export class InstanceManager {
     phone: string,
     messageType: string,
     content: string,
+    metadata: Record<string, unknown> = {},
+    idempotencyKey?: string
+  ): Promise<string> {
+    if (!idempotencyKey?.trim()) throw new Error("idempotency_key_required");
+    return this.sendLedger.execute(
+      idempotencyKey,
+      stableFingerprint({ phone, messageType, content, metadata }),
+      () => this.sendMessageOnce(phone, messageType, content, metadata)
+    );
+  }
+
+  private async sendMessageOnce(
+    phone: string,
+    messageType: string,
+    content: string,
     metadata: Record<string, unknown> = {}
   ): Promise<string> {
     if (!this.socket || this.snapshot.status !== "connected")
       throw new Error("WhatsApp instance is not connected");
+    if (
+      ["image", "audio", "video", "document"].includes(messageType) &&
+      !isAllowedOutboundMediaReference(content)
+    )
+      throw new Error("Mídia de saída exige uma URL HTTPS privada ou data URL válida");
     const jid = phone.includes("@")
       ? phone
       : phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
     let message: AnyMessageContent;
+    const mediaReference = decodeAllowedOutboundMediaData(content);
+    const mediaSource = mediaReference
+      ? mediaReference.buffer
+      : { url: content };
     if (messageType === "text") {
       message = { text: content };
     } else if (messageType === "audio") {
       message = {
-        audio: { url: content },
+        audio: mediaSource,
         mimetype:
           typeof metadata.mimetype === "string"
             ? metadata.mimetype
@@ -496,7 +591,7 @@ export class InstanceManager {
       };
     } else if (messageType === "image") {
       message = {
-        image: { url: content },
+        image: mediaSource,
         caption:
           typeof metadata.caption === "string" ? metadata.caption : undefined,
         mimetype:
@@ -504,7 +599,7 @@ export class InstanceManager {
       };
     } else if (messageType === "video") {
       message = {
-        video: { url: content },
+        video: mediaSource,
         caption:
           typeof metadata.caption === "string" ? metadata.caption : undefined,
         mimetype:
@@ -513,7 +608,7 @@ export class InstanceManager {
       };
     } else if (messageType === "document") {
       message = {
-        document: { url: content },
+        document: mediaSource,
         mimetype:
           typeof metadata.mimetype === "string"
             ? metadata.mimetype
@@ -527,23 +622,12 @@ export class InstanceManager {
       const buttons = Array.isArray(metadata.buttons) ? metadata.buttons : [];
       if (buttons.length < 1 || buttons.length > 3)
         throw new Error("Mensagem de botões exige de 1 a 3 opções");
-      message = {
-        text: content,
-        buttons,
-        footer: typeof metadata.footer === "string" ? metadata.footer : "",
-      } as unknown as AnyMessageContent;
+      message = buildNativeInteractivePayload("button", content, metadata);
     } else if (messageType === "list") {
       const sections = Array.isArray(metadata.sections) ? metadata.sections : [];
       if (sections.length < 1)
         throw new Error("Mensagem de lista exige ao menos uma seção");
-      message = {
-        text: content,
-        title: typeof metadata.title === "string" ? metadata.title : "",
-        footer: typeof metadata.footer === "string" ? metadata.footer : "",
-        buttonText:
-          typeof metadata.buttonText === "string" ? metadata.buttonText : "Ver opções",
-        sections,
-      } as unknown as AnyMessageContent;
+      message = buildNativeInteractivePayload("list", content, metadata);
     } else if (messageType === "poll") {
       const payload =
         metadata.payload && typeof metadata.payload === "object"
@@ -577,14 +661,16 @@ export class InstanceManager {
       echo.echoContent
     );
     try {
-      const result = await this.socket.sendMessage(jid, message);
-      const externalId = result?.key?.id ?? crypto.randomUUID();
+      const externalId = isNativeInteractivePayload(message)
+        ? await this.socket.relayMessage(jid, message as never, { messageId: crypto.randomUUID() })
+        : (await this.socket.sendMessage(jid, message))?.key?.id ?? crypto.randomUUID();
       this.panelMessageEchoes.rememberSentMessage(
         externalId,
         jid,
         echo.messageType,
         echo.echoContent
       );
+      this.flushPendingDeliveryUpdate(externalId);
       return externalId;
     } catch (error) {
       this.panelMessageEchoes.forgetPending(
@@ -597,6 +683,19 @@ export class InstanceManager {
   }
 
   async sendPayload(
+    phone: string,
+    payload: AnyMessageContent,
+    idempotencyKey?: string
+  ): Promise<string> {
+    if (!idempotencyKey?.trim()) throw new Error("idempotency_key_required");
+    return this.sendLedger.execute(
+      idempotencyKey,
+      stableFingerprint({ phone, payload }),
+      () => this.sendPayloadOnce(phone, payload)
+    );
+  }
+
+  private async sendPayloadOnce(
     phone: string,
     payload: AnyMessageContent
   ): Promise<string> {
@@ -612,7 +711,7 @@ export class InstanceManager {
       echo.echoContent
     );
     try {
-      if ("interactiveMessage" in (payload as Record<string, unknown>)) {
+      if (isNativeInteractivePayload(payload)) {
         const externalId = await this.socket.relayMessage(
           jid,
           payload as never,
@@ -624,6 +723,7 @@ export class InstanceManager {
           echo.messageType,
           echo.echoContent
         );
+        this.flushPendingDeliveryUpdate(externalId);
         return externalId;
       }
       const result = await this.socket.sendMessage(jid, payload);
@@ -634,6 +734,7 @@ export class InstanceManager {
         echo.messageType,
         echo.echoContent
       );
+      this.flushPendingDeliveryUpdate(externalId);
       return externalId;
     } catch (error) {
       this.panelMessageEchoes.forgetPending(
@@ -643,6 +744,60 @@ export class InstanceManager {
       );
       throw error;
     }
+  }
+
+  private handleMessageStatusUpdate(update: {
+    key?: { id?: string | null; fromMe?: boolean | null };
+    update?: { status?: unknown };
+  }) {
+    const messageId = update.key?.id;
+    if (!messageId || update.key?.fromMe !== true) return;
+    const status = normalizeBaileysMessageStatus(update.update?.status);
+    if (!status) return;
+    if (this.panelMessageEchoes.hasSentId(messageId)) {
+      this.enqueueDeliveryStatus(messageId, status);
+      return;
+    }
+
+    const now = Date.now();
+    for (const [id, pending] of this.pendingDeliveryUpdates)
+      if (pending.expiresAt <= now) this.pendingDeliveryUpdates.delete(id);
+    this.pendingDeliveryUpdates.set(messageId, { status, expiresAt: now + 120_000 });
+    while (this.pendingDeliveryUpdates.size > 256)
+      this.pendingDeliveryUpdates.delete(this.pendingDeliveryUpdates.keys().next().value!);
+  }
+
+  private flushPendingDeliveryUpdate(messageId: string) {
+    const pending = this.pendingDeliveryUpdates.get(messageId);
+    this.pendingDeliveryUpdates.delete(messageId);
+    if (!pending || pending.expiresAt <= Date.now()) return;
+    this.enqueueDeliveryStatus(messageId, pending.status);
+  }
+
+  private enqueueDeliveryStatus(messageId: string, status: DeliveryStatus) {
+    const eventId = instanceScopedEventId(
+      this.instanceId,
+      `message-status:${messageId}:${status}`
+    );
+    void this.webhookOutbox
+      .enqueue({
+        eventId,
+        eventType: "message_status",
+        instanceId: this.instanceId,
+        messageId,
+        status,
+        fromMe: true,
+      })
+      .catch(error =>
+        logger.error(
+          {
+            instanceId: this.instanceId,
+            messageId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "failed to persist outbound delivery receipt"
+        )
+      );
   }
 
   private set(next: Partial<InstanceSnapshot>) {
@@ -675,6 +830,7 @@ export class InstanceManager {
     if (update.connection === "open") {
       this.pairingAwaitingAcceptance = false;
       this.pairingAcceptedRestartPending = false;
+      this.reconnectAttempts = 0;
       const user = socket.user?.id;
       this.set({
         status: "connected",
@@ -722,11 +878,7 @@ export class InstanceManager {
         return;
       }
       if (!loggedOut && Date.now() >= this.suppressReconnectUntil) {
-        this.clearReconnectTimer();
-        this.reconnectTimer = setTimeout(() => {
-          this.reconnectTimer = undefined;
-          void this.start();
-        }, 3_000);
+        this.scheduleReconnect();
       }
     }
   }

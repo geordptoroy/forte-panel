@@ -12,7 +12,7 @@ describe("secret safety", () => {
   });
 
   it("masks both encrypted and legacy plaintext credentials", () => {
-    const secret = "papi-secret-abcdef";
+    const secret = "legacy-secret-abcdef";
     const encrypted = encryptProviderSecret(secret);
 
     expect(maskProviderSecret(encrypted)).toBe("••••••••cdef");

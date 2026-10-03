@@ -1,5 +1,10 @@
 # Console Administrativo da Plataforma — MVP
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
 ## Objetivo
 
 O Console Administrativo é uma área interna separada do painel de cada workspace. Ele permite observar e operar contas beta sem transformar o papel `admin` de um workspace em acesso global.

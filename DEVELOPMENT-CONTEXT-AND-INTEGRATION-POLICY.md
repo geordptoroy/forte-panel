@@ -1,5 +1,11 @@
 # Ambiente de desenvolvimento e política de integrações
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
+
 **Atualizado:** 2026-09-27
 **Fonte:** decisão explícita do responsável pelo produto durante a auditoria do Forte Panel.
 

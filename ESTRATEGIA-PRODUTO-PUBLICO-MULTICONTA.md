@@ -1,5 +1,11 @@
 # Estratégia do Forte Panel para produto público multi-conta
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
+
 **Status:** estratégia aprovada para orientar os próximos passos; ainda não é autorização para ligar serviços externos, provisionar contas WhatsApp ou publicar o produto.
 **Atualizado:** 2026-09-25
 **Repositório:** `geordptoroy/forte-panel` (consulte `git log -1` para o HEAD vigente)

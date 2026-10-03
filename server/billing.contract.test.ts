@@ -4,7 +4,7 @@ import type { TrpcContext } from "./_core/context";
 
 function createContext(): TrpcContext {
   return {
-    user: { id: 1, openId: "billing-test", role: "admin" } as TrpcContext["user"],
+    user: { id: 1, openId: "test-user", role: "admin" } as TrpcContext["user"],
     workspace: {
       workspaceId: 1,
       workspaceName: "Test Workspace",
@@ -22,33 +22,22 @@ function createContext(): TrpcContext {
   };
 }
 
-describe("billing procedures", () => {
-  it("requires a positive item quantity", async () => {
+describe("billing payment procedures", () => {
+  it("rejects zero-value ledger entries", async () => {
     const caller = appRouter.createCaller(createContext());
-    await expect(
-      caller.billing.createQuote({
-        contactId: 1,
-        serviceName: "Instalação",
-        items: [{ description: "Mão de obra", quantity: 0, unitCents: 1000 }],
-      })
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.billing.registerPayment({
+      quoteId: 1,
+      amountCents: 0,
+      method: "pix",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  it("keeps approval as a dedicated mutation", async () => {
+  it("rejects unsupported payment methods at the contract boundary", async () => {
     const caller = appRouter.createCaller(createContext());
-    await expect(caller.billing.approve({ id: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    await expect(
-      caller.billing.updatePayment({ id: 1, receivedCents: 0, status: "aprovado" as never })
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-  });
-
-  it("requires a positive operational payment amount and known method", async () => {
-    const caller = appRouter.createCaller(createContext());
-    await expect(
-      caller.billing.receive({ quoteId: 1, amountCents: 0, method: "pix" })
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    await expect(
-      caller.billing.receive({ quoteId: 1, amountCents: 1000, method: "crypto" as never })
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.billing.registerPayment({
+      quoteId: 1,
+      amountCents: 100,
+      method: "crypto" as "pix",
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });

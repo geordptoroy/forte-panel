@@ -1,3 +1,6 @@
+
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
 ## Etapa 5 — Claim atômico de idempotência HTTP — concluída
 
 A idempotência das rotas mutáveis deixou de usar o padrão inseguro `SELECT` antes do handler e `INSERT` depois do handler.
@@ -651,3 +654,50 @@ Validação desta etapa: `pnpm check` ✅; teste PostgreSQL condicional de gate/
 Foi preparado um caminho local para o próximo gate: `LOCAL-DOCKER-TESTE.md` documenta o Compose, o `.env` gerado, o start, logs, migrations e os testes de publicação. O PostgreSQL é publicado apenas em localhost; Redis, painel, worker e gateway continuam na rede Docker.
 
 O reset global é separado e protegido por token explícito para reduzir acidentes. Ele pode remover volumes, imagens, redes e cache de outros projetos Docker da máquina, portanto não é executado automaticamente pelo agente. A execução real do teste PostgreSQL fica para a máquina do usuário, onde Docker e o espaço local estão disponíveis.
+
+---
+## Etapa seguinte — catálogo operacional de onboarding — 2026-09-29
+
+O passo Serviços do onboarding agora usa o catálogo persistido existente: nome, descrição, duração, modo de preço (`fixed`, `starting_at`, `quote`) e vínculo opcional a profissionais ativos. A migration `0045_service_price_mode.sql` adiciona o enum, mantendo registros existentes como preço fixo e limpando valor numérico quando o modo é “sob consulta”. O passo Operação cadastra profissionais e grava disponibilidade semanal por dia. O campo livre do onboarding ficou explicitamente complementar; o responsável pode optar por usar o catálogo ou “decidir depois”.
+
+A tela administrativa de Serviços passou a exibir/editar os modos de preço; a projeção REST `/api/v1/availability` e o snapshot usado pela ferramenta `consultar_agenda` também retornam `priceType`. O prompt publicado exige consultar o catálogo/agenda atual, não tratar jornada semanal como vaga e não prometer um agendamento antes do sucesso da ferramenta. Vínculos com profissionais continuam tenant-scoped e agora recusam IDs estrangeiros antes de substituir a associação.
+
+Validação no Sandbox: `pnpm check` passou; `pnpm test` passou com 212 testes aprovados e 48 ignorados por dependências condicionais a PostgreSQL; `pnpm build` passou. O PostgreSQL não está disponível, portanto migrations e testes de isolamento persistidos não foram executados. `drizzle-kit generate` continua bloqueado por colisão histórica entre snapshots 0041/0043; a migration 0045 foi adicionada manualmente sem reescrever snapshots fora de escopo. O onboarding permanece `not_ready` até prova manual completa. Próxima fatia: O1.3 — regras de atendimento e revisão de exemplos.
+
+
+---
+## Etapa — regras de atendimento e revisão de exemplos (O1.3) — 2026-09-29
+A etapa Revisão inclui cenários fixos seguros para serviço/preço fora do catálogo, horário específico e pedido de atendimento humano. A simulação com IA é opcional e exige consentimento `llm`; usa o candidato de publicação calculado no servidor, não consulta dados operacionais em tempo real, não aciona ferramentas e não persiste as respostas. Saídas estruturadas inválidas falham sem impedir revisão dos cenários estáticos.
+A confirmação humana grava apenas fingerprint SHA-256, modo, data e autor em `workspace_settings`. Mudanças no candidato invalidam a revisão; o gate é repetido server-side em `publishOnboardingDraft`. Rollback continua versionado e registra a revisão explícita da versão restaurada. Cobertura adicionada para fingerprint e normalização; teste PostgreSQL de publicação/revisão/obsolescência/rollback adicionado, mas condicionado ao banco.
+Validação: `pnpm check` passou; `pnpm test` passou — 214 passaram, 48 ignorados em 65 arquivos; `pnpm build` passou (aviso de bundle >500 kB); `git diff --check` passou. Sem PostgreSQL local, o teste persistido não foi executado. Nenhuma migration nova. A rota permanece `not_ready`.
+Próxima fatia: **O1.4 — retomada, autosave, missing/conflict e estados vazios**.
+
+
+---
+## Continuidade — O1.4–O2.4 Onboarding e canal resiliente — 2026-09-30
+O bloco O1.4–O2.4 concluiu retomada do onboarding, backoff/logoff final do gateway, lease de inbound com fencing, recibos monotônicos e upload privado de anexos. A entrega técnica e os limites estão em `O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`. Gates no Sandbox: check, testes (225 pass / 51 skip), build e diff check do Panel; check, 72 testes e build do gateway. A migration 0046 é aditiva/manual; 0045/0046 aguardam validação PostgreSQL persistente, e ainda falta prova física WhatsApp/storage. PR #6 está aberto e empilhado sobre O1.3, sem merge. Próxima fatia: O3.1 — introduzir Lead explícito e relacionar conversa/oportunidade, preservando isolamento e idempotência.
+
+
+---
+## Continuidade — O3.1 Lead unificado entre contato, conversa e oportunidade — 2026-09-30
+O Contact passou a ter um Lead explícito tenant-scoped; cada Lead tem uma Opportunity e a Conversation guarda o vínculo direto. `Opportunity.stage` é canônico, com `contacts.stage` como espelho compatível. O inbound Baileys individual aceito ao vivo cria/atualiza essas entidades com upsert idempotente; grupos, `fromMe`, história/backfill e eventos inválidos/ignorados ficam de fora. `drizzle-pg/0047_unified_leads_opportunities.sql` faz backfill aditivo dos contatos individuais e links de conversa; não foi aplicado em PostgreSQL persistente.
+
+A validação local passou: check, 228 testes (52 ignorados), build e diff check. O Sandbox não tem `DATABASE_URL`, mas o PostgreSQL CI aplicou 0047 e os 7 testes O3.1 passaram. O fixture preexistente dependente de demo foi corrigido no commit `9e3e48d` do PR #6. Ambos os jobs finais passaram: PR #6 run `36664794193` (70 arquivos/276 testes) e PR #7 run `36664802619` (71 arquivos/280 testes). Head O3.1 `805940b` está na branch `feat/o3.1-unified-leads`; PR #7 permanece aberto e empilhado sobre o PR #6, sem merge. CI efêmero não equivale a staging/produção: manter `CORE_ONLY_MODE`. Próxima fatia: O3.2 — assignment e follow-up operacional no Inbox.
+
+
+---
+## Continuidade — O3.2 Inbox operacional com assignment e próxima ação — 2026-09-30
+A Opportunity passa a ter responsável opcional validado contra membership ativa do mesmo workspace; somente owner/admin/manager atribui. O Inbox mantém no máximo uma próxima ação aberta por Opportunity, com título e prazo, reprogramável/concluível e auditada. Desativar membro limpa assignments. A próxima ação é um lembrete operacional interno, sem worker, scheduler, mensagem ou mudança automática de stage. Migration aditiva 0048 registra `assignedMemberId` e `opportunityFollowUps`; procedimentos tRPC, projeções da lista/perfil e testes de tenancy foram acrescentados.
+
+Validação: check, teste local (232 pass/53 skips condicionais a banco), build e diff-check passaram. O primeiro run do PR #8 falhou por um fixture de atribuição cruzado; fix no commit `d1b5ca8`. O run PostgreSQL `36708180817` passou as 72 suítes/285 testes sem skips e aplicou migration 0048. PR [#8](https://github.com/geordptoroy/forte-panel/pull/8) está aberto sobre O3.1 e sem merge. PostgreSQL efêmero não é staging/produção; `CORE_ONLY_MODE` continua ligado. Próxima fatia: O3.3 — estágio canônico e eliminação de estado duplicado.
+
+
+---
+
+## Execução comercial — O3.3 — 2026-09-30
+
+A fonte canônica do funil agora é `Opportunity.stage`; `contacts.stage` é espelho de compatibilidade. A migration aditiva 0049 cria histórico imutável e baseline para oportunidades existentes. Toda mudança Inbox/REST/CRM/agente passa por serviço tenant-scoped que, na mesma transação, bloqueia e atualiza a Opportunity, sincroniza o espelho, registra histórico e auditoria e escreve `stage.changed` na outbox. No-op não cria evento; reparo de espelho não inventa transição. Projeções do Inbox, CRM/Kanban, Agenda e suporte priorizam o estado canônico.
+
+`pnpm check`, `pnpm test` (232 pass/53 ignorados), `pnpm build` e `git diff --check` passaram no Sandbox. Sem `DATABASE_URL`, a validação PostgreSQL foi executada no CI da PR #9: run [`36710769990`](https://github.com/geordptoroy/forte-panel/actions/runs/36710769990) passou no commit `7dc0efc`, aplicou migration 0049 e executou 72 arquivos/285 testes, sem skips. O build mantém aviso conhecido de bundle >500 kB. Branch `feat/o3.3-canonical-opportunity-stage`, empilhada sobre O3.2/PR #8. Não mesclar automaticamente e manter `CORE_ONLY_MODE` até prova persistente.
+
+**Próximo:** O3.4 — orçamento com itens, validade e aprovação humana, sem billing/Stripe. O CI PostgreSQL efêmero não equivale a staging persistente, restore ou prova WhatsApp real.

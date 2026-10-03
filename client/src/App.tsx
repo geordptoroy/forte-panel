@@ -25,6 +25,7 @@ import {
 import { ProfessionalsPage, ServicesPage } from "./pages/CatalogPage";
 import { ProfessionalPortalPage } from "./pages/ProfessionalPortal";
 import { SettingsTabsPage } from "./pages/SettingsTabs";
+import WorkspaceAgentPage from "./pages/WorkspaceAgentPage";
 import TeamPage from "./pages/TeamPage";
 import AccessGuard, {
   OnboardingGuard,
@@ -44,6 +45,7 @@ import {
   PlatformGlobalAiPage,
   PlatformPromptsPage,
   PlatformSupportPage,
+  PlatformSupportWorkspacePage,
   PlatformWorkspacePage,
 } from "./pages/PlatformAdminPage";
 import { PlatformSupportInstancesPage } from "./pages/PlatformSupportInstancesPage";
@@ -76,9 +78,7 @@ function Router() {
           </AccessGuard>
         )}
       </Route>
-      <Route path="/inbox">
-        {() => <InboxPage />}
-      </Route>
+      <Route path="/inbox">{() => <InboxPage />}</Route>
       <Route path="/kanban" component={KanbanPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
@@ -90,7 +90,14 @@ function Router() {
       <Route path="/platform-admin/ai" component={PlatformGlobalAiPage} />
       <Route path="/platform-admin/prompts" component={PlatformPromptsPage} />
       <Route path="/platform-admin/support" component={PlatformSupportPage} />
-      <Route path="/platform-admin/support-instances" component={PlatformSupportInstancesPage} />
+      <Route
+        path="/platform-admin/support-workspace"
+        component={PlatformSupportWorkspacePage}
+      />
+      <Route
+        path="/platform-admin/support-instances"
+        component={PlatformSupportInstancesPage}
+      />
       <Route path="/platform-admin/support-inbox">
         {() => <InboxPage platformAdmin />}
       </Route>
@@ -162,13 +169,25 @@ function Router() {
       </Route>
       <Route path="/my-work" component={ProfessionalPortalPage} />
       <Route path="/settings" component={SettingsTabsPage} />
+      <Route path="/ai-agent">
+        {() => (
+          <OnboardingGuard title="Agente de IA">
+            <WorkspaceAgentPage />
+          </OnboardingGuard>
+        )}
+      </Route>
       <Route component={NotFoundPage} />
     </Switch>
   );
 }
 
 function AuthenticatedRouter() {
-  const { data: user, isLoading } = trpc.auth.me.useQuery(undefined, {
+  const {
+    data: user,
+    isLoading,
+    isError,
+    refetch,
+  } = trpc.auth.me.useQuery(undefined, {
     retry: false,
   });
   const [location] = useLocation();
@@ -181,6 +200,26 @@ function AuthenticatedRouter() {
     return (
       <main className="auth-screen">
         <div className="auth-loading">Verificando acesso...</div>
+      </main>
+    );
+  if (isError)
+    return (
+      <main className="auth-screen">
+        <section className="auth-card">
+          <span className="eyebrow">Forte Panel / Conexão</span>
+          <h1>Não foi possível confirmar sua sessão</h1>
+          <p>
+            O banco ou a rede pode estar temporariamente ocupado. Sua sessão não
+            foi encerrada.
+          </p>
+          <button
+            className="btn-primary auth-submit"
+            type="button"
+            onClick={() => void refetch()}
+          >
+            Tentar novamente
+          </button>
+        </section>
       </main>
     );
   if (!user) return <Redirect to="/login" />;

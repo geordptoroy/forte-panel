@@ -11,12 +11,28 @@ import {
   getPlatformGlobalAgentSnapshot,
   getPlatformAdminAccess,
   getPlatformSupportSnapshot,
+  createPlatformSupportService,
+  updatePlatformSupportService,
+  createPlatformSupportProfessional,
+  updatePlatformSupportProfessional,
+  setPlatformSupportProfessionalServices,
+  setPlatformSupportAvailability,
+  createPlatformSupportAppointment,
+  updatePlatformSupportAppointmentStatus,
+  reschedulePlatformSupportAppointment,
+  cancelPlatformSupportAppointment,
+  getPlatformOperationalHealth,
   listPlatformSupportContacts,
   getPlatformSupportThread,
   sendPlatformSupportMessage,
   ensurePlatformSupportWorkspace,
   getPlatformAgentSnapshot,
   getPlatformWorkspaceDetail,
+  getPlatformWorkspaceGovernance,
+  listPlatformIncidents,
+  listPlatformSupportTickets,
+  openPlatformSupportTicket,
+  closePlatformSupportTicket,
   recordPlatformAudit,
   isExternalProviderCallAllowedForSimulation,
   listPlatformAuditLogs,
@@ -26,14 +42,18 @@ import {
   listPlatformWorkspaces,
   listPlatformWorkspaceNotes,
   publishPlatformAgentDraft,
+  openPlatformIncident,
   revokeSupportSession,
   resetPlatformWorkspace,
+  resolvePlatformIncident,
   rollbackPlatformAgentVersion,
   savePlatformAgentDraft,
   savePlatformGlobalAiPolicy,
   savePlatformInstancePromptBinding,
   simulatePlatformInstanceAgent,
   setPlatformWorkspaceAi,
+  setPlatformWorkspacePlan,
+  setPlatformWorkspaceRetention,
   setPlatformWorkspaceStatus,
   simulatePlatformAgent,
   testPlatformAiConnection,
@@ -65,6 +85,13 @@ import {
   updateBaileysInstanceSettings,
 } from "./baileys-gateway";
 import { interactiveMetadataSchema, interactiveMessageTypeSchema } from "./interactive-messages";
+import { getSaaSBillingCatalog } from "./saas-billing";
+import { getSaaSSubscriptionLifecycleCatalog } from "./saas-subscription-lifecycle";
+import { getControlledReleasePolicy } from "./controlled-release";
+import {
+  INBOX_MEDIA_MAX_DATA_URL_CHARS,
+  uploadPrivateInboxAttachment,
+} from "./inbox-media-upload";
 
 const requirePlatform = authenticatedProcedure.use(async ({ ctx, next }) => {
   const platformAdmin = await getPlatformAdminAccess(ctx.user.id);
@@ -130,6 +157,12 @@ const routingConfigInput = z.object({
   model: z.string().trim().min(1).max(200),
   baseUrl: z.string().trim().max(500).optional(),
   apiKey: z.string().max(4_000).optional(),
+  fallback: z.array(z.object({
+    provider: z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]),
+    model: z.string().trim().min(1).max(200),
+    baseUrl: z.string().trim().max(500).optional(),
+    apiKey: z.string().max(4_000).optional(),
+  })).max(3).optional(),
 });
 const globalLlmInput = z.object({
   providers: z.object({
@@ -211,6 +244,41 @@ export const platformRouter = router({
     .input(z.object({ instanceId: z.string().min(1).max(160), confirmDeletion: z.literal(true) }))
     .mutation(async ({ input }) => { const workspace = await ensurePlatformSupportWorkspace(); await deleteBaileysGatewayInstance(input.instanceId).catch(() => undefined); await archiveBaileysInstance(workspace.id, input.instanceId); return { success: true, instanceId: input.instanceId } as const; }),
   supportInbox: router({
+    uploadAttachment: requirePlatformOperator
+      .input(
+        z.object({
+          fileName: z.string().trim().min(1).max(160),
+          messageType: z.enum(["image", "audio", "video", "document"]),
+          mimeType: z.string().trim().min(1).max(120),
+          dataUrl: z.string().min(1).max(INBOX_MEDIA_MAX_DATA_URL_CHARS),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const workspace = await ensurePlatformSupportWorkspace();
+        try {
+          return await uploadPrivateInboxAttachment({
+            workspaceId: workspace.id,
+            type: input.messageType,
+            fileName: input.fileName,
+            mimeType: input.mimeType,
+            dataUrl: input.dataUrl,
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "";
+          console.error("[support-inbox] attachment upload failed", {
+            workspaceId: workspace.id,
+            messageType: input.messageType,
+            mimeType: input.mimeType,
+            fileName: input.fileName,
+            reason,
+          });
+          if (reason === "INBOX_MEDIA_INVALID")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Formato de anexo não suportado para este tipo de mensagem." });
+          if (reason === "INBOX_MEDIA_TOO_LARGE")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "O anexo está vazio ou excede o limite de 8 MB." });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível guardar o anexo com segurança. Tente novamente." });
+        }
+      }),
     instances: requirePlatform.query(async () => {
       const snapshot = await getPlatformSupportSnapshot();
       return snapshot.instances;
@@ -262,7 +330,7 @@ export const platformRouter = router({
             z.enum(["image", "audio", "video", "document"]),
             interactiveMessageTypeSchema,
           ]).default("text"),
-          metadata: interactiveMetadataSchema.optional(),
+          metadata: z.record(z.string(), z.unknown()).optional(),
           instanceIds: z.array(z.string().min(1).max(160)).min(1).max(1),
         })
       )
@@ -291,6 +359,7 @@ export const platformRouter = router({
   })),
 
   overview: requirePlatform.query(() => listPlatformWorkspaces()),
+  health: requirePlatform.query(() => getPlatformOperationalHealth()),
 
   aiConnections: requirePlatform.query(() => listPlatformAiConnections()),
 
@@ -365,6 +434,9 @@ export const platformRouter = router({
       });
     }),
 
+  saasBillingBoundary: requirePlatform.query(() => getSaaSBillingCatalog()),
+  saasSubscriptionLifecycle: requirePlatform.query(() => getSaaSSubscriptionLifecycleCatalog()),
+  controlledReleasePolicy: requirePlatform.query(() => getControlledReleasePolicy()),
   workspaces: requirePlatform
     .input(
       z.object({ search: z.string().trim().max(160).default("") }).optional()
@@ -386,6 +458,37 @@ export const platformRouter = router({
       })
     ),
 
+  setWorkspacePlan: requirePlatformOperator
+    .input(z.object({ workspaceId: workspaceIdInput, plan: z.enum(["starter", "pro", "business"]), reason: reasonInput }))
+    .mutation(({ input, ctx }) => setPlatformWorkspacePlan({ ...input, platformAdminId: ctx.platformAdmin.id })),
+
+  incidents: requirePlatform
+    .input(z.object({ workspaceId: workspaceIdInput.optional() }).optional())
+    .query(({ input }) => listPlatformIncidents(input?.workspaceId)),
+
+  openIncident: requirePlatformOperator
+    .input(z.object({ workspaceId: workspaceIdInput, severity: z.enum(["low", "medium", "high", "critical"]), title: z.string().trim().min(3).max(180), details: z.string().trim().min(3).max(10_000) }))
+    .mutation(({ input, ctx }) => openPlatformIncident({ ...input, platformAdminId: ctx.platformAdmin.id })),
+
+  resolveIncident: requirePlatformOperator
+    .input(z.object({ incidentId: z.number().int().positive(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => resolvePlatformIncident({ ...input, platformAdminId: ctx.platformAdmin.id })),
+
+  supportTickets: requirePlatform
+    .input(z.object({ workspaceId: workspaceIdInput.optional() }).optional())
+    .query(({ input }) => listPlatformSupportTickets(input?.workspaceId)),
+  openSupportTicket: requirePlatform
+    .input(supportSessionInput.extend({ priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"), subject: z.string().trim().min(3).max(180), description: z.string().trim().min(3).max(10_000) }))
+    .mutation(async ({ input, ctx }) => { await requireSession(input, ctx.platformAdmin.id); return openPlatformSupportTicket({ ...input, supportSessionId: input.sessionId, platformAdminId: ctx.platformAdmin.id }); }),
+  closeSupportTicket: requirePlatformOperator
+    .input(z.object({ ticketId: z.number().int().positive(), supportSessionId: z.number().int().positive(), resolution: z.string().trim().min(3).max(10_000), reason: reasonInput }))
+    .mutation(({ input, ctx }) => closePlatformSupportTicket({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  workspaceGovernance: requirePlatform
+    .input(supportSessionInput)
+    .query(async ({ input, ctx }) => { await requireSession(input, ctx.platformAdmin.id); const governance = await getPlatformWorkspaceGovernance(input.workspaceId); if (!governance) throw new TRPCError({ code: "NOT_FOUND", message: "Workspace não encontrado" }); return governance; }),
+  setWorkspaceRetention: requirePlatformOperator
+    .input(supportSessionInput.extend({ rawArtifactDays: z.number().int().min(1).max(90), derivedDataDays: z.number().int().min(30).max(3650), reason: reasonInput }))
+    .mutation(({ input, ctx }) => setPlatformWorkspaceRetention({ ...input, supportSessionId: input.sessionId, platformAdminId: ctx.platformAdmin.id })),
   workspaceDetail: requirePlatform
     .input(supportSessionInput)
     .query(async ({ input, ctx }) => {
@@ -500,6 +603,36 @@ export const platformRouter = router({
     }),
 
   supportWorkspace: requirePlatform.query(() => getPlatformSupportSnapshot()),
+  createSupportService: requirePlatformOperator
+    .input(z.object({ name: z.string().trim().min(2).max(160), description: z.string().max(2_000).optional(), durationMinutes: z.number().int().min(5).max(1_440).default(60), priceCents: z.number().int().min(0).max(100_000_000).default(0), priceType: z.enum(["fixed", "starting_at", "quote"]).default("fixed"), reason: reasonInput }))
+    .mutation(({ input, ctx }) => createPlatformSupportService({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  updateSupportService: requirePlatformOperator
+    .input(z.object({ serviceId: z.number().int().positive(), name: z.string().trim().min(2).max(160).optional(), description: z.string().max(2_000).nullable().optional(), durationMinutes: z.number().int().min(5).max(1_440).optional(), priceCents: z.number().int().min(0).max(100_000_000).optional(), priceType: z.enum(["fixed", "starting_at", "quote"]).optional(), active: z.boolean().optional(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => updatePlatformSupportService({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  createSupportProfessional: requirePlatformOperator
+    .input(z.object({ name: z.string().trim().min(2).max(160), specialty: z.string().max(120).optional(), color: z.string().max(20).optional(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => createPlatformSupportProfessional({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  updateSupportProfessional: requirePlatformOperator
+    .input(z.object({ professionalId: z.number().int().positive(), name: z.string().trim().min(2).max(160).optional(), specialty: z.string().max(120).nullable().optional(), color: z.string().max(20).optional(), active: z.boolean().optional(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => updatePlatformSupportProfessional({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  setSupportProfessionalServices: requirePlatformOperator
+    .input(z.object({ professionalId: z.number().int().positive(), serviceIds: z.array(z.number().int().positive()).max(200), reason: reasonInput }))
+    .mutation(({ input, ctx }) => setPlatformSupportProfessionalServices({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  setSupportAvailability: requirePlatformOperator
+    .input(z.object({ professionalId: z.number().int().positive(), entries: z.array(z.object({ weekday: z.number().int().min(0).max(6), startMinute: z.number().int().min(0).max(1_439), endMinute: z.number().int().min(1).max(1_440) })).max(50), reason: reasonInput }))
+    .mutation(({ input, ctx }) => setPlatformSupportAvailability({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  createSupportAppointment: requirePlatformOperator
+    .input(z.object({ contactId: z.number().int().positive().optional(), serviceId: z.number().int().positive(), professionalId: z.number().int().positive(), startsAt: z.coerce.date(), endsAt: z.coerce.date(), notes: z.string().max(500).optional(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => createPlatformSupportAppointment({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  updateSupportAppointmentStatus: requirePlatformOperator
+    .input(z.object({ appointmentId: z.number().int().positive(), status: z.enum(["confirmed", "completed", "no_show"]), reason: reasonInput }))
+    .mutation(({ input, ctx }) => updatePlatformSupportAppointmentStatus({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  rescheduleSupportAppointment: requirePlatformOperator
+    .input(z.object({ appointmentId: z.number().int().positive(), startsAt: z.coerce.date(), endsAt: z.coerce.date(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => reschedulePlatformSupportAppointment({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  cancelSupportAppointment: requirePlatformOperator
+    .input(z.object({ appointmentId: z.number().int().positive(), reason: reasonInput }))
+    .mutation(({ input, ctx }) => cancelPlatformSupportAppointment({ ...input, platformAdminId: ctx.platformAdmin.id })),
 
   supportAgent: requirePlatform.query(async () => {
     const workspace = await ensurePlatformSupportWorkspace();

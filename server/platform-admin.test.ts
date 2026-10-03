@@ -4,6 +4,7 @@ import {
   canPlatformAdminMutate,
   configuredPlatformAdminOpenIds,
   isExternalProviderCallAllowedForSimulation,
+  isPlatformSupportWorkspace,
   validateAgentPromptInput,
 } from "./platform-admin";
 
@@ -52,6 +53,12 @@ describe("platform admin safety boundaries", () => {
     expect(
       validateAgentPromptInput({
         model: "gpt-5-mini",
+        systemPrompt: "BAILEYS_API_KEY=secret-value",
+      }).valid
+    ).toBe(false);
+    expect(
+      validateAgentPromptInput({
+        model: "gpt-5-mini",
         systemPrompt: "Responda com clareza e nunca invente disponibilidade.",
       }).valid
     ).toBe(true);
@@ -66,5 +73,11 @@ describe("platform admin safety boundaries", () => {
     expect(output).toContain("Demo Beta");
     expect(output).toContain("Quero um orçamento");
     expect(isExternalProviderCallAllowedForSimulation()).toBe(false);
+  });
+
+  it("identifies the support tenant as simulation-only", () => {
+    expect(isPlatformSupportWorkspace({ slug: "forte-platform-support" })).toBe(true);
+    expect(isPlatformSupportWorkspace({ slug: "customer-workspace" })).toBe(false);
+    expect(isPlatformSupportWorkspace(null)).toBe(false);
   });
 });

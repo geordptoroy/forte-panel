@@ -30,6 +30,15 @@ describe("agenda procedures", () => {
       professionalId: 0,
       startsAt: "2026-09-26T17:30:00-03:00",
       endsAt: "2026-09-26T18:30:00-03:00",
+      })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejects rescheduling with an inverted interval before database access", async () => {
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.agenda.reschedule({
+      id: 1,
+      startsAt: "2026-09-26T18:30:00-03:00",
+      endsAt: "2026-09-26T17:30:00-03:00",
     })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });

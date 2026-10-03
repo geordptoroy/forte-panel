@@ -7,8 +7,9 @@ type FakeStatus = {
   instanceName: string;
   status: string;
   qr: string | null;
-  lastError?: string;
-  updatedAt?: string;
+  webhookOutboxPending?: number;
+  webhookOutboxDeadLetter?: number;
+  webhookLastError?: string;
   settings: {
     rejectCalls: boolean;
     rejectGroups: boolean;
@@ -66,6 +67,9 @@ function saveStatus(instanceId: string, instanceName = `WhatsApp · ${instanceId
       logCalls: true,
       ignoreStatusUpdates: true,
     },
+    webhookOutboxPending: 2,
+    webhookOutboxDeadLetter: 5,
+    webhookLastError: "webhook_http_400",
   };
   statusById.set(instanceId, status);
   managerById.set(instanceId, { getStatus: () => statusById.get(instanceId)! });
@@ -145,29 +149,14 @@ describe("Baileys gateway HTTP contract", () => {
 
     const ready = await fetch(`${baseUrl}/ready`);
     expect(ready.status).toBe(200);
-    await expect(ready.json()).resolves.toMatchObject({ status: "ready" });
-  });
-
-  it("reports a failed secondary instance in readiness", async () => {
-    const secondary = saveStatus("secondary-instance", "Suporte");
-    secondary.status = "error";
-    secondary.lastError = "Sessão encerrada";
-    secondary.updatedAt = new Date().toISOString();
-
-    const response = await fetch(`${baseUrl}/ready`);
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "not_ready",
-      failedInstances: [
-        expect.objectContaining({
-          instanceId: "secondary-instance",
-          status: "error",
-          lastError: "Sessão encerrada",
-        }),
-      ],
+    await expect(ready.json()).resolves.toMatchObject({
+      status: "ready",
+      instance: {
+        webhookOutboxPending: 2,
+        webhookOutboxDeadLetter: 5,
+        webhookLastError: "webhook_http_400",
+      },
     });
-    statusById.delete("secondary-instance");
-    managerById.delete("secondary-instance");
   });
 
   it("protects operational routes with the gateway API key", async () => {
@@ -289,22 +278,22 @@ describe("Baileys gateway HTTP contract", () => {
     { messageType: "text", content: "Olá", metadata: {} },
     {
       messageType: "image",
-      content: "data:image/png;base64,AA==",
-      metadata: { mediaMimeType: "image/png" },
+      content: "https://media.example.test/image.png?signature=opaque",
+      metadata: { mediaMimeType: "image/png", mediaStorageKey: "workspaces/1/outbound/image.png" },
     },
     {
       messageType: "audio",
-      content: "data:audio/ogg;base64,AA==",
+      content: "https://media.example.test/audio.ogg?signature=opaque",
       metadata: { mediaMimeType: "audio/ogg" },
     },
     {
       messageType: "video",
-      content: "data:video/mp4;base64,AA==",
+      content: "https://media.example.test/video.mp4?signature=opaque",
       metadata: { mediaMimeType: "video/mp4" },
     },
     {
       messageType: "document",
-      content: "data:application/pdf;base64,AA==",
+      content: "https://media.example.test/document.pdf?signature=opaque",
       metadata: { mediaMimeType: "application/pdf" },
     },
     {
@@ -331,7 +320,11 @@ describe("Baileys gateway HTTP contract", () => {
         `${baseUrl}/api/instances/test-instance/send`,
         {
           method: "POST",
-          headers: { ...auth, "Content-Type": "application/json" },
+          headers: {
+            ...auth,
+            "Content-Type": "application/json",
+            "Idempotency-Key": `server-send-${messageType}`,
+          },
           body: JSON.stringify({
             phone: "5511999999999@s.whatsapp.net",
             messageType,
@@ -353,12 +346,36 @@ describe("Baileys gateway HTTP contract", () => {
   it("rejects malformed sends before calling the manager", async () => {
     const response = await fetch(`${baseUrl}/api/instances/test-instance/send`, {
       method: "POST",
-      headers: { ...auth, "Content-Type": "application/json" },
+      headers: {
+        ...auth,
+        "Content-Type": "application/json",
+        "Idempotency-Key": "server-malformed-1",
+      },
       body: JSON.stringify({ messageType: "audio" }),
     });
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: "phone_required",
     });
+  });
+
+  it("accepts a validated embedded media data URL", async () => {
+    sentMessageInstance = "";
+    const response = await fetch(`${baseUrl}/api/instances/test-instance/send`, {
+      method: "POST",
+      headers: {
+        ...auth,
+        "Content-Type": "application/json",
+        "Idempotency-Key": "server-media-1",
+      },
+      body: JSON.stringify({
+        phone: "5511999999999@s.whatsapp.net",
+        messageType: "image",
+        content: "data:image/png;base64,AA==",
+        metadata: { mediaMimeType: "image/png" },
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(sentMessageInstance).toBe("test-instance");
   });
 });

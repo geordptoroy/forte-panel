@@ -1,32 +1,34 @@
 # Forte Panel — acompanhamento do produto público
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
+
 **Direção atual:** SaaS público multiempresa, conforme `ESTRATEGIA-PRODUTO-PUBLICO-MULTICONTA.md`.
-**Fase de código atual:** O1.2 concluída — catálogo operacional de serviços, profissionais e disponibilidade conectado ao onboarding; o core continua contido até a prova real do caminho WhatsApp → Inbox → lead.
+**Fase de código atual:** O1.4–O2.4 e O3.1–O3.3 concluídas em código; a PR [#9](https://github.com/geordptoroy/forte-panel/pull/9) passou CI PostgreSQL (run `36710769990`, 72 arquivos/285 testes, zero skips). O3.4 é a próxima fatia; prova persistente/staging e WhatsApp real seguem pendentes, manter o core contido.
 **Ambiente habitual de desenvolvimento:** aplicação local em Docker dentro do WSL, operada pelo usuário via Windows Terminal/PowerShell. A implantação em Oracle Cloud Infrastructure (OCI) é futura; não assumir que o sandbox deste agente compartilha o Docker do usuário nem declarar testes locais executados fora do ambiente acessível.
+
+> **Nota de continuidade (2026-09-30):** este arquivo preserva o checklist/histórico antigo. A fila canônica e a próxima fatia estão em `ROADMAP-EXECUCAO-FORTE-PANEL.md`; não voltar para O3.4 apenas por causa das linhas históricas acima. Oracle/OCI e deploy ARM64 ficam adiados até o MVP controlado estar demonstrável.
 
 ## Direção registrada — 2026-09-27: core antes do restante
 
-## Continuidade registrada — 2026-10-01: regras e simulação segura no onboarding
+## Continuidade registrada — 2026-09-29: onboarding público em seis passos
 
 - [x] Criar wizard visual de seis passos em `client/src/pages/OnboardingPage.tsx`, preservando autosave, sessão, consentimento, confirmação humana, publicação versionada e rollback.
 - [x] Separar identidade, serviços, operação, atendimento, revisão e ativação em cartões de linguagem de negócio.
 - [x] Criar `O1.1-ENTREGA-ONBOARDING-WIZARD.md` e `HANDOFF-PROXIMO-CHAT-IA.md` para continuidade entre chats.
-- [x] Executar O1.2: conectar serviços, preços, duração e disponibilidade ao catálogo operacional persistido. Entrega: `O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`.
-- [x] Executar O1.3: fechar regras de atendimento, exemplos e simulação segura antes da publicação. Entrega: `O1.3-ENTREGA-REGRAS-E-SIMULACAO.md`.
-- [x] Executar O1.4: fechar retomada, autosave, missing/conflict e estados vazios tolerantes a interrupção. Entrega: `O1.4-ENTREGA-RETOMADA-E-RESILIENCIA.md`.
-- [x] Executar O2.1: fechar saúde do WhatsApp, ciclo de conexão, QR/pairing, reconexão e erros acionáveis. Entrega: `O2.1-ENTREGA-SAUDE-WHATSAPP.md`.
-- [x] Executar O2.2: fechar inbound idempotente e histórico sem efeitos colaterais. Entrega: `O2.2-ENTREGA-INBOUND-IDEMPOTENTE.md`.
-- [x] Executar O2.3: fechar outbound com `instanceId`, fila e reconciliação. Entrega: `O2.3-ENTREGA-OUTBOUND-FILA-RECONCILIACAO.md`.
-- [x] Executar O2.4: fechar mídia privada e capacidades do composer. Entrega: `O2.4-ENTREGA-MIDIA-PRIVADA-COMPOSER.md`.
-- [x] Executar O3.1: unificar lead entre contato, conversa e oportunidade. Entrega: `O3.1-ENTREGA-LEAD-UNIFICADO.md`.
-- [x] Executar O3.2: fechar Inbox operacional com assignment e follow-up. Entrega: `O3.2-ENTREGA-INBOX-ASSIGNMENT-FOLLOWUP.md`.
-- [x] Executar O3.3: fechar funil canônico sem duplicação de estado. Entrega: `O3.3-ENTREGA-FUNIL-CANONICO.md`.
-- [x] Executar O3.4: fechar orçamento com itens, validade e aprovação. Entrega: `O3.4-ENTREGA-ORCAMENTO-ITEMIZADO.md`.
-- [x] Executar O3.5: fechar agenda com conflito, profissional e status. Entrega: `O3.5-ENTREGA-AGENDA-CONFLITOS-STATUS.md`.
-- [x] Executar O3.6: fechar recebimento, ledger operacional e recibo. Entrega: `O3.6-ENTREGA-LEDGER-RECIBO-OPERACIONAL.md`.
-- [x] Executar O3.7: fechar dashboard de decisões do dia. Entrega: `O3.7-ENTREGA-DASHBOARD-DECISOES-DIA.md`. Prova PostgreSQL persistente/browser/staging continua pendente.
-- [x] Executar O4.1: fechar contexto comercial seguro somente leitura para o agente. Entrega: `O4.1-ENTREGA-CONTEXTO-COMERCIAL-SEGURO.md`.
-- [ ] Executar O4.2: separar ferramentas somente leitura e mutações com confirmação explícita.
+- [x] Executar O1.2: conectar serviços, preços, duração e disponibilidade ao catálogo operacional persistido; entrega em `O1.2-ENTREGA-CATALOGO-OPERACIONAL.md`.
+- [x] Executar O1.3: regras de atendimento, exemplos seguros, simulação opcional e revisão humana vinculada ao candidato de publicação; entrega em `O1.3-ENTREGA-REGRAS-E-REVISAO-EXEMPLOS.md`.
+- [x] Executar O1.4: persistir etapa de retomada, serializar autosave e mostrar estados de loading/erro sem formulário vazio salvável.
+- [x] Executar O2.1–O2.4: backoff/logout explícito, lease de webhook recuperável, recibos outbound monotônicos e anexos em storage privado — detalhes em `O1.4-O2.4-ENTREGA-ONBOARDING-WHATSAPP.md`.
+- [x] Executar O3.1: Lead explícito, Opportunity e Conversation tenant-scoped; [PR #7](https://github.com/geordptoroy/forte-panel/pull/7) e detalhes em `O3.1-ENTREGA-LEAD-UNIFICADO.md`. Migration e integração passaram no PostgreSQL CI; prova persistente/staging e WhatsApp real ainda pendentes.
+- [x] Executar O3.2: assignment de Opportunity somente a membership ativa do workspace; próxima ação única, persistida, auditada e exibida no Inbox; [PR #8](https://github.com/geordptoroy/forte-panel/pull/8) e detalhes em `O3.2-ENTREGA-INBOX-OPERACIONAL.md`. Check/test/build locais passaram; PostgreSQL CI run `36708180817` aplicou 0048 e passou 285 testes sem skips.
+- [x] Implementar O3.3: `Opportunity.stage` canônico, histórico `opportunityStageHistory`, migração/backfill 0049, transição tenant-scoped com auditoria/outbox e projeções alinhadas. `pnpm check`, `pnpm test` (232 aprovados/53 ignorados), `pnpm build` e `git diff --check` passaram; integração PostgreSQL local ignorada por falta de DATABASE_URL.
+- [x] Abrir [PR #9](https://github.com/geordptoroy/forte-panel/pull/9) sobre PR #8, sem merge automático.
+- [x] Confirmar CI PostgreSQL da migration 0049 e das integrações: run `36710769990` aplicou migrations e passou 72 arquivos/285 testes sem skips.
+- [ ] Depois do CI, executar O3.4: orçamento com itens, validade e aprovação humana, sem billing real.
 
 - [x] Auditar o código atual de IA, agentes, roteamento multimodal, credenciais, consumo e Console Administrativo. Documento de referência: `AUDITORIA-IA-CONSOLE-ADMIN-E-CORE-2026-09-27.md`.
 - [x] Implementar `CORE_ONLY_MODE` e página pós-login **Instâncias WhatsApp**, com lista/criação/edição/exclusão confirmada e consumo.
@@ -575,3 +577,13 @@ Referência: `GUIA-UX-CLAREZA-E-FACILIDADE.md`.
 - [x] Adicionar Inbox própria com leitura, resposta e auditoria.
 - [x] Adicionar prompt próprio do agente de suporte com salvar/publicar.
 - [ ] Executar smoke test real no Docker: parear número do suporte, inbound, resposta outbound e agente.
+
+## O5.7 — Contrato final do Console Admin — 2026-10-01
+- [x] Criar `platform-health.contract.integration.test.ts` com caller real do router.
+- [x] Provar `platformAdmins` permitido e usuário não registrado bloqueado.
+- [x] Provar shape agregado sem `workspaceId`, `contactId`, `eventId`, provider, modelo, failure code ou tokens.
+- [x] Corrigir expectativa lexicográfica identificada pelo primeiro CI e publicar `32e074c`.
+- [x] Passar CI PostgreSQL sem skips no run `36941127598`.
+- [x] Documentar O5.7, atualizar handoff, prompt e índice.
+- [ ] Revisar/aceitar PR #39 sem merge automático.
+- [ ] Iniciar Onda O6 somente com infraestrutura persistente e aceite manual autorizado; não repetir backup/restore ou pareamento real.

@@ -51,7 +51,7 @@ As chaves compostas de deduplicação usam workspace:
 5. A resposta da IA é enfileirada como mensagem outbound.
 6. Antes de chamar o gateway Baileys, o worker consome `outboundMessages` do workspace.
 7. Se a cota estiver cheia, a mensagem continua `queued`, sem incrementar tentativas, e será tentada na próxima janela.
-8. O gateway Baileys recebe uma chave de idempotência baseada no ID da mensagem; o ledger de efeito externo ainda é um bloqueador de release.
+8. O gateway Baileys recebe uma chave de idempotência baseada no ID da mensagem e persiste um ledger por instância; replay concluído reaproveita o `externalId` e resultado inconclusivo falha fechado. A prova de restart/timeout em staging ainda é gate de release.
 
 Mensagens manuais do Inbox também consomem a cota individual do operador no momento do envio e a cota do workspace no worker.
 
@@ -197,13 +197,11 @@ Para remover data URLs da persistência inbound, configure `FORTE_MEDIA_PRIVATE_
 
 O REST também aceita tipos estruturados Baileys (`list`, `poll`, `location`, `contact`, `react`, `sticker`, `album`, `event`) com `metadata.payload`; o worker não possui fallback para outro provider.
 
-
 ## 19. Segredos, prompt e reset
 
 O painel operacional comum não exibe nem permite editar API keys, configuração de provedores, prompt do agente ou reset de dados. As rotas `/onboarding`, `/ai-config` e `/ai-prompt` agora usam guard exclusivo de `platformAdmins`, e as procedures correspondentes também rejeitam usuários comuns no backend.
 
 O reset de desenvolvimento foi movido para o detalhe do workspace no console `/platform-admin/workspaces/:id`. Ele exige sessão de suporte `operator`, permissão mutável, confirmação explícita `APAGAR DADOS DO WORKSPACE`, motivo e auditoria. Usuários, memberships e acesso são preservados.
-
 
 ## 20. Operação local e conexão do WhatsApp
 
@@ -213,8 +211,15 @@ Para atualizar e iniciar a stack usando `.env`, execute:
 ./scripts/start-docker.sh
 ```
 
-O script faz pull das imagens publicadas e recria `postgres_panel`, `redis_panel`, `forte-panel`, `forte-panel-worker` e `forte-whatsapp`; não remove volumes. O painel comum agora possui **Sair** no topo e a tela `Integrações` permite iniciar a conexão, acompanhar o estado e ler o QR Code do WhatsApp dentro da própria interface.
+No Windows, também é possível executar diretamente pelo PowerShell, sem depender do Bash/WSL:
 
+```powershell
+.\scripts\start-docker.ps1
+```
+
+Esse comando atualiza PostgreSQL/Redis, constrói as imagens locais a partir do commit atual e recria somente os serviços da stack, sem remover volumes.
+
+O script faz pull apenas das imagens base, constrói `forte-panel:local` e `forte-whatsapp:local` a partir do código da branch e recria `postgres_panel`, `redis_panel`, `forte-panel`, `forte-panel-worker` e `forte-whatsapp`; não remove volumes. O painel comum agora possui **Sair** no topo e a tela `Integrações` permite iniciar a conexão, acompanhar o estado e ler o QR Code do WhatsApp dentro da própria interface.
 
 ## 21. Bloqueios descobertos na auditoria de 27/09
 
@@ -231,7 +236,6 @@ Antes de novos convites beta, fechar obrigatoriamente:
 
 Tickets de suporte, catálogo de preços, planos sandbox, landing, termos, privacidade e LGPD são etapas seguintes; não ativar cobrança ou cadastro público antes da aprovação dos gates acima. Consulte `PLANO-AUDITORIA-E-EXECUCAO-2026-09-27.md` para a ordem completa.
 
-
 ## 22. Resultado da execução P0 — 2026-09-27
 
 O primeiro bloco de correções foi concluído. O retorno do console permanece no console da plataforma, workspaces suspensos podem receber uma sessão administrativa para reativação, `/kanban` está registrado e billing/quotes passou a exigir gerente e escopo explícito do workspace.
@@ -239,7 +243,6 @@ O primeiro bloco de correções foi concluído. O retorno do console permanece n
 Os comandos locais `pnpm check`, `pnpm build`, `pnpm test -- --runInBand` e `git diff --check` foram executados. O resultado foi 62 testes aprovados, 31 skipped por ausência de `DATABASE_URL`, build aprovado com alerta conhecido de bundle grande e nenhum erro de TypeScript.
 
 O gate ainda não é considerado totalmente fechado até executar PostgreSQL/staging com dois workspaces, validar quotes sem cruzamento de tenant e rodar smoke browser no ciclo workspace suspenso → logout → novo login → reativação. Depois desse gate, a próxima frente é QR/Conexão WhatsApp.
-
 
 ## 23. P1.1 — Conexão WhatsApp/QR
 

@@ -1,16 +1,21 @@
-import { and, asc, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import {
   agentPromptDrafts,
   agentPromptVersions,
+  agentRuns,
   agentSimulationRuns,
   auditLogs,
   contacts,
   conversations,
+  domainEvents,
   messages,
+  webhookEvents,
   platformAdmins,
   platformAiConnections,
   platformAuditLogs,
+  platformIncidents,
+  platformSupportTickets,
   platformWorkspaceNotes,
   supportSessions,
   users,
@@ -32,7 +37,15 @@ import {
   getBaileysInstance,
   resetWorkspaceDevelopmentData,
   getWorkspaceUsageSnapshot,
+  getOnboardingGovernance,
+  saveOnboardingRetentionPolicy,
   listBaileysInstances,
+  getAgendaSnapshot,
+  createProfessional,
+  createAgendaAppointment,
+  cancelAgendaAppointment,
+  rescheduleAgendaAppointment,
+  updateAgendaStatus,
   listInboxContacts,
   getContactById,
   getConversationByContact,
@@ -46,6 +59,15 @@ import {
   getWorkspaceSetting,
   upsertWorkspaceSetting,
 } from "./db";
+import {
+  createService,
+  listProfessionalsDetailed,
+  listServices,
+  replaceAvailability,
+  setProfessionalServices,
+  updateProfessional,
+  updateService,
+} from "./workspace";
 import type { NativeAgentConfig } from "./db";
 import {
   createBaileysInstance as createBaileysGatewayInstance,
@@ -60,6 +82,7 @@ import {
   type AgentProviderSettings,
 } from "./llm-providers";
 import { validateInteractiveMessage } from "./interactive-messages";
+import { buildSaaSBillingBoundary } from "./saas-billing";
 
 export type PlatformPermission =
   | "platform_admin"
@@ -85,6 +108,9 @@ export type SafeAgentConfig = {
 };
 export const PLATFORM_SUPPORT_WORKSPACE_SLUG = "forte-platform-support";
 export const PLATFORM_SUPPORT_WORKSPACE_NAME = "Suporte Forte Platform";
+export function isPlatformSupportWorkspace(workspace: { slug?: string } | null | undefined) {
+  return workspace?.slug === PLATFORM_SUPPORT_WORKSPACE_SLUG;
+}
 
 export async function ensurePlatformSupportWorkspace() {
   const db = await getDb();
@@ -226,7 +252,7 @@ export function validateAgentPromptInput(input: {
     /\bsk-[A-Za-z0-9_-]{12,}/i,
     /\bBearer\s+[A-Za-z0-9._-]{12,}/i,
     /\b(?:api[_ -]?key|access[_ -]?token|webhook[_ -]?secret|jwt[_ -]?secret|senha)\s*[:=]\s*\S+/i,
-    /\b(?:PAPI|META|OPENAI|GEMINI|NVIDIA)_(?:API_KEY|ACCESS_TOKEN|WEBHOOK_SECRET|PANEL_TOKEN)\b/i,
+    /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_(?:API_KEY|ACCESS_TOKEN|WEBHOOK_SECRET|PANEL_TOKEN)\b/i,
   ];
   if (secretPatterns.some(pattern => pattern.test(candidate))) {
     return {
@@ -278,6 +304,20 @@ function safeProviderSettings(
               apiKey: route.apiKey.startsWith("••••")
                 ? route.apiKey
                 : maskProviderSecret(route.apiKey),
+            }
+          : {}),
+        ...(route.fallback
+          ? {
+              fallback: route.fallback.map(fallback => ({
+                ...fallback,
+                ...(fallback.apiKey
+                  ? {
+                      apiKey: fallback.apiKey.startsWith("••••")
+                        ? fallback.apiKey
+                        : maskProviderSecret(fallback.apiKey),
+                    }
+                  : {}),
+              })),
             }
           : {}),
       },
@@ -354,7 +394,7 @@ export async function savePlatformInstancePromptBinding(input: {
     systemPrompt: input.systemPrompt,
     model: input.model.trim(),
     maxSteps: Math.max(1, Math.min(8, input.maxSteps)),
-    enabled: input.enabled,
+    enabled: false,
     version: (previous?.version ?? 0) + 1,
     updatedAt: new Date().toISOString(),
   };
@@ -439,6 +479,7 @@ export async function simulatePlatformInstanceAgent(input: {
   });
   return {
     id: created.id,
+    mode: "simulation_only" as const,
     status: created.status,
     input: created.input,
     output: created.output,
@@ -1130,7 +1171,7 @@ function mapPlatformSupportContact(contact: any) {
     neighborhood: contact.neighborhood ?? "",
     service: contact.serviceRequested ?? "Não informado",
     urgency: contact.urgency,
-    stage: contact.stage,
+    stage: contact.opportunityStage ?? contact.stage,
     aiEnabled: contact.aiEnabled === 1,
     unread: contact.unreadCount,
     awaitingResponse: contact.awaitingResponse ?? false,
@@ -1150,19 +1191,158 @@ function mapPlatformSupportContact(contact: any) {
   };
 }
 
+export type PlatformHealthState = "healthy" | "degraded" | "stale" | "not_configured" | "unknown";
+export async function getPlatformOperationalHealth() {
+  const db = await getDb();
+  const checkedAt = new Date().toISOString();
+  if (!db) return { checkedAt, overall: "unknown" as PlatformHealthState, components: { gateway: { status: "unknown", configuredInstances: 0, activeInstances: 0, degradedInstances: 0 }, worker: { status: "unknown", service: "forte-panel-worker", observedAt: null, lastError: false }, queues: { status: "unknown", outbound: 0, webhooks: 0, domainEvents: 0 }, storage: { status: "unknown", configured: false, privateMediaEnabled: false }, providers: { status: "unknown", active: 0, healthy: 0, degraded: 0, pending: 0 }, agent: { status: "unknown", runs30d: 0, failures30d: 0, fallbackRuns30d: 0 } } };
+  const agentWindowStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [instances, workerRows, outboundRows, webhookRows, domainRows, storageRows, providerRows, agentRows] = await Promise.all([
+    db.select({ status: whatsappInstances.status, active: whatsappInstances.active, lastHealthError: whatsappInstances.lastHealthError }).from(whatsappInstances),
+    db.select().from(workerHeartbeats).where(eq(workerHeartbeats.service, "forte-panel-worker")).limit(1),
+    db.select({ count: sql<number>`count(*)::int` }).from(messages).where(eq(messages.status, "queued")),
+    db.select({ count: sql<number>`count(*)::int` }).from(webhookEvents).where(eq(webhookEvents.status, "received")),
+    db.select({ count: sql<number>`count(*)::int` }).from(domainEvents).where(or(eq(domainEvents.status, "pending"), eq(domainEvents.status, "processing"))),
+    db.select({ active: whatsappChannels.active }).from(whatsappChannels),
+    db.select({ active: platformAiConnections.active, status: platformAiConnections.status }).from(platformAiConnections),
+    db.select({
+      runs: sql<number>`count(*)::int`,
+      failures: sql<number>`count(*) filter (where ${agentRuns.outcome} = 'failed')::int`,
+      fallbackRuns: sql<number>`count(*) filter (where ${agentRuns.providerAttempts} > 1)::int`,
+    }).from(agentRuns).where(gte(agentRuns.createdAt, agentWindowStart)),
+  ]);
+  const worker = workerRows[0];
+  const workerStale = !worker || Date.now() - worker.observedAt.getTime() > Math.max(worker.intervalMs * 3, 180_000);
+  const activeInstances = instances.filter(row => row.active === 1);
+  const configuredInstances = activeInstances.filter(row => row.status !== "unknown").length;
+  const degradedInstances = activeInstances.filter(row => Boolean(row.lastHealthError) || ["error", "disconnected", "logged_out"].includes(row.status)).length;
+  const healthyInstances = activeInstances.filter(row => ["connected", "ready", "online"].includes(row.status)).length;
+  const gatewayStatus: PlatformHealthState = activeInstances.length === 0 ? "not_configured" : degradedInstances > 0 ? "degraded" : healthyInstances > 0 ? "healthy" : "unknown";
+  const queueCounts = { outbound: Number(outboundRows[0]?.count ?? 0), webhooks: Number(webhookRows[0]?.count ?? 0), domainEvents: Number(domainRows[0]?.count ?? 0) };
+  const queuesStatus: PlatformHealthState = queueCounts.outbound + queueCounts.webhooks + queueCounts.domainEvents > 100 ? "degraded" : "healthy";
+  const storageConfigured = Boolean(process.env.BUILT_IN_FORGE_API_URL && process.env.BUILT_IN_FORGE_API_KEY);
+  const privateMediaEnabled = process.env.FORTE_MEDIA_PRIVATE_STORAGE_ENABLED === "true";
+  const storageStatus: PlatformHealthState = storageConfigured ? "healthy" : "not_configured";
+  const providers = { active: providerRows.filter(row => row.active === 1).length, healthy: providerRows.filter(row => row.active === 1 && row.status === "validated").length, degraded: providerRows.filter(row => row.active === 1 && row.status === "error").length, pending: providerRows.filter(row => row.active === 1 && row.status === "pending").length };
+  const providersStatus: PlatformHealthState = providers.degraded > 0 ? "degraded" : providers.pending > 0 ? "unknown" : providers.active === 0 ? "not_configured" : "healthy";
+  const agent = { runs30d: Number(agentRows[0]?.runs ?? 0), failures30d: Number(agentRows[0]?.failures ?? 0), fallbackRuns30d: Number(agentRows[0]?.fallbackRuns ?? 0) };
+  const agentStatus: PlatformHealthState = agent.runs30d === 0 ? "not_configured" : agent.failures30d > 0 ? "degraded" : "healthy";
+  const statuses = [gatewayStatus, workerStale ? "stale" : worker?.lastError ? "degraded" : "healthy", queuesStatus, storageStatus, providersStatus, agentStatus];
+  const overall: PlatformHealthState = statuses.includes("degraded") ? "degraded" : statuses.includes("stale") ? "stale" : statuses.includes("unknown") ? "unknown" : statuses.includes("not_configured") ? "not_configured" : "healthy";
+  return { checkedAt, overall, components: { gateway: { status: gatewayStatus, configuredInstances, activeInstances: activeInstances.length, degradedInstances }, worker: { status: workerStale ? "stale" : worker?.lastError ? "degraded" : "healthy", service: "forte-panel-worker", observedAt: worker?.observedAt.toISOString() ?? null, lastError: Boolean(worker?.lastError) }, queues: { status: queuesStatus, ...queueCounts }, storage: { status: storageStatus, configured: storageConfigured, privateMediaEnabled }, providers: { status: providersStatus, ...providers }, agent: { status: agentStatus, ...agent } } };
+}
 export async function getPlatformSupportSnapshot() {
   const workspace = await ensurePlatformSupportWorkspace();
-  const [instances, agent] = await Promise.all([
+  const [instances, agent, services, professionals, agenda] = await Promise.all([
     listBaileysInstances(workspace.id),
     getPlatformAgentSnapshot(workspace.id),
+    listServices(workspace.id, { includeInactive: true }),
+    listProfessionalsDetailed(workspace.id, { includeInactive: true }),
+    getAgendaSnapshot(workspace.id),
   ]);
   return {
     workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug },
     instances,
     agent,
+    catalog: {
+      services: services.map(service => ({
+        id: service.id,
+        name: service.name,
+        description: service.description,
+        active: service.active === 1,
+        durationMinutes: service.durationMinutes,
+        priceCents: service.priceCents,
+        priceType: service.priceType,
+      })),
+      professionals: professionals.map(professional => ({
+        id: professional.id,
+        name: professional.name,
+        specialty: professional.specialty,
+        active: professional.active === 1,
+        serviceIds: professional.serviceIds,
+        availability: professional.availability,
+      })),
+    },
+    agenda: {
+      timezone: agenda.timezone,
+      appointments: agenda.appointments.map(appointment => ({
+        id: appointment.id,
+        startsAt: appointment.startsAt,
+        endsAt: appointment.endsAt,
+        status: appointment.status,
+        serviceName: appointment.serviceName,
+        professionalName: appointment.professionalName,
+        contactName: appointment.contactName,
+      })),
+    },
   };
 }
 
+export async function createPlatformSupportService(input: { platformAdminId: number; name: string; description?: string; durationMinutes?: number; priceCents?: number; priceType?: "fixed" | "starting_at" | "quote"; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const service = await createService(workspace.id, input);
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_service_created", reason: input.reason, summary: `Serviço interno ${service.name} criado`, after: { id: service.id, name: service.name } });
+  return service;
+}
+export async function updatePlatformSupportService(input: { platformAdminId: number; serviceId: number; name?: string; description?: string | null; durationMinutes?: number; priceCents?: number; priceType?: "fixed" | "starting_at" | "quote"; active?: boolean; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const updated = await updateService(workspace.id, input.serviceId, input);
+  if (!updated) throw new Error("Serviço não encontrado no workspace interno");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_service_updated", reason: input.reason, summary: `Serviço interno ${updated.name} atualizado`, after: { id: updated.id, active: updated.active } });
+  return updated;
+}
+export async function createPlatformSupportProfessional(input: { platformAdminId: number; name: string; specialty?: string; color?: string; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const professional = await createProfessional(workspace.id, input);
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_professional_created", reason: input.reason, summary: `Profissional interno ${professional.name} criado`, after: { id: professional.id, name: professional.name } });
+  return professional;
+}
+export async function updatePlatformSupportProfessional(input: { platformAdminId: number; professionalId: number; name?: string; specialty?: string | null; color?: string; active?: boolean; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const updated = await updateProfessional(workspace.id, input.professionalId, input);
+  if (!updated) throw new Error("Profissional não encontrado no workspace interno");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_professional_updated", reason: input.reason, summary: `Profissional interno ${updated.name} atualizado`, after: { id: updated.id, active: updated.active } });
+  return updated;
+}
+export async function setPlatformSupportProfessionalServices(input: { platformAdminId: number; professionalId: number; serviceIds: number[]; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const serviceIds = await setProfessionalServices(workspace.id, input.professionalId, input.serviceIds);
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_professional_services_updated", reason: input.reason, summary: `Vínculos do profissional interno ${input.professionalId} atualizados`, after: { professionalId: input.professionalId, serviceIds } });
+  return { professionalId: input.professionalId, serviceIds };
+}
+export async function setPlatformSupportAvailability(input: { platformAdminId: number; professionalId: number; entries: { weekday: number; startMinute: number; endMinute: number }[]; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const entries = await replaceAvailability(workspace.id, input.professionalId, input.entries);
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_professional_availability_updated", reason: input.reason, summary: `Disponibilidade do profissional interno ${input.professionalId} atualizada`, after: { professionalId: input.professionalId, entries } });
+  return { professionalId: input.professionalId, entries };
+}
+export async function createPlatformSupportAppointment(input: { platformAdminId: number; contactId?: number; serviceId: number; professionalId: number; startsAt: Date; endsAt: Date; notes?: string; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const appointment = await createAgendaAppointment(workspace.id, input);
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_appointment_created", reason: input.reason, summary: `Agendamento interno ${appointment.id} criado`, after: { id: appointment.id, startsAt: appointment.startsAt, endsAt: appointment.endsAt } });
+  return { id: appointment.id, status: appointment.status };
+}
+export async function updatePlatformSupportAppointmentStatus(input: { platformAdminId: number; appointmentId: number; status: "confirmed" | "completed" | "no_show"; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const appointment = await updateAgendaStatus(workspace.id, input.appointmentId, input.status);
+  if (!appointment) throw new Error("Agendamento não encontrado no workspace interno");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: `support_appointment_${input.status}`, reason: input.reason, summary: `Agendamento interno ${appointment.id} atualizado para ${input.status}` });
+  return { id: appointment.id, status: appointment.status };
+}
+export async function reschedulePlatformSupportAppointment(input: { platformAdminId: number; appointmentId: number; startsAt: Date; endsAt: Date; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const appointment = await rescheduleAgendaAppointment(workspace.id, input.appointmentId, input.startsAt, input.endsAt);
+  if (!appointment) throw new Error("Agendamento não encontrado no workspace interno");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_appointment_rescheduled", reason: input.reason, summary: `Agendamento interno ${appointment.id} reagendado`, after: { startsAt: appointment.startsAt, endsAt: appointment.endsAt } });
+  return { id: appointment.id, status: appointment.status, startsAt: appointment.startsAt, endsAt: appointment.endsAt };
+}
+export async function cancelPlatformSupportAppointment(input: { platformAdminId: number; appointmentId: number; reason: string }) {
+  const workspace = await ensurePlatformSupportWorkspace();
+  const appointment = await cancelAgendaAppointment(workspace.id, input.appointmentId);
+  if (!appointment) throw new Error("Agendamento não encontrado no workspace interno");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: workspace.id, action: "support_appointment_cancelled", reason: input.reason, summary: `Agendamento interno ${appointment.id} cancelado` });
+  return { id: appointment.id, status: appointment.status };
+}
 export async function listPlatformSupportContacts(
   instanceIds: readonly string[] | null = null
 ) {
@@ -1450,7 +1630,11 @@ export async function savePlatformAgentDraft(input: {
     model: input.draft.model,
   });
   if (!validation.valid) throw new Error(validation.reason);
-  const next = draftToSafeConfig(current, input.draft);
+  const workspace = await getActiveWorkspaceById(input.workspaceId);
+  const next = draftToSafeConfig(current, {
+    ...input.draft,
+    enabled: isPlatformSupportWorkspace(workspace) ? false : input.draft.enabled,
+  });
   const existing = (
     await db
       .select()
@@ -1602,9 +1786,34 @@ export async function publishPlatformAgentDraft(input: {
   workspaceId: number;
   reason: string;
 }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
   const snapshot = await getPlatformAgentSnapshot(input.workspaceId);
+  if (snapshot.draft) {
+    const latestSimulation = (
+      await db
+        .select({ createdAt: agentSimulationRuns.createdAt })
+        .from(agentSimulationRuns)
+        .where(
+          and(
+            eq(agentSimulationRuns.workspaceId, input.workspaceId),
+            eq(agentSimulationRuns.draftId, snapshot.draft.id),
+            eq(agentSimulationRuns.status, "completed")
+          )
+        )
+        .orderBy(desc(agentSimulationRuns.createdAt), desc(agentSimulationRuns.id))
+        .limit(1)
+    )[0];
+    if (!latestSimulation || latestSimulation.createdAt < new Date(snapshot.draft.updatedAt)) {
+      throw new Error("Execute uma simulação concluída depois do último salvamento do rascunho antes de publicar");
+    }
+  }
   const config = snapshot.draft?.config ?? snapshot.current;
-  return publishVersion({ ...input, config });
+  const workspace = await getActiveWorkspaceById(input.workspaceId);
+  return publishVersion({
+    ...input,
+    config: isPlatformSupportWorkspace(workspace) ? { ...config, enabled: false } : config,
+  });
 }
 
 export async function rollbackPlatformAgentVersion(input: {
@@ -1687,6 +1896,7 @@ export async function simulatePlatformAgent(input: {
   });
   return {
     id: created.id,
+    mode: "simulation_only" as const,
     status: created.status,
     input: created.input,
     output: created.output,
@@ -1759,6 +1969,29 @@ export async function listPlatformWorkspaceNotes(workspaceId: number) {
   return rows.map(row => ({ ...row, createdAt: row.createdAt.toISOString() }));
 }
 
+export async function getPlatformWorkspaceGovernance(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const workspace = (await db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1))[0];
+  if (!workspace) return null;
+  const [usage, onboarding] = await Promise.all([getWorkspaceUsageSnapshot(workspaceId), getOnboardingGovernance(workspaceId)]);
+  const usageRetentionRaw = Number(process.env.FORTE_USAGE_RETENTION_DAYS ?? 30);
+  const usageRetentionDays = Number.isFinite(usageRetentionRaw) ? Math.max(1, Math.min(Math.floor(usageRetentionRaw), 365)) : 30;
+  return {
+    workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug, plan: workspace.plan, status: workspace.status, active: workspace.active === 1 },
+    quotas: { plan: usage.plan, bucketStart: usage.bucketStart.toISOString(), resetsAt: usage.resetsAt.toISOString(), workspace: usage.workspace, users: usage.users },
+    retention: { usageDays: usageRetentionDays, onboarding: onboarding.retention, policyVersion: onboarding.policyVersion },
+    billing: buildSaaSBillingBoundary(workspace.plan, usage.workspace),
+  };
+}
+export async function setPlatformWorkspaceRetention(input: { platformAdminId: number; workspaceId: number; supportSessionId: number; rawArtifactDays: number; derivedDataDays: number; reason: string }) {
+  const session = await getActiveSupportSession({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, sessionId: input.supportSessionId, requireOperator: true });
+  if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
+  const before = await getOnboardingGovernance(input.workspaceId);
+  const after = await saveOnboardingRetentionPolicy(input.workspaceId, input.platformAdminId, { rawArtifactDays: input.rawArtifactDays, derivedDataDays: input.derivedDataDays });
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, supportSessionId: input.supportSessionId, action: "workspace_retention_policy_changed", reason: input.reason, summary: "Política de retenção do onboarding atualizada", before: { retention: before.retention }, after: { retention: after.retention } });
+  return after;
+}
 export async function setPlatformWorkspaceStatus(input: {
   platformAdminId: number;
   workspaceId: number;
@@ -1826,6 +2059,74 @@ export async function setPlatformWorkspaceAi(input: {
   return { enabled: updated.enabled };
 }
 
+export async function setPlatformWorkspacePlan(input: {
+  platformAdminId: number;
+  workspaceId: number;
+  plan: "starter" | "pro" | "business";
+  reason: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const workspace = (await db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).limit(1))[0];
+  if (!workspace) throw new Error("Workspace não encontrado");
+  const updated = (await db.update(workspaces).set({ plan: input.plan, updatedAt: new Date() }).where(eq(workspaces.id, input.workspaceId)).returning())[0];
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, action: "workspace_plan_changed", reason: input.reason, summary: `Plano alterado de ${workspace.plan} para ${input.plan}`, before: { plan: workspace.plan }, after: { plan: updated.plan } });
+  return { id: updated.id, plan: updated.plan };
+}
+
+export async function listPlatformSupportTickets(workspaceId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(platformSupportTickets)
+    .where(workspaceId ? eq(platformSupportTickets.workspaceId, workspaceId) : undefined)
+    .orderBy(desc(platformSupportTickets.createdAt), desc(platformSupportTickets.id)).limit(100);
+}
+export async function openPlatformSupportTicket(input: { platformAdminId: number; workspaceId: number; supportSessionId: number; priority: "low" | "normal" | "high" | "urgent"; subject: string; description: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const session = await getActiveSupportSession({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, sessionId: input.supportSessionId });
+  if (!session) throw new Error("Sessão de suporte ausente, expirada, revogada ou fora do workspace");
+  const ticket = (await db.insert(platformSupportTickets).values({ workspaceId: input.workspaceId, supportSessionId: input.supportSessionId, openedByPlatformAdminId: input.platformAdminId, priority: input.priority, subject: input.subject.trim(), description: input.description.trim(), status: "open" }).returning())[0];
+  if (!ticket) throw new Error("Não foi possível abrir o ticket");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, supportSessionId: input.supportSessionId, action: "support_ticket_opened", reason: input.subject, summary: `Ticket #${ticket.id} aberto: ${ticket.subject}`, after: { ticketId: ticket.id, priority: ticket.priority, status: ticket.status } });
+  return ticket;
+}
+export async function closePlatformSupportTicket(input: { platformAdminId: number; ticketId: number; supportSessionId: number; resolution: string; reason: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const current = (await db.select().from(platformSupportTickets).where(and(eq(platformSupportTickets.id, input.ticketId), eq(platformSupportTickets.supportSessionId, input.supportSessionId))).limit(1))[0];
+  if (!current) throw new Error("Ticket não encontrado nesta sessão de suporte");
+  const session = await getActiveSupportSession({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, sessionId: input.supportSessionId, requireOperator: true });
+  if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
+  const ticket = (await db.update(platformSupportTickets).set({ status: "closed", resolution: input.resolution.trim(), closedAt: new Date(), closedByPlatformAdminId: input.platformAdminId, updatedAt: new Date() }).where(and(eq(platformSupportTickets.id, current.id), eq(platformSupportTickets.status, "open"))).returning())[0];
+  if (!ticket) throw new Error("Ticket já está fechado");
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, supportSessionId: input.supportSessionId, action: "support_ticket_closed", reason: input.reason, summary: `Ticket #${ticket.id} fechado`, before: { status: current.status }, after: { status: ticket.status, resolutionLength: ticket.resolution?.length ?? 0 } });
+  return ticket;
+}
+export async function listPlatformIncidents(workspaceId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(platformIncidents).where(workspaceId ? eq(platformIncidents.workspaceId, workspaceId) : undefined).orderBy(desc(platformIncidents.createdAt), desc(platformIncidents.id)).limit(100);
+}
+
+export async function openPlatformIncident(input: { platformAdminId: number; workspaceId: number; severity: "low" | "medium" | "high" | "critical"; title: string; details: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const incident = (await db.insert(platformIncidents).values({ workspaceId: input.workspaceId, severity: input.severity, title: input.title, details: input.details, openedByPlatformAdminId: input.platformAdminId }).returning())[0];
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: input.workspaceId, action: "workspace_incident_opened", reason: input.title, summary: `${input.severity}: ${input.title}`, after: { incidentId: incident.id, status: incident.status } });
+  return incident;
+}
+
+export async function resolvePlatformIncident(input: { platformAdminId: number; incidentId: number; reason: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const current = (await db.select().from(platformIncidents).where(eq(platformIncidents.id, input.incidentId)).limit(1))[0];
+  if (!current) throw new Error("Incidente não encontrado");
+  const incident = (await db.update(platformIncidents).set({ status: "resolved", resolvedByPlatformAdminId: input.platformAdminId, resolvedAt: new Date(), updatedAt: new Date() }).where(eq(platformIncidents.id, input.incidentId)).returning())[0];
+  await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, action: "workspace_incident_resolved", reason: input.reason, summary: `Incidente #${current.id} resolvido`, before: { status: current.status }, after: { status: incident.status } });
+  return incident;
+}
+
 export async function getPlatformWorkspaceDetail(workspaceId: number) {
   const db = await getDb();
   const workspace = (
@@ -1844,6 +2145,8 @@ export async function getPlatformWorkspaceDetail(workspaceId: number) {
     platformAudit,
     workspaceAudit,
     agent,
+    incidents,
+    tickets,
   ] = await Promise.all([
     workspaceListItem(workspace),
     getWorkspaceMembersForPlatform(workspaceId),
@@ -1852,6 +2155,8 @@ export async function getPlatformWorkspaceDetail(workspaceId: number) {
     listPlatformAuditLogs(workspaceId),
     listWorkspaceAuditSafe(workspaceId),
     getPlatformAgentSnapshot(workspaceId),
+    listPlatformIncidents(workspaceId),
+    listPlatformSupportTickets(workspaceId),
   ]);
   const channels = (
     await db
@@ -1880,6 +2185,8 @@ export async function getPlatformWorkspaceDetail(workspaceId: number) {
     platformAudit,
     workspaceAudit,
     agent,
+    incidents,
+    tickets,
   };
 }
 

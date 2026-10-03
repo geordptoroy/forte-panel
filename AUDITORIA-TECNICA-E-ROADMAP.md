@@ -1,5 +1,10 @@
 # Auditoria técnica completa — Forte Panel
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
 **Data:** 2026-09-27
 **Escopo:** segurança, autenticação/autorização, multi-tenant, backend, banco, agente nativo, PAPI/Meta, frontend, Docker, CI/CD, operação e testes.
 **Método:** inspeção estática do repositório, revisão dos fluxos e execução de validações locais. Nenhum código de produto foi alterado para produzir este relatório.

@@ -16,15 +16,21 @@ import {
   recordPasswordResetAttempt,
   recordSignupAttempt,
 } from "./_core/request-security";
+import {
+  assertLoginAllowedDistributed,
+  assertPasswordResetAllowedDistributed,
+  assertSignupAllowedDistributed,
+  clearLoginDistributed,
+  recordLoginFailureDistributed,
+  recordPasswordResetAttemptDistributed,
+  recordSignupAttemptDistributed,
+} from "./distributed-rate-limit";
 import { ScheduleError } from "./schedule";
-import { isContactStage } from "@shared/contact-stage";
 import {
   InboxInstanceFilterError,
   normalizeInboxInstanceSelection,
 } from "./inbox-instance-filter";
 import {
-  ensureDemoInbox,
-  isDemoRuntimeAllowed,
   acceptWorkspaceInvite,
   assertOnboardingSourceConsent,
   createPublicSignup,
@@ -33,14 +39,15 @@ import {
   createWorkspaceInvite,
   createProfessional,
   createAgendaAppointment,
-  rescheduleAgendaAppointment,
   cancelAgendaAppointment,
+  rescheduleAgendaAppointment,
   updateAgendaStatus,
   createQuote,
-  approveQuote,
   confirmOnboardingStep,
+  confirmOnboardingExampleReview,
   getAgendaSnapshot,
-  getUserByEmail,
+  findLocalPasswordAccount,
+  getUsersByEmail,
   getUserById,
   getUserByOpenId,
   getWorkspaceMembershipContext,
@@ -50,6 +57,10 @@ import {
   ensureBaileysChannel,
   listBaileysInstances,
   getBaileysInstance,
+  getBaileysWebhookSecret,
+  rotateBaileysWebhookSecret,
+  replaceBaileysWebhookSecret,
+  clearBaileysWebhookSecret,
   createBaileysInstance as createBaileysInstanceRecord,
   updateBaileysInstanceName as updateBaileysInstanceRecordName,
   archiveBaileysInstance,
@@ -62,9 +73,15 @@ import {
   getOnboardingTelemetrySummary,
   listOnboardingPublishedVersions,
   getOnboardingProfile,
+  getOnboardingPublishCandidate,
   getNativeAgentConfig,
+  getWorkspaceAgentPolicy,
+  getAgentMetrics,
+  getNativeAgentKillSwitch,
   getNativeAgentRuntimeConfig,
   saveNativeAgentConfig,
+  saveWorkspaceAgentPolicy,
+  setNativeAgentKillSwitch,
   resetWorkspaceDevelopmentData,
   revokeWorkspaceInvite,
   listContactNotes,
@@ -72,13 +89,10 @@ import {
   getContactById,
   getConversationByContact,
   listInboxContacts,
-  listInboxAssignees,
-  assignInboxContact,
-  setInboxFollowUp,
+  listInboxAssignableMembers,
   listProfessionals,
   listMessagesForContact,
   listQuotes,
-  listQuotesForContact,
   listInAppNotifications,
   listWorkspaceInvites,
   issuePasswordResetToken,
@@ -87,6 +101,9 @@ import {
   markInAppNotificationRead,
   markWorkspaceInviteSent,
   moveContactStage,
+  assignInboxOpportunity,
+  setOpportunityNextAction,
+  completeOpportunityNextAction,
   renameContact as renameInboxContact,
   PUBLIC_PRIVACY_VERSION,
   PUBLIC_TERMS_VERSION,
@@ -108,18 +125,26 @@ import {
   recordOnboardingTelemetry,
   rollbackOnboardingPublishedVersion,
   saveOnboardingProfile,
-  simulateOnboardingMessage,
   startOnboardingSession,
+  setOnboardingCurrentStep,
   setContactAi,
   upsertApiContact,
   upsertUser,
   verifyLocalPassword,
   updateQuotePayment,
-  createQuotePayment,
-  listQuotePayments,
+  registerQuotePayment,
+  changeQuoteApproval,
+  claimAgentEffectProposal,
+  listPendingAgentEffectProposals,
+  rejectAgentEffectProposal,
 } from "./db";
+import { confirmNativeAgentEffect } from "./native-agent";
 import { sendInviteEmail, sendPasswordResetEmail } from "./_core/email";
 import { storageGetSignedUrl, storagePut } from "./storage";
+import {
+  INBOX_MEDIA_MAX_DATA_URL_CHARS,
+  uploadPrivateInboxAttachment,
+} from "./inbox-media-upload";
 import {
   buildOnboardingAudioStorageKey,
   decodeOnboardingAudioBase64,
@@ -129,6 +154,7 @@ import {
 } from "./onboarding-audio";
 import { transcribeAudioForWorkspace } from "./_core/voiceTranscription";
 import { extractOnboardingStructuredProposal } from "./onboarding-structured";
+import { simulateOnboardingRuleExamples } from "./onboarding-simulation";
 import {
   interactiveMessageTypeSchema,
   validateInteractiveMessage,
@@ -156,6 +182,7 @@ import {
   updateOwnProfile,
   updateProfessional,
   updateService,
+  validateAvailabilityEntries,
   type OperationalRole,
   type WorkspaceAccess,
   type WorkspaceMemberRole,
@@ -180,6 +207,7 @@ import {
   getBaileysStatus,
   updateBaileysInstanceName,
   updateBaileysInstanceSettings,
+  updateBaileysWebhookSecret,
 } from "./baileys-gateway";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
@@ -219,6 +247,15 @@ type MappableContact = Omit<
   | "groupInstanceId"
   | "groupParticipantCount"
   | "groupParticipants"
+  | "leadId"
+  | "opportunityId"
+  | "opportunityStage"
+  | "assignedMemberId"
+  | "assignedMemberName"
+  | "quoteReceivedCents"
+  | "quotePendingCents"
+  | "activeQuoteId"
+  | "nextAction"
 > & {
   awaitingResponse?: boolean;
   needsOperatorResponse?: boolean;
@@ -228,6 +265,15 @@ type MappableContact = Omit<
   groupInstanceId?: string | null;
   groupParticipantCount?: number;
   groupParticipants?: ContactRow["groupParticipants"];
+  leadId?: number | null;
+  opportunityId?: number | null;
+  opportunityStage?: string | null;
+  assignedMemberId?: number | null;
+  assignedMemberName?: string | null;
+  quoteReceivedCents?: number;
+  quotePendingCents?: number;
+  activeQuoteId?: number | null;
+  nextAction?: ContactRow["nextAction"];
 };
 
 const mapContact = (contact: MappableContact) => ({
@@ -240,13 +286,26 @@ const mapContact = (contact: MappableContact) => ({
   groupInstanceId: contact.groupInstanceId ?? null,
   groupParticipantCount: contact.groupParticipantCount ?? 0,
   groupParticipants: contact.groupParticipants ?? [],
+  leadId: contact.leadId == null ? null : String(contact.leadId),
+  opportunityId:
+    contact.opportunityId == null ? null : String(contact.opportunityId),
   pushName: contact.pushName,
   nameSource: contact.nameSource,
   city: contact.city ?? "",
   neighborhood: contact.neighborhood ?? "",
   service: contact.serviceRequested ?? "Não informado",
   urgency: contact.urgency,
-  stage: contact.stage,
+  stage: contact.opportunityStage ?? contact.stage,
+  assignedMemberId:
+    contact.assignedMemberId == null ? null : String(contact.assignedMemberId),
+  assignedMemberName: contact.assignedMemberName ?? null,
+  nextAction: contact.nextAction
+    ? {
+        id: String(contact.nextAction.id),
+        title: contact.nextAction.title,
+        dueAt: contact.nextAction.dueAt.toISOString(),
+      }
+    : null,
   aiEnabled: contact.aiEnabled === 1,
   unread: contact.unreadCount,
   awaitingResponse: contact.awaitingResponse ?? false,
@@ -255,16 +314,7 @@ const mapContact = (contact: MappableContact) => ({
   lastMessageAt:
     contact.lastMessageAt?.toISOString() ?? contact.updatedAt.toISOString(),
   quote: contact.quoteCents / 100,
-  pending: contact.quoteCents / 100,
-  assignedUserId: contact.assignedUserId ?? null,
-  followUpAt: contact.followUpAt?.toISOString() ?? null,
-  followUpNote: contact.followUpNote ?? null,
-  followUpCompletedAt: contact.followUpCompletedAt?.toISOString() ?? null,
-  followUpDue: Boolean(
-    contact.followUpAt &&
-      !contact.followUpCompletedAt &&
-      contact.followUpAt.getTime() <= Date.now()
-  ),
+  pending: (contact.quotePendingCents ?? contact.quoteCents) / 100,
   daysNoReply: 0,
   initials: contact.name
     .split(" ")
@@ -487,8 +537,10 @@ export const appRouter = router({
           });
         }
         const email = input.email.trim().toLowerCase();
-        assertLoginAllowed(ctx.req, email);
-        let account = await getUserByEmail(email);
+        if (!(await assertLoginAllowedDistributed(ctx.req, email)))
+          assertLoginAllowed(ctx.req, email);
+        const accounts = await getUsersByEmail(email);
+        let account = findLocalPasswordAccount(accounts, input.password);
         const configuredPlatformAccount = ENV.localPlatformAdminAccounts.find(
           candidate =>
             candidate.email === email && candidate.password === input.password
@@ -503,11 +555,9 @@ export const appRouter = router({
             lastSignedIn: new Date(),
           });
           account = await getUserByOpenId(configuredPlatformAccount.openId);
-        } else if (
-          !account ||
-          !verifyLocalPassword(input.password, account.passwordHash)
-        ) {
-          recordLoginFailure(ctx.req, email);
+        } else if (!account) {
+          if (!(await recordLoginFailureDistributed(ctx.req, email)))
+            recordLoginFailure(ctx.req, email);
           throw new TRPCError({
             code: "UNAUTHORIZED",
             message: "E-mail ou senha inválidos",
@@ -518,7 +568,8 @@ export const appRouter = router({
             code: "INTERNAL_SERVER_ERROR",
             message: "Conta local não pôde ser carregada",
           });
-        recordLoginSuccess(ctx.req, email);
+        if (!(await clearLoginDistributed(ctx.req, email)))
+          recordLoginSuccess(ctx.req, email);
         const membership = await getWorkspaceMembershipContext(account.id);
         const platformAdmin = await getPlatformAdminAccess(account.id);
         if (platformAdmin) {
@@ -598,8 +649,10 @@ export const appRouter = router({
           });
         }
         const email = input.email.trim().toLowerCase();
-        assertSignupAllowed(ctx.req, email);
-        recordSignupAttempt(ctx.req, email);
+        if (!(await assertSignupAllowedDistributed(ctx.req, email)))
+          assertSignupAllowed(ctx.req, email);
+        if (!(await recordSignupAttemptDistributed(ctx.req, email)))
+          recordSignupAttempt(ctx.req, email);
         try {
           const result = await createPublicSignup({
             name: input.name,
@@ -641,8 +694,10 @@ export const appRouter = router({
           });
         }
         const email = input.email.trim().toLowerCase();
-        assertPasswordResetAllowed(ctx.req, email);
-        recordPasswordResetAttempt(ctx.req, email);
+        if (!(await assertPasswordResetAllowedDistributed(ctx.req, email)))
+          assertPasswordResetAllowed(ctx.req, email);
+        if (!(await recordPasswordResetAttemptDistributed(ctx.req, email)))
+          recordPasswordResetAttempt(ctx.req, email);
         // The configured transactional provider consumes the internal token;
         // the public response intentionally never reveals whether the email exists.
         const issued = await issuePasswordResetToken(email);
@@ -723,7 +778,8 @@ export const appRouter = router({
           });
         }
       }),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      if (ctx.user) await revokeUserSessions(ctx.user.id);
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, cookieOptions);
       return { success: true } as const;
@@ -1099,13 +1155,11 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const invalid = input.entries.find(
-          entry => entry.endMinute <= entry.startMinute
-        );
-        if (invalid)
+        const validationError = validateAvailabilityEntries(input.entries);
+        if (validationError)
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "O horário final precisa ser maior que o inicial",
+            message: validationError,
           });
         const entries = await replaceAvailability(
           ctx.workspace.workspaceId,
@@ -1129,6 +1183,7 @@ export const appRouter = router({
         description: service.description,
         durationMinutes: service.durationMinutes,
         priceCents: service.priceCents,
+        priceType: service.priceType,
         active: service.active === 1,
         professionalIds: service.professionalIds,
       }))
@@ -1140,6 +1195,7 @@ export const appRouter = router({
           description: z.string().max(4000).optional(),
           durationMinutes: z.number().int().min(5).max(1440).default(60),
           priceCents: z.number().int().min(0).max(100_000_000).default(0),
+          priceType: z.enum(["fixed", "starting_at", "quote"]).default("fixed"),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1169,6 +1225,7 @@ export const appRouter = router({
           description: z.string().max(4000).nullable().optional(),
           durationMinutes: z.number().int().min(5).max(1440).optional(),
           priceCents: z.number().int().min(0).max(100_000_000).optional(),
+          priceType: z.enum(["fixed", "starting_at", "quote"]).optional(),
           active: z.boolean().optional(),
         })
       )
@@ -1363,6 +1420,39 @@ export const appRouter = router({
         await updateBaileysInstanceSettings(input.instanceId, input.settings);
         return getBaileysStatus(input.instanceId);
       }),
+    rotateBaileysWebhookSecret: requireManager
+      .input(z.object({ instanceId: z.string().trim().min(1).max(160) }))
+      .mutation(async ({ input, ctx }) => {
+        const workspaceId = ctx.workspace.workspaceId;
+        const current = await getBaileysInstance(workspaceId, input.instanceId);
+        if (!current)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Instância WhatsApp não encontrada neste workspace",
+          });
+        const previous = await getBaileysWebhookSecret(input.instanceId);
+        const rotated = await rotateBaileysWebhookSecret(
+          workspaceId,
+          input.instanceId
+        );
+        try {
+          await updateBaileysWebhookSecret(input.instanceId, rotated.secret);
+        } catch (error) {
+          if (previous)
+            await replaceBaileysWebhookSecret(
+              workspaceId,
+              input.instanceId,
+              previous
+            ).catch(() => undefined);
+          else
+            await clearBaileysWebhookSecret(
+              workspaceId,
+              input.instanceId
+            ).catch(() => undefined);
+          throw error;
+        }
+        return { success: true, instanceId: input.instanceId } as const;
+      }),
     deleteBaileysInstance: requireManager
       .input(
         z.object({
@@ -1499,15 +1589,7 @@ export const appRouter = router({
           ...event,
           createdAt: event.createdAt.toISOString(),
         })),
-        pendingLeads: snapshot.pendingLeads.map(lead => ({
-          ...lead,
-          followUpAt: lead.followUpAt,
-          lastMessageAt: lead.lastMessageAt,
-        })),
         upcomingAppointments: snapshot.upcomingAppointments.map(appointment =>
-          serializeAgendaAppointment(appointment)
-        ),
-        todayAppointments: snapshot.todayAppointments.map(appointment =>
           serializeAgendaAppointment(appointment)
         ),
       };
@@ -1538,6 +1620,26 @@ export const appRouter = router({
       });
       return session;
     }),
+    setCurrentStep: requireOnboardingEditor
+      .input(z.object({
+        stepKey: z.enum(["identity", "offering", "operations", "guardrails", "review", "activation"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          return await setOnboardingCurrentStep(
+            ctx.workspace.workspaceId,
+            ctx.user.id,
+            input.stepKey
+          );
+        } catch (error) {
+          if (error instanceof Error && error.message === "ONBOARDING_SESSION_NOT_FOUND")
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "A sessão de onboarding ainda não foi iniciada.",
+            });
+          throw error;
+        }
+      }),
     profile: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingProfile(ctx.workspace.workspaceId)
     ),
@@ -1826,44 +1928,77 @@ export const appRouter = router({
               code: "BAD_REQUEST",
               message: "Resolva os conflitos dos blocos obrigatórios antes de publicar.",
             });
+          if (error instanceof Error && error.message === "ONBOARDING_EXAMPLE_REVIEW_REQUIRED")
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Revise os exemplos do atendimento e confirme essa revisão antes de publicar.",
+            });
           throw error;
         }
       }),
-    simulate: requireOnboardingEditor
+    simulateExamples: requireOnboardingEditor.mutation(async ({ ctx }) => {
+      const workspaceId = ctx.workspace.workspaceId;
+      try {
+        await assertOnboardingSourceConsent(workspaceId, "llm");
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith("ONBOARDING_SOURCE_CONSENT_REQUIRED:"))
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Conceda o consentimento para processamento por IA antes de simular respostas.",
+          });
+        throw error;
+      }
+      const session = await getOnboardingSession(workspaceId);
+      if (!session)
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Inicie o onboarding antes de simular exemplos." });
+      try {
+        const profile = await getOnboardingPublishCandidate(workspaceId);
+        const result = await simulateOnboardingRuleExamples(profile);
+        await recordOnboardingTelemetry({
+          workspaceId,
+          sessionId: session.id,
+          eventType: "review_examples_simulated",
+          stepKey: "review",
+          source: "llm",
+          inputTokens: result.llm.inputTokens,
+          outputTokens: result.llm.outputTokens,
+          totalTokens: result.llm.totalTokens,
+          metadata: { model: result.llm.model.slice(0, 120), exampleCount: result.examples.length },
+        });
+        return { examples: result.examples, profileFingerprint: result.profileFingerprint };
+      } catch {
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: "Não foi possível simular as respostas agora. Revise os exemplos seguros ou tente novamente.",
+        });
+      }
+    }),
+    reviewExamples: requireOnboardingEditor
       .input(z.object({
-        profile: z.object({
-          businessName: z.string().max(160),
-          segment: z.string().max(80),
-          description: z.string().max(4000),
-          services: z.string().max(8000),
-          serviceArea: z.string().max(2000),
-          businessHours: z.string().max(2000),
-          toneOfVoice: z.string().max(500),
-          forbiddenWords: z.string().max(2000),
-          faq: z.string().max(8000),
-          cancellationPolicy: z.string().max(2000),
-          humanHandoffRules: z.string().max(2000),
-          qualificationRules: z.string().max(2000),
-        }),
-        message: z.string().trim().min(1).max(2000),
+        mode: z.enum(["safe", "ai"]),
+        profileFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         try {
-          const result = await simulateOnboardingMessage({
+          const result = await confirmOnboardingExampleReview({
             workspaceId: ctx.workspace.workspaceId,
-            profile: input.profile,
-            message: input.message,
+            reviewedBy: ctx.user.id,
+            mode: input.mode,
+            profileFingerprint: input.profileFingerprint,
           });
           await logWorkspaceAction({
             workspaceId: ctx.workspace.workspaceId,
             actorUserId: ctx.user.id,
-            action: "onboarding_simulation_run",
-            summary: "Simulação do onboarding executada sem provider externo",
+            action: "onboarding_examples_reviewed",
+            summary: `Exemplos de atendimento revisados pelo responsável (${input.mode})`,
           });
           return result;
         } catch (error) {
-          if (error instanceof Error && error.message === "ONBOARDING_SIMULATION_MESSAGE_REQUIRED")
-            throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma mensagem para simular." });
+          if (error instanceof Error && error.message === "ONBOARDING_EXAMPLE_REVIEW_STALE")
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "O rascunho mudou desde a simulação. Gere ou revise os exemplos novamente.",
+            });
           throw error;
         }
       }),
@@ -2174,6 +2309,76 @@ export const appRouter = router({
   }),
 
   agent: router({
+    workspaceConfig: requireAdministrator.query(({ ctx }) =>
+      getWorkspaceAgentPolicy(ctx.workspace.workspaceId)
+    ),
+    saveWorkspaceConfig: requireAdministrator
+      .input(
+        z.object({
+          enabled: z.boolean(),
+          systemPrompt: z.string().max(30_000),
+          maxSteps: z.number().int().min(1).max(8),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const result = await saveWorkspaceAgentPolicy(
+          ctx.workspace.workspaceId,
+          input
+        );
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: "workspace_agent_policy_updated",
+          summary: `Política do agente ${result.enabled ? "ativada" : "pausada"}`,
+        });
+        return result;
+      }),
+    metrics: requireManager
+      .input(z.object({ windowDays: z.number().int().min(1).max(90).default(30) }).optional())
+      .query(({ input, ctx }) => getAgentMetrics(ctx.workspace.workspaceId, input?.windowDays ?? 30)),
+    killSwitch: requireManager.query(({ ctx }) => getNativeAgentKillSwitch(ctx.workspace.workspaceId)),
+    setKillSwitch: requireManager
+      .input(z.object({ paused: z.boolean(), reason: z.string().trim().min(1).max(500) }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await setNativeAgentKillSwitch({
+          workspaceId: ctx.workspace.workspaceId,
+          paused: input.paused,
+          reason: input.reason,
+          actorUserId: ctx.user.id,
+        });
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: input.paused ? "native_agent_kill_switch_enabled" : "native_agent_kill_switch_disabled",
+          summary: `${input.paused ? "Pausa" : "Retomada"} global do agente: ${input.reason}`,
+        });
+        return result;
+      }),
+    pendingConfirmations: requireManager.query(async ({ ctx }) => {
+      const rows = await listPendingAgentEffectProposals(ctx.workspace.workspaceId);
+      return rows.map(row => ({
+        id: row.id,
+        eventId: row.eventId,
+        toolCallId: row.toolCallId,
+        toolName: row.toolName,
+        proposal: row.result ? JSON.parse(row.result) : null,
+        createdAt: row.createdAt,
+      }));
+    }),
+    confirm: requireManager
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        const effect = await claimAgentEffectProposal(ctx.workspace.workspaceId, input.id);
+        if (!effect) throw new TRPCError({ code: "CONFLICT", message: "A proposta já foi confirmada, rejeitada ou não existe." });
+        return confirmNativeAgentEffect({ workspaceId: ctx.workspace.workspaceId, effect, actorUserId: ctx.user.id });
+      }),
+    reject: requireManager
+      .input(z.object({ id: z.number().int().positive(), reason: z.string().trim().min(1).max(500) }))
+      .mutation(async ({ input, ctx }) => {
+        const effect = await rejectAgentEffectProposal(ctx.workspace.workspaceId, input.id, input.reason);
+        if (!effect) throw new TRPCError({ code: "CONFLICT", message: "A proposta já foi confirmada, rejeitada ou não existe." });
+        return { rejected: true, id: effect.id };
+      }),
     config: requirePlatformAdministrator.query(async ({ ctx }) => {
       const config = await getNativeAgentConfig(ctx.workspace.workspaceId);
       return {
@@ -2389,13 +2594,6 @@ export const appRouter = router({
       return items.map(item => ({
         ...item,
         dueDate: item.dueDate?.toISOString() ?? null,
-        validUntil: item.validUntil?.toISOString() ?? null,
-        approvedAt: item.approvedAt?.toISOString() ?? null,
-        payments: item.payments.map(payment => ({
-          ...payment,
-          receivedAt: payment.receivedAt.toISOString(),
-          createdAt: payment.createdAt.toISOString(),
-        })),
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
       }));
@@ -2404,32 +2602,23 @@ export const appRouter = router({
       .input(
         z.object({
           contactId: z.number().int().positive(),
+          opportunityId: z.number().int().positive().optional(),
           serviceName: z.string().trim().min(1).max(160),
           description: z.string().max(4000).optional(),
-          quotedCents: z.number().int().nonnegative().optional(),
-          receivedCents: z.number().int().nonnegative().default(0),
+          quotedCents: z.number().int().nonnegative(),
           items: z
             .array(
               z.object({
-                description: z.string().trim().min(1).max(240),
+                serviceName: z.string().trim().min(1).max(160),
+                description: z.string().max(4000).optional(),
                 quantity: z.number().int().positive(),
-                unitCents: z.number().int().nonnegative(),
+                unitPriceCents: z.number().int().nonnegative(),
               })
             )
             .min(1)
             .optional(),
-          status: z
-            .enum([
-              "orcamento",
-              "aguardando_aprovacao",
-              "sinal_pendente",
-              "parcialmente_pago",
-              "pago",
-              "cancelado",
-            ])
-            .default("orcamento"),
-          dueDate: z.coerce.date().optional(),
           validUntil: z.coerce.date().optional(),
+          dueDate: z.coerce.date().optional(),
           notes: z.string().max(1000).optional(),
         })
       )
@@ -2441,52 +2630,38 @@ export const appRouter = router({
         z.object({
           id: z.number().int().positive(),
           receivedCents: z.number().int().nonnegative(),
-          status: z.enum([
-            "orcamento",
-            "aguardando_aprovacao",
-            "sinal_pendente",
-            "cancelado",
-          ]),
         })
       )
       .mutation(({ input, ctx }) =>
         updateQuotePayment(
           input.id,
           input.receivedCents,
-          input.status,
           ctx.workspace.workspaceId,
           ctx.user.id
         )
       ),
-    receive: requireFinancial
+    registerPayment: requireFinancial
       .input(
         z.object({
           quoteId: z.number().int().positive(),
           amountCents: z.number().int().positive(),
-          method: z.enum(["pix", "dinheiro", "cartao", "transferencia", "boleto", "outro"]),
-          appointmentId: z.number().int().positive().optional(),
+          method: z.enum(["pix", "cash", "card", "transfer", "other"]),
           receivedAt: z.coerce.date().optional(),
-          note: z.string().trim().max(500).optional(),
+          notes: z.string().max(500).optional(),
         })
       )
       .mutation(({ input, ctx }) =>
-        createQuotePayment(ctx.workspace.workspaceId, ctx.user.id, input)
+        registerQuotePayment(input, ctx.workspace.workspaceId, ctx.user.id)
       ),
-    payments: requireFinancial
-      .input(z.object({ quoteId: z.number().int().positive() }))
-      .query(async ({ input, ctx }) => {
-        const payments = await listQuotePayments(ctx.workspace.workspaceId, input.quoteId);
-        return payments.map(payment => ({
-          ...payment,
-          receivedAt: payment.receivedAt.toISOString(),
-          createdAt: payment.createdAt.toISOString(),
-        }));
-      }),
+    requestApproval: requireManager
+      .input(z.object({ id: z.number().int().positive(), note: z.string().max(1000).optional() }))
+      .mutation(({ input, ctx }) => changeQuoteApproval(input.id, "pending", ctx.workspace.workspaceId, ctx.user.id, input.note)),
     approve: requireManager
-      .input(z.object({ id: z.number().int().positive() }))
-      .mutation(({ input, ctx }) =>
-        approveQuote(input.id, ctx.workspace.workspaceId, ctx.user.id)
-      ),
+      .input(z.object({ id: z.number().int().positive(), note: z.string().max(1000).optional() }))
+      .mutation(({ input, ctx }) => changeQuoteApproval(input.id, "approved", ctx.workspace.workspaceId, ctx.user.id, input.note)),
+    reject: requireManager
+      .input(z.object({ id: z.number().int().positive(), note: z.string().max(1000).optional() }))
+      .mutation(({ input, ctx }) => changeQuoteApproval(input.id, "rejected", ctx.workspace.workspaceId, ctx.user.id, input.note)),
   }),
 
   agenda: router({
@@ -2517,7 +2692,6 @@ export const appRouter = router({
       .input(
         z.object({
           contactId: z.number().int().positive().optional(),
-          quoteId: z.number().int().positive().optional(),
           serviceId: z.number().int().positive(),
           professionalId: z.number().int().positive(),
           startsAt: z.coerce.date(),
@@ -2578,41 +2752,6 @@ export const appRouter = router({
         });
         return { id: appointment.id, status: appointment.status };
       }),
-    reschedule: protectedProcedure
-      .input(
-        z.object({
-          id: z.number().int().positive(),
-          startsAt: z.coerce.date(),
-          endsAt: z.coerce.date(),
-        })
-      )
-      .mutation(async ({ input, ctx }) => {
-        const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
-        if (!access.memberActive)
-          throw new TRPCError({ code: "FORBIDDEN", message: "Seu acesso está desativado neste workspace" });
-        if (!access.canSeeFullAgenda)
-          throw new TRPCError({ code: "FORBIDDEN", message: "Somente gestores podem reagendar pela agenda" });
-        try {
-          const updated = await rescheduleAgendaAppointment(
-            ctx.workspace.workspaceId,
-            input.id,
-            input.startsAt,
-            input.endsAt
-          );
-          if (!updated)
-            throw new TRPCError({ code: "NOT_FOUND", message: "Agendamento não encontrado" });
-          await logWorkspaceAction({
-            workspaceId: ctx.workspace.workspaceId,
-            actorUserId: ctx.user.id,
-            action: "appointment_rescheduled",
-            summary: `Agendamento ${input.id} reagendado para ${input.startsAt.toISOString()}`,
-          });
-          return { id: updated.id, status: updated.status, startsAt: updated.startsAt, endsAt: updated.endsAt };
-        } catch (error) {
-          if (error instanceof TRPCError) throw error;
-          throwScheduleTrpcError(error);
-        }
-      }),
     updateStatus: protectedProcedure
       .input(
         z.object({
@@ -2649,6 +2788,56 @@ export const appRouter = router({
           summary: `Agendamento ${input.id} atualizado para ${input.status}`,
         });
         return { id: updated.id, status: updated.status };
+      }),
+    reschedule: protectedProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          startsAt: z.coerce.date(),
+          endsAt: z.coerce.date(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const access = await resolveWorkspaceAccess(ctx.user, ctx.workspace);
+        if (!access.memberActive)
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Seu acesso está desativado neste workspace",
+          });
+        if (input.endsAt <= input.startsAt)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "O horário final precisa ser maior que o inicial",
+          });
+        let updated;
+        try {
+          updated = await rescheduleAgendaAppointment(
+            ctx.workspace.workspaceId,
+            input.id,
+            input.startsAt,
+            input.endsAt,
+            access.canSeeFullAgenda ? undefined : (access.professionalId ?? -1)
+          );
+        } catch (error) {
+          throwScheduleTrpcError(error);
+        }
+        if (!updated)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Agendamento não encontrado para o seu acesso",
+          });
+        await logWorkspaceAction({
+          workspaceId: ctx.workspace.workspaceId,
+          actorUserId: ctx.user.id,
+          action: "appointment_rescheduled",
+          summary: `Agendamento ${input.id} reagendado para ${input.startsAt.toISOString()}`,
+        });
+        return {
+          id: updated.id,
+          status: updated.status,
+          startsAt: updated.startsAt.toISOString(),
+          endsAt: updated.endsAt.toISOString(),
+        };
       }),
     cancel: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
@@ -2838,13 +3027,11 @@ export const appRouter = router({
             code: "FORBIDDEN",
             message: "Seu usuário não está vinculado a um profissional",
           });
-        const invalid = input.entries.find(
-          entry => entry.endMinute <= entry.startMinute
-        );
-        if (invalid)
+        const validationError = validateAvailabilityEntries(input.entries);
+        if (validationError)
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "O horário final precisa ser maior que o inicial",
+            message: validationError,
           });
         const entries = await replaceAvailability(
           ctx.workspace.workspaceId,
@@ -2862,6 +3049,40 @@ export const appRouter = router({
   }),
 
   inbox: router({
+    uploadAttachment: requireInboxMessaging
+      .input(
+        z.object({
+          fileName: z.string().trim().min(1).max(160),
+          messageType: z.enum(["image", "audio", "video", "document"]),
+          mimeType: z.string().trim().min(1).max(120),
+          dataUrl: z.string().min(1).max(INBOX_MEDIA_MAX_DATA_URL_CHARS),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        try {
+          return await uploadPrivateInboxAttachment({
+            workspaceId: ctx.workspace.workspaceId,
+            type: input.messageType,
+            fileName: input.fileName,
+            mimeType: input.mimeType,
+            dataUrl: input.dataUrl,
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "";
+          console.error("[inbox] attachment upload failed", {
+            workspaceId: ctx.workspace.workspaceId,
+            messageType: input.messageType,
+            mimeType: input.mimeType,
+            fileName: input.fileName,
+            reason,
+          });
+          if (reason === "INBOX_MEDIA_INVALID")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Formato de anexo não suportado para este tipo de mensagem." });
+          if (reason === "INBOX_MEDIA_TOO_LARGE")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "O anexo está vazio ou excede o limite de 8 MB." });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível guardar o anexo com segurança. Tente novamente." });
+        }
+      }),
     instances: requireInbox.query(async ({ ctx }) => {
       await ensureLegacyBaileysInstance(ctx.workspace.workspaceId);
       return listBaileysInstances(ctx.workspace.workspaceId);
@@ -2869,10 +3090,7 @@ export const appRouter = router({
     contacts: requireInbox
       .input(
         inboxInstanceFilterSchema
-          .extend({
-            includeGroups: z.boolean().optional(),
-            assignment: z.enum(["all", "mine", "unassigned"]).default("all"),
-          })
+          .extend({ includeGroups: z.boolean().optional() })
           .optional()
       )
       .query(async ({ ctx, input }) => {
@@ -2884,45 +3102,114 @@ export const appRouter = router({
           ctx.workspace.workspaceId,
           ctx.user.id,
           instanceIds,
-          input?.includeGroups === true,
-          input?.assignment ?? "all"
+          input?.includeGroups === true
         );
         return items.map(mapContact);
       }),
-    assignees: requireInbox.query(async ({ ctx }) =>
-      listInboxAssignees(ctx.workspace.workspaceId)
-    ),
-    assign: requireInbox
-      .input(contactIdInput.extend({ assignedUserId: z.number().int().positive().nullable() }))
-      .mutation(async ({ input, ctx }) => {
-        const updated = await assignInboxContact(
-          ctx.workspace.workspaceId,
-          input.contactId,
-          input.assignedUserId,
-          ctx.user.id
-        );
-        return updated ? mapContact(updated) : null;
-      }),
-    followUp: requireInbox
+    assignmentOptions: requireInbox.query(async ({ ctx }) => {
+      const canAssign = ctx.access.canManageCatalog;
+      const members = canAssign
+        ? await listInboxAssignableMembers(ctx.workspace.workspaceId)
+        : [];
+      return {
+        canAssign,
+        members: members.map(member => ({
+          id: String(member.id),
+          name: member.name?.trim() || "Membro sem nome",
+          role: member.role,
+        })),
+      };
+    }),
+    assignOpportunity: requireManager
       .input(
         contactIdInput.extend({
-          followUpAt: z.coerce.date().nullable().optional(),
-          note: z.string().trim().max(500).nullable().optional(),
-          completed: z.boolean().optional(),
+          assignedMemberId: z.number().int().positive().nullable(),
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const updated = await setInboxFollowUp(
+        try {
+          const result = await assignInboxOpportunity(
+            ctx.workspace.workspaceId,
+            input.contactId,
+            input.assignedMemberId,
+            ctx.user.id
+          );
+          if (!result)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Opportunity não encontrada neste workspace",
+            });
+          return result;
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          if (error instanceof Error && error.message === "MEMBER_NOT_ASSIGNABLE")
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Escolha um membro ativo deste workspace",
+            });
+          throw error;
+        }
+      }),
+    setNextAction: requireInbox
+      .input(
+        contactIdInput.extend({
+          title: z.string().trim().min(3).max(180),
+          dueAt: z.string().datetime({ offset: true }),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const result = await setOpportunityNextAction(
+            ctx.workspace.workspaceId,
+            input.contactId,
+            { title: input.title, dueAt: new Date(input.dueAt) },
+            ctx.user.id
+          );
+          if (!result)
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Opportunity não encontrada neste workspace",
+            });
+          return {
+            id: String(result.id),
+            title: result.title,
+            dueAt: result.dueAt.toISOString(),
+          };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          if (
+            error instanceof Error &&
+            error.message === "INVALID_NEXT_ACTION_DUE_AT"
+          )
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Escolha uma data e hora futuras para a próxima ação",
+            });
+          if (
+            error instanceof Error &&
+            error.message === "INVALID_NEXT_ACTION_TITLE"
+          )
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Descreva a próxima ação com 3 a 180 caracteres",
+            });
+          throw error;
+        }
+      }),
+    completeNextAction: requireInbox
+      .input(contactIdInput)
+      .mutation(async ({ input, ctx }) => {
+        const result = await completeOpportunityNextAction(
           ctx.workspace.workspaceId,
           input.contactId,
-          {
-            followUpAt: input.followUpAt,
-            note: input.note,
-            completed: input.completed,
-          },
           ctx.user.id
         );
-        return updated ? mapContact(updated) : null;
+        if (!result)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Opportunity não encontrada neste workspace",
+          });
+        return result;
       }),
     renameContact: requireInbox
       .input(contactIdInput.extend({ name: z.string().trim().min(2).max(160) }))
@@ -2975,13 +3262,12 @@ export const appRouter = router({
           input.contactId
         );
         if (!contact) return null;
-        const [conversation, items, audit, quotes] = await Promise.all([
+        const [conversation, items, audit] = await Promise.all([
           getConversationByContact(ctx.workspace.workspaceId, input.contactId),
           listMessagesForContact(ctx.workspace.workspaceId, input.contactId, {
             instanceIds,
           }),
           getAuditLogForContact(ctx.workspace.workspaceId, input.contactId),
-          listQuotesForContact(ctx.workspace.workspaceId, input.contactId),
         ]);
         if (instanceIds && items.length === 0) return null;
         const notes = await listContactNotes(
@@ -3002,7 +3288,6 @@ export const appRouter = router({
           })),
           audit,
           notes,
-          quotes,
         };
       }),
     addNote: requireInbox
@@ -3092,11 +3377,7 @@ export const appRouter = router({
           : null;
       }),
     moveStage: requireInbox
-      .input(
-        contactIdInput.extend({
-          stage: z.string().min(1).max(80).refine(isContactStage, "Estágio de lead inválido"),
-        })
-      )
+      .input(contactIdInput.extend({ stage: z.string().min(1).max(80) }))
       .mutation(async ({ input, ctx }) => {
         const existing = await getContactById(
           ctx.workspace.workspaceId,
@@ -3108,17 +3389,25 @@ export const appRouter = router({
             message: "Contato não encontrado neste workspace",
           });
         }
-        await moveContactStage(
+        const transition = await moveContactStage(
           ctx.workspace.workspaceId,
           input.contactId,
           input.stage,
-          ctx.user.id
+          ctx.user.id,
+          "inbox"
         );
         const contact = await getContactById(
           ctx.workspace.workspaceId,
           input.contactId
         );
-        return contact ? mapContact(contact) : null;
+        return contact
+          ? mapContact({
+              ...contact,
+              leadId: transition.leadId,
+              opportunityId: transition.opportunityId,
+              opportunityStage: transition.stage,
+            })
+          : null;
       }),
     markRead: requireInbox
       .input(contactIdInput)
@@ -3139,15 +3428,6 @@ export const appRouter = router({
           readAt: marked.readAt.toISOString(),
         };
       }),
-    seed: requireInbox.mutation(async () => {
-      if (!isDemoRuntimeAllowed())
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: "Seed de demonstração disponível somente em ambiente QA/dev autorizado",
-        });
-      await ensureDemoInbox();
-      return { success: true } as const;
-    }),
   }),
 });
 

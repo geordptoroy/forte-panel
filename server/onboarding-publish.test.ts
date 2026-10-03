@@ -14,15 +14,22 @@ import {
   workspaces,
 } from "../drizzle/schema";
 import {
+  confirmOnboardingExampleReview,
   confirmOnboardingStep,
   createPublicSignup,
   getDb,
+  getOnboardingSession,
+  getOnboardingProfile,
+  getOnboardingPublishCandidate,
   listOnboardingPublishedVersions,
   publishOnboardingDraft,
+  pauseOnboardingSession,
   rollbackOnboardingPublishedVersion,
   saveOnboardingProfile,
+  setOnboardingCurrentStep,
   startOnboardingSession,
 } from "./db";
+import { fingerprintOnboardingProfile } from "./onboarding-review";
 
 const hasDatabase = Boolean(
   process.env.DATABASE_URL && /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL)
@@ -77,6 +84,22 @@ describe.skipIf(!hasDatabase)("onboarding published versions", () => {
     await db.delete(workspaces).where(inArray(workspaces.id, [workspaceId]));
   });
 
+  it("preserves the active wizard step through autosave and pause/resume", async () => {
+    await setOnboardingCurrentStep(workspaceId, userId, "guardrails");
+    await saveOnboardingProfile(workspaceId, profile, false, userId);
+    expect(await getOnboardingSession(workspaceId)).toMatchObject({
+      currentStep: "guardrails",
+      status: "active",
+    });
+
+    await pauseOnboardingSession(workspaceId);
+    const resumed = await startOnboardingSession(workspaceId, userId);
+    expect(resumed).toMatchObject({
+      currentStep: "guardrails",
+      status: "active",
+    });
+  });
+
   it("blocks publication before required confirmations", async () => {
     await expect(publishOnboardingDraft(workspaceId, userId)).rejects.toThrow("ONBOARDING_CONFIRMATION_REQUIRED");
   });
@@ -84,10 +107,34 @@ describe.skipIf(!hasDatabase)("onboarding published versions", () => {
   it("publishes a version and rollback creates a new version", async () => {
     for (const stepKey of ["identity", "offering", "operations", "guardrails"] as const)
       await confirmOnboardingStep(workspaceId, stepKey, userId);
+    await expect(publishOnboardingDraft(workspaceId, userId)).rejects.toThrow("ONBOARDING_EXAMPLE_REVIEW_REQUIRED");
+
+    const candidate = await getOnboardingPublishCandidate(workspaceId);
+    const simulationFingerprint = fingerprintOnboardingProfile(candidate);
+    await confirmOnboardingExampleReview({
+      workspaceId,
+      reviewedBy: userId,
+      mode: "ai",
+      profileFingerprint: simulationFingerprint,
+    });
+    expect((await getOnboardingProfile(workspaceId)).exampleReview).toMatchObject({ isCurrent: true, mode: "ai" });
+
+    await saveOnboardingProfile(workspaceId, { ...profile, toneOfVoice: "claro, acolhedor e objetivo" }, false, userId);
+    expect((await getOnboardingProfile(workspaceId)).exampleReview).toMatchObject({ isCurrent: false, mode: null });
+    await expect(confirmOnboardingExampleReview({
+      workspaceId,
+      reviewedBy: userId,
+      mode: "ai",
+      profileFingerprint: simulationFingerprint,
+    })).rejects.toThrow("ONBOARDING_EXAMPLE_REVIEW_STALE");
+    await expect(publishOnboardingDraft(workspaceId, userId)).rejects.toThrow("ONBOARDING_EXAMPLE_REVIEW_REQUIRED");
+
+    await confirmOnboardingExampleReview({ workspaceId, reviewedBy: userId, mode: "safe" });
     const published = await publishOnboardingDraft(workspaceId, userId);
     expect(published).toMatchObject({ version: 1, published: true });
     const rolledBack = await rollbackOnboardingPublishedVersion(workspaceId, 1, userId);
     expect(rolledBack).toMatchObject({ version: 2, rollbackOf: 1, published: true });
+    expect((await getOnboardingProfile(workspaceId)).exampleReview).toMatchObject({ isCurrent: true, mode: "rollback" });
     await expect(listOnboardingPublishedVersions(workspaceId)).resolves.toHaveLength(2);
   });
 });

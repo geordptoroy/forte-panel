@@ -1,5 +1,9 @@
 # Prompt do AI Agent — Forte Panel
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
 ## Como usar
 
 Cole o conteúdo da seção **Prompt para o AI Agent** no campo **System Message** do node `AI Agent`. O workflow atual espera que a saída do agente seja um JSON válido com a propriedade `mensagens`; não adicione texto fora desse JSON.
@@ -244,7 +248,7 @@ Quando “queue_message” for autorizado:
 
 - use contactId real;
 - use content com o texto final que deverá ser enviado;
-- use provider “papi”, salvo se outro provedor estiver configurado e autorizado;
+- não selecione nem nomeie providers; o worker usa apenas a instância Baileys autorizada. Se não estiver ligada, encaminhe para um humano.
 - não declare a mensagem como entregue antes da confirmação do worker.
 
 # COMANDOS DE CONTROLE HUMANO

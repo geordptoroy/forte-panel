@@ -1,9 +1,16 @@
 # Forte Panel — Roadmap executável de produto público
 
+> **DOCUMENTO HISTÓRICO — revisto em 2026-10-02.** Este ficheiro preserva decisões e evidências de um estado anterior e não define o produto ou os procedimentos atuais. O único canal do produto é Baileys. Não executar opções de canal, comandos, branches, tags ou tarefas pendentes daqui; consultar `AGENTS.md`, `PRODUCT_SCOPE.md`, `docs/STATUS-ATUAL.md` e `docs/WORKFLOW-DESENVOLVIMENTO-E-RELEASE.md`.
+
+
+
+
 **Status:** ativo e canônico para execução por fatias
-**Data:** 2026-09-29
+**Data:** 2026-09-30
 **Base:** `FORTE-PANEL-FONTE-DE-VERDADE.md` + auditoria do código e documentação
-**Regra de continuidade:** cada mensagem `próximo` executa a próxima fatia pendente, atualiza este arquivo e publica um commit no Git.
+**Regra de continuidade:** cada mensagem `próximo` executa uma fatia por vez, registra commit em branch empilhada e abre PR para revisão; nunca mesclar automaticamente.
+
+> **Preflight obrigatório para qualquer nova IA:** o bloco “CONTINUIDADE OBRIGATÓRIA” no topo de `HANDOFF-PROXIMO-CHAT-IA.md` é a primeira fonte operacional. Antes de tocar no código, confirmar `git status --short --branch`, `git log -1 --oneline --decorate`, `git remote -v`, `git fetch origin` e `git rev-parse HEAD`; a branch, PR, commit remoto e próximo slice do bloco devem coincidir. Se houver divergência, parar a implementação, preservar a branch e corrigir o contexto antes de editar. Nunca usar `main` como branch de continuidade quando o handoff indicar uma branch empilhada.
 
 > Este documento transforma a estratégia de reposicionamento em trabalho executável. Não é uma lista de ideias: cada fatia tem escopo, saída verificável e critério de conclusão.
 
@@ -20,8 +27,8 @@ A execução seguirá uma fatia por vez. Para cada fatia, o agente deve:
 5. executar os gates disponíveis e registrar limitações;
 6. atualizar o estado da fatia neste documento e no handoff;
 7. fazer commit com mensagem específica;
-8. publicar no `origin/main`;
-9. responder com o commit, o que mudou, os gates executados e a próxima fatia.
+8. publicar uma branch e abrir/atualizar PR para revisão; nunca mesclar automaticamente;
+9. responder com o commit, o PR, o que mudou, os gates executados e a próxima fatia.
 
 **Não fazer:** reset destrutivo, apagar migrations aplicadas, declarar staging real sem executar staging, ligar `CORE_ONLY_MODE` de uma vez, misturar demo com produção ou implementar uma tela isolada sem fechar seu contrato de dados.
 
@@ -80,35 +87,52 @@ O produto público só pode sair do modo de contenção quando o caminho essenci
 | P0.4 | Fundação pública | Limpar linguagem beta do Console Admin | **CONCLUÍDA** | Console com linguagem de produção |
 | P0.5 | Fundação pública | Catálogo de estados e release gate por rota | **CONCLUÍDA** | `release-catalog.ts` governa estados e exposição incremental |
 | O1.1 | Onboarding | Wizard público de 6 passos | **CONCLUÍDA** | Owner configura negócio sem conhecer IA técnica |
-| O1.2 | Onboarding | Serviços, preços, duração e disponibilidade | **CONCLUÍDA** | Catálogo operacional real para o núcleo comercial |
-| O1.3 | Onboarding | Regras de atendimento e revisão de exemplos | **CONCLUÍDA** | Publicação humana de configuração segura |
-| O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | **CONCLUÍDA** | Onboarding tolerante a interrupções |
-| O2.1 | Canal | Saúde do WhatsApp e ciclo de conexão | **CONCLUÍDA** | QR, pairing, reconexão e erros acionáveis |
-| O2.2 | Canal | Inbound idempotente e histórico sem efeitos colaterais | **CONCLUÍDA** | Mensagem recebida uma vez, com status observável |
-| O2.3 | Canal | Outbound com `instanceId`, fila e reconciliação | **CONCLUÍDA** | Envio rastreável até gateway e telefone |
-| O2.4 | Canal | Mídia privada e capacidades do composer | **CONCLUÍDA** | Texto, imagem, áudio, vídeo e documento com limites claros |
-| O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | **CONCLUÍDA** | WhatsApp cria/atualiza lead real |
-| O3.2 | Comercial | Inbox operacional com assignment e follow-up | **CONCLUÍDA** | Nenhum lead importante fica sem próxima ação |
-| O3.3 | Comercial | Funil canônico sem duplicação de estado | **CONCLUÍDA** | Lead atravessa estágios com auditoria |
-| O3.4 | Comercial | Orçamento com itens, validade e aprovação | **CONCLUÍDA** | Conversa pode gerar proposta rastreável |
-| O3.5 | Comercial | Agenda com conflito, profissional e status | **CONCLUÍDA** | Orçamento aprovado pode virar agendamento real |
-| O3.6 | Comercial | Recebimento, ledger operacional e recibo | **CONCLUÍDA** | Serviço concluído fecha ciclo de receita |
-| O3.7 | Comercial | Dashboard de decisões do dia | **CONCLUÍDA** | Usuário vê pendências, receita e saúde do canal |
-| O4.1 | IA | Contexto comercial seguro para o agente | **CONCLUÍDA** | IA consulta dados reais sem atravessar tenant |
-| O4.2 | IA | Ferramentas somente leitura e confirmação mutável | **PRÓXIMA** | IA sugere; humano/backend autoriza efeitos |
-| O4.3 | IA | Transferência para humano e kill switch | PENDENTE | Falha segura e controle operacional |
-| O4.4 | IA | Métricas de resolução, custo, latência e receita | PENDENTE | IA medida por resultado, não por prompt |
-| O5.1 | Admin | Workspaces como contas de produção | PENDENTE | Lifecycle, saúde, plano e incidente reais |
-| O5.2 | Admin | Suporte, tickets e sessões auditadas | PENDENTE | Operador trabalha sem misturar tenants |
-| O5.3 | Admin | Health de gateway, filas, storage e providers | PENDENTE | Console diagnostica problemas reais |
-| O5.4 | Admin | Quotas, planos, retenção e lifecycle | PENDENTE | Console opera o SaaS, não apenas usuários |
-| O6.1 | Confiabilidade | Testes negativos de tenancy e papéis | PENDENTE | Isolamento comprovado entre workspaces |
-| O6.2 | Confiabilidade | Backup, restore e retenção | PENDENTE | Recuperação comprovada de banco, mídia e sessão |
-| O6.3 | Confiabilidade | Browser desktop/mobile e acessibilidade | PENDENTE | Jornadas críticas operáveis por cliente real |
-| O7.1 | Monetização | Plano, quota e cobrança SaaS separados | PENDENTE | Limite técnico não é billing |
-| O7.2 | Monetização | Trial, upgrade, downgrade, cancelamento e retenção | PENDENTE | Ciclo comercial do próprio Forte Panel |
-| O7.3 | Escala | Observabilidade, incidentes e release público | PENDENTE | Abertura controlada sem dependência manual |
+| O1.2 | Onboarding | Serviços, preços, duração e disponibilidade | **CONCLUÍDA (código)** | Catálogo operacional persistido, modos de preço e jornada semanal; prova com PostgreSQL/UI real permanece pendente |
+| O1.3 | Onboarding | Regras de atendimento e revisão de exemplos | **CONCLUÍDA (código)** | Revisão humana vinculada ao candidato exato; prova persistida com PostgreSQL permanece pendente |
+| O1.4 | Onboarding | Retomada, autosave, missing/conflict e empty states | **CONCLUÍDA (código)** | Etapa retomável, autosave serializado e estados de loading/erro; prova persistente pendente |
+| O2.1 | Canal | Saúde do WhatsApp e ciclo de conexão | **CONCLUÍDA (código)** | Backoff exponencial limitado; logout explícito permanece final |
+| O2.2 | Canal | Inbound idempotente e histórico sem efeitos colaterais | **CONCLUÍDA (código)** | Lease recuperável com fencing e filtros do histórico; migration 0046 exige prova PostgreSQL |
+| O2.3 | Canal | Outbound com `instanceId`, fila e reconciliação | **CONCLUÍDA (código)** | Fila e recibos sent/delivered/read tenant/instância-scoped e monotônicos |
+| O2.4 | Canal | Mídia privada e capacidades do composer | **CONCLUÍDA (código)** | Upload privado autenticado até 8 MB e envio por URL HTTPS assinada; prova real pendente |
+| O3.1 | Comercial | Lead unificado entre contato, conversa e oportunidade | **CONCLUÍDA (código)** | Migration 0047 e 7 integrações passaram no PostgreSQL CI; PRs #6/#7 abertos e CI verde; smoke persistente/staging e WhatsApp real pendentes |
+| O3.2 | Comercial | Inbox operacional com assignment e follow-up | **CONCLUÍDA (código)** | PR #8 aberto sobre O3.1; migration 0048 aplicada no CI; run `36708180817` passou 285 testes/72 arquivos sem skips; staging e WhatsApp real continuam pendentes |
+| O3.3 | Comercial | Funil canônico sem duplicação de estado | **CONCLUÍDA (código + CI PostgreSQL)** | PR #9 aberta; run `36710769990` aplicou 0049 e passou 72 arquivos/285 testes sem skips; staging e WhatsApp real continuam pendentes |
+| O3.4 | Comercial | Orçamento com itens, validade e aprovação | **CONCLUÍDA (código + CI PostgreSQL)** | PR #10 aberta; run `36720148370` passou com migration 0050; staging e revisão final continuam pendentes |
+| O3.5 | Comercial | Agenda com conflito, profissional e status | **CONCLUÍDA (código + CI PostgreSQL)** | PR #11 aberta; run `36723304885` passou; staging e revisão final continuam pendentes |
+| O3.6 | Comercial | Recebimento, ledger operacional e recibo | **CONCLUÍDA (código + CI PostgreSQL)** | PR #12 aberta; run `36729522644` passou após correção da FK composta; staging e revisão final continuam pendentes |
+| O3.7 | Comercial | Dashboard de decisões do dia | **CONCLUÍDA (código + CI PostgreSQL)** | PR #13 aberta; run `36730266465` passou; staging e revisão final continuam pendentes |
+| O4.1 | IA | Contexto comercial seguro para o agente | **CONCLUÍDA (código + CI PostgreSQL)** | PR #14 aberta; run `36730874541` passou; staging e revisão final continuam pendentes |
+| O4.2 | IA | Ferramentas somente leitura e confirmação mutável | **CONCLUÍDA (código + CI PostgreSQL)** | PR #15 aberta; run `36731684085` passou; staging e revisão final continuam pendentes |
+| O4.3 | IA | Transferência para humano e kill switch | **CONCLUÍDA (código + CI PostgreSQL)** | PR #16 aberta; run `36732396958` passou; staging e revisão final continuam pendentes |
+| O4.4 | IA | Métricas de resolução, custo, latência e receita | **CONCLUÍDA (código + CI PostgreSQL)** | PR #17 aberta; run `36733294007` passou; staging e revisão final continuam pendentes |
+| O5.1 | Admin | Workspaces como contas de produção | **CONCLUÍDA (código + CI PostgreSQL)** | PR #18 aberta; run `36734540609` passou; staging e revisão final continuam pendentes |
+| O5.2 | Admin | Suporte, tickets e sessões auditadas | **CONCLUÍDA (código + CI PostgreSQL)** | PR #19 aberta; run `36735198506` passou; staging e revisão final continuam pendentes |
+| O5.3 | Admin | Health de gateway, filas, storage e providers | **CONCLUÍDA (código + CI PostgreSQL)** | PR #20 aberta; run `36735603600` passou; staging e revisão final continuam pendentes |
+| O5.4 | Admin | Quotas, planos, retenção e lifecycle | **CONCLUÍDA (código + CI PostgreSQL)** | PR #21 aberta; run `36735977815` passou; staging e revisão final continuam pendentes |
+| O6.1 | Confiabilidade | Testes negativos de tenancy e papéis | **CONCLUÍDA (código + CI PostgreSQL)** | PR #22 aberta; run `36736288990` passou; staging e revisão final continuam pendentes |
+| O6.2 | Confiabilidade | Backup, restore e retenção | **CONCLUÍDA (código + CI PostgreSQL)** | PR #23 aberta; run `36736764694` passou; restore persistente em ambiente limpo continua pendente |
+| O6.3 | Confiabilidade | Browser desktop/mobile e acessibilidade | **CONCLUÍDA (código + CI PostgreSQL)** | PR #24 aberta; run `36737154671` passou; smoke autenticado de staging continua pendente |
+| O7.1 | Monetização | Plano, quota e cobrança SaaS separados | **CONCLUÍDA (código + CI PostgreSQL)** | PR #25 aberta; run `36737881060` passou; checkout/billing real continuam desativados |
+| O7.2 | Monetização | Trial, upgrade, downgrade, cancelamento e retenção | **CONCLUÍDA (código + CI PostgreSQL)** | PR #26 aberta; run `36738425579` passou; provider de billing ainda não configurado |
+| O7.3 | Escala | Observabilidade, incidentes e release público | **EM REVISÃO (código + Docker local parcial)** | PR #27; CI `36738759085` passou; Docker local validou health/readiness, migrations, pareamento, inbound e outbound; 5 eventos históricos na outbox ainda reportam `webhook_http_400`; staging/release público permanecem bloqueados |
+| MVP.1 | Aceite MVP | Núcleo operacional e comercial básico | **ACEITE MANUAL PARCIAL — NÃO É MVP COMPLETO** | Conta criada por `/signup`, login/logout, sidebar, conexão WhatsApp, Inbox inbound/outbound, refresh, Kanban com mudança persistida, Contatos, Serviços, Profissionais, Agenda e Integrações validados pelo operador; intervalos intradiários por profissional agora têm persistência, validação e UI; IA de resposta, transcrição, visão e moderação ainda não foram validadas end-to-end |
+| MVP.2 | Aceite MVP | IA de atendimento multimodal e moderação | **CONFIGURAÇÃO BASE + GATE DE SEGURANÇA + FALLBACK + OBSERVABILIDADE + ÁUDIO + VISÃO/DOCUMENTO IMPLEMENTADOS; ACEITE PENDENTE — BLOQUEADOR DO MVP** | Política do agente por workspace agora fica separada de providers/segredos do Console Admin; gate runtime detecta prompt injection, exfiltração de credenciais e sinais de alto risco antes do provider, desliga a IA do contato, envia handoff neutro e registra execução transferida; conexões secundárias da mesma capability fazem fallback explícito, com chaves criptografadas/mascaradas; agentRuns registra provider, capability, tentativas e códigos de falha sanitizados; áudio inbound usa mídia privada na capability `audio`, injeta a transcrição no contexto e segue para resposta textual; imagem e documento usam as capabilities `vision`/`document`, geram contexto factual e seguem para resposta textual; ainda validar fluxo real no WhatsApp e kill switch |
+| O7.4 | Escala | Reconciliação de histórico Baileys não importável | **CONCLUÍDA (código + CI + Docker + smoke)** | PR #28; CI `36743491124` passou; 5 históricos deixaram a fila ativa (`pending=0`) sem apagar volume; smoke inbound e outbound passaram com `eventos=1`, `entregues=1`, `falhas=0` em cada direção |
+| O7.5 | Escala | Dead-letter para falhas permanentes do webhook | **CONCLUÍDA (código + CI + Docker + smoke)** | PR #29; CI `36744892337` passou; 5 envelopes preservados em `outbox/<instanceId>/dead-letter` (`deadLetter=5`); smoke bidirecional passou |
+| O7.6 | Escala | Observabilidade da dead-letter no status da instância | **CONCLUÍDA (código + CI + Docker + smoke)** | PR #30; CI `36746224303`, imagem `36748842030` e restart passaram; status `connected`, `pending=0`, `deadLetter=5`; inbound/outbound passaram em ambos os sentidos |
+| O7.9 | Confiabilidade | Idempotência outbound fim a fim no gateway | **CONCLUÍDA (código + testes locais)** | Ledger durável por instância/chave, replay seguro e falha fechada para resultado externo inconclusivo; staging e teste físico permanecem pendentes |
+| O7.10 | Confiabilidade | Inbound transacional e retry sem duplicação | **CONCLUÍDA (código + testes locais)** | Transação única protege contato, conversa, lead/oportunidade, mensagem, unread e `message.received`; compensação de mídia e prova persistente ficam para o gate externo |
+| O7.11 | Confiabilidade | Hardening de sessão, webhook, headers e rate limit | **CONCLUÍDA (primeira fatia local)** | Headers globais, bearer constant-time, origem/CSRF e rate limits cobertos; revogação/rotação, rate limit distribuído e staging continuam pendentes |
+| O7.12 | Confiabilidade | Runbook, restore e compensação de storage | **CONCLUÍDA (primeira fatia local)** | Manifesto verificado antes do restore, alvo separado e tar de sessão vazio válido; off-host, DB/mídia/sessão real, RPO/RTO e rollback seguem pendentes |
+| O7.13 | Operação | Restore rehearsal e compensação de blobs | **CONCLUÍDA (política local)** | Classificação segura por workspace, referências e janela de proteção; provider list/delete, retenção e restore real seguem pendentes |
+| O7.14 | Operação | Provider de storage com listagem/remoção condicionada | **CONCLUÍDA (contrato + dry-run)** | Interface paginada, `ifMatch`/etag e dry-run padrão; adapter Forge real não oferece list/delete e continua sem operação destrutiva |
+| O7.15 | Operação | Métricas, auditoria e ensaio do provider | **CONCLUÍDA (métricas locais)** | Métricas agregadas sem chaves, limite anti-loop e dry-run; provider autorizado, auditoria persistida e restore real seguem pendentes |
+| O7.16 | Operação | Provider real, auditoria persistida e restore rehearsal | **PENDENTE** | Conectar API autorizada, alertas, retenção, execução controlada e ambiente limpo |
 | A1 | Adiado | TTS, múltiplos canais e automações genéricas | ADIADA | Só após o núcleo gerar valor recorrente |
+
+### Trabalho explicitamente adiado
+
+- **Oracle Cloud/OCI, deploy público e promoção final das imagens ARM64:** ficam depois do MVP controlado estar demonstrável e dos gates de staging, browser, segurança, restore e WhatsApp físico estarem fechados. A publicação multi-arquitetura já pode existir como preparação técnica, mas não é a próxima fatia e não autoriza deploy público.
 
 ---
 
@@ -278,13 +302,13 @@ Quando o usuário disser **próximo**, executar exatamente a primeira fatia `PEN
 4. validar o que for possível;
 5. se houver bloqueio externo, parar nessa fatia e registrar o bloqueio, sem pular silenciosamente;
 6. atualizar estado e evidências;
-7. commitar e publicar;
+7. commitar, publicar uma branch e abrir/atualizar PR para revisão; nunca mesclar automaticamente;
 8. responder com:
    - fatia executada;
    - arquivos alterados;
    - comportamento antes/depois;
    - validações executadas e não executadas;
-   - commit publicado;
+   - commit e PR publicados;
    - próxima fatia.
 
 Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de implementar. Não abrir uma nova frente só porque uma tela parece mais fácil.
@@ -295,11 +319,134 @@ Se uma fatia crescer demais, dividir em subfatias no próprio documento antes de
 
 | Campo | Valor inicial |
 |---|---|
-| Branch | `main` |
+| Branch | `feat/o1.3-attendance-rule-simulation` |
 | Base auditada | `cad2b8a` |
 | Última fatia concluída | `P0.3` — seeds e bootstrap isolados por ambiente |
-| Última fatia concluída por este roadmap | `O1.2` — catálogo operacional de serviços e disponibilidade |
-| Último commit deste roadmap | `commit da fatia atual` — `feat: connect onboarding to operational catalog` |
+| Última fatia concluída por este roadmap | `O3.3` — estágio canônico e histórico com CI PostgreSQL verde |
+| Último commit de implementação deste roadmap | `6f5a812` — `feat: add consent-gated onboarding example review` |
+| Pull request | [#5](https://github.com/geordptoroy/forte-panel/pull/5) — aberto, empilhado sobre o PR #4 (O1.2); não mesclado |
 | Bloqueios externos | staging persistente, número WhatsApp de teste, restore comprovado e billing SaaS |
 
 Este quadro deve ser atualizado a cada fatia. O documento canônico continua sendo a autoridade de produto; este arquivo é a fila operacional.
+
+## Atualização de estado — O5.7 — 2026-10-01
+
+- [x] Expor saúde agregada do agente no Console Admin sem conteúdo privado (`ba265d8`).
+- [x] Criar contrato integrado de `platform.health` no boundary do router (`5a22ec5`, corrigido em `32e074c`).
+- [x] Provar no PostgreSQL que provider, modelo, failure code, IDs de tenant/contato/evento e tokens não são serializados.
+- [x] Validar retry PostgreSQL verde sem skips: run [`36941127598`](https://github.com/geordptoroy/forte-panel/actions/runs/36941127598).
+- [x] Publicar a imagem do Console Admin agregado: run [`36939943370`](https://github.com/geordptoroy/forte-panel/actions/runs/36939943370).
+
+**Próxima fatia:** revisão/aceite da PR #39 e preparação da Onda O6 para prova persistente de produção. Não repetir backup/restore, pareamento real ou aceite manual já concluídos.
+
+
+## Atualização de estado — contrato integrado do kill switch — 2026-10-01
+- [x] Confirmar gate tenant-scoped antes de qualquer provider para `text`, `audio`, `vision` e `document`.
+- [x] Preservar eventos pausados como `pending`/reprocessáveis, sem criar `agentRuns`.
+- [x] Registrar auditoria redigida `native_agent_kill_switch_blocked` com capability, evento truncado e motivo sanitizado; sem conteúdo de mensagem, URL ou secret.
+- [x] Ampliar o contrato PostgreSQL em `server/agent-runtime.integration.test.ts` para provar as quatro auditorias e ausência de execução.
+- [x] Validações locais: `pnpm check`, build, `git diff --check` e testes focados passaram; a integração PostgreSQL ficou skip no Sandbox por ausência de `DATABASE_URL`.
+- [ ] Executar CI PostgreSQL sem skips para fechar a evidência da fatia.
+**Próxima fatia:** acompanhar o CI PostgreSQL desta alteração e, se verde, revisar/aceitar a PR #39 sem merge automático e preparar a Onda O6 de infraestrutura persistente.
+
+
+## Atualização de estado — revisão da PR #39 e transição para O6 — 2026-10-01
+- [x] CI PostgreSQL no head `2cbc5c4`: run [`36941988050`](https://github.com/geordptoroy/forte-panel/actions/runs/36941988050), concluído com sucesso e sem skips.
+- [x] Verify/Publish GHCR no head `2cbc5c4`: run [`36941988213`](https://github.com/geordptoroy/forte-panel/actions/runs/36941988213), concluído com sucesso.
+- [x] Revisão técnica da PR #39 concluída; a PR está `OPEN` e `CLEAN`, sem merge automático.
+- [ ] Aprovação formal externa: a conta autora não pode aprovar a própria PR (`Review Can not approve your own pull request`).
+- [ ] Preparar prova O6 em PostgreSQL persistente/staging com dois ou mais workspaces, sem repetir backup/restore ou pareamento já concluídos.
+**Próxima fatia:** obter revisão de outro mantenedor ou manter a PR aguardando revisão e preparar o ambiente persistente da Onda O6; não executar merge automático.
+
+
+## Atualização de estado — preparação da Onda O6 — 2026-10-01
+- [x] Verificar dispositivos autorizados: somente o Manus Sandbox está disponível nesta sessão.
+- [x] Criar `docs/O6-PROVA-PERSISTENTE-RUNBOOK.md` com topologia, gates, variáveis, workflow E2E e evidências exigidas.
+- [x] Confirmar que o workflow `.github/workflows/staging-e2e.yml` já falha fechado sem URL descartável e secrets de staging.
+- [ ] Executar O6 em ambiente persistente autorizado; bloqueado até existir staging/Cloud Computer ou ambiente equivalente com autorização explícita.
+- [ ] Não executar `staging-e2e`, browser smoke ou tráfego WhatsApp contra URL desconhecida.
+**Próxima fatia:** quando houver ambiente persistente autorizado, executar os gates A–D do runbook; até lá, manter O6 como `BLOQUEADA`, não inventar evidência e não repetir backup/restore ou pareamento real.
+
+
+## Atualização de estado — validação com conta criada pela UI — 2026-10-01
+O script `scripts/validate-flow.mjs` agora aceita `VALIDATION_EMAIL` e `VALIDATION_PASSWORD`, correspondentes à conta criada pelo `/signup`, mantendo `LOCAL_ADMIN_EMAIL`/`LOCAL_ADMIN_PASSWORD` apenas como fallback legado. Se o login falhar, o fluxo encerra imediatamente em vez de produzir uma cascata de falsos erros de autorização.
+
+O requisito de produto para o próximo slice ficou registrado: o Console Admin deve possuir um workspace operacional administrativo próprio, separado do workspace público, com as capacidades de workspace (instância WhatsApp, Inbox, Agenda, Serviços, Profissionais e IA) para suporte real pela plataforma. O acesso deve ser exclusivo às contas do Console Admin, com isolamento explícito de dados, instâncias e permissões; não implementar essa mudança junto com a adaptação do teste.
+
+
+## Atualização de estado — Console Admin IA e simulação obrigatória — 2026-10-01
+- [x] Corrigir o contrato de conexões de IA para permitir múltiplas conexões ativas por capability; a primeira permanece primária e as seguintes viram fallback.
+- [x] Manter chaves criptografadas no banco, mascaradas no Console Admin e nunca serializadas em auditorias/respostas.
+- [x] Tornar explícito o retorno `mode: simulation_only` nas simulações global e por instância; provider externo e gateway Baileys continuam bloqueados.
+- [x] Exigir uma simulação concluída depois do último salvamento do rascunho antes de publicar uma versão do agente.
+- [ ] Configurar credenciais reais de provider e executar testes externos; fica para depois, conforme solicitado.
+**Próxima fatia:** validar os fluxos reais de provider/WhatsApp no ambiente do usuário e, somente após aceite, discutir liberação supervisionada de respostas automáticas.
+
+
+## Atualização de estado — workspace operacional do Console Admin — 2026-10-02
+Foi criada a rota interna `/platform-admin/support-workspace`, separada da operação dos workspaces clientes. O snapshot tenant-scoped do suporte agora inclui instâncias WhatsApp, catálogo de serviços, profissionais e agenda, além do agente já existente. A página oferece atalhos para Inbox, instâncias, prompts e providers e deixa explícito que o tenant interno não mistura dados públicos.
+
+Typecheck, testes focados de autorização/tenancy e `git diff --check` passaram. A próxima fatia do mesmo escopo é expor mutações de catálogo e agenda para o operador autorizado; não envolve provider real nem pareamento automático.
+
+## Atualização de estado — mutações do workspace operacional interno — 2026-10-02
+- [x] Procedures protegidas por `requirePlatformOperator` para criar e atualizar serviços do tenant interno.
+- [x] Procedures para criar/atualizar profissionais, vincular serviços e substituir disponibilidade semanal.
+- [x] Procedures para criar, confirmar, concluir, marcar no-show, reagendar e cancelar agendamentos internos.
+- [x] Cada mutação registra `platformAuditLogs` com operador, motivo e resumo sanitizado.
+- [x] `pnpm check`, build de produção e testes focados do Console Admin executados com sucesso.
+
+## Atualização de estado — UI operacional do workspace interno — 2026-10-02
+- [x] A rota `/platform-admin/support-workspace` agora permite criar/editar serviços e desativar serviços internos.
+- [x] A tela permite criar/editar profissionais, vincular serviços e configurar jornada semanal.
+- [x] A tela permite reservar atendimentos e avançar/cancelar status da agenda interna.
+- [x] Todas as ações usam as procedures protegidas e exibem o motivo auditável no contexto do operador.
+- [x] O snapshot inclui disponibilidade, descrição e tipo de preço para edição fiel.
+- [x] `pnpm check`, build de produção, testes focados e `git diff --check` passaram.
+
+## Atualização de estado — outbound interativo nativo — 2026-10-02
+- [x] Botões agora são convertidos para `nativeFlowMessage` com `quick_reply` e enviados por `relayMessage`.
+- [x] Listas agora são convertidas para `nativeFlowMessage` com `single_select` e enviados por `relayMessage`.
+- [x] O caminho de payload nativo explícito existente foi preservado para carrosséis e extensões futuras.
+- [x] Foram adicionados testes unitários para os payloads nativos; gateway check e 26 testes focados passaram.
+- [ ] Próximo slice: publicar a branch e acompanhar o CI; depois executar as provas O6 em ambiente persistente, sem usar a máquina do usuário.
+
+## Atualização de estado — agente do suporte em somente simulação — 2026-10-02
+- [x] O tenant `forte-platform-support` agora força `enabled=false` em vínculos, rascunhos e publicações do agente.
+- [x] A UI identifica explicitamente o modo somente simulação e bloqueia a promessa de resposta automática.
+- [x] A simulação local continua auditada, determinística e sem provider externo ou Baileys.
+- [x] `pnpm check`, build e testes de plataforma passaram.
+- [x] A auditoria reversa da PAPI 1.5.1 foi ampliada para além do envio: instâncias, eventos de mensagens e histórico, contatos/JIDs, grupos, perfil, presença, leitura, webhooks/WebSocket, fila, catálogo e integrações específicas.
+- [x] A auditoria concluiu que a PAPI deve ser referência comportamental do Baileys, não dependência do Forte; Typebot, Chatwoot, licenciamento e painel proprietário não serão copiados.
+- [x] O inventário foi registrado em `docs/AUDITORIA-API-OPERACIONAL-PAPI-1.5.1.md` e publicado na branch.
+- [x] O escopo da auditoria completa da Inbox foi preparado em `docs/PROMPT-PROXIMA-IA-AUDITORIA-INBOX-BAILEYS.md`, incluindo microfone, áudio, anexos, botões, listas, Baileys, PAPI e eventos.
+- [ ] A auditoria completa da Inbox ainda não foi executada; foi interrompida a pedido do usuário e deve ser iniciada pela próxima IA usando o prompt dedicado.
+- [ ] Próximo slice: executar o prompt de auditoria e produzir os relatórios, sem liberar provider/resposta automática e sem teste na máquina do usuário.
+
+
+## Atualização de estado — auditoria completa da Inbox/Baileys — 2026-10-02
+
+Esta atualização supersede as linhas 417–418, que descreviam o estado anterior, quando a auditoria ainda não tinha sido executada. A auditoria documental foi concluída no commit de base `db51134abe5bad57bbb5e420b8047ae425746b92`, na branch `feat/o7.15-storage-reconciliation-observability`; o HEAD local e remoto estavam alinhados.
+
+- [x] Relatório principal, análise interativos/áudio, matriz de dez eventos e plano faseado criados em `docs/`.
+- [x] Prompt para próxima IA atualizado sem remover as restrições originais.
+- [x] Suíte Sandbox: 336 testes passaram e 62 foram ignorados; typechecks da raiz e do gateway passaram.
+- [x] Nenhuma lógica de produto foi alterada; `CORE_ONLY_MODE` continua ativo, sem secrets reais, sem merge e sem teste na máquina do utilizador.
+- [ ] Reproduzir em browser autorizado o `NotAllowedError` do microfone; recolher somente diagnóstico de origem/API/permissão/erro, sem captar áudio.
+- [ ] Após autorização explícita para código, priorizar uma fatia isolada MIME/PTT de áudio; tratar lista/Native Flow, eventos/histórico e hardening de anexos separadamente.
+- [ ] Prova posterior em telefone/WhatsApp Web controlado para delivery, receipt e renderização; ainda não realizada.
+
+**Próxima fatia proposta, não autorizada para implementação nesta auditoria:** corrigir e testar o contrato MIME/PTT de áudio em `client → worker → adaptador → gateway`. Se a prioridade for resolver a mensagem de permissão, começar apenas com a fatia de diagnóstico do microfone. Não misturar ambas; não desligar `CORE_ONLY_MODE`; não inferir entrega física a partir de `queued`, do retorno do gateway ou do echo local.
+
+
+## Atualização de estado — desbloqueio da captura do microfone — 2026-10-02
+
+Esta atualização supersede a conclusão anterior de que a causa do microfone permanecia não confirmada. O utilizador forneceu logs de Chrome e Edge: `Permissions policy violation: microphone is not allowed in this document`, `NotAllowedError`, `origin=http://localhost:3002`, contexto seguro e API `mediaDevices` disponível; a permissão do site está em «Permitir». A origem era o header global `microphone=()` em `server/_core/http-security.ts`.
+
+- [x] Alterar a diretiva para `microphone=(self)`; manter `camera=()` e `geolocation=()`.
+- [x] Atualizar `server/_core/http-security.test.ts`.
+- [x] Suite Sandbox: 336 testes passaram, 62 ignorados; `pnpm check` e `git diff --check` passaram.
+- [ ] O utilizador reinicia/atualiza a aplicação local e confirma que o header novo está ativo e a violação `microphone` desapareceu. Esta verificação não exige gravar áudio.
+- [ ] Se persistir `NotAllowedError` com a policy corrigida, investigar permissão OS/dispositivo e `Permissions API`.
+- [ ] Manter MIME/PTT, Native Flow/lista, histórico e events como fatias independentes; não inferir playback/delivery a partir desta correção.
+
+A alteração está apenas no working tree desta execução, sem commit ou merge; não houve captação de áudio pelo agente. O warning separado de `unload` vem do listener do debug collector e não é a causa do microfone.
