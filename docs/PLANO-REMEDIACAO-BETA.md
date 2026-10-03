@@ -101,7 +101,7 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 8. Validar config de produção no startup sem imprimir secrets; impedir `DEMO_MODE`/seed se a base for ambiente de produção.
 9. Manter instalação do utilizador por `git pull` e pelo script oficial já acordado; o reset é sempre opção explícita e scoped à stack do Forte Panel.
 
-**Aceitação:** ensaio de restart, perda de dependência, sessão cifrada, restore completo e alertas num staging isolado; os resultados incluem SHA/digest e evidências redigidas. Sem estes resultados, beta pública permanece bloqueada.
+**Aceitação:** ensaio de restart, perda de dependência, sessão cifrada, restore completo e alertas num staging isolado; os resultados incluem SHA/digest e evidências redigidas. O gate local do SHA actual está verde, mas sem estes resultados de staging a beta pública permanece bloqueada.
 
 ## Fase 8 — CI e qualidade (P1/P2)
 

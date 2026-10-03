@@ -1,6 +1,6 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 3 de outubro de 2026, 09:24 (UTC−3)
+**Atualizado:** 3 de outubro de 2026, 11:40 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
 **Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
 **Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only), `eeaa6d5` (reconciliação idempotente auditável), `a896dbd` (readiness/body do gateway), `bdeff4b` (evidência fail-closed de backup de media), `0a190fb` (documentação de operação), `6582607` (reset de password fail-closed) e `87dfaac` (sink operacional opcional); sem push nesta sessão.
@@ -70,10 +70,10 @@ Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8f
 | Segurança P0 e regressões de tenancy | Storage proxy, REST/queue e SSRF têm guards; `setWorkspaceLifecycleStatus`, `setWorkspacePlan` e mutations de incidentes exigem sessão operadora do admin/workspace correctos e registam `supportSessionId`; o Kanban inicia sessão curta antes de suspender/reativar. O delete Baileys prova ownership; `0017` remove o fallback `forte-demo`; `0060` aplica fencing REST fail-closed. |
 | Migration 0043 e preflight | **Purge explícito de superfícies não-Baileys**; teste PostgreSQL confirma remoção de channels/instances/messages/settings/webhookEvents não-Baileys, preservação Baileys, enum/check/default Baileys-only e inventário read-only reporta candidatos sem revelar valores. |
 | Express 4 async REST | 17 callbacks async protegidos por `asyncRoute`; erros não tratados devolvem JSON 500 genérico; as 6 rotas idempotentes passaram a `return await`; 8 regressões cobrem 7 endpoints e claim failed. |
-| Suite root com `DATABASE_URL` local | **124 ficheiros / 455 testes passaram** na execução completa após esta remediação; sem skips nesta execução. |
+| Suite root com `DATABASE_URL` local | **128 ficheiros / 472 testes passaram** na execução completa no SHA actual; sem skips nesta execução. |
 | Validator de configuração de produção | Passou com configuração sintética segura; sem credenciais reais. |
 | `pnpm build` do painel | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
-| Gateway Baileys | Suite isolada: **18 ficheiros / 93 testes passaram**, sem skips; `npm run check` e `npm run build` passaram. O patch Baileys versionado foi aplicado apenas ao `node_modules` local para validar o teste histórico; não houve alteração do lockfile nem do patch. |
+| Gateway Baileys | Suite isolada: **18 ficheiros / 93 testes passaram**, sem skips; TypeScript check e build passaram com os binários locais. O lifecycle `pnpm` tentou reinstalar dependências e foi bloqueado por scripts ignorados; os artefactos gerados foram removidos e nenhum lockfile foi versionado. |
 | Gateway Baileys — media/MIME/PTT | `sendPayload` já não contorna a política de media; `mediaMimeType` e PTT são preservados até ao payload Baileys; **18 ficheiros / 91 testes** passaram, com check/build verdes. |
 | Compose | YAML analisado com Prettier; `docker compose config` não pôde ser executado porque a CLI Docker não está instalada neste sandbox. Nenhum container/volume foi iniciado ou alterado. |
 | Workflow de publicação | YAML validado; `main` apenas, migrations PostgreSQL e zero-skips antes de `publish`. Ainda não executado no GitHub. |
@@ -86,9 +86,9 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 2. A `0017` foi corrigida e testada. A `0043` agora aplica a decisão explícita Baileys-only: elimina rows/configuração/eventos/mensagens tagged com provider não-Baileys durante o upgrade. O inventário read-only deve ser guardado antes de aplicar a migration real; não executar este upgrade no ambiente do utilizador sem backup/rollback validado.
 3. Resolver os demais high de segurança e transporte Baileys, inclusive encriptação de auth state e semântica real de queued/sent/failed; o guard de media outbound e os limites de media/body estão fechados localmente, sem smoke de imagem ou WhatsApp real.
 4. Fechar os gates de dados e operação: backup/restore completo, readiness, shutdown, email real ou promessa removida, observabilidade e staging controlado.
-5. Repetir typecheck, testes root/gateway, suite PostgreSQL sem skips, builds e workflow no mesmo SHA/digest quando as correções estiverem concluídas.
+5. **Gate local repetido no SHA actual:** typecheck, suite root PostgreSQL sem skips, suite Gateway sem skips, builds e validator de produção passaram. Falta executar workflow/staging autorizado no mesmo SHA/digest.
 6. Manter `publicSignup` fechado até as oito evidências do controlled release estarem comprovadas. Nenhum commit de promoção em `main`, publicação GHCR ou alteração da instalação Docker foi feito.
 
 ## Próxima ação
 
-**Continuar pelos gates de transporte/operação**, agora priorizando contrato de backup externo dos blobs Forge/S3 e alertas externos. A recuperação por email agora falha fechado com `PRECONDITION_FAILED` antes de emitir/persistir token quando não há provider transacional pronto; convites mantêm fallback explícito por link manual. O backup local já verifica DB/sessão e a identidade da chave sem expor o segredo, mas ainda não é prova de backup cifrado/off-host nem de restore completo de blobs/media; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
+**Próximo passo:** executar staging controlado e workflow autorizado com o mesmo SHA/digest, incluindo restore completo de DB/sessão/blobs, smoke de readiness/restart, sink de alertas autorizado e evidências redigidas. O gate local está verde, mas a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
