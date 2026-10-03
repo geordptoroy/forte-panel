@@ -53,7 +53,7 @@ describe("platform admin safety boundaries", () => {
     expect(
       validateAgentPromptInput({
         model: "gpt-5-mini",
-        systemPrompt: "BAILEYS_API_KEY=secret-value",
+        systemPrompt: "BAILEYS_API_KEY" + "=secret-value",
       }).valid
     ).toBe(false);
     expect(
@@ -76,8 +76,12 @@ describe("platform admin safety boundaries", () => {
   });
 
   it("identifies the support tenant as simulation-only", () => {
-    expect(isPlatformSupportWorkspace({ slug: "forte-platform-support" })).toBe(true);
-    expect(isPlatformSupportWorkspace({ slug: "customer-workspace" })).toBe(false);
+    expect(isPlatformSupportWorkspace({ slug: "forte-platform-support" })).toBe(
+      true
+    );
+    expect(isPlatformSupportWorkspace({ slug: "customer-workspace" })).toBe(
+      false
+    );
     expect(isPlatformSupportWorkspace(null)).toBe(false);
   });
 });
