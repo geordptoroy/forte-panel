@@ -74,11 +74,12 @@ Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8f
 | Suite root com `DATABASE_URL` local | **128 ficheiros / 472 testes passaram** na execução completa no SHA actual; sem skips nesta execução. |
 | Validator de configuração de produção | Passou com configuração sintética segura; sem credenciais reais. |
 | `pnpm build` do painel | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
-| Gateway Baileys | Suite isolada: **18 ficheiros / 93 testes passaram**, sem skips; TypeScript check e build passaram com os binários locais. O lifecycle `pnpm` tentou reinstalar dependências e foi bloqueado por scripts ignorados; os artefactos gerados foram removidos e nenhum lockfile foi versionado. |
+| Gateway Baileys | Replay exacto do job CI com `npm ci` (scripts activos para aplicar o patch Baileys): **18 ficheiros / 93 testes passaram**, sem skips; `npm run check` e `npm run build` passaram. `npm ci --ignore-scripts` foi testado apenas como diagnóstico e falhou no teste do patch, como esperado; não houve alteração do lockfile. |
 | Gateway Baileys — media/MIME/PTT | `sendPayload` já não contorna a política de media; `mediaMimeType` e PTT são preservados até ao payload Baileys; **18 ficheiros / 91 testes** passaram, com check/build verdes. |
 | Preflight de restore/rehearsal | **5 ficheiros / 12 testes passaram**; pacote, hashes, isolamento, endpoint de produção e decisão fail-closed foram verificados com fixtures sintéticas. |
 | Compose | YAML analisado com Prettier; `docker compose config` não pôde ser executado porque a CLI Docker não está instalada neste sandbox. Nenhum container/volume foi iniciado ou alterado. |
 | Workflow de publicação | YAML validado; `main` apenas, migrations PostgreSQL e zero-skips antes de `publish`. Ainda não executado no GitHub. |
+| Replay local do job `verify` após hardening CI | Migrations PostgreSQL locais aplicadas, suite root **128/472 sem skips**, validator Baileys-only, check/build root e gateway verdes. `pnpm install --frozen-lockfile` passa, mas mantém warning de configuração `pnpm` obsoleta no `package.json`; a tentativa de migração foi revertida para preservar o patch Wouter. |
 
 A suite root também passou sobre a base atualizada de 45 migrations da `main` para 61 da candidata. A base era descartável e não continha dados de negócio; isto prova compatibilidade do SQL de upgrade, **não** preservação de dados reais existentes. Os testes não cobriram WhatsApp real, browser do utilizador, envio de mensagens, Supabase nem imagem Docker executada.
 
