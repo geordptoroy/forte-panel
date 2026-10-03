@@ -39,6 +39,8 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Adicionada ferramenta `pnpm db:reconcile:idempotency`: listar claims `indeterminate` é sempre read-only; reabrir como `failed` exige workspace/chave exactos, razão, `--confirm`, verificação externa prévia e escreve audit log. A ferramenta não marca `completed` automaticamente.
 - Endurecido o gateway Baileys: `/ready` anónimo continua adequado a probes, mas devolve apenas `status/service`; inventário, erros e estado de instâncias exigem API key. O parser JSON interno rejeita bodies acima de 1 MiB com `413` antes de chamar o manager.
 - Fechado o fallback plaintext em produção: `WHATSAPP_SESSION_ENCRYPTION_KEY` exige 32 bytes AES-256-GCM no arranque do gateway, é obrigatória no Compose e no validator de produção; o fallback `useMultiFileAuthState` permanece apenas para desenvolvimento/testes.
+- Readiness operacional separado de liveness: `/api/v1/health` continua a medir processo, enquanto `/api/v1/ready` exige DB saudável, heartbeat do worker não stale/healthy e gateway Baileys operacional/conectado; a resposta expõe cada check sem segredos.
+- Adicionados healthchecks Compose para Panel e gateway, dependência do worker no gateway saudável e shutdown gracioso: o Panel drena ligações HTTP até 10 s e o worker interrompe o sleep, aguarda o tick corrente e termina limpo em SIGTERM/SIGINT.
 
 ## Autoridade documental
 
@@ -82,4 +84,4 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Próxima ação
 
-**Continuar pela revisão dos restantes endpoints e dos gates de transporte/operação**, agora priorizando readiness dependente de DB/worker e shutdown gracioso. O wrapper Express 4, os limites body/rate, o `404` permanente do inbound genérico, a purge Baileys-only da `0043`, a reconciliação idempotente auditável, o readiness/body hardening do gateway e o auth state cifrado obrigatório em produção foram validados; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
+**Continuar pela revisão dos restantes endpoints e dos gates de transporte/operação**, agora priorizando backup/restore completo, retenção e observabilidade. O wrapper Express 4, os limites body/rate, o `404` permanente do inbound genérico, a purge Baileys-only da `0043`, a reconciliação idempotente auditável, o readiness/body hardening do gateway, o auth state cifrado obrigatório em produção e os probes/shutdown operacionais foram validados; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.

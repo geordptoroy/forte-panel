@@ -92,8 +92,8 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 ## Fase 7 — prontidão operacional e segurança de produção (P1)
 
 1. Encriptar auth state Baileys por configuração obrigatória em produção. Definir rotação e processo de recuperação antes de tornar a chave mandatória para instalações com sessão já existente.
-2. Separar liveness de readiness; readiness precisa verificar DB, migrações, heartbeat do worker e gateway, com critérios explícitos para QR/idle.
-3. Adicionar healthchecks Compose e shutdown gracioso/drain para web e worker.
+2. **Implementado localmente:** separar liveness de readiness; `/api/v1/ready` verifica DB, heartbeat do worker (healthy e não stale) e gateway Baileys conectado. QR/idle são estados não prontos e devolvem `503`.
+3. **Implementado localmente:** healthchecks Compose para Panel/gateway, dependência do worker no gateway saudável e shutdown gracioso/drain para web e worker.
 4. Completar backup/restore incluindo DB, blobs/media, auth session, chave/metadata e qualquer estado necessário; backup cifrado/off-host e rehearsal isolado medindo RPO/RTO.
 5. Configurar retenção explicitamente; manter dry-run até validar tenant scoping e recovery; não apagar dados no escuro.
 6. Resolver entrega de email: ou implementar transporte real testado (convites/reset), ou desativar/remover a promessa de SMTP até existir provider configurado.
@@ -161,6 +161,7 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 - Reconciliação idempotente: teste PostgreSQL cobre listagem workspace-scoped, transição única `indeterminate→failed`, bloqueio de segunda transição e audit log; CLI read-only devolveu zero claims na base local e recusou mutação sem `--confirm`.
 - Gateway endpoint hardening: `/ready` anónimo devolve apenas estado mínimo, enquanto o inventário de instâncias exige API key; o parser JSON interno rejeita bodies acima de 1 MiB com `413` e não chama o manager. Regressões cobrem ambos os comportamentos.
 - Auth state Baileys: `WHATSAPP_SESSION_ENCRYPTION_KEY` é obrigatória em produção, validada como chave AES de 32 bytes, exigida pelo Compose e pelo validator; o fallback `useMultiFileAuthState` continua disponível apenas fora de produção.
+- Readiness/shutdown: testes focados **3 ficheiros / 20 testes** passaram; suite root completa **124 ficheiros / 455 testes**, build root e typecheck passaram. Probe local do bundle confirmou SIGTERM com drain do servidor HTTP.
 - YAML Compose analisado; a CLI Docker não está instalada. Nenhum container ou volume Docker foi iniciado, parado, resetado ou alterado.
 
 ## Pendências e limite de segurança
