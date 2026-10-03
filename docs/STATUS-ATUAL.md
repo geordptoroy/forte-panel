@@ -41,6 +41,7 @@ Foi publicado o commit `cdaa811` apenas em `integration/beta-candidate-2026-10-0
 - Fechado o fallback plaintext em produção: `WHATSAPP_SESSION_ENCRYPTION_KEY` exige 32 bytes AES-256-GCM no arranque do gateway, é obrigatória no Compose e no validator de produção; o fallback `useMultiFileAuthState` permanece apenas para desenvolvimento/testes.
 - Readiness operacional separado de liveness: `/api/v1/health` continua a medir processo, enquanto `/api/v1/ready` exige DB saudável, heartbeat do worker não stale/healthy e gateway Baileys operacional/conectado; a resposta expõe cada check sem segredos.
 - Adicionados healthchecks Compose para Panel e gateway, dependência do worker no gateway saudável e shutdown gracioso: o Panel drena ligações HTTP até 10 s e o worker interrompe o sleep, aguarda o tick corrente e termina limpo em SIGTERM/SIGINT.
+- Reforçado `scripts/backup-restore.sh`: backup/restore exigem `WHATSAPP_SESSION_ENCRYPTION_KEY`, guardam apenas o fingerprint SHA-256 da chave no manifesto e recusam restore antes de `pg_restore` quando a chave não corresponde; o segredo nunca é escrito no backup.
 
 ## Autoridade documental
 
@@ -84,4 +85,4 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Próxima ação
 
-**Continuar pela revisão dos restantes endpoints e dos gates de transporte/operação**, agora priorizando backup/restore completo, retenção e observabilidade. O wrapper Express 4, os limites body/rate, o `404` permanente do inbound genérico, a purge Baileys-only da `0043`, a reconciliação idempotente auditável, o readiness/body hardening do gateway, o auth state cifrado obrigatório em produção e os probes/shutdown operacionais foram validados; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
+**Continuar pela revisão dos restantes endpoints e dos gates de transporte/operação**, agora priorizando retenção explícita, media/blobs e observabilidade externa. O backup local já verifica DB/sessão e a identidade da chave sem expor o segredo, mas ainda não é prova de backup cifrado/off-host nem de restore completo de blobs/media; a candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.

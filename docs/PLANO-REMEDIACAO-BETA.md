@@ -94,7 +94,7 @@ Trabalhar incrementalmente na candidata local. Não fazer uma reescrita total, n
 1. Encriptar auth state Baileys por configuração obrigatória em produção. Definir rotação e processo de recuperação antes de tornar a chave mandatória para instalações com sessão já existente.
 2. **Implementado localmente:** separar liveness de readiness; `/api/v1/ready` verifica DB, heartbeat do worker (healthy e não stale) e gateway Baileys conectado. QR/idle são estados não prontos e devolvem `503`.
 3. **Implementado localmente:** healthchecks Compose para Panel/gateway, dependência do worker no gateway saudável e shutdown gracioso/drain para web e worker.
-4. Completar backup/restore incluindo DB, blobs/media, auth session, chave/metadata e qualquer estado necessário; backup cifrado/off-host e rehearsal isolado medindo RPO/RTO.
+4. **Parcialmente implementado localmente:** `backup-restore.sh` inclui DB e sessão Baileys, exige a chave AES e regista apenas o seu fingerprint, com verificação de correspondência antes do restore destrutivo. Faltam backup cifrado/off-host, blobs/media reais e rehearsal completo medindo RPO/RTO.
 5. Configurar retenção explicitamente; manter dry-run até validar tenant scoping e recovery; não apagar dados no escuro.
 6. Resolver entrega de email: ou implementar transporte real testado (convites/reset), ou desativar/remover a promessa de SMTP até existir provider configurado.
 7. Adicionar logs/métricas/alertas externos com redaction e correlação por request/workspace/instance.
