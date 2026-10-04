@@ -118,3 +118,39 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 - A publicação de `main` terminou com sucesso, mas a primeira tentativa de actualizar apenas o Gateway revelou que `docker-compose.local.yml` não passava `WHATSAPP_SESSION_ENCRYPTION_KEY` ao container, embora a chave já existisse no `.env`.
 - O Gateway foi revertido imediatamente para `ghcr.io/geordptoroy/forte-whatsapp:sha-06cc98e`, mantendo o volume `forte-panel-repo_forte_whatsapp_sessions`; readiness voltou a `{"status":"ready","service":"forte-whatsapp"}`.
 - O Compose foi corrigido para exigir e passar a chave existente. A nova imagem ainda requer uma nova publicação antes de repetir a actualização. O storage SeaweedFS continua separado da stack principal e não foi alterado.
+
+
+## Execução local — PN→LID e fallback Native Flow — 2026-10-04
+
+- Implementado `resolveOutboundJid` em `forte-whatsapp/src/jid-resolution.ts`:
+  - preserva JIDs explícitos, incluindo `@lid`;
+  - consulta `signalRepository.lidMapping.getLIDForPN` do Baileys v7;
+  - usa `getUSyncDevices` como best-effort para preencher o mapping PN→LID quando ainda não existe;
+  - só recua para `@s.whatsapp.net` quando o Baileys não consegue obter um LID.
+- `sendMessage` e `sendPayload` passaram a usar a resolução automática antes de `sendMessage`/`relayMessage`.
+- Native Flow `button` e `list` passaram a enviar fallback textual numerado automaticamente, porque o protocolo não fornece um receipt que indique se o cliente conseguiu renderizar a interface. O fallback é enviado como texto normal e mantém as opções utilizáveis.
+- Corrigido `session-lock.ts`: `ws1` e `ws4` partilham o mesmo processo Node/PID dentro do container; o lock agora usa um conjunto de owners activos no processo e trata lock com PID Docker reutilizado de processo anterior como stale, sem apagar credenciais.
+- Gateway local reconstruído como `forte-whatsapp:local-lid-fallback`, com volume `forte-panel-repo_forte_whatsapp_sessions` preservado. Health `/health` OK; `ws1` e `ws4` voltaram a `Baileys session is open`.
+- Validação de código:
+  - `npm run check`: passou;
+  - `npm run build`: passou;
+  - `src/jid-resolution.test.ts`: 4 testes passaram;
+  - `src/interactive-payload.test.ts`: 3 testes passaram;
+  - suite completa: 97/98 testes passaram; a única falha foi `session-lock.test.ts` na expectativa Unix `0o700` para permissões de directório, recebendo `0o666` no filesystem Windows local — falha ambiental pré-existente, não relacionada à lógica PN→LID.
+- Teste real autorizado para `236450952020113@lid`, instância `ws4`:
+  - `TESTE 21` botão Native Flow: `3EB0BC1D1218997299773E`, aceite por `relayMessage` e `delivered`;
+  - fallback do teste 21: `3EB078AD34906B750D5D6A`, aceite por `sendMessage`;
+  - `TESTE 22` lista Native Flow: `3EB07ABB0673CC3FFE8751`, aceite por `relayMessage` e `delivered`;
+  - fallback do teste 22: `3EB0D9DE76E8A5E78CF049`, aceite por `sendMessage`.
+- Confirmação visual do utilizador por captura: os dois Native Flow (`button` e `list`) continuam a aparecer como **“Não foi possível carregar a mensagem. Use seu celular para acessá-la”**; os dois fallbacks numerados aparecem correctamente com as opções `1` e `2`. Portanto, para a beta, texto numerado é o caminho funcional; Native Flow permanece experimental.
+- Não publicar ainda em `main`/GHCR: a alteração está validada localmente no worktree `forte-panel-button-fix` e requer revisão/integração pelos gates definidos em `AGENTS.md`.
+
+
+## Commit e preparação do GHCR — 2026-10-04
+
+- Correção multiplataforma do teste `session-lock.test.ts`: Linux/macOS continuam a exigir `0o700`/`0o600`; no Windows, onde `fs.stat().mode` não representa ACLs como bits POSIX, o teste valida acesso/existência e a atomicidade/libertação do lock. A implementação continua a executar `chmod`.
+- Commit local criado: `898a20b fix: resolve LID recipients and fallback interactive messages`.
+- Gateway final: **19 ficheiros / 98 testes passaram**, `npm run check` e `npm run build` passaram.
+- Root: `corepack pnpm check` e `corepack pnpm build` passaram. A suite root no Windows executou **96 testes passados / 75 skipped / 10 falhas ambientais**, causadas por ferramentas Unix ausentes ou incompatíveis (`sha256sum`, `find`, `bash` com paths Windows) nos testes de backup/restore; isto será revalidado no runner Linux do workflow GHCR. Não houve falha nos testes relacionados com LID, Native Flow ou lock.
+- O push autorizado deve ser feito sem force-push para `main`; o workflow `.github/workflows/publish-image.yml` publica apenas após o verify Linux completo e mantém os caminhos `ghcr.io/geordptoroy/forte-panel:latest` e `ghcr.io/geordptoroy/forte-whatsapp:latest`.
+- Próximo chat: confirmar o SHA de `main`, o resultado dos jobs `publish-image`/PostgreSQL e os digests GHCR antes de orientar `git pull`/`scripts/start-docker.ps1`.

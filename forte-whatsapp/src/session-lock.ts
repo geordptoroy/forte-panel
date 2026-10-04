@@ -11,6 +11,8 @@ type LockRecord = {
   acquiredAt: string;
 };
 
+const activeSessionLocks = new Set<string>();
+
 export async function ensurePrivateSessionDirectory(sessionPath: string) {
   await fs.mkdir(sessionPath, { recursive: true, mode: 0o700 });
   await fs.chmod(sessionPath, 0o700);
@@ -47,6 +49,7 @@ export async function acquireSessionLock(sessionPath: string): Promise<SessionLo
     const handle = await fs.open(lockPath, "wx", 0o600);
     await handle.writeFile(JSON.stringify(record));
     await handle.close();
+    activeSessionLocks.add(lockPath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     let existing: Partial<LockRecord> = {};
@@ -55,7 +58,10 @@ export async function acquireSessionLock(sessionPath: string): Promise<SessionLo
     } catch {
       throw new Error("Sessão Baileys bloqueada por lock ilegível; remova o lock após confirmar que não há outro processo ativo");
     }
-    if (isProcessAlive(Number(existing.pid))) {
+    if (
+      activeSessionLocks.has(lockPath) ||
+      (Number(existing.pid) !== process.pid && isProcessAlive(Number(existing.pid)))
+    ) {
       throw new Error(`Sessão Baileys já está em uso pelo processo ${existing.pid}`);
     }
     await fs.unlink(lockPath);
@@ -68,6 +74,7 @@ export async function acquireSessionLock(sessionPath: string): Promise<SessionLo
     release: async () => {
       if (released) return;
       released = true;
+      activeSessionLocks.delete(lockPath);
       try {
         const current = JSON.parse(await fs.readFile(lockPath, "utf8")) as Partial<LockRecord>;
         if (Number(current.pid) === process.pid) await fs.unlink(lockPath);

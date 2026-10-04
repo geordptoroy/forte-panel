@@ -59,8 +59,16 @@ describe("Baileys session lock", () => {
     const lock = await acquireSessionLock(directory);
     const directoryMode = (await fs.stat(directory)).mode & 0o777;
     const lockMode = (await fs.stat(lock.lockPath)).mode & 0o777;
-    expect(directoryMode).toBe(0o700);
-    expect(lockMode).toBe(0o600);
+    if (process.platform === "win32") {
+      // Windows does not expose POSIX permission bits through fs.stat().mode;
+      // the implementation still calls chmod, but Node reports a synthetic
+      // mode (commonly 0o666) for the ACL-backed directory/file.
+      expect(await fs.access(directory)).toBeUndefined();
+      expect(await fs.access(lock.lockPath)).toBeUndefined();
+    } else {
+      expect(directoryMode).toBe(0o700);
+      expect(lockMode).toBe(0o600);
+    }
     await lock.release();
   });
 });

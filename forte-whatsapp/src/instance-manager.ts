@@ -42,6 +42,7 @@ import {
 import { SendLedger, stableFingerprint } from "./send-ledger.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
 import { buildNativeInteractivePayload } from "./interactive-payload.js";
+import { resolveOutboundJid } from "./jid-resolution.js";
 import {
   normalizeBaileysMessage,
   normalizeBaileysOutgoingMessage,
@@ -77,6 +78,91 @@ function isNativeInteractivePayload(payload: AnyMessageContent) {
   }
   return "interactiveMessage" in record;
 }
+
+function interactiveFallbackText(
+  messageType: "button" | "list",
+  content: string,
+  metadata: Record<string, unknown>
+) {
+  if (typeof metadata.fallbackText === "string" && metadata.fallbackText.trim())
+    return metadata.fallbackText.trim();
+
+  const options: string[] = [];
+  if (messageType === "button") {
+    for (const button of Array.isArray(metadata.buttons) ? metadata.buttons : []) {
+      const item = button as Record<string, unknown>;
+      const buttonText = item.buttonText;
+      const label =
+        buttonText && typeof buttonText === "object"
+          ? (buttonText as Record<string, unknown>).displayText
+          : undefined;
+      if (typeof label === "string" && label.trim()) options.push(label.trim());
+    }
+  } else {
+    for (const section of Array.isArray(metadata.sections) ? metadata.sections : []) {
+      const rows = (section as Record<string, unknown>).rows;
+      if (!Array.isArray(rows)) continue;
+      for (const row of rows) {
+        const title = (row as Record<string, unknown>).title;
+        if (typeof title === "string" && title.trim()) options.push(title.trim());
+      }
+    }
+  }
+  if (!options.length) return undefined;
+  return content + "\n\nSe os botões não aparecerem, responda com o número:\n" + options
+    .map((option, index) => String(index + 1) + " - " + option)
+    .join("\n");
+}
+
+function interactiveFallbackFromPayload(payload: AnyMessageContent) {
+  const root = payload as Record<string, unknown>;
+  const viewOnce = root.viewOnceMessage;
+  const wrapped =
+    viewOnce && typeof viewOnce === "object"
+      ? (viewOnce as Record<string, unknown>).message
+      : root;
+  if (!wrapped || typeof wrapped !== "object") return undefined;
+  const interactive = (wrapped as Record<string, unknown>).interactiveMessage;
+  if (!interactive || typeof interactive !== "object") return undefined;
+  const value = interactive as Record<string, unknown>;
+  const body = value.body;
+  const content =
+    body && typeof body === "object" && typeof (body as Record<string, unknown>).text === "string"
+      ? ((body as Record<string, unknown>).text as string)
+      : "";
+  const nativeFlow = value.nativeFlowMessage;
+  const buttons =
+    nativeFlow && typeof nativeFlow === "object"
+      ? (nativeFlow as Record<string, unknown>).buttons
+      : undefined;
+  if (!Array.isArray(buttons)) return undefined;
+  const options = buttons.flatMap(button => {
+    const item = button as Record<string, unknown>;
+    if (typeof item.buttonParamsJson !== "string") return [];
+    try {
+      const params = JSON.parse(item.buttonParamsJson) as Record<string, unknown>;
+      if (typeof params.display_text === "string") return [params.display_text];
+      const sections = Array.isArray(params.sections) ? params.sections : [];
+      return sections.flatMap(section => {
+        const rows = (section as Record<string, unknown>).rows;
+        return Array.isArray(rows)
+          ? rows.flatMap(row =>
+              typeof (row as Record<string, unknown>).title === "string"
+                ? [(row as Record<string, unknown>).title as string]
+                : []
+            )
+          : [];
+      });
+    } catch {
+      return [];
+    }
+  });
+  if (!options.length) return undefined;
+  return content + "\n\nSe a interação não aparecer, responda com o número:\n" + options
+    .map((option, index) => String(index + 1) + " - " + option)
+    .join("\n");
+}
+
 
 export type InstanceStatus =
   | "idle"
@@ -582,9 +668,7 @@ export class InstanceManager {
       !isAllowedOutboundMediaReference(content)
     )
       throw new Error("Mídia de saída exige uma URL HTTPS privada ou data URL válida");
-    const jid = phone.includes("@")
-      ? phone
-      : phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
+    const jid = await resolveOutboundJid(this.socket, phone);
     let message: AnyMessageContent;
     const mediaReference = decodeAllowedOutboundMediaData(content);
     const mediaSource = mediaReference
@@ -658,6 +742,10 @@ export class InstanceManager {
     } else {
       throw new Error(`Tipo de mensagem não suportado: ${messageType}`);
     }
+    const fallbackText =
+      messageType === "button" || messageType === "list"
+        ? interactiveFallbackText(messageType, content, metadata)
+        : undefined;
     const echo = normalizeBaileysOutgoingMessage(message);
     this.panelMessageEchoes.rememberPending(
       jid,
@@ -686,6 +774,8 @@ export class InstanceManager {
         echo.echoContent
       );
       this.flushPendingDeliveryUpdate(externalId);
+      if (fallbackText)
+        await this.sendInteractiveFallback(jid, fallbackText, externalId);
       return externalId;
     } catch (error) {
       this.panelMessageEchoes.forgetPending(
@@ -716,9 +806,8 @@ export class InstanceManager {
   ): Promise<string> {
     if (!this.socket || this.snapshot.status !== "connected")
       throw new Error("WhatsApp instance is not connected");
-    const jid = phone.includes("@")
-      ? phone
-      : phone.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
+    const jid = await resolveOutboundJid(this.socket, phone);
+    const fallbackText = interactiveFallbackFromPayload(payload);
     const echo = normalizeBaileysOutgoingMessage(payload);
     this.panelMessageEchoes.rememberPending(
       jid,
@@ -749,6 +838,8 @@ export class InstanceManager {
           echo.echoContent
         );
         this.flushPendingDeliveryUpdate(externalId);
+        if (fallbackText)
+          await this.sendInteractiveFallback(jid, fallbackText, externalId);
         return externalId;
       }
       const result = await this.socket.sendMessage(jid, payload);
@@ -760,6 +851,8 @@ export class InstanceManager {
         echo.echoContent
       );
       this.flushPendingDeliveryUpdate(externalId);
+      if (fallbackText)
+        await this.sendInteractiveFallback(jid, fallbackText, externalId);
       return externalId;
     } catch (error) {
       this.panelMessageEchoes.forgetPending(
@@ -768,6 +861,48 @@ export class InstanceManager {
         echo.echoContent
       );
       throw error;
+    }
+  }
+
+  private async sendInteractiveFallback(
+    jid: string,
+    text: string,
+    sourceMessageId: string
+  ) {
+    if (!this.socket) return;
+    const message: AnyMessageContent = { text };
+    const echo = normalizeBaileysOutgoingMessage(message);
+    this.panelMessageEchoes.rememberPending(jid, echo.messageType, echo.echoContent);
+    try {
+      const result = await this.socket.sendMessage(jid, message);
+      const externalId = result?.key?.id ?? crypto.randomUUID();
+      logger.info(
+        {
+          instanceId: this.instanceId,
+          sourceMessageId,
+          transport: "sendMessage",
+          jidFingerprint: outboundJidFingerprint(jid),
+          externalId,
+        },
+        "Sent Native Flow text fallback"
+      );
+      this.panelMessageEchoes.rememberSentMessage(
+        externalId,
+        jid,
+        echo.messageType,
+        echo.echoContent
+      );
+      this.flushPendingDeliveryUpdate(externalId);
+    } catch (error) {
+      this.panelMessageEchoes.forgetPending(jid, echo.messageType, echo.echoContent);
+      logger.warn(
+        {
+          instanceId: this.instanceId,
+          sourceMessageId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to send Native Flow text fallback"
+      );
     }
   }
 
