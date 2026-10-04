@@ -60,6 +60,10 @@ function instanceScopedEventId(instanceId: string, sourceId: string) {
     .digest("hex")}`;
 }
 
+function outboundJidFingerprint(jid: string) {
+  return crypto.createHash("sha256").update(jid).digest("hex").slice(0, 12);
+}
+
 function isNativeInteractivePayload(payload: AnyMessageContent) {
   const record = payload as Record<string, unknown>;
   const viewOnce = record.viewOnceMessage;
@@ -661,9 +665,20 @@ export class InstanceManager {
       echo.echoContent
     );
     try {
-      const externalId = isNativeInteractivePayload(message)
-        ? await this.socket.relayMessage(jid, message as never, { messageId: crypto.randomUUID() })
+      const usesRelay = isNativeInteractivePayload(message);
+      const externalId = usesRelay
+        ? await this.socket.relayMessage(jid, message as never, {})
         : (await this.socket.sendMessage(jid, message))?.key?.id ?? crypto.randomUUID();
+      logger.info(
+        {
+          instanceId: this.instanceId,
+          messageType,
+          transport: usesRelay ? "relayMessage" : "sendMessage",
+          jidFingerprint: outboundJidFingerprint(jid),
+          externalId,
+        },
+        "Baileys accepted outbound message"
+      );
       this.panelMessageEchoes.rememberSentMessage(
         externalId,
         jid,
@@ -715,7 +730,17 @@ export class InstanceManager {
         const externalId = await this.socket.relayMessage(
           jid,
           payload as never,
-          { messageId: crypto.randomUUID() }
+          {}
+        );
+        logger.info(
+          {
+            instanceId: this.instanceId,
+            messageType: echo.messageType,
+            transport: "relayMessage",
+            jidFingerprint: outboundJidFingerprint(jid),
+            externalId,
+          },
+          "Baileys accepted outbound payload"
         );
         this.panelMessageEchoes.rememberSentMessage(
           externalId,
@@ -754,6 +779,10 @@ export class InstanceManager {
     if (!messageId || update.key?.fromMe !== true) return;
     const status = normalizeBaileysMessageStatus(update.update?.status);
     if (!status) return;
+    logger.info(
+      { instanceId: this.instanceId, messageId, status },
+      "Baileys outbound delivery status"
+    );
     if (this.panelMessageEchoes.hasSentId(messageId)) {
       this.enqueueDeliveryStatus(messageId, status);
       return;

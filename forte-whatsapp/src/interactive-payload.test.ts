@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { proto } from "baileys";
 import { buildNativeInteractivePayload } from "./interactive-payload.js";
 
 describe("native interactive payloads", () => {
@@ -24,5 +25,23 @@ describe("native interactive payloads", () => {
     const button = payload.interactiveMessage.nativeFlowMessage.buttons[0];
     expect(button.name).toBe("single_select");
     expect(JSON.parse(button.buttonParamsJson)).toEqual({ title: "Abrir", sections });
+  });
+
+  it("round-trips the direct envelope through Baileys protobuf", () => {
+    const payload = buildNativeInteractivePayload("button", "Escolha", {
+      buttons: [{ buttonId: "yes", buttonText: { displayText: "Sim" } }],
+    });
+    const encoded = proto.Message.encode(proto.Message.fromObject(payload as never)).finish();
+    const decoded = proto.Message.toObject(proto.Message.decode(encoded), {
+      longs: String,
+      enums: String,
+      defaults: false,
+    }) as any;
+    expect(decoded.viewOnceMessage).toBeUndefined();
+    expect(decoded.interactiveMessage.nativeFlowMessage.messageVersion).toBe(1);
+    expect(JSON.parse(decoded.interactiveMessage.nativeFlowMessage.buttons[0].buttonParamsJson)).toEqual({
+      display_text: "Sim",
+      id: "yes",
+    });
   });
 });

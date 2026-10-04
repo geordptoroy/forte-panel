@@ -98,3 +98,10 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 ## Próxima ação
 
 **Próximo passo:** executar staging controlado e workflow autorizado com o mesmo SHA/digest, incluindo restore completo de DB/sessão/blobs, smoke de readiness/restart, sink de alertas autorizado e evidências redigidas. O preflight local está verde e o smoke sem `STAGING_BASE_URL` falha correctamente com exit code 2. A execução real permanece bloqueada: este Sandbox não tem Docker, URL de staging nem secrets de staging. A candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
+
+## Investigação de interactive messages — 2026-10-03
+
+- A auditoria `docs/AUDITORIA-REVERSA-PAPI-1.5.1-PARA-FORTE.md` confirma `relayMessage({ interactiveMessage })` para botões modernos, `relayMessage({ listMessage })` para listas legadas e `sendMessage({ poll })` para enquetes. A PAPI é apenas referência de engenharia; não é dependência do produto.
+- Na stack Docker local, 5 mensagens `button` ficaram `outbound/sent` com `externalId` e sem `lastError`; isto prova apenas aceitação local do Baileys, não entrega nem renderização no telemóvel. Os logs não tinham erro específico de interactive message; houve erros de reconexão `408/515` e `PayloadTooLargeError` separado, relativo a body grande.
+- A candidata `fix/interactive-buttons` alinha as opções de `relayMessage` com a chamada auditada (`{}`), regista de forma sanitizada a aceitação/receipt e acrescenta round-trip protobuf do envelope directo. Testes focados (46), check e build do Gateway passaram; a suite completa teve uma falha ambiental Windows no modo `0o700` de `session-lock.test.ts` (17/18 ficheiros, 93/94 testes).
+- Não foi feito envio físico adicional, nem alterada a sessão WhatsApp, até existir número de teste dedicado e autorização específica.
