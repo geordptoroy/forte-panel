@@ -154,3 +154,8 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 - Root: `corepack pnpm check` e `corepack pnpm build` passaram. A suite root no Windows executou **96 testes passados / 75 skipped / 10 falhas ambientais**, causadas por ferramentas Unix ausentes ou incompatíveis (`sha256sum`, `find`, `bash` com paths Windows) nos testes de backup/restore; isto será revalidado no runner Linux do workflow GHCR. Não houve falha nos testes relacionados com LID, Native Flow ou lock.
 - O push autorizado deve ser feito sem force-push para `main`; o workflow `.github/workflows/publish-image.yml` publica apenas após o verify Linux completo e mantém os caminhos `ghcr.io/geordptoroy/forte-panel:latest` e `ghcr.io/geordptoroy/forte-whatsapp:latest`.
 - Próximo chat: confirmar o SHA de `main`, o resultado dos jobs `publish-image`/PostgreSQL e os digests GHCR antes de orientar `git pull`/`scripts/start-docker.ps1`.
+
+
+## Estado após push para main — 2026-10-04
+
+O commit de código `6b9ea814e8bd656b318ab82bd1a84429c927c789` foi enviado com sucesso para `origin/main` por fast-forward (`172f265..6b9ea81`), sem force-push. O workflow `publish-image.yml` deve agora executar o verify Linux e, se todos os gates passarem, publicar `ghcr.io/geordptoroy/forte-panel:latest` e `ghcr.io/geordptoroy/forte-whatsapp:latest`. O GitHub CLI não está instalado neste Windows, portanto o próximo chat deve consultar os jobs e digests no GitHub antes de anunciar a publicação ou atualizar o Docker local. A suite root local teve apenas as limitações Windows documentadas acima; o runner Linux é a validação autoritativa para os testes que dependem de `bash`, `find` e `sha256sum`.
