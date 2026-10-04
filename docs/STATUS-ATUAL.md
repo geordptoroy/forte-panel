@@ -105,3 +105,10 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 - Na stack Docker local, 5 mensagens `button` ficaram `outbound/sent` com `externalId` e sem `lastError`; isto prova apenas aceitação local do Baileys, não entrega nem renderização no telemóvel. Os logs não tinham erro específico de interactive message; houve erros de reconexão `408/515` e `PayloadTooLargeError` separado, relativo a body grande.
 - A candidata `fix/interactive-buttons` alinha as opções de `relayMessage` com a chamada auditada (`{}`), regista de forma sanitizada a aceitação/receipt e acrescenta round-trip protobuf do envelope directo. Testes focados (46), check e build do Gateway passaram; a suite completa teve uma falha ambiental Windows no modo `0o700` de `session-lock.test.ts` (17/18 ficheiros, 93/94 testes).
 - Não foi feito envio físico adicional, nem alterada a sessão WhatsApp, até existir número de teste dedicado e autorização específica.
+
+## Requisitos futuros confirmados — autenticação por WhatsApp
+
+- Substituir o login principal por email por login através do **número de WhatsApp** associado à conta.
+- No recuperador de conta, enviar o código de verificação pela **instância Baileys disponível e seleccionada no Console Admin**, com auditoria da instância, workspace e administrador responsável.
+- Tratar esta mudança como backlog de produto: ainda não alterar o login, password reset, modelo de conta, UI ou contratos de API.
+- Antes da implementação, definir número normalizado, posse/verificação do número, expiração e limite de tentativas do código, fallback operacional e comportamento quando não houver instância disponível.
