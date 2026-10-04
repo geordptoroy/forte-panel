@@ -14,6 +14,12 @@ export const interactiveMetadataSchema = z
     title: z.string().trim().max(120).optional(),
     buttonText: z.string().trim().min(1).max(40).optional(),
     footer: z.string().trim().max(200).optional(),
+    pixKey: z.string().trim().min(1).max(200).optional(),
+    pixKeyType: z.string().trim().min(1).max(32).optional(),
+    merchantName: z.string().trim().min(1).max(120).optional(),
+    amountCents: z.number().int().positive().max(100_000_000).optional(),
+    referenceId: z.string().trim().max(200).optional(),
+    orderRequestId: z.string().trim().max(200).optional(),
     buttons: z.array(buttonDefinitionSchema).min(1).max(10).optional(),
     sections: z
       .array(z.record(z.string(), z.unknown()))
@@ -42,7 +48,8 @@ export function validateInteractiveMessage(input: {
   const metadata = interactiveMetadataSchema.parse(input.metadata ?? {});
   if (
     input.messageType === "button" &&
-    (!metadata.buttons || metadata.buttons.length < 1)
+    (!metadata.buttons || metadata.buttons.length < 1) &&
+    !metadata.pixKey
   )
     throw new Error("Mensagem de botões exige de 1 a 10 opções");
   if (

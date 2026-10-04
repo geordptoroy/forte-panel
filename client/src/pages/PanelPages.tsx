@@ -617,6 +617,7 @@ function MessageBubble({ message }: { message: Message }) {
           ? "Vídeo recebido"
           : "Documento recebido";
   const structuredTypes = [
+    "button",
     "list",
     "poll",
     "carousel",
@@ -631,15 +632,20 @@ function MessageBubble({ message }: { message: Message }) {
     metadata.payload && typeof metadata.payload === "object"
       ? (metadata.payload as Record<string, unknown>)
       : undefined;
-  const structuredSummary = structuredPayload
-    ? String(
-        structuredPayload.title ??
-          structuredPayload.text ??
-          structuredPayload.name ??
-          structuredPayload.caption ??
-          "Payload estruturado recebido"
-      )
-    : "Payload estruturado recebido";
+  const structuredSummary =
+    typeof metadata.pixKey === "string"
+      ? `Pix${typeof metadata.amountCents === "number" ? ` · R$ ${(metadata.amountCents / 100).toFixed(2).replace(".", ",")}` : " · copiar chave"}`
+      : buttons.length > 0
+        ? `${buttons.length} ${buttons.length === 1 ? "botão" : "botões"} interactivo${buttons.length === 1 ? "" : "s"}`
+        : structuredPayload
+          ? String(
+              structuredPayload.title ??
+                structuredPayload.text ??
+                structuredPayload.name ??
+                structuredPayload.caption ??
+                "Payload estruturado recebido"
+            )
+          : "Botão interactivo";
   return (
     <div className={`message-row from-${message.sender}`}>
       <div className="message-bubble">
@@ -1169,12 +1175,16 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
   const [sendInstanceId, setSendInstanceId] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
   const [draft, setDraft] = useState("");
-  const [interactiveType, setInteractiveType] = useState<"text" | "button" | "list" | "poll" | "carousel">("text");
+  const [interactiveType, setInteractiveType] = useState<"text" | "button" | "list" | "poll" | "carousel" | "pix">("text");
   const [interactiveOptions, setInteractiveOptions] = useState("Sim\nNão");
   const [interactiveButtonText, setInteractiveButtonText] = useState("Ver opções");
   const [interactiveHeader, setInteractiveHeader] = useState("");
   const [interactiveFooter, setInteractiveFooter] = useState("");
   const [carouselPayload, setCarouselPayload] = useState('{"cards":[]}');
+  const [pixKey, setPixKey] = useState("");
+  const [pixKeyType, setPixKeyType] = useState("CPF");
+  const [pixMerchantName, setPixMerchantName] = useState("");
+  const [pixAmount, setPixAmount] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingError, setRecordingError] = useState("");
@@ -1338,6 +1348,11 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       setInteractiveOptions("Sim\nNão");
       setInteractiveHeader("");
       setInteractiveFooter("");
+      setCarouselPayload('{"cards":[]}');
+      setPixKey("");
+      setPixKeyType("CPF");
+      setPixMerchantName("");
+      setPixAmount("");
       clearAttachment();
       await refresh();
     },
@@ -1455,6 +1470,35 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
       .split("\n")
       .map(option => option.trim())
       .filter(Boolean);
+    if (interactiveType === "pix") {
+      if (!pixKey.trim()) {
+        setRecordingError("Informe a chave Pix.");
+        return;
+      }
+      const rawAmount = pixAmount.trim();
+      const normalizedAmount = rawAmount.includes(",")
+        ? rawAmount.replace(/\./g, "").replace(",", ".")
+        : rawAmount;
+      const amount = rawAmount ? Number(normalizedAmount) : undefined;
+      if (amount !== undefined && (!Number.isFinite(amount) || amount <= 0)) {
+        setRecordingError("Informe um valor Pix em reais, por exemplo 10,50.");
+        return;
+      }
+      sendMutation.mutate({
+        contactId: selectedNumericId,
+        content: "Pix",
+        messageType: "button",
+        metadata: {
+          disableFallback: true,
+          pixKey: pixKey.trim(),
+          pixKeyType,
+          ...(pixMerchantName.trim() ? { merchantName: pixMerchantName.trim() } : {}),
+          ...(amount !== undefined ? { amountCents: Math.round(amount * 100) } : {}),
+        },
+        instanceIds: outboundInstanceIds,
+      });
+      return;
+    }
     if (interactiveType === "carousel") {
       try {
         const parsed = JSON.parse(carouselPayload) as Record<string, unknown>;
@@ -1464,7 +1508,7 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
           contactId: selectedNumericId,
           content: draft.trim() || "Carrossel",
           messageType: "carousel",
-          metadata: { payload: { interactiveMessage: { carouselMessage: parsed } } },
+          metadata: { disableFallback: true, payload: { interactiveMessage: { carouselMessage: parsed } } },
           instanceIds: outboundInstanceIds,
         });
         return;
@@ -1475,18 +1519,20 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
     }
     const interactiveMetadata =
       interactiveType === "button"
-        ? {
+          ? {
             ...(interactiveHeader.trim() ? { title: interactiveHeader.trim() } : {}),
             ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
-            buttons: options.slice(0, 3).map((option, index) => ({
-              buttonId: `option-${index + 1}`,
-              buttonText: { displayText: option },
+            disableFallback: true,
+            buttons: options.slice(0, 10).map((option, index) => ({
+              id: `option-${index + 1}`,
+              displayText: option,
             })),
           }
         : interactiveType === "list"
           ? {
               ...(interactiveHeader.trim() ? { title: interactiveHeader.trim() } : {}),
               ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
+              disableFallback: true,
               buttonText: interactiveButtonText,
               sections: [{ title: "Opções", rows: options.slice(0, 10).map((option, index) => ({ rowId: `option-${index + 1}`, title: option })) }],
             }
@@ -1839,23 +1885,50 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
                   <option value="list">Lista</option>
                   <option value="poll">Enquete</option>
                   <option value="carousel">Carousel (JSON Baileys)</option>
+                  <option value="pix">Botão Pix</option>
                 </select>
               </label>
+              {interactiveType === "pix" && (
+                <>
+                  <label>
+                    <span>Chave Pix</span>
+                    <input className="input-control" value={pixKey} onChange={event => setPixKey(event.target.value)} placeholder="CPF, telefone, e-mail ou EVP" />
+                  </label>
+                  <label>
+                    <span>Tipo da chave</span>
+                    <select className="select-control" value={pixKeyType} onChange={event => setPixKeyType(event.target.value)}>
+                      <option value="CPF">CPF</option>
+                      <option value="CNPJ">CNPJ</option>
+                      <option value="PHONE">Telefone</option>
+                      <option value="EMAIL">E-mail</option>
+                      <option value="EVP">EVP</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Nome do recebedor (opcional)</span>
+                    <input className="input-control" value={pixMerchantName} onChange={event => setPixMerchantName(event.target.value)} placeholder="Rafael" maxLength={120} />
+                  </label>
+                  <label>
+                    <span>Valor em reais (opcional)</span>
+                    <input className="input-control" inputMode="decimal" value={pixAmount} onChange={event => setPixAmount(event.target.value)} placeholder="10,50" />
+                  </label>
+                </>
+              )}
               {interactiveType === "carousel" && (
                 <label>
                   <span>InteractiveMessage.carouselMessage</span>
                   <textarea className="textarea-control" value={carouselPayload} onChange={event => setCarouselPayload(event.target.value)} rows={6} />
                 </label>
               )}
-              {interactiveType !== "carousel" && <label>
+              {interactiveType !== "carousel" && interactiveType !== "pix" && <label>
                 <span>Opções, uma por linha</span>
                 <textarea className="textarea-control" value={interactiveOptions} onChange={event => setInteractiveOptions(event.target.value)} rows={3} />
               </label>}
-              {interactiveType !== "poll" && <label>
+              {interactiveType !== "poll" && interactiveType !== "pix" && <label>
                 <span>Cabeçalho (opcional)</span>
                 <input className="input-control" value={interactiveHeader} onChange={event => setInteractiveHeader(event.target.value)} placeholder="Ex.: Atendimento Forte" maxLength={120} />
               </label>}
-              {interactiveType !== "poll" && <label>
+              {interactiveType !== "poll" && interactiveType !== "pix" && <label>
                 <span>Rodapé (opcional)</span>
                 <input className="input-control" value={interactiveFooter} onChange={event => setInteractiveFooter(event.target.value)} placeholder="Ex.: Escolha uma opção" maxLength={200} />
               </label>}

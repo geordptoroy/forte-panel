@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { AnyMessageContent } from "baileys";
 
 export type PixPaymentOptions = {
@@ -26,9 +27,6 @@ export function buildPixPaymentPayload(
 ): AnyMessageContent {
   const hasAmount = options.amountCents !== undefined;
   const params: Record<string, unknown> = {
-    reference_id: options.referenceId ?? "",
-    type: hasAmount ? "physical-goods" : "",
-    payment_configuration: hasAmount ? "merchant_categorization_code" : "",
     payment_settings: [
       {
         type: "pix_static_code",
@@ -40,10 +38,13 @@ export function buildPixPaymentPayload(
       },
     ],
     currency: options.currency ?? "BRL",
-    order_request_id: options.orderRequestId ?? "",
   };
 
   if (hasAmount) {
+    params.reference_id = options.referenceId ?? crypto.randomUUID();
+    params.type = "physical-goods";
+    params.payment_configuration = "merchant_categorization_code";
+    params.order_request_id = options.orderRequestId ?? crypto.randomUUID();
     params.total_amount = amount(options.amountCents!);
   }
 

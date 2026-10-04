@@ -7944,6 +7944,7 @@ export async function queueOutboundMessage(
     | "contact"
     | "poll"
     | "list"
+    | "carousel"
     | "react"
     | "album"
     | "event" = "text",

@@ -26,6 +26,10 @@ describe("native Pix payment payload", () => {
     );
 
     expect(button.name).toBe("payment_info");
+    expect(params.reference_id).toBeUndefined();
+    expect(params.type).toBeUndefined();
+    expect(params.payment_configuration).toBeUndefined();
+    expect(params.order_request_id).toBeUndefined();
     expect(params.total_amount).toBeUndefined();
     expect(params.payment_settings[0].pix_static_code).toMatchObject({
       merchant_name: "Rafael",

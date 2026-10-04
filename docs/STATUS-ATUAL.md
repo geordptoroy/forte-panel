@@ -255,3 +255,30 @@ Foram enviadas quatro mensagens de teste de R$ 10,00, todas com estado `pending`
 A candidata agora inclui, no mesmo provider Baileys, botões Native Flow (até dez), listas `single_select` com fallback, carrosséis com mídia preparada, enquetes nativas, wire nodes compatíveis e Pix nativo com/sem valor. O diagnóstico temporário de payload recebida foi removido antes da preparação do PR.
 
 Gates concluídos: Gateway `npm test` (21 ficheiros, 105 testes), `npm run check` e `npm run build`; aplicação raiz `pnpm check`, testes direccionados de interactivos/Pix/wire (9 testes) e `pnpm build`. A suite raiz completa executou 404 testes passados e 75 skips, mas 10 testes de backup/restore falharam por dependências/scripts Unix indisponíveis no Windows (`sha256sum`, Bash e caminhos POSIX); não são falhas dos interactivos. A candidata continua local na branch `fix/papi-compatible-interactives`; sem merge em `main`, sem publicação GHCR.
+
+
+## Validação local no PC após integração UI/IA/Pix — 2026-10-04 03:29
+
+- `tsc --noEmit`, build raiz, Gateway `check` e Gateway `build`: passaram.
+- Gateway: suite completa verde, **21 ficheiros / 105 testes**.
+- Suite raiz: **98 ficheiros / 407 testes passaram / 75 skips** quando executada com ferramentas Unix disponíveis; 7 falhas permanecem apenas nos testes de backup/restore/media por incompatibilidade de `tar` com caminhos Windows e pela evidência de media sem exportação/restauro real. A execução sem Git Bash apresentou ainda as falhas esperadas de `sha256sum`/`bash` ausentes.
+- Compose: `docker-compose` está instalado, mas a validação sem um `.env` seguro falha closed por variáveis obrigatórias ausentes; nenhum serviço foi iniciado ou alterado.
+- Runtime activo: Panel responde health `ok`, Gateway principal e disposable respondem `ready`, mas o Panel responde readiness `503` porque a imagem activa é antiga (`sha-06cc98e`) e a fingerprint da `BAILEYS_API_KEY` configurada no Panel não coincide com a do Gateway. Não foi feito restart, troca de imagem, pairing, limpeza de sessão ou envio real.
+- A candidata continua local em `fix/papi-compatible-interactives`, sem merge em `main` e sem publicação GHCR.
+
+
+## Imagens e stack disposable candidata no PC — 2026-10-04 03:50
+
+- Imagens locais construídas com sucesso a partir da candidata `a59cba8`: `forte-panel:candidate-interactives-a59cba8` (ID `4d6a704ba4a2`) e `forte-whatsapp:candidate-interactives-a59cba8` (ID `9d5ab39f3770`).
+- Foi criada a configuração disposable em `.work/disposable-candidate/`, usando o projecto Compose `forte-candidate-interactives`, portas Panel `3302`, Gateway `3310`, PostgreSQL `55432` e SeaweedFS `8334`, rede e volumes próprios, e segredos efémeros locais.
+- Migrations concluídas; Panel health `200`; worker activo; Gateway health/readiness `200`. O Panel readiness devolve `503` porque o Gateway disposable não tem sessão WhatsApp emparelhada (`status` não conectado), não por falha de build ou contrato.
+- A stack original e os seus volumes permanecem activos e intocados. Não houve pairing, envio real, reset nem alteração de dados da instalação existente.
+
+
+## Correcção UI de botões/fallback e Pix em reais — 2026-10-04 04:29
+
+- Corrigida a divergência entre o formato de botões produzido pela UI (`buttonId/buttonText`) e o contrato REST (`id/displayText`), que causava o texto `[button]` no histórico.
+- A UI e a IA passam a enviar `disableFallback: true`; o Gateway deixou de gerar fallback textual automático para botões. Listas/carrosséis continuam com fallback configurável.
+- O renderer da Inbox passa a tratar `button` como mensagem estruturada e mostra quantidade de botões ou resumo Pix, em vez de exibir `[button]`.
+- O campo Pix agora aceita reais, incluindo vírgula decimal: `10,50` é convertido para `1050` centavos. Campo vazio continua a gerar `payment_info` sem cobrança; somente valor preenchido gera `review_and_pay`.
+- Check do Gateway e suite completa: **105/105 testes passaram**. Imagens reconstruídas: Panel `sha256:c1056d50c278...`, Gateway `sha256:350a9febbe59...`. A stack candidate foi recriada com os volumes disposable; Panel health e Gateway readiness respondem `200`.

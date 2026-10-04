@@ -203,6 +203,13 @@ const messageSchema = z
         caption: z.string().max(4000).optional(),
         fileName: z.string().max(255).optional(),
         ptv: z.boolean().optional(),
+        disableFallback: z.boolean().optional(),
+        pixKey: z.string().trim().min(1).max(200).optional(),
+        pixKeyType: z.string().trim().min(1).max(32).optional(),
+        merchantName: z.string().trim().min(1).max(120).optional(),
+        amountCents: z.number().int().positive().max(100_000_000).optional(),
+        referenceId: z.string().trim().max(200).optional(),
+        orderRequestId: z.string().trim().max(200).optional(),
         payload: z.record(z.string(), z.unknown()).optional(),
       })
       .optional(),
@@ -213,7 +220,7 @@ const messageSchema = z
   .refine(
     input =>
       input.messageType !== "button" ||
-      Boolean(input.metadata?.buttons?.length),
+      Boolean(input.metadata?.buttons?.length || input.metadata?.pixKey),
     { message: "Mensagem de botão exige metadata.buttons" }
   )
   .refine(

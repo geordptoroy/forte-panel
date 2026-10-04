@@ -127,6 +127,41 @@ const tools: Tool[] = [
   {
     type: "function",
     function: {
+      name: "enviar_interativo",
+      description:
+        "Envia uma mensagem interactiva nativa pelo WhatsApp: button, list, carousel, poll ou pix. Para Pix, use a chave e opcionalmente amountCents.",
+      parameters: {
+        type: "object",
+        properties: {
+          messageType: { type: "string", enum: ["button", "list", "carousel", "poll", "pix"] },
+          content: { type: "string" },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { id: { type: "string" }, label: { type: "string" }, url: { type: "string" } },
+              required: ["label"],
+              additionalProperties: false,
+            },
+          },
+          buttonText: { type: "string" },
+          sections: { type: "array", items: { type: "object" } },
+          cards: { type: "array", items: { type: "object" } },
+          pollOptions: { type: "array", items: { type: "string" } },
+          selectableCount: { type: "number" },
+          pixKey: { type: "string" },
+          pixKeyType: { type: "string" },
+          merchantName: { type: "string" },
+          amountCents: { type: "number" },
+        },
+        required: ["messageType"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "consultar_agenda",
       description:
         "Consulta serviços ativos do catálogo operacional, preço fixo/a partir de/sob consulta, duração, profissionais vinculados, jornada semanal e próximos agendamentos do Forte Panel. A jornada não garante uma vaga; verifique os agendamentos do horário exato.",
@@ -543,6 +578,54 @@ async function executeToolEffect(
   args: Record<string, unknown>,
   event: NativeAgentEvent
 ) {
+  if (name === "enviar_interativo") {
+    const messageType = asString(args.messageType, "messageType");
+    const content = typeof args.content === "string" ? args.content.trim() : "";
+    const base = {
+      agent: true,
+      eventId: event.eventId,
+      disableFallback: true,
+      ...(event.instanceId ? { instanceId: event.instanceId } : {}),
+    };
+    if (messageType === "pix") {
+      const pixKey = asString(args.pixKey, "pixKey");
+      const amountCents = args.amountCents === undefined ? undefined : asNumber(args.amountCents, "amountCents");
+      const result = await queueOutboundMessage(event.workspaceId, event.contactId, content || "Pix", undefined, "ai", "button", {
+        ...base,
+        pixKey,
+        ...(typeof args.pixKeyType === "string" ? { pixKeyType: args.pixKeyType } : {}),
+        ...(typeof args.merchantName === "string" ? { merchantName: args.merchantName } : {}),
+        ...(amountCents !== undefined ? { amountCents } : {}),
+      });
+      return { sent: true, messageId: result?.id ?? null, messageType: "pix" };
+    }
+    const outboundType = messageType as "button" | "list" | "carousel" | "poll";
+    if (!["button", "list", "carousel", "poll"].includes(outboundType))
+      throw new Error("messageType interactivo inválido");
+    const metadata: Record<string, unknown> = { ...base };
+    if (outboundType === "button") {
+      const options = Array.isArray(args.options) ? args.options : [];
+      metadata.buttons = options.slice(0, 10).map((option, index) => {
+        const item = asObject(option);
+        return {
+          buttonId: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `option_${index + 1}`,
+          buttonText: { displayText: asString(item.label, "label") },
+          ...(typeof item.url === "string" ? { url: item.url } : {}),
+        };
+      });
+    } else if (outboundType === "list") {
+      metadata.sections = Array.isArray(args.sections) ? args.sections : [];
+      metadata.buttonText = typeof args.buttonText === "string" ? args.buttonText : "Ver opções";
+    } else if (outboundType === "poll") {
+      const pollOptions = Array.isArray(args.pollOptions) ? args.pollOptions.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+      metadata.payload = { poll: { name: content || "Enquete", values: pollOptions.slice(0, 12), selectableCount: Math.max(1, Math.floor(asNumber(args.selectableCount ?? 1, "selectableCount"))) } };
+    } else {
+      const cards = Array.isArray(args.cards) ? args.cards : [];
+      metadata.payload = { interactiveMessage: { carouselMessage: { cards: cards.slice(0, 10) } } };
+    }
+    const result = await queueOutboundMessage(event.workspaceId, event.contactId, content, undefined, "ai", outboundType, metadata);
+    return { sent: true, messageId: result?.id ?? null, messageType: outboundType };
+  }
   if (name === "consultar_contexto_comercial") {
     const currentContact = await getContactById(event.workspaceId, event.contactId);
     if (!currentContact) throw new Error("Contato do evento não encontrado");

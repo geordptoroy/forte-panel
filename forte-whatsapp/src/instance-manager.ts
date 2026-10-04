@@ -48,6 +48,7 @@ import {
   buildCarouselPayload,
   buildNativeInteractivePayload,
 } from "./interactive-payload.js";
+import { buildPixPaymentPayload } from "./pix-payment.js";
 import { buildInteractiveAdditionalNodes } from "./interactive-wire.js";
 import { resolveOutboundJid } from "./jid-resolution.js";
 import {
@@ -92,24 +93,13 @@ function interactiveFallbackText(
   content: string,
   metadata: Record<string, unknown>
 ) {
-  if (metadata.disableFallback === true) return undefined;
+  if (metadata.disableFallback === true || messageType === "button")
+    return undefined;
   if (typeof metadata.fallbackText === "string" && metadata.fallbackText.trim())
     return metadata.fallbackText.trim();
 
   const options: string[] = [];
-  if (messageType === "button") {
-    for (const button of Array.isArray(metadata.buttons)
-      ? metadata.buttons
-      : []) {
-      const item = button as Record<string, unknown>;
-      const buttonText = item.buttonText;
-      const label =
-        buttonText && typeof buttonText === "object"
-          ? (buttonText as Record<string, unknown>).displayText
-          : undefined;
-      if (typeof label === "string" && label.trim()) options.push(label.trim());
-    }
-  } else if (messageType === "list") {
+  if (messageType === "list") {
     for (const section of Array.isArray(metadata.sections)
       ? metadata.sections
       : []) {
@@ -808,9 +798,34 @@ export class InstanceManager {
       };
     } else if (messageType === "button") {
       const buttons = Array.isArray(metadata.buttons) ? metadata.buttons : [];
-      if (buttons.length < 1 || buttons.length > 10)
+      const pixKey =
+        typeof metadata.pixKey === "string" ? metadata.pixKey.trim() : "";
+      if (pixKey) {
+        message = buildPixPaymentPayload({
+          merchantName:
+            typeof metadata.merchantName === "string"
+              ? metadata.merchantName.trim()
+              : "Forte Panel",
+          pixKey,
+          pixKeyType:
+            typeof metadata.pixKeyType === "string"
+              ? metadata.pixKeyType
+              : "EVP",
+          ...(typeof metadata.amountCents === "number"
+            ? { amountCents: metadata.amountCents }
+            : {}),
+          ...(typeof metadata.referenceId === "string"
+            ? { referenceId: metadata.referenceId }
+            : {}),
+          ...(typeof metadata.orderRequestId === "string"
+            ? { orderRequestId: metadata.orderRequestId }
+            : {}),
+        });
+      } else if (buttons.length < 1 || buttons.length > 10) {
         throw new Error("Mensagem de botões exige de 1 a 10 opções");
-      message = buildNativeInteractivePayload("button", content, metadata);
+      } else {
+        message = buildNativeInteractivePayload("button", content, metadata);
+      }
     } else if (messageType === "list") {
       const sections = Array.isArray(metadata.sections)
         ? metadata.sections
