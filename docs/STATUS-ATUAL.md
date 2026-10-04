@@ -112,3 +112,9 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 - No recuperador de conta, enviar o código de verificação pela **instância Baileys disponível e seleccionada no Console Admin**, com auditoria da instância, workspace e administrador responsável.
 - Tratar esta mudança como backlog de produto: ainda não alterar o login, password reset, modelo de conta, UI ou contratos de API.
 - Antes da implementação, definir número normalizado, posse/verificação do número, expiração e limite de tentativas do código, fallback operacional e comportamento quando não houver instância disponível.
+
+## Actualização local da imagem — 2026-10-03
+
+- A publicação de `main` terminou com sucesso, mas a primeira tentativa de actualizar apenas o Gateway revelou que `docker-compose.local.yml` não passava `WHATSAPP_SESSION_ENCRYPTION_KEY` ao container, embora a chave já existisse no `.env`.
+- O Gateway foi revertido imediatamente para `ghcr.io/geordptoroy/forte-whatsapp:sha-06cc98e`, mantendo o volume `forte-panel-repo_forte_whatsapp_sessions`; readiness voltou a `{"status":"ready","service":"forte-whatsapp"}`.
+- O Compose foi corrigido para exigir e passar a chave existente. A nova imagem ainda requer uma nova publicação antes de repetir a actualização. O storage SeaweedFS continua separado da stack principal e não foi alterado.

@@ -1,4 +1,4 @@
-﻿services:
+services:
   postgres_panel:
     image: postgres:16-alpine
     container_name: forte_postgres_panel
@@ -201,6 +201,7 @@
       WHATSAPP_API_KEY: ${BAILEYS_API_KEY:?BAILEYS_API_KEY is required}
       WHATSAPP_SESSION_DIR: /app/sessions
       WHATSAPP_INSTANCE_ID: ${BAILEYS_INSTANCE_ID:-default}
+      WHATSAPP_SESSION_ENCRYPTION_KEY: ${WHATSAPP_SESSION_ENCRYPTION_KEY:?WHATSAPP_SESSION_ENCRYPTION_KEY is required}
       WHATSAPP_WEBHOOK_URL: http://forte-panel:3000/api/v1/webhooks/providers/baileys
       WHATSAPP_WEBHOOK_SECRET: ${BAILEYS_WEBHOOK_SECRET:?BAILEYS_WEBHOOK_SECRET is required}
       WHATSAPP_WEBHOOK_OUTBOX_DIR: /app/sessions/outbox
