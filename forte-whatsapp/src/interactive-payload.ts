@@ -163,7 +163,8 @@ export function buildNativeInteractivePayload(
   metadata: InteractiveMetadata
 ): AnyMessageContent {
   const footer = text(metadata.footer);
-  const body: Record<string, unknown> = { text: content };
+  const bodyText = content.trim() === "[button]" ? "Escolha uma opção" : content;
+  const body: Record<string, unknown> = { text: bodyText };
   const interactive: Record<string, unknown> = { body };
   if (footer) interactive.footer = { text: footer };
   if (text(metadata.title))

@@ -27,6 +27,15 @@ describe("native interactive payloads", () => {
     ).toEqual({ display_text: "Sim", id: "yes" });
   });
 
+  it("replaces the technical button marker with a usable header", () => {
+    const payload = buildNativeInteractivePayload("button", "[button]", {
+      buttons: [{ buttonId: "yes", buttonText: { displayText: "Sim" } }],
+    }) as any;
+    expect(payload.interactiveMessage.body).toEqual({
+      text: "Escolha uma opção",
+    });
+  });
+
   it("builds the legacy list envelope used by PAPI", () => {
     const sections = [
       { title: "Serviços", rows: [{ id: "support", title: "Suporte" }] },

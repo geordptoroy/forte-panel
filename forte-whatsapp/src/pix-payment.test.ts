@@ -26,11 +26,18 @@ describe("native Pix payment payload", () => {
     );
 
     expect(button.name).toBe("payment_info");
-    expect(params.reference_id).toBeUndefined();
-    expect(params.type).toBeUndefined();
-    expect(params.payment_configuration).toBeUndefined();
-    expect(params.order_request_id).toBeUndefined();
-    expect(params.total_amount).toBeUndefined();
+    expect(params.reference_id).toEqual(expect.any(String));
+    expect(params.type).toBe("physical-goods");
+    expect(params.payment_configuration).toBe("merchant_categorization_code");
+    expect(params.order_request_id).toEqual(expect.any(String));
+    expect(params.total_amount).toEqual({ value: 0, offset: 1000 });
+    expect(params.order).toMatchObject({
+      status: "payment_requested",
+      subtotal: { value: 0, offset: 1000 },
+      tax: null,
+      shipping: null,
+      discount: null,
+    });
     expect(params.payment_settings[0].pix_static_code).toMatchObject({
       merchant_name: "Rafael",
       key: "10703598660",

@@ -1248,6 +1248,10 @@ export class InstanceManager {
       const poll = body?.pollCreationMessage ?? body?.pollUpdateMessage;
       const list = body?.listMessage;
       const button = body?.buttonsMessage ?? body?.templateButtonReplyMessage;
+      const nativeFlow =
+        body?.interactiveMessage ??
+        body?.interactiveResponseMessage ??
+        body?.nativeFlowResponseMessage;
       const reaction = body?.reactionMessage;
       const { messageType, content } = normalized;
       const media = image || audio || video || document || sticker;
@@ -1278,8 +1282,25 @@ export class InstanceManager {
         ...(keyWithAlternates.remoteJidAlt
           ? { remoteJidAlt: keyWithAlternates.remoteJidAlt }
           : {}),
-        ...([location, contact, poll, list, button, reaction].some(Boolean)
-          ? { payload: { location, contact, poll, list, button, reaction } }
+        ...(
+          [location, contact, poll, list, button, nativeFlow, reaction].some(
+            Boolean
+          )
+            ? {
+                payload: {
+                  location,
+                  contact,
+                  poll,
+                  list,
+                  button,
+                  nativeFlow,
+                  reaction,
+                },
+              }
+            : {}
+        ),
+        ...(normalized.isPlaceholder
+          ? { rawKeys: Object.keys(body) }
           : {}),
       };
       if (media && !historical) {

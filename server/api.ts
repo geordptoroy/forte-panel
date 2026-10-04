@@ -1508,7 +1508,8 @@ async function handleBaileysWebhook(req: Request, res: Response) {
     req,
     instanceSecret ? "" : (process.env.WEBHOOK_SIGNING_SECRET?.trim() ?? "")
   );
-  const secretAccepted = replay.ok;
+  const secretAccepted =
+    replay.ok || res.locals.baileysWebhookSecretAccepted === true;
   if (!secretAccepted && !genericReplay.ok) {
     if (instanceSecret)
       return fail(

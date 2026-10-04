@@ -68,6 +68,11 @@ export function normalizeBaileysMessage(value: unknown): {
       body.buttonsResponseMessage ??
       body.listResponseMessage
   );
+  const nativeFlow = record(
+    body.interactiveResponseMessage ??
+      body.nativeFlowResponseMessage ??
+      body.interactiveMessage
+  );
   const reaction = record(body.reactionMessage);
   const carousel = record(body.interactiveMessage?.carouselMessage);
 
@@ -92,7 +97,10 @@ export function normalizeBaileysMessage(value: unknown): {
                     : body.buttonsMessage ||
                         body.templateButtonReplyMessage ||
                         body.buttonsResponseMessage ||
-                        body.listResponseMessage
+                        body.listResponseMessage ||
+                        body.interactiveResponseMessage ||
+                        body.nativeFlowResponseMessage ||
+                        body.interactiveMessage
                       ? "button"
               : carousel.cards
                 ? "carousel"
@@ -114,6 +122,8 @@ export function normalizeBaileysMessage(value: unknown): {
     list.description ??
     button.contentText ??
     button.selectedButtonId ??
+    nativeFlow.body?.text ??
+    nativeFlow.paramsJson ??
     reaction.text;
   const fallback: Record<BaileysMessageKind, string> = {
     text: "[mensagem recebida]",
@@ -141,8 +151,14 @@ export function normalizeBaileysMessage(value: unknown): {
       messageType === "text"
         ? typeof text === "string" ? text : ""
         : messageType === "button"
-          ? typeof (button.contentText ?? button.selectedDisplayText) === "string"
-            ? button.contentText ?? button.selectedDisplayText
+          ? typeof (
+                button.contentText ??
+                button.selectedDisplayText ??
+                nativeFlow.paramsJson
+              ) === "string"
+            ? button.contentText ??
+              button.selectedDisplayText ??
+              nativeFlow.paramsJson
             : ""
         : typeof caption === "string" ? caption : "",
   };

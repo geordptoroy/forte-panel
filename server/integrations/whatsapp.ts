@@ -196,6 +196,9 @@ function normalizeBaileysPayload(event: any): InboundMessageEvent {
         ? { upsertType: sourceMetadata.upsertType }
         : {}),
       ...(sourceMetadata.isPlaceholder === true ? { isPlaceholder: true } : {}),
+      ...(sourceMetadata.payload && typeof sourceMetadata.payload === "object"
+        ? { payload: sourceMetadata.payload }
+        : {}),
       ...(historySync ? { historySync: true } : {}),
       ...(typeof sourceMetadata.requestId === "string"
         ? { requestId: sourceMetadata.requestId }

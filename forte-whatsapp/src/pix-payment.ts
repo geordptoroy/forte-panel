@@ -18,9 +18,10 @@ function amount(value: number) {
 /**
  * Builds the native WhatsApp Pix envelope observed from a real payment card.
  *
- * Without amountCents it sends a copy-key/payment_info button. With an amount,
- * WhatsApp expects review_and_pay, merchant_categorization_code, numeric
- * total_amount and no order object.
+ * Without amountCents it sends a payment_info button with the zero-value order
+ * envelope required by WhatsApp Web. With an amount, WhatsApp expects
+ * review_and_pay, merchant_categorization_code, numeric total_amount and no
+ * order object.
  */
 export function buildPixPaymentPayload(
   options: PixPaymentOptions
@@ -40,13 +41,30 @@ export function buildPixPaymentPayload(
     currency: options.currency ?? "BRL",
   };
 
-  if (hasAmount) {
-    params.reference_id = options.referenceId ?? crypto.randomUUID();
-    params.type = "physical-goods";
-    params.payment_configuration = "merchant_categorization_code";
-    params.order_request_id = options.orderRequestId ?? crypto.randomUUID();
-    params.total_amount = amount(options.amountCents!);
-  }
+  params.reference_id = options.referenceId ?? crypto.randomUUID();
+  params.type = "physical-goods";
+  params.payment_configuration = "merchant_categorization_code";
+  params.order_request_id = options.orderRequestId ?? crypto.randomUUID();
+  params.total_amount = amount(hasAmount ? options.amountCents! : 0);
+  if (!hasAmount)
+    params.order = {
+      status: "payment_requested",
+      items: [
+        {
+          quantity: 0,
+          retailer_id: crypto.randomUUID(),
+          amount: amount(0),
+          name: "",
+          product_id: "",
+          isCustomItem: false,
+          isQuantitySet: false,
+        },
+      ],
+      subtotal: amount(0),
+      tax: null,
+      shipping: null,
+      discount: null,
+    };
 
   return {
     interactiveMessage: {

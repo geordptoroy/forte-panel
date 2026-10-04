@@ -67,13 +67,13 @@ export const baileysWebhookAuthenticationGuard: RequestHandler = (
         expectedSecret;
     }
 
-    if (
-      (providedSecret &&
-        expectedSecret &&
-        safeEqual(providedSecret, expectedSecret)) ||
-      apiKeyMatches(req)
-    )
+    const secretAccepted = Boolean(
+      providedSecret && expectedSecret && safeEqual(providedSecret, expectedSecret)
+    );
+    if (secretAccepted || apiKeyMatches(req)) {
+      res.locals.baileysWebhookSecretAccepted = secretAccepted;
       return next();
+    }
 
     if (!expectedSecret && !process.env.FORTE_API_KEY?.trim())
       return reject(

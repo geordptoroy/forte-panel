@@ -1524,8 +1524,8 @@ export function InboxPage({ platformAdmin = false }: { platformAdmin?: boolean }
             ...(interactiveFooter.trim() ? { footer: interactiveFooter.trim() } : {}),
             disableFallback: true,
             buttons: options.slice(0, 10).map((option, index) => ({
-              id: `option-${index + 1}`,
-              displayText: option,
+              buttonId: `option-${index + 1}`,
+              buttonText: { displayText: option },
             })),
           }
         : interactiveType === "list"
