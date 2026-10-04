@@ -30,7 +30,10 @@ import {
   shouldUseRemoteLogout,
 } from "./pairing-code.js";
 import { reconnectDelayMs } from "./reconnect-policy.js";
-import { normalizeBaileysMessageStatus, type DeliveryStatus } from "./delivery-status.js";
+import {
+  normalizeBaileysMessageStatus,
+  type DeliveryStatus,
+} from "./delivery-status.js";
 import {
   decodeAllowedOutboundMediaData,
   isAllowedOutboundMediaReference,
@@ -41,7 +44,11 @@ import {
 } from "./outbound-media-contract.js";
 import { SendLedger, stableFingerprint } from "./send-ledger.js";
 import { WebhookOutbox } from "./webhook-outbox.js";
-import { buildNativeInteractivePayload } from "./interactive-payload.js";
+import {
+  buildCarouselPayload,
+  buildNativeInteractivePayload,
+} from "./interactive-payload.js";
+import { buildInteractiveAdditionalNodes } from "./interactive-wire.js";
 import { resolveOutboundJid } from "./jid-resolution.js";
 import {
   normalizeBaileysMessage,
@@ -65,7 +72,7 @@ function outboundJidFingerprint(jid: string) {
   return crypto.createHash("sha256").update(jid).digest("hex").slice(0, 12);
 }
 
-function isNativeInteractivePayload(payload: AnyMessageContent) {
+function isRelayPayload(payload: AnyMessageContent) {
   const record = payload as Record<string, unknown>;
   const viewOnce = record.viewOnceMessage;
   if (viewOnce && typeof viewOnce === "object") {
@@ -73,23 +80,27 @@ function isNativeInteractivePayload(payload: AnyMessageContent) {
     return Boolean(
       message &&
         typeof message === "object" &&
-        "interactiveMessage" in (message as Record<string, unknown>)
+        ("interactiveMessage" in (message as Record<string, unknown>) ||
+          "listMessage" in (message as Record<string, unknown>))
     );
   }
-  return "interactiveMessage" in record;
+  return "interactiveMessage" in record || "listMessage" in record;
 }
 
 function interactiveFallbackText(
-  messageType: "button" | "list",
+  messageType: "button" | "list" | "carousel",
   content: string,
   metadata: Record<string, unknown>
 ) {
+  if (metadata.disableFallback === true) return undefined;
   if (typeof metadata.fallbackText === "string" && metadata.fallbackText.trim())
     return metadata.fallbackText.trim();
 
   const options: string[] = [];
   if (messageType === "button") {
-    for (const button of Array.isArray(metadata.buttons) ? metadata.buttons : []) {
+    for (const button of Array.isArray(metadata.buttons)
+      ? metadata.buttons
+      : []) {
       const item = button as Record<string, unknown>;
       const buttonText = item.buttonText;
       const label =
@@ -98,20 +109,34 @@ function interactiveFallbackText(
           : undefined;
       if (typeof label === "string" && label.trim()) options.push(label.trim());
     }
-  } else {
-    for (const section of Array.isArray(metadata.sections) ? metadata.sections : []) {
+  } else if (messageType === "list") {
+    for (const section of Array.isArray(metadata.sections)
+      ? metadata.sections
+      : []) {
       const rows = (section as Record<string, unknown>).rows;
       if (!Array.isArray(rows)) continue;
       for (const row of rows) {
         const title = (row as Record<string, unknown>).title;
-        if (typeof title === "string" && title.trim()) options.push(title.trim());
+        if (typeof title === "string" && title.trim())
+          options.push(title.trim());
       }
+    }
+  } else {
+    for (const card of Array.isArray(metadata.cards) ? metadata.cards : []) {
+      if (!card || typeof card !== "object") continue;
+      const item = card as Record<string, unknown>;
+      const label = item.title ?? item.body ?? item.text;
+      if (typeof label === "string" && label.trim()) options.push(label.trim());
     }
   }
   if (!options.length) return undefined;
-  return content + "\n\nSe os botões não aparecerem, responda com o número:\n" + options
-    .map((option, index) => String(index + 1) + " - " + option)
-    .join("\n");
+  return (
+    content +
+    `\n\nSe a mensagem ${messageType === "carousel" ? "não aparecer" : "interação não aparecer"}, responda com o número:\n` +
+    options
+      .map((option, index) => String(index + 1) + " - " + option)
+      .join("\n")
+  );
 }
 
 function interactiveFallbackFromPayload(payload: AnyMessageContent) {
@@ -122,15 +147,69 @@ function interactiveFallbackFromPayload(payload: AnyMessageContent) {
       ? (viewOnce as Record<string, unknown>).message
       : root;
   if (!wrapped || typeof wrapped !== "object") return undefined;
+  const list = (wrapped as Record<string, unknown>).listMessage;
+  if (list && typeof list === "object") {
+    const value = list as Record<string, unknown>;
+    const description =
+      typeof value.description === "string" ? value.description : "";
+    const sections = Array.isArray(value.sections) ? value.sections : [];
+    const options = sections.flatMap(section => {
+      const rows =
+        section && typeof section === "object"
+          ? (section as Record<string, unknown>).rows
+          : undefined;
+      return Array.isArray(rows)
+        ? rows.flatMap(row => {
+            const title =
+              row && typeof row === "object"
+                ? (row as Record<string, unknown>).title
+                : undefined;
+            return typeof title === "string" ? [title] : [];
+          })
+        : [];
+    });
+    if (options.length)
+      return (
+        description +
+        "\n\nSe a lista não aparecer, responda com o número:\n" +
+        options.map((option, index) => `${index + 1} - ${option}`).join("\n")
+      );
+  }
   const interactive = (wrapped as Record<string, unknown>).interactiveMessage;
   if (!interactive || typeof interactive !== "object") return undefined;
   const value = interactive as Record<string, unknown>;
   const body = value.body;
   const content =
-    body && typeof body === "object" && typeof (body as Record<string, unknown>).text === "string"
+    body &&
+    typeof body === "object" &&
+    typeof (body as Record<string, unknown>).text === "string"
       ? ((body as Record<string, unknown>).text as string)
       : "";
   const nativeFlow = value.nativeFlowMessage;
+  const carousel = value.carouselMessage;
+  if (carousel && typeof carousel === "object") {
+    const cards: unknown[] = Array.isArray(
+      (carousel as Record<string, unknown>).cards
+    )
+      ? ((carousel as Record<string, unknown>).cards as unknown[])
+      : [];
+    const options = cards.flatMap(card => {
+      if (!card || typeof card !== "object") return [];
+      const cardValue = card as Record<string, unknown>;
+      const cardBody = cardValue.body;
+      const label =
+        cardBody && typeof cardBody === "object"
+          ? (cardBody as Record<string, unknown>).text
+          : undefined;
+      return typeof label === "string" && label.trim() ? [label.trim()] : [];
+    });
+    if (options.length)
+      return (
+        content +
+        "\n\nSe o carrossel não aparecer, responda com o número:\n" +
+        options.map((option, index) => `${index + 1} - ${option}`).join("\n")
+      );
+  }
   const buttons =
     nativeFlow && typeof nativeFlow === "object"
       ? (nativeFlow as Record<string, unknown>).buttons
@@ -140,7 +219,10 @@ function interactiveFallbackFromPayload(payload: AnyMessageContent) {
     const item = button as Record<string, unknown>;
     if (typeof item.buttonParamsJson !== "string") return [];
     try {
-      const params = JSON.parse(item.buttonParamsJson) as Record<string, unknown>;
+      const params = JSON.parse(item.buttonParamsJson) as Record<
+        string,
+        unknown
+      >;
       if (typeof params.display_text === "string") return [params.display_text];
       const sections = Array.isArray(params.sections) ? params.sections : [];
       return sections.flatMap(section => {
@@ -158,11 +240,14 @@ function interactiveFallbackFromPayload(payload: AnyMessageContent) {
     }
   });
   if (!options.length) return undefined;
-  return content + "\n\nSe a interação não aparecer, responda com o número:\n" + options
-    .map((option, index) => String(index + 1) + " - " + option)
-    .join("\n");
+  return (
+    content +
+    "\n\nSe a interação não aparecer, responda com o número:\n" +
+    options
+      .map((option, index) => String(index + 1) + " - " + option)
+      .join("\n")
+  );
 }
-
 
 export type InstanceStatus =
   | "idle"
@@ -358,27 +443,39 @@ export class InstanceManager {
       socket.ev.on("messages.update", updates => {
         for (const update of updates) this.handleMessageStatusUpdate(update);
       });
-      socket.ev.on("messaging-history.set", ({ chats, contacts, messages, syncType, progress, isLatest, chunkOrder }) => {
-        logger.info(
-          {
-            instanceId: this.instanceId,
-            chatCount: chats.length,
-            contactCount: contacts.length,
-            messageCount: messages.length,
-            syncType,
-            progress,
-            isLatest,
-            chunkOrder,
-          },
-          "Baileys history batch observed; forwarding for isolated import"
-        );
-        void this.handleMessages(messages, "append", undefined, true).catch(error =>
-          logger.error(
-            { err: error, instanceId: this.instanceId },
-            "failed to forward Baileys history batch"
-          )
-        );
-      });
+      socket.ev.on(
+        "messaging-history.set",
+        ({
+          chats,
+          contacts,
+          messages,
+          syncType,
+          progress,
+          isLatest,
+          chunkOrder,
+        }) => {
+          logger.info(
+            {
+              instanceId: this.instanceId,
+              chatCount: chats.length,
+              contactCount: contacts.length,
+              messageCount: messages.length,
+              syncType,
+              progress,
+              isLatest,
+              chunkOrder,
+            },
+            "Baileys history batch observed; forwarding for isolated import"
+          );
+          void this.handleMessages(messages, "append", undefined, true).catch(
+            error =>
+              logger.error(
+                { err: error, instanceId: this.instanceId },
+                "failed to forward Baileys history batch"
+              )
+          );
+        }
+      );
       socket.ev.on("messaging-history.status", status => {
         logger.info(
           { instanceId: this.instanceId, ...status },
@@ -540,7 +637,8 @@ export class InstanceManager {
     if (
       Date.now() < this.suppressReconnectUntil ||
       this.snapshot.status === "logged_out"
-    ) return;
+    )
+      return;
     this.clearReconnectTimer();
     const attempt = this.reconnectAttempts + 1;
     const delayMs = reconnectDelayMs(attempt);
@@ -667,7 +765,9 @@ export class InstanceManager {
       ["image", "audio", "video", "document"].includes(messageType) &&
       !isAllowedOutboundMediaReference(content)
     )
-      throw new Error("Mídia de saída exige uma URL HTTPS privada ou data URL válida");
+      throw new Error(
+        "Mídia de saída exige uma URL HTTPS privada ou data URL válida"
+      );
     const jid = await resolveOutboundJid(this.socket, phone);
     let message: AnyMessageContent;
     const mediaReference = decodeAllowedOutboundMediaData(content);
@@ -708,14 +808,28 @@ export class InstanceManager {
       };
     } else if (messageType === "button") {
       const buttons = Array.isArray(metadata.buttons) ? metadata.buttons : [];
-      if (buttons.length < 1 || buttons.length > 3)
-        throw new Error("Mensagem de botões exige de 1 a 3 opções");
+      if (buttons.length < 1 || buttons.length > 10)
+        throw new Error("Mensagem de botões exige de 1 a 10 opções");
       message = buildNativeInteractivePayload("button", content, metadata);
     } else if (messageType === "list") {
-      const sections = Array.isArray(metadata.sections) ? metadata.sections : [];
+      const sections = Array.isArray(metadata.sections)
+        ? metadata.sections
+        : [];
       if (sections.length < 1)
         throw new Error("Mensagem de lista exige ao menos uma seção");
       message = buildNativeInteractivePayload("list", content, metadata);
+    } else if (messageType === "carousel") {
+      const payload =
+        metadata.payload && typeof metadata.payload === "object"
+          ? (metadata.payload as Record<string, unknown>)
+          : {};
+      const nativePayload = payload.interactiveMessage;
+      message =
+        nativePayload && typeof nativePayload === "object"
+          ? ({
+              interactiveMessage: nativePayload,
+            } as unknown as AnyMessageContent)
+          : await buildCarouselPayload(this.socket, content, metadata);
     } else if (messageType === "poll") {
       const payload =
         metadata.payload && typeof metadata.payload === "object"
@@ -727,7 +841,9 @@ export class InstanceManager {
           : payload;
       const name = typeof poll.name === "string" ? poll.name : content;
       const values = Array.isArray(poll.values)
-        ? poll.values.filter((value): value is string => typeof value === "string")
+        ? poll.values.filter(
+            (value): value is string => typeof value === "string"
+          )
         : [];
       if (!name.trim() || values.length < 2)
         throw new Error("Enquete exige nome e ao menos duas opções");
@@ -743,7 +859,9 @@ export class InstanceManager {
       throw new Error(`Tipo de mensagem não suportado: ${messageType}`);
     }
     const fallbackText =
-      messageType === "button" || messageType === "list"
+      messageType === "button" ||
+      messageType === "list" ||
+      messageType === "carousel"
         ? interactiveFallbackText(messageType, content, metadata)
         : undefined;
     const echo = normalizeBaileysOutgoingMessage(message);
@@ -753,10 +871,13 @@ export class InstanceManager {
       echo.echoContent
     );
     try {
-      const usesRelay = isNativeInteractivePayload(message);
+      const usesRelay = isRelayPayload(message);
       const externalId = usesRelay
-        ? await this.socket.relayMessage(jid, message as never, {})
-        : (await this.socket.sendMessage(jid, message))?.key?.id ?? crypto.randomUUID();
+        ? await this.socket.relayMessage(jid, message as never, {
+            additionalNodes: buildInteractiveAdditionalNodes(message, jid),
+          })
+        : ((await this.socket.sendMessage(jid, message))?.key?.id ??
+          crypto.randomUUID());
       logger.info(
         {
           instanceId: this.instanceId,
@@ -815,11 +936,13 @@ export class InstanceManager {
       echo.echoContent
     );
     try {
-      if (isNativeInteractivePayload(payload)) {
+      if (isRelayPayload(payload)) {
         const externalId = await this.socket.relayMessage(
           jid,
           payload as never,
-          {}
+          {
+            additionalNodes: buildInteractiveAdditionalNodes(payload, jid),
+          }
         );
         logger.info(
           {
@@ -872,7 +995,11 @@ export class InstanceManager {
     if (!this.socket) return;
     const message: AnyMessageContent = { text };
     const echo = normalizeBaileysOutgoingMessage(message);
-    this.panelMessageEchoes.rememberPending(jid, echo.messageType, echo.echoContent);
+    this.panelMessageEchoes.rememberPending(
+      jid,
+      echo.messageType,
+      echo.echoContent
+    );
     try {
       const result = await this.socket.sendMessage(jid, message);
       const externalId = result?.key?.id ?? crypto.randomUUID();
@@ -894,7 +1021,11 @@ export class InstanceManager {
       );
       this.flushPendingDeliveryUpdate(externalId);
     } catch (error) {
-      this.panelMessageEchoes.forgetPending(jid, echo.messageType, echo.echoContent);
+      this.panelMessageEchoes.forgetPending(
+        jid,
+        echo.messageType,
+        echo.echoContent
+      );
       logger.warn(
         {
           instanceId: this.instanceId,
@@ -926,9 +1057,14 @@ export class InstanceManager {
     const now = Date.now();
     for (const [id, pending] of this.pendingDeliveryUpdates)
       if (pending.expiresAt <= now) this.pendingDeliveryUpdates.delete(id);
-    this.pendingDeliveryUpdates.set(messageId, { status, expiresAt: now + 120_000 });
+    this.pendingDeliveryUpdates.set(messageId, {
+      status,
+      expiresAt: now + 120_000,
+    });
     while (this.pendingDeliveryUpdates.size > 256)
-      this.pendingDeliveryUpdates.delete(this.pendingDeliveryUpdates.keys().next().value!);
+      this.pendingDeliveryUpdates.delete(
+        this.pendingDeliveryUpdates.keys().next().value!
+      );
   }
 
   private flushPendingDeliveryUpdate(messageId: string) {
@@ -1068,7 +1204,8 @@ export class InstanceManager {
     if (!config.webhookUrl) return;
     for (const message of messages) {
       const remoteJid = message.key?.remoteJid;
-      if (!remoteJid || shouldIgnoreInboundJid(this.settings, remoteJid)) continue;
+      if (!remoteJid || shouldIgnoreInboundJid(this.settings, remoteJid))
+        continue;
       const isGroup = isGroupJid(remoteJid);
       const groupSubject = isGroup
         ? await this.getGroupSubject(remoteJid)
@@ -1177,7 +1314,7 @@ export class InstanceManager {
         instanceId: this.instanceId,
         phone: remoteJid.replace(/@s\.whatsapp\.net$/, ""),
         name: isGroup
-          ? groupSubject ?? `Grupo ${remoteJid.split("@")[0]}`
+          ? (groupSubject ?? `Grupo ${remoteJid.split("@")[0]}`)
           : message.pushName,
         content,
         messageType,

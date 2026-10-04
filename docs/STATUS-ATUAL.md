@@ -159,3 +159,99 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 ## Estado após push para main — 2026-10-04
 
 O commit de código `6b9ea814e8bd656b318ab82bd1a84429c927c789` foi enviado com sucesso para `origin/main` por fast-forward (`172f265..6b9ea81`), sem force-push. O workflow `publish-image.yml` deve agora executar o verify Linux e, se todos os gates passarem, publicar `ghcr.io/geordptoroy/forte-panel:latest` e `ghcr.io/geordptoroy/forte-whatsapp:latest`. O GitHub CLI não está instalado neste Windows, portanto o próximo chat deve consultar os jobs e digests no GitHub antes de anunciar a publicação ou atualizar o Docker local. A suite root local teve apenas as limitações Windows documentadas acima; o runner Linux é a validação autoritativa para os testes que dependem de `bash`, `find` e `sha256sum`.
+
+
+## Candidata PAPI-compatível para interactivos — 2026-10-04
+
+- Worktree isolada: `C:\Users\Rafae\Desktop\forte-panel-papi-fix`, branch `fix/papi-compatible-interactives`, baseada em `origin/main` no SHA `6bbfa29`; candidata local, sem push, merge ou GHCR.
+- Listas passaram de Native Flow `single_select` para o envelope legado `listMessage`, enviado por `relayMessage`, conforme a auditoria da PAPI. O fallback textual da lista foi mantido.
+- Carrosséis passaram a aceitar `metadata.cards` (2 a 10 cartões), preparar imagem/vídeo por `prepareWAMessageMedia` com `waUploadToServer`, montar `interactiveMessage.carouselMessage` com `messageVersion: 1` e acções Native Flow por cartão. Payload protobuf já preparado continua aceite.
+- Foi acrescentado fallback textual numerado para carrossel e testes de serialização/preparação de mídia.
+- Gateway: **19 ficheiros de teste / 99 testes passaram**, `npm run check` e `npm run build` passaram.
+- Root: `corepack pnpm check` e `corepack pnpm build` passaram. A suite root no Windows continua com **96 testes passados / 75 skipped / 10 falhas ambientais** por `sha256sum`, `find` e `bash` incompatíveis com paths Windows; nenhum erro está relacionado com esta alteração. Deve ser revalidada no runner Linux.
+- Os containers `forte_whatsapp`, `forte_whatsapp_disposable`, `forte_panel` e `forte_panel_worker` não foram reiniciados nem alterados.
+- Próxima acção: revisão do diff e, se autorizado separadamente, teste real controlado no cliente móvel com número de teste dedicado; não declarar renderização universal no WhatsApp Web.
+
+
+## Teste real no container candidato — 2026-10-04 01:40
+
+- O container `forte_whatsapp_disposable` foi substituído temporariamente por `forte-whatsapp:local-papi-test`, mantendo a sessão persistida `papi-envelope-test`; o container principal `forte_whatsapp` não foi alterado.
+- O envio de botão para o LID confirmado foi aceite pelo Baileys (`3EB04353D0823CCD6A112D`) e recebeu estado `delivered`. O fallback textual também foi entregue (`3EB0846C1279D2C811B35D`), comportamento esperado pela estratégia de compatibilidade.
+- O envio de lista legada foi aceite inicialmente (`3EB0ED75B0A393838DF3B9`), mas o log recebeu ACK WhatsApp `405`. O fallback textual foi entregue (`3EB0620764333EA30D655C`). Portanto, neste ambiente o envelope nativo de lista ainda não está comprovadamente renderizável; o caminho funcional permanece o fallback.
+- As duas tentativas anteriores com 404 foram falhas de rota/configuração do ID persistido (`disposable-papi-test` vs `papi-envelope-test`) e não transmitiram mensagens.
+
+
+## Teste fork wire sem fallback — 2026-10-04 01:49
+
+- Foi adicionada a injecção de nós observada nos forks activos: `biz` com `interactive/native_flow` v1/v9 e `bot{biz_bot:1}` em chats privados; listas usam o nó `list v2/product_list`.
+- A variante foi validada com **102 testes**, typecheck e build, e activada apenas em `forte_whatsapp_disposable` como `forte-whatsapp:local-papi-wire`.
+- Foi enviado ao destino fornecido pelo utilizador (`55999034689`) um único botão `Teste PAPI wire - botao`, com `Sim`/`Nao`, sem fallback. O Baileys aceitou o envelope com ID `3EB0B3AA90886E20C838FD`. Até à última consulta não apareceu ACK `delivered` nem erro de ACK; renderização final depende da confirmação no dispositivo destinatário.
+
+
+## Texto simples para diagnóstico de destino — 2026-10-04 01:50
+
+- Foi enviado `Teste de texto simples do Forte Panel` para `55999034689` pelo endpoint normal `send-text`.
+- O Baileys aceitou o envio com ID `3EB0E0CAECF02A8C5A7041`, mas não apareceu ACK de entrega nem erro no período de observação. Como o texto simples também não confirmou entrega, o problema neste destino não pode ser atribuído apenas ao Native Flow; o número deve ser confirmado no formato internacional completo e/ou pode não estar registado no WhatsApp.
+
+
+## Teste texto com número completo — 2026-10-04 01:51
+
+- Foi enviado `Teste de texto simples do Forte Panel` para `+5538999034689`.
+- O Baileys aceitou o envio com ID `3EB0372927AF7146EABA2A`, mas não recebeu ACK de entrega durante a janela de observação. O botão wire não foi repetido, porque o diagnóstico base — texto simples — ainda não foi confirmado no destinatário.
+
+
+## JID directo entregue — 2026-10-04 01:55
+
+- Foi enviado `Teste de texto simples do Forte Panel` usando directamente `553899034689@s.whatsapp.net`.
+- O Baileys aceitou com ID `3EB0C2C0B43946CD6D6BCB` e recebeu ACK `delivered`.
+- Isto confirma que a sessão está conectada e que o destino correcto é `553899034689@s.whatsapp.net`; os testes anteriores falharam por usarem `5538999034689` (um dígito extra) e `55999034689` (incompleto).
+
+
+## Quatro botões wire entregues — 2026-10-04 01:59
+
+- O contrato do Gateway foi ampliado de 3 para 10 botões e o resolvedor passou a tentar as variantes brasileiras com e sem o nono dígito.
+- Foi enviado, sem fallback textual, `Teste PAPI wire - quatro botoes` para `553899034689@s.whatsapp.net`, com `Opcao 1`, `Opcao 2`, `Opcao 3` e `Opcao 4`.
+- O envelope foi aceite e recebeu ACK `delivered`: `3EB099594CBFAC4AC5717C`.
+
+
+## Lista Native Flow e carrossel entregues — 2026-10-04 02:02
+
+- A rota de lista foi ajustada para usar `interactiveMessage.nativeFlowMessage` com botão `single_select`, em vez do `listMessage` legado que tinha recebido ACK 405.
+- Foi enviada a lista `Teste PAPI wire - lista` para `553899034689@s.whatsapp.net`, com três opções, sem fallback. ID `3EB0E76EA20C48A6F7CBC0`; ACK `delivered`.
+- Foi enviado o carrossel `Teste PAPI wire - carrossel`, com dois cartões, imagens preparadas e um botão por cartão, sem fallback. ID `3EB0894B7AE7E1FBF91963`; ACK `delivered`.
+
+
+## Cobrança Pix com cta_copy — 2026-10-04 02:09
+
+- A enquete anterior apareceu correctamente no cliente e recebeu ACK `delivered` (`3EB0274DCCED9563D204C2`).
+- Foi enviada a mensagem `Cobranca Pix de teste - chave: 10703598660` com botão Native Flow `cta_copy` / `Copiar chave Pix`, sem fallback. ID `3EB0D79776977A343FC602`; ACK `delivered` e depois `read`.
+- Um formulário WhatsApp real não foi enviado porque o protocolo exige um Flow criado/publicado e um `flow_id` ou `flow_name`; um formulário inventado sem esse identificador seria rejeitado ou não abriria no cliente.
+
+
+## Cobrança Pix nativa payment_info/review_and_pay — 2026-10-04 02:26
+
+- O wire foi ajustado para reconhecer `payment_info` e `review_and_pay`; para `review_and_pay` envia `native_flow_name=order_details`, conforme o formato observado.
+- Foi enviada uma mensagem `payment_info` com `pix_static_code`, chave CPF configurada para o teste, moeda BRL e total de 990 centavos. ID `3EB0F0DE923CA1A008B3C4`; ACK `delivered`.
+- Foi enviada uma mensagem `review_and_pay` com pedido `Teste Forte Panel`, valor de teste R$ 9,90, estado `pending` e os mesmos dados Pix. ID `3EB0C2BA2DC17D958A8DD4`; ACK `delivered`.
+- Nenhum pagamento foi capturado; são mensagens de teste com estado pendente.
+
+
+## Comparação de quatro variantes review_and_pay — 2026-10-04 02:30
+
+Foram enviadas quatro mensagens de teste de R$ 10,00, todas com estado `pending`, chave Pix estática e sem captura financeira. Variaram apenas `payment_configuration` e o tipo do pedido: A=`""`/physical-goods; B=`pix`/physical-goods; C=`PIX`/physical-goods; D=`pix_static_code`/digital-goods. Todas foram aceites e entregues: A `3EB029BFCFC90D5BF46AC4`, B `3EB075F3F82D3CEA7E701D`, C `3EB0D1056CDC410A0797FA`, D `3EB01A2ED0B3A88B793BD5`.
+
+
+## Pix nativo com valor — envelope confirmado e candidata preparada — 2026-10-04 02:41
+
+- A payload capturada da mensagem original confirmou `review_and_pay`, `payment_configuration: "merchant_categorization_code"`, `payment_settings[].type: "pix_static_code"`, `key_type: "PHONE"`, `total_amount: { value: 10000, offset: 1000 }` e ausência de `order`.
+- O envelope foi reproduzido e entregue ao contacto de teste com o ID `3EB0FD97F2B0417B8CF195`.
+- Foi criado `forte-whatsapp/src/pix-payment.ts`, com `payment_info` sem valor e `review_and_pay` com valor, mais testes unitários em `pix-payment.test.ts`.
+- Foi criada a documentação `docs/WHATSAPP-PIX-NATIVO.md`, incluindo endpoints, exemplos, conversão de valores e limitações.
+- Branch candidata: `fix/papi-compatible-interactives`; preparar validação completa e PR para `main`. Sem publicação GHCR e sem alteração do Gateway principal.
+
+
+## Consolidação de interactivos para PR — 2026-10-04 02:45
+
+A candidata agora inclui, no mesmo provider Baileys, botões Native Flow (até dez), listas `single_select` com fallback, carrosséis com mídia preparada, enquetes nativas, wire nodes compatíveis e Pix nativo com/sem valor. O diagnóstico temporário de payload recebida foi removido antes da preparação do PR.
+
+Gates concluídos: Gateway `npm test` (21 ficheiros, 105 testes), `npm run check` e `npm run build`; aplicação raiz `pnpm check`, testes direccionados de interactivos/Pix/wire (9 testes) e `pnpm build`. A suite raiz completa executou 404 testes passados e 75 skips, mas 10 testes de backup/restore falharam por dependências/scripts Unix indisponíveis no Windows (`sha256sum`, Bash e caminhos POSIX); não são falhas dos interactivos. A candidata continua local na branch `fix/papi-compatible-interactives`; sem merge em `main`, sem publicação GHCR.

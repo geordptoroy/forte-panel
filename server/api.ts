@@ -194,7 +194,7 @@ const messageSchema = z
               .passthrough()
           )
           .min(1)
-          .max(3)
+          .max(10)
           .optional(),
         footer: z.string().max(180).optional(),
         headerType: z.enum(["none", "text", "image", "video"]).optional(),
@@ -235,7 +235,11 @@ const messageBatchSchema = z.object({
   batchId: z.string().trim().min(1).max(180).optional(),
 });
 const stageSchema = z.object({
-  stage: z.string().min(1).max(80).refine(isContactStage, "Estágio de lead inválido"),
+  stage: z
+    .string()
+    .min(1)
+    .max(80)
+    .refine(isContactStage, "Estágio de lead inválido"),
 });
 const rescheduleSchema = z.object({
   startsAt: z.coerce.date(),
@@ -260,7 +264,11 @@ const leadMemorySchema = z.object({
       neighborhood: z.string().max(100).optional(),
       serviceRequested: z.string().max(180).optional(),
       urgency: z.enum(["Baixa", "Média", "Alta", "Crítica"]).optional(),
-      stage: z.string().max(80).refine(isContactStage, "Estágio de lead inválido").optional(),
+      stage: z
+        .string()
+        .max(80)
+        .refine(isContactStage, "Estágio de lead inválido")
+        .optional(),
       aiEnabled: z.boolean().optional(),
     })
     .optional(),
@@ -483,816 +491,879 @@ api.get("/health", (_req, res) =>
   })
 );
 
-api.get("/ready", asyncRoute(async (_req, res) => {
-  const [database, worker, gateway] = await Promise.all([
-    checkDatabaseHealth(),
-    checkWorkerHealth(),
-    getWhatsappAdapter(OPERATIONAL_WHATSAPP_PROVIDER).health(),
-  ]);
-  const ready =
-    database.status === "ok" && worker.status === "ok" && gateway.ok;
-  return res.status(ready ? 200 : 503).json({
-    status: ready ? "ready" : "not_ready",
-    service: "forte-panel-api",
-    checks: {
-      database: database.status,
-      worker: worker.status,
-      gateway: gateway.ok ? "ok" : "error",
-    },
-    timestamp: new Date().toISOString(),
-  });
-}));
-
-api.get("/core/diagnostics", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const workspaceId = Number(process.env.FORTE_API_WORKSPACE_ID);
-  const configuredWorkspace =
-    Number.isSafeInteger(workspaceId) && workspaceId > 0;
-  const config = {
-    workspaceConfigured: configuredWorkspace,
-    baileysWebhookSecretConfigured: Boolean(
-      process.env.BAILEYS_WEBHOOK_SECRET?.trim()
-    ),
-    forteApiKeyConfigured: Boolean(process.env.FORTE_API_KEY?.trim()),
-  };
-  if (!configuredWorkspace)
-    return res.status(503).json({
-      status: "blocked",
-      reason: "api_workspace_not_configured",
-      config,
-    });
-  try {
-    const [pipeline, agent] = await Promise.all([
-      getCorePipelineSnapshot(workspaceId),
-      getNativeAgentRuntimeConfig(workspaceId),
+api.get(
+  "/ready",
+  asyncRoute(async (_req, res) => {
+    const [database, worker, gateway] = await Promise.all([
+      checkDatabaseHealth(),
+      checkWorkerHealth(),
+      getWhatsappAdapter(OPERATIONAL_WHATSAPP_PROVIDER).health(),
     ]);
-    const agentCapabilities = Object.fromEntries(
-      Object.entries(agent.llm.routing).map(([capability, route]) => {
-        const provider = agent.llm.providers[route.provider];
-        return [
-          capability,
-          {
-            provider: route.provider,
-            model: route.model,
-            ready: Boolean(
-              route.model &&
-                (route.baseUrl || provider?.baseUrl) &&
-                (route.apiKey || provider?.apiKey) &&
-                (provider?.enabled || (route.baseUrl && route.apiKey))
-            ),
-          },
-        ];
-      })
-    );
-    return res.json({
-      status: "ok",
-      config,
-      agent: { enabled: agent.enabled, capabilities: agentCapabilities },
-      pipeline,
+    const ready =
+      database.status === "ok" && worker.status === "ok" && gateway.ok;
+    return res.status(ready ? 200 : 503).json({
+      status: ready ? "ready" : "not_ready",
+      service: "forte-panel-api",
+      checks: {
+        database: database.status,
+        worker: worker.status,
+        gateway: gateway.ok ? "ok" : "error",
+      },
+      timestamp: new Date().toISOString(),
     });
-  } catch (error) {
-    return fail(
-      res,
-      500,
-      error instanceof Error ? error.message : "Falha no diagnóstico do core",
-      "internal_error"
-    );
-  }
-}));
+  })
+);
 
-api.get("/channels", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  try {
-    const channels = await listWhatsappChannels(workspaceId);
-    return res.json({
-      data: channels.map(channel => ({
-        id: channel.id,
-        provider: channel.provider,
-        name: channel.name,
-        phoneNumber: channel.phoneNumber,
-        configured: Boolean(channel.phoneNumberId || channel.credentialsRef),
-        active: Boolean(channel.active),
-      })),
-    });
-  } catch (error) {
-    return fail(
-      res,
-      500,
-      error instanceof Error ? error.message : "Falha ao consultar canais",
-      "internal_error"
-    );
-  }
-}));
-
-api.get("/onboarding/prompt", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  try {
-    const prompt = await getPublishedAiPrompt(workspaceId);
-    return res.json({ data: prompt });
-  } catch (error) {
-    return fail(
-      res,
-      500,
-      error instanceof Error
-        ? error.message
-        : "Falha ao consultar prompt publicado",
-      "internal_error"
-    );
-  }
-}));
-
-api.post("/lead-memory", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const parsed = leadMemorySchema.safeParse(req.body);
-  if (!parsed.success)
-    return fail(
-      res,
-      400,
-      "Payload da memória do lead inválido",
-      "invalid_payload"
-    );
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  const responseMessage =
-    parsed.data.action === "buscar_lead"
-      ? "Estado do lead recuperado."
-      : parsed.data.action === "atualizar_lead"
-        ? "Estado do lead atualizado."
-        : parsed.data.action === "criar_lead"
-          ? "Lead criado ou já existente."
-          : "Evento registrado.";
-  try {
-    const run = async () => {
-      const result = await leadMemoryOperation(workspaceId, parsed.data);
-      return {
-        statusCode: 200,
-        body: {
-          success: true,
-          acao: parsed.data.action,
-          telefone: parsed.data.phone.replace(/[^0-9]/g, ""),
-          resultado: result,
-          mensagem: responseMessage,
-        },
-      };
+api.get(
+  "/core/diagnostics",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const workspaceId = Number(process.env.FORTE_API_WORKSPACE_ID);
+    const configuredWorkspace =
+      Number.isSafeInteger(workspaceId) && workspaceId > 0;
+    const config = {
+      workspaceConfigured: configuredWorkspace,
+      baileysWebhookSecretConfigured: Boolean(
+        process.env.BAILEYS_WEBHOOK_SECRET?.trim()
+      ),
+      forteApiKeyConfigured: Boolean(process.env.FORTE_API_KEY?.trim()),
     };
-    if (parsed.data.action === "buscar_lead")
-      return res.json((await run()).body);
-    return await idempotent(req, res, workspaceId, run);
-  } catch (error) {
-    return fail(
-      res,
-      500,
-      error instanceof Error ? error.message : "Falha na memória do lead",
-      "internal_error"
-    );
-  }
-}));
-
-api.post("/contacts/upsert", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const parsed = contactSchema.safeParse(req.body);
-  if (!parsed.success)
-    return fail(res, 400, "Payload de contato inválido", "invalid_payload");
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  try {
-    return await idempotent(req, res, workspaceId, async () => {
-      const contact = await upsertApiContact(workspaceId, parsed.data);
-      return {
-        statusCode: 200,
-        body: {
-          data: {
-            id: contact?.id,
-            phone: contact?.externalPhone,
-            name: contact?.name,
-            stage: contact
-              ? await getCanonicalContactStage(workspaceId, contact.id)
-              : undefined,
-          },
-          created:
-            !contact?.createdAt ||
-            contact.createdAt.getTime() === contact.updatedAt.getTime(),
-        },
-      };
-    });
-  } catch (error) {
-    return fail(
-      res,
-      500,
-      error instanceof Error ? error.message : "Falha ao atualizar contato",
-      "internal_error"
-    );
-  }
-}));
-
-api.get("/contacts/:id/messages", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0)
-    return fail(res, 400, "ID de contato inválido", "invalid_id");
-  const limit = req.query.limit ? Number(req.query.limit) : 200;
-  const since = req.query.since ? new Date(String(req.query.since)) : undefined;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 500)
-    return fail(res, 400, "limit deve estar entre 1 e 500", "invalid_query");
-  if (since && Number.isNaN(since.getTime()))
-    return fail(
-      res,
-      400,
-      "since deve ser uma data ISO válida",
-      "invalid_query"
-    );
-  try {
-    const contact = await getContactById(workspaceId, id);
-    if (!contact) return fail(res, 404, "Contato não encontrado", "not_found");
-    const messages = await listMessagesForContact(workspaceId, id, {
-      limit,
-      since,
-    });
-    return res.json({
-      data: {
-        contactId: id,
-        phone: contact.externalPhone,
-        count: messages.length,
-        messages,
-      },
-    });
-  } catch (error) {
-    return fail(
-      res,
-      500,
-      error instanceof Error ? error.message : "Falha ao consultar histórico",
-      "internal_error"
-    );
-  }
-}));
-
-api.get("/contacts/:id", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0)
-    return fail(res, 400, "ID de contato inválido", "invalid_id");
-  try {
-    const contact = await getContactById(workspaceId, id);
-    if (!contact) return fail(res, 404, "Contato não encontrado", "not_found");
-    return res.json({
-      data: {
-        id: contact.id,
-        phone: contact.externalPhone,
-        name: contact.name,
-        city: contact.city,
-        neighborhood: contact.neighborhood,
-        serviceRequested: contact.serviceRequested,
-        stage:
-          (await getCanonicalContactStage(workspaceId, contact.id)) ??
-          contact.stage,
-        urgency: contact.urgency,
-        aiEnabled: Boolean(contact.aiEnabled),
-        quoteCents: contact.quoteCents,
-        lastMessageAt: contact.lastMessageAt,
-      },
-    });
-  } catch (error) {
-    return fail(
-      res,
-      500,
-      error instanceof Error ? error.message : "Falha ao consultar contato",
-      "internal_error"
-    );
-  }
-}));
-
-api.get("/availability", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  try {
-    const snapshot = await getAgendaSnapshot(workspaceId, undefined, true);
-    const requestedServiceId = req.query.serviceId
-      ? Number(req.query.serviceId)
-      : undefined;
-    const requestedProfessionalId = req.query.professionalId
-      ? Number(req.query.professionalId)
-      : undefined;
-    const serviceId =
-      Number.isInteger(requestedServiceId) && (requestedServiceId ?? 0) > 0
-        ? requestedServiceId
-        : undefined;
-    const professionalId =
-      Number.isInteger(requestedProfessionalId) &&
-      (requestedProfessionalId ?? 0) > 0
-        ? requestedProfessionalId
-        : undefined;
-
-    /** Keeps only professionals able to execute the requested service. */
-    const professionalsForService = serviceId
-      ? snapshot.serviceLinks.length > 0
-        ? snapshot.serviceLinks
-            .filter(link => link.serviceId === serviceId && link.active === 1)
-            .map(link => link.professionalId)
-        : snapshot.professionals.map(professional => professional.id)
-      : snapshot.professionals.map(professional => professional.id);
-
-    const professionals = snapshot.professionals
-      .filter(professional => professionalsForService.includes(professional.id))
-      .filter(
-        professional => !professionalId || professional.id === professionalId
-      )
-      .map(professional => ({
-        id: professional.id,
-        name: professional.name,
-        specialty: professional.specialty,
-        color: professional.color,
-        serviceIds: snapshot.serviceLinks
-          .filter(
-            link => link.professionalId === professional.id && link.active === 1
-          )
-          .map(link => link.serviceId),
-        weeklyAvailability: snapshot.availability
-          .filter(window => window.professionalId === professional.id)
-          .map(window => ({
-            weekday: window.weekday,
-            startMinute: window.startMinute,
-            endMinute: window.endMinute,
-          })),
-      }));
-
-    const services = snapshot.services
-      .filter(service => !serviceId || service.id === serviceId)
-      .map(service => ({
-        id: service.id,
-        name: service.name,
-        description: service.description,
-        durationMinutes: service.durationMinutes,
-        priceCents: service.priceCents,
-        priceType: service.priceType,
-        professionalIds: snapshot.serviceLinks
-          .filter(link => link.serviceId === service.id && link.active === 1)
-          .map(link => link.professionalId),
-      }));
-
-    const now = Date.now();
-    const appointments = snapshot.appointments
-      .filter(appointment => appointment.status !== "cancelled")
-      .filter(appointment => new Date(appointment.endsAt).getTime() >= now)
-      .filter(
-        appointment =>
-          !professionalId || appointment.professionalId === professionalId
-      )
-      .map(appointment => ({
-        id: appointment.id,
-        quoteId: appointment.quoteId,
-        serviceId: appointment.serviceId,
-        professionalId: appointment.professionalId,
-        startsAt: appointment.startsAt,
-        endsAt: appointment.endsAt,
-        status: appointment.status,
-        serviceName: appointment.serviceName,
-        professionalName: appointment.professionalName,
-        contactName: appointment.contactName,
-      }));
-
-    return res.json({
-      timezone: snapshot.timezone,
-      services,
-      professionals,
-      appointments,
-    });
-  } catch (error) {
-    return fail(
-      res,
-      500,
-      error instanceof Error
-        ? error.message
-        : "Falha ao consultar disponibilidade",
-      "internal_error"
-    );
-  }
-}));
-
-api.post("/appointments", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  const parsed = appointmentSchema.safeParse(req.body);
-  if (!parsed.success)
-    return fail(res, 400, "Payload de agendamento inválido", "invalid_payload");
-  if (parsed.data.endsAt <= parsed.data.startsAt)
-    return fail(
-      res,
-      400,
-      "O horário final precisa ser maior que o inicial",
-      "invalid_period"
-    );
-  try {
-    return await idempotent(req, res, workspaceId, async () => {
-      const allowed = await professionalCanExecuteService(
-        workspaceId,
-        parsed.data.professionalId,
-        parsed.data.serviceId
+    if (!configuredWorkspace)
+      return res.status(503).json({
+        status: "blocked",
+        reason: "api_workspace_not_configured",
+        config,
+      });
+    try {
+      const [pipeline, agent] = await Promise.all([
+        getCorePipelineSnapshot(workspaceId),
+        getNativeAgentRuntimeConfig(workspaceId),
+      ]);
+      const agentCapabilities = Object.fromEntries(
+        Object.entries(agent.llm.routing).map(([capability, route]) => {
+          const provider = agent.llm.providers[route.provider];
+          return [
+            capability,
+            {
+              provider: route.provider,
+              model: route.model,
+              ready: Boolean(
+                route.model &&
+                  (route.baseUrl || provider?.baseUrl) &&
+                  (route.apiKey || provider?.apiKey) &&
+                  (provider?.enabled || (route.baseUrl && route.apiKey))
+              ),
+            },
+          ];
+        })
       );
-      if (!allowed)
-        return {
-          statusCode: 409,
-          body: {
-            error: "service_not_linked",
-            message: "Este profissional não executa o serviço informado",
-          },
-        };
-      const appointment = await createAgendaAppointment(
-        workspaceId,
-        parsed.data
-      );
-      return {
-        statusCode: 201,
-        body: {
-          data: {
-            id: appointment?.id,
-            quoteId: appointment?.quoteId,
-            status: appointment?.status,
-            startsAt: appointment?.startsAt,
-            endsAt: appointment?.endsAt,
-          },
-        },
-      };
-    });
-  } catch (error) {
-    if (error instanceof ScheduleError) {
+      return res.json({
+        status: "ok",
+        config,
+        agent: { enabled: agent.enabled, capabilities: agentCapabilities },
+        pipeline,
+      });
+    } catch (error) {
       return fail(
         res,
-        error.reason === "invalid_period" ? 400 : 409,
-        error.message,
-        error.reason
+        500,
+        error instanceof Error ? error.message : "Falha no diagnóstico do core",
+        "internal_error"
       );
     }
-    const message =
-      error instanceof Error ? error.message : "Falha ao criar agendamento";
-    return fail(
-      res,
-      message.includes("indisponível") ? 409 : 500,
-      message,
-      message.includes("indisponível") ? "schedule_conflict" : "internal_error"
-    );
-  }
-}));
+  })
+);
 
-api.post("/messages", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const parsed = messageSchema.safeParse(req.body);
-  if (!parsed.success)
-    return fail(res, 400, "Payload de mensagem inválido", "invalid_payload");
-  const idempotencyKey = req.header("Idempotency-Key");
-  if (
-    !idempotencyKey ||
-    idempotencyKey.length < 8 ||
-    idempotencyKey.length > 180
-  )
-    return fail(
-      res,
-      400,
-      "Idempotency-Key é obrigatório",
-      "idempotency_key_required"
-    );
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  const provider = parsed.data.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
-  if (provider === "baileys") {
-    if (!parsed.data.instanceId)
+api.get(
+  "/channels",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    try {
+      const channels = await listWhatsappChannels(workspaceId);
+      return res.json({
+        data: channels.map(channel => ({
+          id: channel.id,
+          provider: channel.provider,
+          name: channel.name,
+          phoneNumber: channel.phoneNumber,
+          configured: Boolean(channel.phoneNumberId || channel.credentialsRef),
+          active: Boolean(channel.active),
+        })),
+      });
+    } catch (error) {
+      return fail(
+        res,
+        500,
+        error instanceof Error ? error.message : "Falha ao consultar canais",
+        "internal_error"
+      );
+    }
+  })
+);
+
+api.get(
+  "/onboarding/prompt",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    try {
+      const prompt = await getPublishedAiPrompt(workspaceId);
+      return res.json({ data: prompt });
+    } catch (error) {
+      return fail(
+        res,
+        500,
+        error instanceof Error
+          ? error.message
+          : "Falha ao consultar prompt publicado",
+        "internal_error"
+      );
+    }
+  })
+);
+
+api.post(
+  "/lead-memory",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const parsed = leadMemorySchema.safeParse(req.body);
+    if (!parsed.success)
       return fail(
         res,
         400,
-        "instanceId é obrigatório para envio Baileys",
-        "instance_id_required"
+        "Payload da memória do lead inválido",
+        "invalid_payload"
       );
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    const responseMessage =
+      parsed.data.action === "buscar_lead"
+        ? "Estado do lead recuperado."
+        : parsed.data.action === "atualizar_lead"
+          ? "Estado do lead atualizado."
+          : parsed.data.action === "criar_lead"
+            ? "Lead criado ou já existente."
+            : "Evento registrado.";
     try {
-      const owner = await findBaileysInstanceOwner(parsed.data.instanceId);
-      if (!owner?.active || owner.workspaceId !== workspaceId)
-        return fail(
-          res,
-          404,
-          "Instância Baileys não encontrada neste workspace",
-          "unknown_baileys_instance"
-        );
-    } catch {
+      const run = async () => {
+        const result = await leadMemoryOperation(workspaceId, parsed.data);
+        return {
+          statusCode: 200,
+          body: {
+            success: true,
+            acao: parsed.data.action,
+            telefone: parsed.data.phone.replace(/[^0-9]/g, ""),
+            resultado: result,
+            mensagem: responseMessage,
+          },
+        };
+      };
+      if (parsed.data.action === "buscar_lead")
+        return res.json((await run()).body);
+      return await idempotent(req, res, workspaceId, run);
+    } catch (error) {
       return fail(
         res,
-        503,
-        "Não foi possível validar a instância Baileys",
-        "instance_validation_unavailable"
+        500,
+        error instanceof Error ? error.message : "Falha na memória do lead",
+        "internal_error"
       );
     }
-  }
-  try {
-    return await idempotent(req, res, workspaceId, async () => {
-      const contact = parsed.data.contactId
-        ? await getContactById(workspaceId, parsed.data.contactId)
-        : await upsertApiContact(workspaceId, {
-            phone: String(parsed.data.phone).replace(/[^0-9]/g, ""),
-            name: parsed.data.name,
-          });
-      if (!contact)
+  })
+);
+
+api.post(
+  "/contacts/upsert",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const parsed = contactSchema.safeParse(req.body);
+    if (!parsed.success)
+      return fail(res, 400, "Payload de contato inválido", "invalid_payload");
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    try {
+      return await idempotent(req, res, workspaceId, async () => {
+        const contact = await upsertApiContact(workspaceId, parsed.data);
         return {
-          statusCode: 404,
-          body: { error: "not_found", message: "Contato não encontrado" },
+          statusCode: 200,
+          body: {
+            data: {
+              id: contact?.id,
+              phone: contact?.externalPhone,
+              name: contact?.name,
+              stage: contact
+                ? await getCanonicalContactStage(workspaceId, contact.id)
+                : undefined,
+            },
+            created:
+              !contact?.createdAt ||
+              contact.createdAt.getTime() === contact.updatedAt.getTime(),
+          },
         };
-      const senderType = parsed.data.senderType ?? "human";
-      const messageType = parsed.data.messageType ?? "text";
-      const message = await queueOutboundMessage(
-        workspaceId,
-        contact.id,
-        parsed.data.content,
-        provider,
-        senderType,
-        messageType,
-        {
-          ...(parsed.data.metadata ?? {}),
-          ...(parsed.data.instanceId
-            ? { instanceId: parsed.data.instanceId }
-            : {}),
-        }
+      });
+    } catch (error) {
+      return fail(
+        res,
+        500,
+        error instanceof Error ? error.message : "Falha ao atualizar contato",
+        "internal_error"
       );
-      return {
-        statusCode: 202,
-        body: {
-          data: {
+    }
+  })
+);
+
+api.get(
+  "/contacts/:id/messages",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0)
+      return fail(res, 400, "ID de contato inválido", "invalid_id");
+    const limit = req.query.limit ? Number(req.query.limit) : 200;
+    const since = req.query.since
+      ? new Date(String(req.query.since))
+      : undefined;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500)
+      return fail(res, 400, "limit deve estar entre 1 e 500", "invalid_query");
+    if (since && Number.isNaN(since.getTime()))
+      return fail(
+        res,
+        400,
+        "since deve ser uma data ISO válida",
+        "invalid_query"
+      );
+    try {
+      const contact = await getContactById(workspaceId, id);
+      if (!contact)
+        return fail(res, 404, "Contato não encontrado", "not_found");
+      const messages = await listMessagesForContact(workspaceId, id, {
+        limit,
+        since,
+      });
+      return res.json({
+        data: {
+          contactId: id,
+          phone: contact.externalPhone,
+          count: messages.length,
+          messages,
+        },
+      });
+    } catch (error) {
+      return fail(
+        res,
+        500,
+        error instanceof Error ? error.message : "Falha ao consultar histórico",
+        "internal_error"
+      );
+    }
+  })
+);
+
+api.get(
+  "/contacts/:id",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0)
+      return fail(res, 400, "ID de contato inválido", "invalid_id");
+    try {
+      const contact = await getContactById(workspaceId, id);
+      if (!contact)
+        return fail(res, 404, "Contato não encontrado", "not_found");
+      return res.json({
+        data: {
+          id: contact.id,
+          phone: contact.externalPhone,
+          name: contact.name,
+          city: contact.city,
+          neighborhood: contact.neighborhood,
+          serviceRequested: contact.serviceRequested,
+          stage:
+            (await getCanonicalContactStage(workspaceId, contact.id)) ??
+            contact.stage,
+          urgency: contact.urgency,
+          aiEnabled: Boolean(contact.aiEnabled),
+          quoteCents: contact.quoteCents,
+          lastMessageAt: contact.lastMessageAt,
+        },
+      });
+    } catch (error) {
+      return fail(
+        res,
+        500,
+        error instanceof Error ? error.message : "Falha ao consultar contato",
+        "internal_error"
+      );
+    }
+  })
+);
+
+api.get(
+  "/availability",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    try {
+      const snapshot = await getAgendaSnapshot(workspaceId, undefined, true);
+      const requestedServiceId = req.query.serviceId
+        ? Number(req.query.serviceId)
+        : undefined;
+      const requestedProfessionalId = req.query.professionalId
+        ? Number(req.query.professionalId)
+        : undefined;
+      const serviceId =
+        Number.isInteger(requestedServiceId) && (requestedServiceId ?? 0) > 0
+          ? requestedServiceId
+          : undefined;
+      const professionalId =
+        Number.isInteger(requestedProfessionalId) &&
+        (requestedProfessionalId ?? 0) > 0
+          ? requestedProfessionalId
+          : undefined;
+
+      /** Keeps only professionals able to execute the requested service. */
+      const professionalsForService = serviceId
+        ? snapshot.serviceLinks.length > 0
+          ? snapshot.serviceLinks
+              .filter(link => link.serviceId === serviceId && link.active === 1)
+              .map(link => link.professionalId)
+          : snapshot.professionals.map(professional => professional.id)
+        : snapshot.professionals.map(professional => professional.id);
+
+      const professionals = snapshot.professionals
+        .filter(professional =>
+          professionalsForService.includes(professional.id)
+        )
+        .filter(
+          professional => !professionalId || professional.id === professionalId
+        )
+        .map(professional => ({
+          id: professional.id,
+          name: professional.name,
+          specialty: professional.specialty,
+          color: professional.color,
+          serviceIds: snapshot.serviceLinks
+            .filter(
+              link =>
+                link.professionalId === professional.id && link.active === 1
+            )
+            .map(link => link.serviceId),
+          weeklyAvailability: snapshot.availability
+            .filter(window => window.professionalId === professional.id)
+            .map(window => ({
+              weekday: window.weekday,
+              startMinute: window.startMinute,
+              endMinute: window.endMinute,
+            })),
+        }));
+
+      const services = snapshot.services
+        .filter(service => !serviceId || service.id === serviceId)
+        .map(service => ({
+          id: service.id,
+          name: service.name,
+          description: service.description,
+          durationMinutes: service.durationMinutes,
+          priceCents: service.priceCents,
+          priceType: service.priceType,
+          professionalIds: snapshot.serviceLinks
+            .filter(link => link.serviceId === service.id && link.active === 1)
+            .map(link => link.professionalId),
+        }));
+
+      const now = Date.now();
+      const appointments = snapshot.appointments
+        .filter(appointment => appointment.status !== "cancelled")
+        .filter(appointment => new Date(appointment.endsAt).getTime() >= now)
+        .filter(
+          appointment =>
+            !professionalId || appointment.professionalId === professionalId
+        )
+        .map(appointment => ({
+          id: appointment.id,
+          quoteId: appointment.quoteId,
+          serviceId: appointment.serviceId,
+          professionalId: appointment.professionalId,
+          startsAt: appointment.startsAt,
+          endsAt: appointment.endsAt,
+          status: appointment.status,
+          serviceName: appointment.serviceName,
+          professionalName: appointment.professionalName,
+          contactName: appointment.contactName,
+        }));
+
+      return res.json({
+        timezone: snapshot.timezone,
+        services,
+        professionals,
+        appointments,
+      });
+    } catch (error) {
+      return fail(
+        res,
+        500,
+        error instanceof Error
+          ? error.message
+          : "Falha ao consultar disponibilidade",
+        "internal_error"
+      );
+    }
+  })
+);
+
+api.post(
+  "/appointments",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    const parsed = appointmentSchema.safeParse(req.body);
+    if (!parsed.success)
+      return fail(
+        res,
+        400,
+        "Payload de agendamento inválido",
+        "invalid_payload"
+      );
+    if (parsed.data.endsAt <= parsed.data.startsAt)
+      return fail(
+        res,
+        400,
+        "O horário final precisa ser maior que o inicial",
+        "invalid_period"
+      );
+    try {
+      return await idempotent(req, res, workspaceId, async () => {
+        const allowed = await professionalCanExecuteService(
+          workspaceId,
+          parsed.data.professionalId,
+          parsed.data.serviceId
+        );
+        if (!allowed)
+          return {
+            statusCode: 409,
+            body: {
+              error: "service_not_linked",
+              message: "Este profissional não executa o serviço informado",
+            },
+          };
+        const appointment = await createAgendaAppointment(
+          workspaceId,
+          parsed.data
+        );
+        return {
+          statusCode: 201,
+          body: {
+            data: {
+              id: appointment?.id,
+              quoteId: appointment?.quoteId,
+              status: appointment?.status,
+              startsAt: appointment?.startsAt,
+              endsAt: appointment?.endsAt,
+            },
+          },
+        };
+      });
+    } catch (error) {
+      if (error instanceof ScheduleError) {
+        return fail(
+          res,
+          error.reason === "invalid_period" ? 400 : 409,
+          error.message,
+          error.reason
+        );
+      }
+      const message =
+        error instanceof Error ? error.message : "Falha ao criar agendamento";
+      return fail(
+        res,
+        message.includes("indisponível") ? 409 : 500,
+        message,
+        message.includes("indisponível")
+          ? "schedule_conflict"
+          : "internal_error"
+      );
+    }
+  })
+);
+
+api.post(
+  "/messages",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const parsed = messageSchema.safeParse(req.body);
+    if (!parsed.success)
+      return fail(res, 400, "Payload de mensagem inválido", "invalid_payload");
+    const idempotencyKey = req.header("Idempotency-Key");
+    if (
+      !idempotencyKey ||
+      idempotencyKey.length < 8 ||
+      idempotencyKey.length > 180
+    )
+      return fail(
+        res,
+        400,
+        "Idempotency-Key é obrigatório",
+        "idempotency_key_required"
+      );
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    const provider = parsed.data.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
+    if (provider === "baileys") {
+      if (!parsed.data.instanceId)
+        return fail(
+          res,
+          400,
+          "instanceId é obrigatório para envio Baileys",
+          "instance_id_required"
+        );
+      try {
+        const owner = await findBaileysInstanceOwner(parsed.data.instanceId);
+        if (!owner?.active || owner.workspaceId !== workspaceId)
+          return fail(
+            res,
+            404,
+            "Instância Baileys não encontrada neste workspace",
+            "unknown_baileys_instance"
+          );
+      } catch {
+        return fail(
+          res,
+          503,
+          "Não foi possível validar a instância Baileys",
+          "instance_validation_unavailable"
+        );
+      }
+    }
+    try {
+      return await idempotent(req, res, workspaceId, async () => {
+        const contact = parsed.data.contactId
+          ? await getContactById(workspaceId, parsed.data.contactId)
+          : await upsertApiContact(workspaceId, {
+              phone: String(parsed.data.phone).replace(/[^0-9]/g, ""),
+              name: parsed.data.name,
+            });
+        if (!contact)
+          return {
+            statusCode: 404,
+            body: { error: "not_found", message: "Contato não encontrado" },
+          };
+        const senderType = parsed.data.senderType ?? "human";
+        const messageType = parsed.data.messageType ?? "text";
+        const message = await queueOutboundMessage(
+          workspaceId,
+          contact.id,
+          parsed.data.content,
+          provider,
+          senderType,
+          messageType,
+          {
+            ...(parsed.data.metadata ?? {}),
+            ...(parsed.data.instanceId
+              ? { instanceId: parsed.data.instanceId }
+              : {}),
+          }
+        );
+        return {
+          statusCode: 202,
+          body: {
+            data: {
+              id: message?.id,
+              contactId: contact.id,
+              provider,
+              senderType,
+              messageType,
+              status: "queued",
+            },
+          },
+        };
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Falha ao enfileirar mensagem";
+      const failure = outboundQueueFailure(message);
+      return fail(res, failure.statusCode, message, failure.error);
+    }
+  })
+);
+
+api.post(
+  "/messages/batch",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const parsed = messageBatchSchema.safeParse(req.body);
+    if (!parsed.success)
+      return fail(
+        res,
+        400,
+        "Payload de mensagens em lote inválido",
+        "invalid_payload"
+      );
+    const idempotencyKey = req.header("Idempotency-Key");
+    if (
+      !idempotencyKey ||
+      idempotencyKey.length < 8 ||
+      idempotencyKey.length > 180
+    )
+      return fail(
+        res,
+        400,
+        "Idempotency-Key é obrigatório",
+        "idempotency_key_required"
+      );
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    for (let index = 0; index < parsed.data.messages.length; index += 1) {
+      const item = parsed.data.messages[index]!;
+      const provider = item.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
+      if (provider !== "baileys") continue;
+      if (!item.instanceId)
+        return fail(
+          res,
+          400,
+          `instanceId é obrigatório no item ${index + 1}`,
+          "instance_id_required"
+        );
+      try {
+        const owner = await findBaileysInstanceOwner(item.instanceId);
+        if (!owner?.active || owner.workspaceId !== workspaceId)
+          return fail(
+            res,
+            404,
+            `Instância Baileys não encontrada no workspace para o item ${index + 1}`,
+            "unknown_baileys_instance"
+          );
+      } catch {
+        return fail(
+          res,
+          503,
+          `Não foi possível validar a instância Baileys do item ${index + 1}`,
+          "instance_validation_unavailable"
+        );
+      }
+    }
+    try {
+      return await idempotent(req, res, workspaceId, async () => {
+        const results: Array<Record<string, unknown>> = [];
+        for (let index = 0; index < parsed.data.messages.length; index += 1) {
+          const item = parsed.data.messages[index];
+          const provider = item.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
+          const contact = item.contactId
+            ? await getContactById(workspaceId, item.contactId)
+            : await upsertApiContact(workspaceId, {
+                phone: String(item.phone).replace(/[^0-9]/g, ""),
+                name: item.name,
+              });
+          if (!contact)
+            return {
+              statusCode: 404,
+              body: {
+                error: "not_found",
+                message: `Contato não encontrado no item ${index + 1}`,
+              },
+            };
+          const senderType = item.senderType ?? "ai";
+          const messageType = item.messageType ?? "text";
+          const batchId =
+            parsed.data.batchId ??
+            req.header("Idempotency-Key") ??
+            `request-${Date.now()}`;
+          const existing = await findQueuedBatchMessage(
+            workspaceId,
+            contact.id,
+            batchId,
+            index
+          );
+          const message =
+            existing ??
+            (await queueOutboundMessage(
+              workspaceId,
+              contact.id,
+              item.content,
+              provider,
+              senderType,
+              messageType,
+              {
+                ...(item.metadata ?? {}),
+                batchId,
+                batchIndex: index,
+                ...(item.instanceId ? { instanceId: item.instanceId } : {}),
+              }
+            ));
+          results.push({
             id: message?.id,
             contactId: contact.id,
             provider,
             senderType,
             messageType,
             status: "queued",
-          },
-        },
-      };
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Falha ao enfileirar mensagem";
-    const failure = outboundQueueFailure(message);
-    return fail(res, failure.statusCode, message, failure.error);
-  }
-}));
-
-api.post("/messages/batch", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const parsed = messageBatchSchema.safeParse(req.body);
-  if (!parsed.success)
-    return fail(
-      res,
-      400,
-      "Payload de mensagens em lote inválido",
-      "invalid_payload"
-    );
-  const idempotencyKey = req.header("Idempotency-Key");
-  if (
-    !idempotencyKey ||
-    idempotencyKey.length < 8 ||
-    idempotencyKey.length > 180
-  )
-    return fail(
-      res,
-      400,
-      "Idempotency-Key é obrigatório",
-      "idempotency_key_required"
-    );
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  for (let index = 0; index < parsed.data.messages.length; index += 1) {
-    const item = parsed.data.messages[index]!;
-    const provider = item.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
-    if (provider !== "baileys") continue;
-    if (!item.instanceId)
-      return fail(
-        res,
-        400,
-        `instanceId é obrigatório no item ${index + 1}`,
-        "instance_id_required"
-      );
-    try {
-      const owner = await findBaileysInstanceOwner(item.instanceId);
-      if (!owner?.active || owner.workspaceId !== workspaceId)
-        return fail(
-          res,
-          404,
-          `Instância Baileys não encontrada no workspace para o item ${index + 1}`,
-          "unknown_baileys_instance"
-        );
-    } catch {
-      return fail(
-        res,
-        503,
-        `Não foi possível validar a instância Baileys do item ${index + 1}`,
-        "instance_validation_unavailable"
-      );
+            index,
+          });
+        }
+        return {
+          statusCode: 202,
+          body: { accepted: true, count: results.length, data: results },
+        };
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Falha ao enfileirar lote de mensagens";
+      const failure = outboundQueueFailure(message);
+      return fail(res, failure.statusCode, message, failure.error);
     }
-  }
-  try {
-    return await idempotent(req, res, workspaceId, async () => {
-      const results: Array<Record<string, unknown>> = [];
-      for (let index = 0; index < parsed.data.messages.length; index += 1) {
-        const item = parsed.data.messages[index];
-        const provider = item.provider ?? OPERATIONAL_WHATSAPP_PROVIDER;
-        const contact = item.contactId
-          ? await getContactById(workspaceId, item.contactId)
-          : await upsertApiContact(workspaceId, {
-              phone: String(item.phone).replace(/[^0-9]/g, ""),
-              name: item.name,
-            });
+  })
+);
+
+api.patch(
+  "/contacts/:id/stage",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const id = Number(req.params.id);
+    const parsed = stageSchema.safeParse(req.body);
+    if (!Number.isInteger(id) || id <= 0)
+      return fail(res, 400, "ID de contato inválido", "invalid_id");
+    if (!parsed.success)
+      return fail(res, 400, "Payload de estágio inválido", "invalid_payload");
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    try {
+      return await idempotent(req, res, workspaceId, async () => {
+        const contact = await getContactById(workspaceId, id);
         if (!contact)
           return {
             statusCode: 404,
-            body: {
-              error: "not_found",
-              message: `Contato não encontrado no item ${index + 1}`,
-            },
+            body: { error: "not_found", message: "Contato não encontrado" },
           };
-        const senderType = item.senderType ?? "ai";
-        const messageType = item.messageType ?? "text";
-        const batchId =
-          parsed.data.batchId ??
-          req.header("Idempotency-Key") ??
-          `request-${Date.now()}`;
-        const existing = await findQueuedBatchMessage(
+        const transition = await moveContactStage(
           workspaceId,
-          contact.id,
-          batchId,
-          index
+          id,
+          parsed.data.stage,
+          undefined,
+          "api"
         );
-        const message =
-          existing ??
-          (await queueOutboundMessage(
-            workspaceId,
-            contact.id,
-            item.content,
-            provider,
-            senderType,
-            messageType,
-            {
-              ...(item.metadata ?? {}),
-              batchId,
-              batchIndex: index,
-              ...(item.instanceId ? { instanceId: item.instanceId } : {}),
-            }
-          ));
-        results.push({
-          id: message?.id,
-          contactId: contact.id,
-          provider,
-          senderType,
-          messageType,
-          status: "queued",
-          index,
-        });
-      }
-      return {
-        statusCode: 202,
-        body: { accepted: true, count: results.length, data: results },
-      };
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Falha ao enfileirar lote de mensagens";
-    const failure = outboundQueueFailure(message);
-    return fail(res, failure.statusCode, message, failure.error);
-  }
-}));
-
-api.patch("/contacts/:id/stage", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const id = Number(req.params.id);
-  const parsed = stageSchema.safeParse(req.body);
-  if (!Number.isInteger(id) || id <= 0)
-    return fail(res, 400, "ID de contato inválido", "invalid_id");
-  if (!parsed.success)
-    return fail(res, 400, "Payload de estágio inválido", "invalid_payload");
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  try {
-    return await idempotent(req, res, workspaceId, async () => {
-      const contact = await getContactById(workspaceId, id);
-      if (!contact)
         return {
-          statusCode: 404,
-          body: { error: "not_found", message: "Contato não encontrado" },
+          statusCode: 200,
+          body: { data: { id, stage: transition.stage } },
         };
-      const transition = await moveContactStage(
-        workspaceId,
-        id,
-        parsed.data.stage,
-        undefined,
-        "api"
-      );
-      return {
-        statusCode: 200,
-        body: { data: { id, stage: transition.stage } },
-      };
-    });
-  } catch (error) {
-    return fail(
-      res,
-      500,
-      error instanceof Error ? error.message : "Falha ao mover estágio",
-      "internal_error"
-    );
-  }
-}));
-
-api.post("/appointments/:id/cancel", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const workspaceId = await requireApiWorkspaceId(res);
-  if (!workspaceId) return;
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0)
-    return fail(res, 400, "ID de agendamento inválido", "invalid_id");
-  try {
-    return await idempotent(req, res, workspaceId, async () => {
-      const appointment = await cancelAgendaAppointment(workspaceId, id);
-      if (!appointment)
-        return {
-          statusCode: 404,
-          body: { error: "not_found", message: "Agendamento não encontrado" },
-        };
-      return { statusCode: 200, body: { data: { id, status: "cancelled" } } };
-    });
-  } catch (error) {
-    return fail(
-      res,
-      500,
-      error instanceof Error ? error.message : "Falha ao cancelar agendamento",
-      "internal_error"
-    );
-  }
-}));
-
-api.post("/appointments/:id/reschedule", asyncRoute(async (req, res) => {
-  if (!requireApiKey(req, res)) return;
-  const workspaceId = await requireApiWorkspaceId(res);
-  const id = Number(req.params.id);
-  const parsed = rescheduleSchema.safeParse(req.body);
-  if (!Number.isInteger(id) || id <= 0)
-    return fail(res, 400, "ID de agendamento inválido", "invalid_id");
-  if (!workspaceId) return;
-  if (!parsed.success)
-    return fail(
-      res,
-      400,
-      "Payload de reagendamento inválido",
-      "invalid_payload"
-    );
-  try {
-    return await idempotent(req, res, workspaceId, async () => {
-      const appointment = await rescheduleAgendaAppointment(
-        workspaceId,
-        id,
-        parsed.data.startsAt,
-        parsed.data.endsAt
-      );
-      if (!appointment)
-        return {
-          statusCode: 404,
-          body: { error: "not_found", message: "Agendamento não encontrado" },
-        };
-      return {
-        statusCode: 200,
-        body: {
-          data: {
-            id,
-            quoteId: appointment.quoteId,
-            status: appointment.status,
-            startsAt: appointment.startsAt,
-            endsAt: appointment.endsAt,
-          },
-        },
-      };
-    });
-  } catch (error) {
-    if (error instanceof ScheduleError) {
+      });
+    } catch (error) {
       return fail(
         res,
-        error.reason === "invalid_period" ? 400 : 409,
-        error.message,
-        error.reason
+        500,
+        error instanceof Error ? error.message : "Falha ao mover estágio",
+        "internal_error"
       );
     }
-    const message =
-      error instanceof Error ? error.message : "Falha ao reagendar";
-    return fail(
-      res,
-      message.includes("indisponível") ? 409 : 500,
-      message,
-      message.includes("indisponível") ? "schedule_conflict" : "internal_error"
-    );
-  }
-}));
+  })
+);
+
+api.post(
+  "/appointments/:id/cancel",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const workspaceId = await requireApiWorkspaceId(res);
+    if (!workspaceId) return;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0)
+      return fail(res, 400, "ID de agendamento inválido", "invalid_id");
+    try {
+      return await idempotent(req, res, workspaceId, async () => {
+        const appointment = await cancelAgendaAppointment(workspaceId, id);
+        if (!appointment)
+          return {
+            statusCode: 404,
+            body: { error: "not_found", message: "Agendamento não encontrado" },
+          };
+        return { statusCode: 200, body: { data: { id, status: "cancelled" } } };
+      });
+    } catch (error) {
+      return fail(
+        res,
+        500,
+        error instanceof Error
+          ? error.message
+          : "Falha ao cancelar agendamento",
+        "internal_error"
+      );
+    }
+  })
+);
+
+api.post(
+  "/appointments/:id/reschedule",
+  asyncRoute(async (req, res) => {
+    if (!requireApiKey(req, res)) return;
+    const workspaceId = await requireApiWorkspaceId(res);
+    const id = Number(req.params.id);
+    const parsed = rescheduleSchema.safeParse(req.body);
+    if (!Number.isInteger(id) || id <= 0)
+      return fail(res, 400, "ID de agendamento inválido", "invalid_id");
+    if (!workspaceId) return;
+    if (!parsed.success)
+      return fail(
+        res,
+        400,
+        "Payload de reagendamento inválido",
+        "invalid_payload"
+      );
+    try {
+      return await idempotent(req, res, workspaceId, async () => {
+        const appointment = await rescheduleAgendaAppointment(
+          workspaceId,
+          id,
+          parsed.data.startsAt,
+          parsed.data.endsAt
+        );
+        if (!appointment)
+          return {
+            statusCode: 404,
+            body: { error: "not_found", message: "Agendamento não encontrado" },
+          };
+        return {
+          statusCode: 200,
+          body: {
+            data: {
+              id,
+              quoteId: appointment.quoteId,
+              status: appointment.status,
+              startsAt: appointment.startsAt,
+              endsAt: appointment.endsAt,
+            },
+          },
+        };
+      });
+    } catch (error) {
+      if (error instanceof ScheduleError) {
+        return fail(
+          res,
+          error.reason === "invalid_period" ? 400 : 409,
+          error.message,
+          error.reason
+        );
+      }
+      const message =
+        error instanceof Error ? error.message : "Falha ao reagendar";
+      return fail(
+        res,
+        message.includes("indisponível") ? 409 : 500,
+        message,
+        message.includes("indisponível")
+          ? "schedule_conflict"
+          : "internal_error"
+      );
+    }
+  })
+);
 
 api.post("/webhooks/inbound/whatsapp", (_req, res) =>
   fail(
@@ -1494,7 +1565,10 @@ async function handleBaileysWebhook(req: Request, res: Response) {
           : "O evento não identifica uma instância Baileys",
         instanceId ? "unknown_baileys_instance" : "instance_id_required"
       );
-    if (instanceOwner?.active && !(await enforceBaileysWebhookRateLimit(res, workspaceId)))
+    if (
+      instanceOwner?.active &&
+      !(await enforceBaileysWebhookRateLimit(res, workspaceId))
+    )
       return;
     const isGroup = normalized.metadata?.isGroup === true;
     const groupJid =
@@ -1579,8 +1653,9 @@ async function handleBaileysWebhook(req: Request, res: Response) {
   }
 }
 
-api.post("/webhooks/providers/baileys", asyncRoute(async (req, res) =>
-  handleBaileysWebhook(req, res))
+api.post(
+  "/webhooks/providers/baileys",
+  asyncRoute(async (req, res) => handleBaileysWebhook(req, res))
 );
 
 api.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {

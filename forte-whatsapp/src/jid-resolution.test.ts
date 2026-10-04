@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveOutboundJid } from "./jid-resolution.js";
 
-function fakeSocket(mapping?: { getLIDForPN: (pn: string) => Promise<string | null> }) {
+function fakeSocket(mapping?: {
+  getLIDForPN: (pn: string) => Promise<string | null>;
+}) {
   return {
     signalRepository: mapping ? { lidMapping: mapping } : undefined,
   } as never;
@@ -37,7 +39,7 @@ describe("resolveOutboundJid", () => {
       "236450952020113@lid"
     );
     expect(getUSyncDevices).toHaveBeenCalledWith(
-      ["5538999034689@s.whatsapp.net"],
+      ["5538999034689@s.whatsapp.net", "553899034689@s.whatsapp.net"],
       false,
       true
     );
@@ -45,7 +47,10 @@ describe("resolveOutboundJid", () => {
 
   it("falls back to a PN JID when the mapping is unavailable", async () => {
     await expect(
-      resolveOutboundJid(fakeSocket({ getLIDForPN: async () => null }), "5538999034689")
+      resolveOutboundJid(
+        fakeSocket({ getLIDForPN: async () => null }),
+        "5538999034689"
+      )
     ).resolves.toBe("5538999034689@s.whatsapp.net");
   });
 });
