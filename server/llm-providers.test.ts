@@ -110,6 +110,35 @@ describe("configured LLM routing", () => {
     expect(mocks.fetch.mock.calls[1]![1]).toMatchObject({ redirect: "error" });
   });
 
+  it("retries text-only when a provider rejects tool schemas with a 5xx", async () => {
+    mocks.fetch
+      .mockResolvedValueOnce(response({ error: "tool schema rejected" }, 500))
+      .mockResolvedValueOnce(response({
+        model: "primary-model",
+        choices: [{ message: { content: "Resposta sem ferramenta" } }],
+      }));
+
+    const result = await invokeConfiguredLLM(onlyPrimaryProviderSettings(), "text", {
+      model: "unused-model",
+      messages: [{ role: "user", content: "Olá" }],
+      tools: [{
+        type: "function",
+        function: {
+          name: "consultar_contexto_comercial",
+          description: "Consulta contexto.",
+          parameters: { type: "object", properties: {}, additionalProperties: false },
+        },
+      }],
+      toolChoice: "auto",
+    });
+
+    expect(result.choices[0]?.message.content).toBe("Resposta sem ferramenta");
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body).tools).toHaveLength(1);
+    expect(JSON.parse(mocks.fetch.mock.calls[1]![1].body)).not.toHaveProperty("tools");
+    expect(JSON.parse(mocks.fetch.mock.calls[1]![1].body)).not.toHaveProperty("tool_choice");
+  });
+
   it("does not try an implicit provider when no fallback is configured", async () => {
     mocks.fetch.mockRejectedValue(new Error("unavailable"));
 

@@ -282,3 +282,11 @@ Gates concluídos: Gateway `npm test` (21 ficheiros, 105 testes), `npm run check
 - O renderer da Inbox passa a tratar `button` como mensagem estruturada e mostra quantidade de botões ou resumo Pix, em vez de exibir `[button]`.
 - O campo Pix agora aceita reais, incluindo vírgula decimal: `10,50` é convertido para `1050` centavos. Campo vazio continua a gerar `payment_info` sem cobrança; somente valor preenchido gera `review_and_pay`.
 - Check do Gateway e suite completa: **105/105 testes passaram**. Imagens reconstruídas: Panel `sha256:c1056d50c278...`, Gateway `sha256:350a9febbe59...`. A stack candidate foi recriada com os volumes disposable; Panel health e Gateway readiness respondem `200`.
+
+## Agent Hub canvas — 2026-10-05
+
+- A página `/platform-admin/ai` foi substituída por um canvas visual baseado em `@xyflow/react`, inspirado no fluxo do n8n, com nodes para entrada Baileys, moderação, texto, ferramentas, TTS e entrega.
+- Cada node abre um popup de configuração; a UI passa a tratar a conexão como URL + chave + modelo e esconde o provider fixo. `gsap` anima a entrada respeitando `prefers-reduced-motion`.
+- O backend legado ainda aceita apenas as cinco capabilities anteriores. Moderação, prompt generation e TTS estão visualizados e documentados como próxima migração de contrato, não como rotas já persistidas.
+- `pnpm check`, `pnpm build`, Gateway check/test/build e `git diff --check` passaram. A suite root no Windows teve 10 falhas de ambiente (`sha256sum`, bash/paths e fixture media) com 98 ficheiros/406 testes verdes e 29 skipped; repetir no CI Linux antes de declarar release.
+- Handoff completo: [`HANDOFF-AGENT-HUB-CANVAS-2026-10-05.md`](./HANDOFF-AGENT-HUB-CANVAS-2026-10-05.md).

@@ -241,19 +241,45 @@ export async function invokeConfiguredLLM(
     try {
       const target = await validateLlmTarget(candidate.provider, baseUrl);
       dispatcher = createGuardedLlmAgent();
-      const response = await undiciFetch(buildLlmEndpoint(target.toString()), {
+      const requestUrl = buildLlmEndpoint(target.toString());
+      const requestOptions = {
         method: "POST",
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${decryptProviderSecret(apiKey)}`,
         },
-        body: JSON.stringify(
-          normalizeParams({ ...params, model: candidate.model || params.model })
-        ),
         signal: AbortSignal.timeout(timeoutMs),
         redirect: "error",
         dispatcher,
+      } as const;
+      const requestParams = { ...params, model: candidate.model || params.model };
+      let response = await undiciFetch(requestUrl, {
+        ...requestOptions,
+        body: JSON.stringify(normalizeParams(requestParams)),
       });
+      // Some OpenAI-compatible providers return 5xx for an otherwise valid
+      // request when one of the advertised tool schemas is unsupported. Keep
+      // WhatsApp text replies available by retrying once without tools; tool
+      // execution remains enabled whenever the provider accepts the schema.
+      if (
+        !response.ok &&
+        response.status >= 500 &&
+        Array.isArray(requestParams.tools) &&
+        requestParams.tools.length > 0
+      ) {
+        await response.body?.cancel().catch(() => undefined);
+        response = await undiciFetch(requestUrl, {
+          ...requestOptions,
+          body: JSON.stringify(
+            normalizeParams({
+              ...requestParams,
+              tools: undefined,
+              toolChoice: undefined,
+              tool_choice: undefined,
+            })
+          ),
+        });
+      }
       if (!response.ok) {
         await response.body?.cancel().catch(() => undefined);
         failures.push(`${candidate.provider}:http_${response.status}`);
