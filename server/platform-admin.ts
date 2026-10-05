@@ -2066,9 +2066,17 @@ export async function setPlatformWorkspaceStatus(input: {
 export async function setPlatformWorkspaceAi(input: {
   platformAdminId: number;
   workspaceId: number;
+  supportSessionId: number;
   enabled: boolean;
   reason: string;
 }) {
+  const session = await getActiveSupportSession({
+    platformAdminId: input.platformAdminId,
+    workspaceId: input.workspaceId,
+    sessionId: input.supportSessionId,
+    requireOperator: true,
+  });
+  if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
   const before = safeAgentConfig(await getPlatformNativeAgentConfig(input.workspaceId));
   const updated = await saveNativeAgentConfig(input.workspaceId, {
     enabled: input.enabled,
@@ -2076,6 +2084,7 @@ export async function setPlatformWorkspaceAi(input: {
   await recordPlatformAudit({
     platformAdminId: input.platformAdminId,
     workspaceId: input.workspaceId,
+    supportSessionId: session.id,
     action: input.enabled ? "workspace_ai_reactivated" : "workspace_ai_paused",
     reason: input.reason,
     summary: input.enabled
@@ -2134,7 +2143,7 @@ export async function closePlatformSupportTicket(input: { platformAdminId: numbe
   if (!current) throw new Error("Ticket não encontrado nesta sessão de suporte");
   const session = await getActiveSupportSession({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, sessionId: input.supportSessionId, requireOperator: true });
   if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
-  const ticket = (await db.update(platformSupportTickets).set({ status: "closed", resolution: input.resolution.trim(), closedAt: new Date(), closedByPlatformAdminId: input.platformAdminId, updatedAt: new Date() }).where(and(eq(platformSupportTickets.id, current.id), eq(platformSupportTickets.status, "open"))).returning())[0];
+  const ticket = (await db.update(platformSupportTickets).set({ status: "closed", resolution: input.resolution.trim(), closedAt: new Date(), closedByPlatformAdminId: input.platformAdminId, updatedAt: new Date() }).where(and(eq(platformSupportTickets.id, current.id), eq(platformSupportTickets.workspaceId, current.workspaceId), eq(platformSupportTickets.status, "open"))).returning())[0];
   if (!ticket) throw new Error("Ticket já está fechado");
   await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, supportSessionId: input.supportSessionId, action: "support_ticket_closed", reason: input.reason, summary: `Ticket #${ticket.id} fechado`, before: { status: current.status }, after: { status: ticket.status, resolutionLength: ticket.resolution?.length ?? 0 } });
   return ticket;
@@ -2173,7 +2182,7 @@ export async function resolvePlatformIncident(input: { platformAdminId: number; 
   if (!current) throw new Error("Incidente não encontrado");
   const session = await getActiveSupportSession({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, sessionId: input.supportSessionId, requireOperator: true });
   if (!session) throw new Error("Sessão operadora ausente, expirada, revogada ou fora do workspace");
-  const incident = (await db.update(platformIncidents).set({ status: "resolved", resolvedByPlatformAdminId: input.platformAdminId, resolvedAt: new Date(), updatedAt: new Date() }).where(eq(platformIncidents.id, input.incidentId)).returning())[0];
+  const incident = (await db.update(platformIncidents).set({ status: "resolved", resolvedByPlatformAdminId: input.platformAdminId, resolvedAt: new Date(), updatedAt: new Date() }).where(and(eq(platformIncidents.id, input.incidentId), eq(platformIncidents.workspaceId, current.workspaceId))).returning())[0];
   await recordPlatformAudit({ platformAdminId: input.platformAdminId, workspaceId: current.workspaceId, supportSessionId: session.id, action: "workspace_incident_resolved", reason: input.reason, summary: `Incidente #${current.id} resolvido`, before: { status: current.status }, after: { status: incident.status } });
   return incident;
 }

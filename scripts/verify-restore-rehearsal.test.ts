@@ -1,15 +1,14 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { verifyRestoreRehearsal } from "./verify-restore-rehearsal";
 
 function sha(path: string) {
-  return execFileSync("sha256sum", [path], { encoding: "utf8" }).split(
-    /\s+/
-  )[0];
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
 describe("restore rehearsal verifier", () => {
@@ -19,8 +18,12 @@ describe("restore rehearsal verifier", () => {
     const backup = join(root, "backup");
     mkdirSync(bin);
     mkdirSync(backup);
-    writeFileSync(join(bin, "pg_restore"), "#!/usr/bin/env bash\nexit 0\n");
-    chmodSync(join(bin, "pg_restore"), 0o755);
+    if (process.platform === "win32") {
+      writeFileSync(join(bin, "pg_restore.cmd"), "@echo off\r\nexit /b 0\r\n");
+    } else {
+      writeFileSync(join(bin, "pg_restore"), "#!/usr/bin/env bash\nexit 0\n");
+      chmodSync(join(bin, "pg_restore"), 0o755);
+    }
     writeFileSync(join(backup, "postgres.dump"), "synthetic dump\n");
     execFileSync("tar", [
       "-czf",
@@ -54,7 +57,7 @@ describe("restore rehearsal verifier", () => {
     );
 
     const previous = process.env.PATH;
-    process.env.PATH = `${bin}:${previous ?? ""}`;
+    process.env.PATH = `${bin}${delimiter}${previous ?? ""}`;
     try {
       expect(verifyRestoreRehearsal(backup)).toMatchObject({
         manifest: "manifest-test.txt",

@@ -37,4 +37,22 @@ describe("PostgreSQL migration chain", () => {
       "public.platform_ai_connection_capability"
     );
   });
+
+  it("introduces normalized AI capability tables without changing the legacy enum", () => {
+    const migration = readFileSync(
+      join(migrationsDir, "0061_ai_capability_architecture.sql"),
+      "utf8"
+    );
+
+    expect(migration).toContain('CREATE TYPE "public"."ai_capability"');
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS "aiConnections"');
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS "aiModels"');
+    expect(migration).toContain(
+      'CREATE TABLE IF NOT EXISTS "aiCapabilityRoutes"'
+    );
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS "globalPrompts"');
+    expect(migration).not.toMatch(
+      /ALTER TYPE "public"\."platform_ai_connection_capability"/
+    );
+  });
 });

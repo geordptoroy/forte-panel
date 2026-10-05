@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import { services, professionals, workspaces } from "../drizzle/schema";
 import { getDb } from "./db";
-import { createService, getProfessionalInWorkspace, listProfessionalsDetailed, listServices, setServiceProfessionals, updateProfessional, updateService } from "./workspace";
+import { createService, getProfessionalInWorkspace, listProfessionalsDetailed, listServices, replaceAvailability, setProfessionalServices, setServiceProfessionals, updateProfessional, updateService } from "./workspace";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL && /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL));
 
@@ -59,6 +59,8 @@ describe.skipIf(!hasDatabase)("workspace-scoped catalog", () => {
     await expect(updateProfessional(workspaceAId, professionalBId, { name: "tampered" })).resolves.toBeUndefined();
     await expect(setServiceProfessionals(workspaceAId, serviceBId, [])).rejects.toThrow(/não encontrado neste workspace/i);
     await expect(setServiceProfessionals(workspaceAId, serviceAId, [professionalBId])).rejects.toThrow(/não pertencem a este workspace/i);
+    await expect(setProfessionalServices(workspaceAId, professionalBId, [serviceAId])).rejects.toThrow(/não encontrado neste workspace/i);
+    await expect(replaceAvailability(workspaceAId, professionalBId, [])).rejects.toThrow(/não encontrado neste workspace/i);
   });
 
   it("leaves the other workspace's records unchanged after rejected cross-tenant mutations", async () => {

@@ -1054,10 +1054,11 @@ export const platformRouter = router({
       supportSessionInput.extend({ enabled: z.boolean(), reason: reasonInput })
     )
     .mutation(async ({ input, ctx }) => {
-      await requireSession(input, ctx.platformAdmin.id, true);
+      const session = await requireSession(input, ctx.platformAdmin.id, true);
       return setPlatformWorkspaceAi({
         platformAdminId: ctx.platformAdmin.id,
         workspaceId: input.workspaceId,
+        supportSessionId: session.id,
         enabled: input.enabled,
         reason: input.reason,
       });

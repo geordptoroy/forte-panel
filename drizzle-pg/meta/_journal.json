@@ -428,6 +428,13 @@
       "when": 1791000137438,
       "tag": "0060_api_idempotency_claim_fencing",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1791217860000,
+      "tag": "0061_ai_capability_architecture",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
 type Manifest = Record<string, string>;
 
@@ -22,11 +22,30 @@ function sha256(path: string) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function runPgRestore(postgres: string) {
+  try {
+    execFileSync("pg_restore", ["--list", postgres], { stdio: "ignore" });
+  } catch (error) {
+    if (process.platform !== "win32") throw error;
+    const comSpec = process.env.ComSpec ?? "cmd.exe";
+    execFileSync(
+      comSpec,
+      ["/d", "/c", `pg_restore.cmd --list "${postgres.replaceAll('"', '""')}"`],
+      { stdio: "ignore" }
+    );
+  }
+}
+
 function requireArtifact(dir: string, name: string, expectedHash: string) {
   if (!name || !expectedHash)
     throw new Error(`manifest_missing_${name ? "hash" : "artifact"}`);
   const path = resolve(dir, name);
-  if (!path.startsWith(resolve(dir) + "/"))
+  const relativePath = relative(resolve(dir), path);
+  if (
+    !relativePath ||
+    relativePath.startsWith("..") ||
+    isAbsolute(relativePath)
+  )
     throw new Error("artifact_path_escape");
   if (!existsSync(path)) throw new Error(`artifact_missing:${name}`);
   if (sha256(path) !== expectedHash)
@@ -62,14 +81,9 @@ export function validateMediaInventory(path: string) {
 export function verifyRestoreRehearsal(dirInput: string) {
   const dir = resolve(dirInput);
   if (!existsSync(dir)) throw new Error("backup_directory_missing");
-  const manifests = execFileSync(
-    "find",
-    [dir, "-maxdepth", "1", "-name", "manifest-*.txt", "-type", "f"],
-    { encoding: "utf8" }
-  )
-    .trim()
-    .split(/\r?\n/)
-    .filter(Boolean)
+  const manifests = readdirSync(dir)
+    .filter(name => /^manifest-.*\.txt$/.test(name))
+    .map(name => join(dir, name))
     .sort();
   const manifestPath = manifests.at(-1);
   if (!manifestPath) throw new Error("manifest_missing");
@@ -89,11 +103,11 @@ export function verifyRestoreRehearsal(dirInput: string) {
     manifest.media_inventory_file ?? "",
     manifest.media_inventory_sha256 ?? ""
   );
-  execFileSync("pg_restore", ["--list", postgres], { stdio: "ignore" });
+  runPgRestore(postgres);
   execFileSync("tar", ["-tzf", sessions], { stdio: "ignore" });
   const mediaObjects = validateMediaInventory(mediaInventory);
   return {
-    manifest: manifestPath.split("/").at(-1),
+    manifest: basename(manifestPath),
     postgresFile: manifest.postgres_file,
     sessionFile: manifest.session_file,
     mediaInventoryFile: manifest.media_inventory_file,

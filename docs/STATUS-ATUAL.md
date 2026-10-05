@@ -7,12 +7,12 @@
 
 ## Git e decisão de integração
 
-| Referência | SHA observado | Estado |
-|---|---|---|
-| `origin/main` | `f67548570f44b8c8fe79082911d7de557a8a3650` | Base canónica observada antes da candidata; confirmar de novo antes de promover. |
-| `origin/feat/o7.15-storage-reconciliation-observability` | `61d8a13703b3146727987b6f00b34785bfdcfb87` | Linha de desenvolvimento que está a ser reconciliada localmente com a main. |
-| PR #3, `docs/ai-admin-core-plan-2026-09-27` | `d90bba2edc6601e73db9bd18601b9d97a2b2bef4` | Auditoria concluída: **não integrar a ref inteira**. As capacidades Baileys principais já estão em main/O7; a arquitetura multi-canal antiga não faz parte do produto. |
-| Base da candidata | branch `integration/beta-candidate-2026-10-02`, commit de remediação `cdaa811ec47243ad17fc2ab24c45b17421329a4f` | Junção main+O7 originalmente auditada em `445d4cc`; remediações validadas e commitadas/pushadas para a branch de handoff. `main` continua em `f67548570f44b8c8fe79082911d7de557a8a3650`. |
+| Referência                                               | SHA observado                                                                                                   | Estado                                                                                                                                                                                   |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `origin/main`                                            | `f67548570f44b8c8fe79082911d7de557a8a3650`                                                                      | Base canónica observada antes da candidata; confirmar de novo antes de promover.                                                                                                         |
+| `origin/feat/o7.15-storage-reconciliation-observability` | `61d8a13703b3146727987b6f00b34785bfdcfb87`                                                                      | Linha de desenvolvimento que está a ser reconciliada localmente com a main.                                                                                                              |
+| PR #3, `docs/ai-admin-core-plan-2026-09-27`              | `d90bba2edc6601e73db9bd18601b9d97a2b2bef4`                                                                      | Auditoria concluída: **não integrar a ref inteira**. As capacidades Baileys principais já estão em main/O7; a arquitetura multi-canal antiga não faz parte do produto.                   |
+| Base da candidata                                        | branch `integration/beta-candidate-2026-10-02`, commit de remediação `cdaa811ec47243ad17fc2ab24c45b17421329a4f` | Junção main+O7 originalmente auditada em `445d4cc`; remediações validadas e commitadas/pushadas para a branch de handoff. `main` continua em `f67548570f44b8c8fe79082911d7de557a8a3650`. |
 
 **Conclusão da auditoria:** main+O7 já contém o modelo multi-instância Baileys, pairing/readiness, polling de estado, CRUD, settings/profile, integração REST opt-in e os gates mais recentes. As migrations 0038/0039 do PR são byte-a-byte iguais às refs atuais; o candidato conserva também as migrations 0040–0044 de main e 0045–0058 de O7. A ref antiga do PR carrega uma arquitetura multi-canal fora do escopo e uma UI alternativa que remove settings/profile e o atalho Inbox; trazer a branch inteira é regressivo e conflitante. Nenhuma alteração do PR #3 foi copiada.
 
@@ -65,24 +65,24 @@ Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8f
 
 ## Validação já concluída
 
-| Verificação na candidata | Resultado |
-|---|---|
-| PostgreSQL local descartável, versão 16 | **61 migrations** numa base vazia; upgrade `main`→candidata aplicou 45 + 16 migrations com sucesso. |
-| `pnpm check` | Passou. |
-| Regressões focadas após generalizar a deteção de credenciais | **4 ficheiros / 18 testes passaram** (`platform-admin`, `secret-safety`, `baileys-policy`, `message-routing`). |
-| Procura de providers no runtime/env e links do índice | **Zero referências operacionais/variáveis antigas; 17 links documentais válidos.** Testes negativos continuam a provar que valores legados são rejeitados. |
-| Segurança P0 e regressões de tenancy | Storage proxy, REST/queue e SSRF têm guards; `setWorkspaceLifecycleStatus`, `setWorkspacePlan` e mutations de incidentes exigem sessão operadora do admin/workspace correctos e registam `supportSessionId`; o Kanban inicia sessão curta antes de suspender/reativar. O delete Baileys prova ownership; `0017` remove o fallback `forte-demo`; `0060` aplica fencing REST fail-closed. |
-| Migration 0043 e preflight | **Purge explícito de superfícies não-Baileys**; teste PostgreSQL confirma remoção de channels/instances/messages/settings/webhookEvents não-Baileys, preservação Baileys, enum/check/default Baileys-only e inventário read-only reporta candidatos sem revelar valores. |
-| Express 4 async REST | 17 callbacks async protegidos por `asyncRoute`; erros não tratados devolvem JSON 500 genérico; as 6 rotas idempotentes passaram a `return await`; 8 regressões cobrem 7 endpoints e claim failed. |
-| Suite root com `DATABASE_URL` local | **128 ficheiros / 472 testes passaram** na execução completa no SHA actual; sem skips nesta execução. |
-| Validator de configuração de produção | Passou com configuração sintética segura; sem credenciais reais. |
-| `pnpm build` do painel | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado). |
-| Gateway Baileys | Replay exacto do job CI com `npm ci` (scripts activos para aplicar o patch Baileys): **18 ficheiros / 93 testes passaram**, sem skips; `npm run check` e `npm run build` passaram. `npm ci --ignore-scripts` foi testado apenas como diagnóstico e falhou no teste do patch, como esperado; não houve alteração do lockfile. |
-| Gateway Baileys — media/MIME/PTT | `sendPayload` já não contorna a política de media; `mediaMimeType` e PTT são preservados até ao payload Baileys; **18 ficheiros / 91 testes** passaram, com check/build verdes. |
-| Preflight de restore/rehearsal | **5 ficheiros / 12 testes passaram**; pacote, hashes, isolamento, endpoint de produção e decisão fail-closed foram verificados com fixtures sintéticas. |
-| Compose | YAML analisado com Prettier; `docker compose config` não pôde ser executado porque a CLI Docker não está instalada neste sandbox. Nenhum container/volume foi iniciado ou alterado. |
-| Workflow de publicação | YAML validado; `main` apenas, migrations PostgreSQL e zero-skips antes de `publish`. Ainda não executado no GitHub. |
-| Replay local do job `verify` após hardening CI | Migrations PostgreSQL locais aplicadas, suite root **128/472 sem skips**, validator Baileys-only, check/build root e gateway verdes. `pnpm install --frozen-lockfile` passa, mas mantém warning de configuração `pnpm` obsoleta no `package.json`; a tentativa de migração foi revertida para preservar o patch Wouter. |
+| Verificação na candidata                                     | Resultado                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL local descartável, versão 16                      | **61 migrations** numa base vazia; upgrade `main`→candidata aplicou 45 + 16 migrations com sucesso.                                                                                                                                                                                                                                                                                     |
+| `pnpm check`                                                 | Passou.                                                                                                                                                                                                                                                                                                                                                                                 |
+| Regressões focadas após generalizar a deteção de credenciais | **4 ficheiros / 18 testes passaram** (`platform-admin`, `secret-safety`, `baileys-policy`, `message-routing`).                                                                                                                                                                                                                                                                          |
+| Procura de providers no runtime/env e links do índice        | **Zero referências operacionais/variáveis antigas; 17 links documentais válidos.** Testes negativos continuam a provar que valores legados são rejeitados.                                                                                                                                                                                                                              |
+| Segurança P0 e regressões de tenancy                         | Storage proxy, REST/queue e SSRF têm guards; `setWorkspaceLifecycleStatus`, `setWorkspacePlan` e mutations de incidentes exigem sessão operadora do admin/workspace correctos e registam `supportSessionId`; o Kanban inicia sessão curta antes de suspender/reativar. O delete Baileys prova ownership; `0017` remove o fallback `forte-demo`; `0060` aplica fencing REST fail-closed. |
+| Migration 0043 e preflight                                   | **Purge explícito de superfícies não-Baileys**; teste PostgreSQL confirma remoção de channels/instances/messages/settings/webhookEvents não-Baileys, preservação Baileys, enum/check/default Baileys-only e inventário read-only reporta candidatos sem revelar valores.                                                                                                                |
+| Express 4 async REST                                         | 17 callbacks async protegidos por `asyncRoute`; erros não tratados devolvem JSON 500 genérico; as 6 rotas idempotentes passaram a `return await`; 8 regressões cobrem 7 endpoints e claim failed.                                                                                                                                                                                       |
+| Suite root com `DATABASE_URL` local                          | **128 ficheiros / 472 testes passaram** na execução completa no SHA actual; sem skips nesta execução.                                                                                                                                                                                                                                                                                   |
+| Validator de configuração de produção                        | Passou com configuração sintética segura; sem credenciais reais.                                                                                                                                                                                                                                                                                                                        |
+| `pnpm build` do painel                                       | Passou; emite aviso de bundle JavaScript principal com cerca de 1,1 MB (minificado).                                                                                                                                                                                                                                                                                                    |
+| Gateway Baileys                                              | Replay exacto do job CI com `npm ci` (scripts activos para aplicar o patch Baileys): **18 ficheiros / 93 testes passaram**, sem skips; `npm run check` e `npm run build` passaram. `npm ci --ignore-scripts` foi testado apenas como diagnóstico e falhou no teste do patch, como esperado; não houve alteração do lockfile.                                                            |
+| Gateway Baileys — media/MIME/PTT                             | `sendPayload` já não contorna a política de media; `mediaMimeType` e PTT são preservados até ao payload Baileys; **18 ficheiros / 91 testes** passaram, com check/build verdes.                                                                                                                                                                                                         |
+| Preflight de restore/rehearsal                               | **5 ficheiros / 12 testes passaram**; pacote, hashes, isolamento, endpoint de produção e decisão fail-closed foram verificados com fixtures sintéticas.                                                                                                                                                                                                                                 |
+| Compose                                                      | YAML analisado com Prettier; `docker compose config` não pôde ser executado porque a CLI Docker não está instalada neste sandbox. Nenhum container/volume foi iniciado ou alterado.                                                                                                                                                                                                     |
+| Workflow de publicação                                       | YAML validado; `main` apenas, migrations PostgreSQL e zero-skips antes de `publish`. Ainda não executado no GitHub.                                                                                                                                                                                                                                                                     |
+| Replay local do job `verify` após hardening CI               | Migrations PostgreSQL locais aplicadas, suite root **128/472 sem skips**, validator Baileys-only, check/build root e gateway verdes. `pnpm install --frozen-lockfile` passa, mas mantém warning de configuração `pnpm` obsoleta no `package.json`; a tentativa de migração foi revertida para preservar o patch Wouter.                                                                 |
 
 A suite root também passou sobre a base atualizada de 45 migrations da `main` para 61 da candidata. A base era descartável e não continha dados de negócio; isto prova compatibilidade do SQL de upgrade, **não** preservação de dados reais existentes. Os testes não cobriram WhatsApp real, browser do utilizador, envio de mensagens, Supabase nem imagem Docker executada.
 
@@ -119,7 +119,6 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 - O Gateway foi revertido imediatamente para `ghcr.io/geordptoroy/forte-whatsapp:sha-06cc98e`, mantendo o volume `forte-panel-repo_forte_whatsapp_sessions`; readiness voltou a `{"status":"ready","service":"forte-whatsapp"}`.
 - O Compose foi corrigido para exigir e passar a chave existente. A nova imagem ainda requer uma nova publicação antes de repetir a actualização. O storage SeaweedFS continua separado da stack principal e não foi alterado.
 
-
 ## Execução local — PN→LID e fallback Native Flow — 2026-10-04
 
 - Implementado `resolveOutboundJid` em `forte-whatsapp/src/jid-resolution.ts`:
@@ -145,7 +144,6 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 - Confirmação visual do utilizador por captura: os dois Native Flow (`button` e `list`) continuam a aparecer como **“Não foi possível carregar a mensagem. Use seu celular para acessá-la”**; os dois fallbacks numerados aparecem correctamente com as opções `1` e `2`. Portanto, para a beta, texto numerado é o caminho funcional; Native Flow permanece experimental.
 - Não publicar ainda em `main`/GHCR: a alteração está validada localmente no worktree `forte-panel-button-fix` e requer revisão/integração pelos gates definidos em `AGENTS.md`.
 
-
 ## Commit e preparação do GHCR — 2026-10-04
 
 - Correção multiplataforma do teste `session-lock.test.ts`: Linux/macOS continuam a exigir `0o700`/`0o600`; no Windows, onde `fs.stat().mode` não representa ACLs como bits POSIX, o teste valida acesso/existência e a atomicidade/libertação do lock. A implementação continua a executar `chmod`.
@@ -155,11 +153,9 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 - O push autorizado deve ser feito sem force-push para `main`; o workflow `.github/workflows/publish-image.yml` publica apenas após o verify Linux completo e mantém os caminhos `ghcr.io/geordptoroy/forte-panel:latest` e `ghcr.io/geordptoroy/forte-whatsapp:latest`.
 - Próximo chat: confirmar o SHA de `main`, o resultado dos jobs `publish-image`/PostgreSQL e os digests GHCR antes de orientar `git pull`/`scripts/start-docker.ps1`.
 
-
 ## Estado após push para main — 2026-10-04
 
 O commit de código `6b9ea814e8bd656b318ab82bd1a84429c927c789` foi enviado com sucesso para `origin/main` por fast-forward (`172f265..6b9ea81`), sem force-push. O workflow `publish-image.yml` deve agora executar o verify Linux e, se todos os gates passarem, publicar `ghcr.io/geordptoroy/forte-panel:latest` e `ghcr.io/geordptoroy/forte-whatsapp:latest`. O GitHub CLI não está instalado neste Windows, portanto o próximo chat deve consultar os jobs e digests no GitHub antes de anunciar a publicação ou atualizar o Docker local. A suite root local teve apenas as limitações Windows documentadas acima; o runner Linux é a validação autoritativa para os testes que dependem de `bash`, `find` e `sha256sum`.
-
 
 ## Candidata PAPI-compatível para interactivos — 2026-10-04
 
@@ -172,7 +168,6 @@ O commit de código `6b9ea814e8bd656b318ab82bd1a84429c927c789` foi enviado com s
 - Os containers `forte_whatsapp`, `forte_whatsapp_disposable`, `forte_panel` e `forte_panel_worker` não foram reiniciados nem alterados.
 - Próxima acção: revisão do diff e, se autorizado separadamente, teste real controlado no cliente móvel com número de teste dedicado; não declarar renderização universal no WhatsApp Web.
 
-
 ## Teste real no container candidato — 2026-10-04 01:40
 
 - O container `forte_whatsapp_disposable` foi substituído temporariamente por `forte-whatsapp:local-papi-test`, mantendo a sessão persistida `papi-envelope-test`; o container principal `forte_whatsapp` não foi alterado.
@@ -180,25 +175,21 @@ O commit de código `6b9ea814e8bd656b318ab82bd1a84429c927c789` foi enviado com s
 - O envio de lista legada foi aceite inicialmente (`3EB0ED75B0A393838DF3B9`), mas o log recebeu ACK WhatsApp `405`. O fallback textual foi entregue (`3EB0620764333EA30D655C`). Portanto, neste ambiente o envelope nativo de lista ainda não está comprovadamente renderizável; o caminho funcional permanece o fallback.
 - As duas tentativas anteriores com 404 foram falhas de rota/configuração do ID persistido (`disposable-papi-test` vs `papi-envelope-test`) e não transmitiram mensagens.
 
-
 ## Teste fork wire sem fallback — 2026-10-04 01:49
 
 - Foi adicionada a injecção de nós observada nos forks activos: `biz` com `interactive/native_flow` v1/v9 e `bot{biz_bot:1}` em chats privados; listas usam o nó `list v2/product_list`.
 - A variante foi validada com **102 testes**, typecheck e build, e activada apenas em `forte_whatsapp_disposable` como `forte-whatsapp:local-papi-wire`.
 - Foi enviado ao destino fornecido pelo utilizador (`55999034689`) um único botão `Teste PAPI wire - botao`, com `Sim`/`Nao`, sem fallback. O Baileys aceitou o envelope com ID `3EB0B3AA90886E20C838FD`. Até à última consulta não apareceu ACK `delivered` nem erro de ACK; renderização final depende da confirmação no dispositivo destinatário.
 
-
 ## Texto simples para diagnóstico de destino — 2026-10-04 01:50
 
 - Foi enviado `Teste de texto simples do Forte Panel` para `55999034689` pelo endpoint normal `send-text`.
 - O Baileys aceitou o envio com ID `3EB0E0CAECF02A8C5A7041`, mas não apareceu ACK de entrega nem erro no período de observação. Como o texto simples também não confirmou entrega, o problema neste destino não pode ser atribuído apenas ao Native Flow; o número deve ser confirmado no formato internacional completo e/ou pode não estar registado no WhatsApp.
 
-
 ## Teste texto com número completo — 2026-10-04 01:51
 
 - Foi enviado `Teste de texto simples do Forte Panel` para `+5538999034689`.
 - O Baileys aceitou o envio com ID `3EB0372927AF7146EABA2A`, mas não recebeu ACK de entrega durante a janela de observação. O botão wire não foi repetido, porque o diagnóstico base — texto simples — ainda não foi confirmado no destinatário.
-
 
 ## JID directo entregue — 2026-10-04 01:55
 
@@ -206,13 +197,11 @@ O commit de código `6b9ea814e8bd656b318ab82bd1a84429c927c789` foi enviado com s
 - O Baileys aceitou com ID `3EB0C2C0B43946CD6D6BCB` e recebeu ACK `delivered`.
 - Isto confirma que a sessão está conectada e que o destino correcto é `553899034689@s.whatsapp.net`; os testes anteriores falharam por usarem `5538999034689` (um dígito extra) e `55999034689` (incompleto).
 
-
 ## Quatro botões wire entregues — 2026-10-04 01:59
 
 - O contrato do Gateway foi ampliado de 3 para 10 botões e o resolvedor passou a tentar as variantes brasileiras com e sem o nono dígito.
 - Foi enviado, sem fallback textual, `Teste PAPI wire - quatro botoes` para `553899034689@s.whatsapp.net`, com `Opcao 1`, `Opcao 2`, `Opcao 3` e `Opcao 4`.
 - O envelope foi aceite e recebeu ACK `delivered`: `3EB099594CBFAC4AC5717C`.
-
 
 ## Lista Native Flow e carrossel entregues — 2026-10-04 02:02
 
@@ -220,13 +209,11 @@ O commit de código `6b9ea814e8bd656b318ab82bd1a84429c927c789` foi enviado com s
 - Foi enviada a lista `Teste PAPI wire - lista` para `553899034689@s.whatsapp.net`, com três opções, sem fallback. ID `3EB0E76EA20C48A6F7CBC0`; ACK `delivered`.
 - Foi enviado o carrossel `Teste PAPI wire - carrossel`, com dois cartões, imagens preparadas e um botão por cartão, sem fallback. ID `3EB0894B7AE7E1FBF91963`; ACK `delivered`.
 
-
 ## Cobrança Pix com cta_copy — 2026-10-04 02:09
 
 - A enquete anterior apareceu correctamente no cliente e recebeu ACK `delivered` (`3EB0274DCCED9563D204C2`).
 - Foi enviada a mensagem `Cobranca Pix de teste - chave: 10703598660` com botão Native Flow `cta_copy` / `Copiar chave Pix`, sem fallback. ID `3EB0D79776977A343FC602`; ACK `delivered` e depois `read`.
 - Um formulário WhatsApp real não foi enviado porque o protocolo exige um Flow criado/publicado e um `flow_id` ou `flow_name`; um formulário inventado sem esse identificador seria rejeitado ou não abriria no cliente.
-
 
 ## Cobrança Pix nativa payment_info/review_and_pay — 2026-10-04 02:26
 
@@ -235,11 +222,9 @@ O commit de código `6b9ea814e8bd656b318ab82bd1a84429c927c789` foi enviado com s
 - Foi enviada uma mensagem `review_and_pay` com pedido `Teste Forte Panel`, valor de teste R$ 9,90, estado `pending` e os mesmos dados Pix. ID `3EB0C2BA2DC17D958A8DD4`; ACK `delivered`.
 - Nenhum pagamento foi capturado; são mensagens de teste com estado pendente.
 
-
 ## Comparação de quatro variantes review_and_pay — 2026-10-04 02:30
 
 Foram enviadas quatro mensagens de teste de R$ 10,00, todas com estado `pending`, chave Pix estática e sem captura financeira. Variaram apenas `payment_configuration` e o tipo do pedido: A=`""`/physical-goods; B=`pix`/physical-goods; C=`PIX`/physical-goods; D=`pix_static_code`/digital-goods. Todas foram aceites e entregues: A `3EB029BFCFC90D5BF46AC4`, B `3EB075F3F82D3CEA7E701D`, C `3EB0D1056CDC410A0797FA`, D `3EB01A2ED0B3A88B793BD5`.
-
 
 ## Pix nativo com valor — envelope confirmado e candidata preparada — 2026-10-04 02:41
 
@@ -249,13 +234,11 @@ Foram enviadas quatro mensagens de teste de R$ 10,00, todas com estado `pending`
 - Foi criada a documentação `docs/WHATSAPP-PIX-NATIVO.md`, incluindo endpoints, exemplos, conversão de valores e limitações.
 - Branch candidata: `fix/papi-compatible-interactives`; preparar validação completa e PR para `main`. Sem publicação GHCR e sem alteração do Gateway principal.
 
-
 ## Consolidação de interactivos para PR — 2026-10-04 02:45
 
 A candidata agora inclui, no mesmo provider Baileys, botões Native Flow (até dez), listas `single_select` com fallback, carrosséis com mídia preparada, enquetes nativas, wire nodes compatíveis e Pix nativo com/sem valor. O diagnóstico temporário de payload recebida foi removido antes da preparação do PR.
 
 Gates concluídos: Gateway `npm test` (21 ficheiros, 105 testes), `npm run check` e `npm run build`; aplicação raiz `pnpm check`, testes direccionados de interactivos/Pix/wire (9 testes) e `pnpm build`. A suite raiz completa executou 404 testes passados e 75 skips, mas 10 testes de backup/restore falharam por dependências/scripts Unix indisponíveis no Windows (`sha256sum`, Bash e caminhos POSIX); não são falhas dos interactivos. A candidata continua local na branch `fix/papi-compatible-interactives`; sem merge em `main`, sem publicação GHCR.
-
 
 ## Validação local no PC após integração UI/IA/Pix — 2026-10-04 03:29
 
@@ -266,14 +249,12 @@ Gates concluídos: Gateway `npm test` (21 ficheiros, 105 testes), `npm run check
 - Runtime activo: Panel responde health `ok`, Gateway principal e disposable respondem `ready`, mas o Panel responde readiness `503` porque a imagem activa é antiga (`sha-06cc98e`) e a fingerprint da `BAILEYS_API_KEY` configurada no Panel não coincide com a do Gateway. Não foi feito restart, troca de imagem, pairing, limpeza de sessão ou envio real.
 - A candidata continua local em `fix/papi-compatible-interactives`, sem merge em `main` e sem publicação GHCR.
 
-
 ## Imagens e stack disposable candidata no PC — 2026-10-04 03:50
 
 - Imagens locais construídas com sucesso a partir da candidata `a59cba8`: `forte-panel:candidate-interactives-a59cba8` (ID `4d6a704ba4a2`) e `forte-whatsapp:candidate-interactives-a59cba8` (ID `9d5ab39f3770`).
 - Foi criada a configuração disposable em `.work/disposable-candidate/`, usando o projecto Compose `forte-candidate-interactives`, portas Panel `3302`, Gateway `3310`, PostgreSQL `55432` e SeaweedFS `8334`, rede e volumes próprios, e segredos efémeros locais.
 - Migrations concluídas; Panel health `200`; worker activo; Gateway health/readiness `200`. O Panel readiness devolve `503` porque o Gateway disposable não tem sessão WhatsApp emparelhada (`status` não conectado), não por falha de build ou contrato.
 - A stack original e os seus volumes permanecem activos e intocados. Não houve pairing, envio real, reset nem alteração de dados da instalação existente.
-
 
 ## Correcção UI de botões/fallback e Pix em reais — 2026-10-04 04:29
 
@@ -290,3 +271,109 @@ Gates concluídos: Gateway `npm test` (21 ficheiros, 105 testes), `npm run check
 - O backend legado ainda aceita apenas as cinco capabilities anteriores. Moderação, prompt generation e TTS estão visualizados e documentados como próxima migração de contrato, não como rotas já persistidas.
 - `pnpm check`, `pnpm build`, Gateway check/test/build e `git diff --check` passaram. A suite root no Windows teve 10 falhas de ambiente (`sha256sum`, bash/paths e fixture media) com 98 ficheiros/406 testes verdes e 29 skipped; repetir no CI Linux antes de declarar release.
 - Handoff completo: [`HANDOFF-AGENT-HUB-CANVAS-2026-10-05.md`](./HANDOFF-AGENT-HUB-CANVAS-2026-10-05.md).
+
+## Arquitectura de capabilities — 2026-10-05
+
+`origin/main` contém o commit do canvas (`12a654f`) e a continuação local está na branch `feat/agent-hub-capabilities`. Foi adicionada a migration PostgreSQL `0061_ai_capability_architecture`, com entidades aditivas para conexões, modelos, rotas e prompts globais. O enum legado permanece compatível; as capabilities sem adapters próprios continuam sem execução no runtime. `pnpm check`, `pnpm build`, o teste de journal e `git diff --check` passaram. A alteração permanece local, sem commit, push, execução contra uma base real ou publicação GHCR.
+
+## Baseline SDD do projecto — 2026-10-05
+
+Foi criada a pasta [`docs/specs/`](./specs/) com processo SDD, invariantes globais e matriz inicial de rastreabilidade. Foram criadas as specs [`0001-identidade-workspaces-tenancy.md`](./specs/0001-identidade-workspaces-tenancy.md), [`0002-autenticacao-autorizacao-sessoes-suporte.md`](./specs/0002-autenticacao-autorizacao-sessoes-suporte.md) e [`0003-auditoria-logs-seguranca-operacional.md`](./specs/0003-auditoria-logs-seguranca-operacional.md). As specs são contratos documentais; as alterações de runtime são registadas abaixo.
+
+### Integração inicial de escopo confiável — 2026-10-05
+
+Foi criado `server/_core/workspace-scope.ts` com `assertWorkspaceId`, `assertResourceId`, `getResourceInWorkspace` e `assertResourceInWorkspace`. Os helpers foram integrados em `server/workspace.ts` para serviços, profissionais, associações e disponibilidade, e em `server/agenda.ts` para leituras, transições e consultas auxiliares. Os testes de isolamento foram reforçados com associações, disponibilidade, serviços e profissionais estrangeiros.
+
+`pnpm check` passou e os testes unitários do helper passaram. Os testes DB cross-tenant foram depois executados sem skips contra PostgreSQL descartável, conforme a validação seguinte. Os routers mantêm as assinaturas actuais e continuam a passar `ctx.workspace.workspaceId`; não foi removido nenhum campo legado de input.
+
+### Validação cross-tenant em PostgreSQL descartável — 2026-10-05
+
+Foi iniciado um PostgreSQL 16 temporário em Docker, sem volume persistente e separado da stack real. A cadeia completa de migrations foi aplicada com sucesso numa base vazia. Os testes `workspace-scope`, `workspace-domain-isolation` e `agenda-workspace-isolation` passaram sem skips: **3 ficheiros / 13 testes**. O container foi removido no final; não houve alteração da stack real, pairing ou envio WhatsApp.
+
+### Integração de escopo em `db.ts` — agenda — 2026-10-05
+
+A segunda tranche integrou `workspace-scope` em `getAgendaSnapshot`, `createAgendaAppointment`, `cancelAgendaAppointment` e `rescheduleAgendaAppointment`, preservando as assinaturas públicas. O snapshot e as mutations validam `workspaceId` e IDs positivos; o cancelamento usa lookup defensivo por `(workspaceId, appointmentId)` e a criação/reagenda mantêm os filtros transaccionais existentes.
+
+Foi usada outra base PostgreSQL 16 descartável em Docker, sem volume persistente. As migrations completas foram aplicadas e os testes `workspace-scope`, `agenda-workspace-isolation` e `professional-isolation` passaram sem skips: **3 ficheiros / 18 testes**. O aviso de `OAUTH_SERVER_URL` ausente veio do bootstrap existente e não causou falhas. O container foi removido no fim; não houve alteração da stack real, pairing ou envio WhatsApp.
+
+### Próxima tranche recomendada
+
+A revisão de `server/routers.ts` confirmou que catálogo e agenda já obtêm o workspace exclusivamente de `ctx.workspace.workspaceId`; os inputs dessas procedures não expõem `workspaceId`. A próxima área de cobertura é continuar o inventário endpoint a endpoint, migrar eventuais lookups legados restantes para os helpers e adicionar testes tRPC de contrato, sem fazer alterações mecânicas nos routers.
+
+### Integração de escopo em contactos e Inbox — 2026-10-05
+
+A terceira tranche adicionou validação de `workspaceId` e IDs nos entrypoints `listInboxContacts`, `markConversationRead`, `getConversationByContact`, `listMessagesForContact`, `getContactById`, `listContactNotes`, `addContactNote`, `setContactAi`, `sendManualMessage`, `moveContactStage`, `renameContact` e `assignInboxOpportunity`. Os filtros de pertença já existentes foram preservados; a mudança centraliza a rejeição de IDs inválidos antes de executar queries ou mutations.
+
+A cobertura de `inbox-read-state.test.ts` foi ampliada para provar que um workspace não lê nem altera contacto, conversa, mensagens ou notas de outro workspace. Com PostgreSQL 16 descartável e migrations completas, os testes direccionados `workspace-scope`, `inbox-read-state`, `inbox.contract` e `contact-stage` passaram: **4 ficheiros / 14 testes**. O container foi removido no fim.
+
+A suite adicional `inbox-instance-filter.integration.test.ts` teve uma falha não relacionada com esta tranche: o teste espera precisão de milissegundos (`secondAt = ...5000`), mas PostgreSQL devolveu o timestamp truncado para segundos (`...0000`). Os testes dessa suite não foram alterados; este ponto deve ser corrigido separadamente com uma asserção compatível com a precisão do tipo SQL.
+
+### Integração de escopo em quotes, oportunidades e pagamentos — 2026-10-05
+
+A quarta tranche adicionou validação de `workspaceId`, actor e IDs de recursos em `listQuotes`, `createQuote`, `changeQuoteApproval`, `updateQuotePayment`, `registerQuotePayment`, `setOpportunityNextAction` e `completeOpportunityNextAction`. Os filtros transaccionais existentes continuam a determinar ownership; a validação antecipada impede IDs inválidos e mantém erros de quote estrangeiro dentro do workspace confiável.
+
+Foi criado `server/quote-workspace-isolation.test.ts` com dois workspaces, actores activos, contactos e quotes aprovadas. Contra PostgreSQL 16 descartável com a cadeia completa de migrations, `quote-workspace-isolation` e `lead-opportunity` passaram: **2 ficheiros / 6 testes**. Foram cobertos listagem tenant-scoped, criação com contacto estrangeiro e tentativas de aprovação, actualização e registo de pagamento sobre quote estrangeiro. O container foi removido no final. Nenhum pagamento real ou serviço externo foi utilizado.
+
+### Integração de escopo em onboarding, agente, notificações e idempotência — 2026-10-05
+
+A quinta tranche adicionou validação de workspace e IDs em notificações (`listInAppNotifications`, `markInAppNotificationRead`, `markAllInAppNotificationsRead`), no ciclo de idempotência REST (`getApiIdempotency`, `claimApiIdempotency`, `completeApiIdempotency`, `failApiIdempotency`), no onboarding/áudio (`getOnboardingSession`, `recordOnboardingTelemetry`, `startOnboardingSession`, leituras e claim de transcrição, perfil) e na política/configuração do agente nativo. `recordOnboardingTelemetry` passou também a verificar que o `sessionId` pertence ao workspace indicado antes de inserir o evento.
+
+`pnpm check` passou. As suites sem base passaram com **5 ficheiros / 29 testes**. Com PostgreSQL 16 descartável, migrations completas e container removido depois, passaram `notifications`, `workspace-key-isolation`, `onboarding-audio-db` e `onboarding-publish`: **4 ficheiros / 14 testes**, sem skips. Não foram usados serviços externos nem a instalação real.
+
+### Revisão transversal de tenancy e suporte de plataforma — 2026-10-05
+
+A revisão estática focada em código de produção (`routers`, `api`, `platform-router`, `platform-admin`, `native-agent`, `workspace`, `agenda` e `db`) não encontrou um lookup de domínio do utilizador claramente sem escopo: as operações de catálogo, agenda, Inbox, quotes, onboarding e workers derivam o workspace do contexto/evento ou usam helpers/filtros tenant-scoped. Queries sem `workspaceId` encontradas em `platform-admin` pertencem ao domínio global do Console Admin (conexões de IA da plataforma, auditoria global) ou obtêm primeiro a sessão de suporte e o workspace.
+
+Foram corrigidos três pontos de defesa em profundidade:
+
+- `setPlatformWorkspaceAi` passou a validar novamente a sessão operadora no serviço, receber `supportSessionId` e gravá-lo na auditoria; o router passa a sessão validada ao serviço.
+- Fecho de tickets exige também `workspaceId` na mutation final, além do `supportSessionId`.
+- Resolução de incidentes exige também `workspaceId` na mutation final, além da sessão associada ao workspace.
+
+`pnpm check` passou. Os testes de autorização de plataforma passaram com **3 ficheiros / 9 testes**; `platform-support-session` permaneceu com 3 testes DB skipped nesse ambiente. Uma tentativa final de PostgreSQL descartável falhou durante `drizzle-kit migrate` com `Connection terminated unexpectedly`, deixando a base sem schema; por isso o Vitest seguinte reportou `relation does not exist`, não uma falha funcional do código. O container foi removido. A próxima execução deve repetir esse teste DB isoladamente antes de qualquer integração.
+
+### Gate completo após revisão transversal — 2026-10-05
+
+A repetição isolada da validação de suporte passou com migrations completas: `platform-support-session`, `platform-admin` e `platform-authorization` passaram **3 ficheiros / 11 testes**. A tentativa anterior de migration foi transitória; a segunda execução confirmou a base limpa e saudável.
+
+A suite completa (`pnpm test`) executou **134 ficheiros / 480 testes**: **446 passaram**, **21 foram skipped** e **13 falharam** em 15 ficheiros. Uma falha era consequência directa da nova exigência de sessão operadora em `setPlatformWorkspaceAi`: `platform-admin-actions.test.ts` foi actualizado para criar e transmitir uma sessão válida, e a revalidação isolada contra PostgreSQL passou **3/3 testes**.
+
+As falhas restantes são separadas para a próxima tranche de portabilidade/gates:
+
+- `inbox-instance-filter.integration.test.ts`: precisão temporal esperada em milissegundos versus timestamp PostgreSQL truncado para segundos, já identificada anteriormente.
+- `scripts/*restore-rehearsal*.test.ts` e `scripts/media-backup-evidence.test.ts`: fixtures/utilitários assumem ferramentas e comportamento POSIX (`sha256sum`, `find`, scripts shell), incompatíveis com o Windows actual.
+- `forte-whatsapp/src/baileys-patch.test.ts`: caminho local de `node_modules/baileys/lib/Socket/socket.js` não existe no layout instalado actual.
+
+O gate completo permanece **vermelho**; não há autorização para merge, publicação ou beta pública. Os containers descartáveis foram removidos e a instalação real não foi tocada.
+
+### Portabilidade de restore e continuação SDD — 2026-10-05
+
+Foi corrigido `scripts/backup-restore.test.ts` para Windows/WSL: hashes usam `node:crypto`, caminhos Windows são convertidos para o formato do Bash disponível, argumentos com espaços são preservados e o PATH POSIX do fixture é exportado dentro do shell. A bateria direccionada ficou verde: **5 ficheiros / 13 testes**, incluindo a rejeição de dump PostgreSQL adulterado, retenção dry-run e preflight/rehearsal. `pnpm check` e Prettier passaram. Não houve acesso a PostgreSQL real, pairing, envio WhatsApp, Supabase ou alteração da instalação do utilizador.
+
+O teste `forte-whatsapp/src/baileys-patch.test.ts` foi reproduzido após `npm ci` e `patch-package`: **1/1 passou**. A falha anterior era apenas `node_modules/baileys` ausente no ambiente, não uma alteração necessária ao patch nem ao runtime. O `npm ci` reportou vulnerabilidades do ecossistema instalado; não foi executado `npm audit fix --force` nem alterado o lockfile.
+
+Foi criada a [`Spec 0004 — Inbox, mensagens e atendimento`](./specs/0004-inbox-mensagens-e-atendimento.md), cobrindo ownership tenant-scoped, ingestão Baileys, filtros por instância, estados de atendimento, idempotência, efeitos históricos e precisão temporal. A matriz [`TRACEABILITY.md`](./specs/TRACEABILITY.md) foi actualizada. A lacuna temporal permanece aberta: a execução desta máquina não tem Docker/PostgreSQL disponível para reproduzir o truncamento de milissegundos observado anteriormente; não foi enfraquecida a asserção sem reproduzir a precisão efectiva do tipo SQL.
+
+O gate completo permanece **vermelho**; esta candidata continua local, sem merge para `main`, sem push e sem publicação GHCR. Próxima acção única: executar a suite `inbox-instance-filter.integration.test.ts` contra PostgreSQL descartável, medir a precisão real de `timestamp` e corrigir o contrato/teste com essa evidência.
+
+### Correcção de actividade temporal da Inbox — 2026-10-05
+
+A reprodução com PostgreSQL 16 descartável confirmou que a falha de `inbox-instance-filter.integration.test.ts` não era truncamento de milissegundos: o segundo evento live entrava no fluxo, mas o upsert do Lead não fazia avançar `lastActivityAt`. `ensureLeadOpportunityForContact` foi corrigido para fazer uma actualização explícita e monotónica quando `lastActivityAt` é nulo ou anterior à data recebida; eventos atrasados não fazem a actividade regredir.
+
+Após a correcção, `inbox-instance-filter.integration.test.ts` passou **1 ficheiro / 8 testes**, sem skips, com migrations completas numa base PostgreSQL 16 efémera. `pnpm check` passou. O container foi removido no fim; não houve acesso à instalação real, pairing, envio WhatsApp ou serviço externo.
+
+Na mesma base PostgreSQL 16 efémera, as suites relacionadas `inbox-instance-filter`, `inbox-read-state`, `workspace-scope`, `workspace-domain-isolation` e `agenda-workspace-isolation` passaram **5 ficheiros / 23 testes**, sem skips. `pnpm build` também passou, com o aviso já conhecido de bundle JavaScript superior a 500 kB. A candidata continua local, sem merge para `main`, sem push e sem publicação GHCR. Próxima acção: executar os gates completos da aplicação e gateway antes de qualquer decisão de integração.
+
+### Gates completos da aplicação e gateway — 2026-10-05
+
+Foi iniciada uma nova base PostgreSQL 16 descartável, com todas as migrations aplicadas, e executada a suite completa da aplicação: **134 ficheiros / 502 testes passaram**, sem skips. O resultado inclui as suites de migration, tenancy, Inbox, plataforma, Baileys, restore e runtime do agente. `pnpm check` e `pnpm build` passaram; permanece apenas o aviso conhecido de bundle JavaScript superior a 500 kB. Os avisos de `OAUTH_SERVER_URL` ausente pertencem ao bootstrap de testes e não causaram falhas; não foram usadas credenciais reais nem providers externos.
+
+No gateway `forte-whatsapp`, `npm test` passou com **21 ficheiros / 106 testes**, seguido de `npm run check` e `npm run build`, ambos verdes. O container PostgreSQL foi removido no fim. Não houve pairing, envio WhatsApp, alteração da instalação real, merge, push ou publicação GHCR.
+
+Os gates técnicos locais da aplicação e gateway estão verdes. A candidata continua sem autorização para integração/publicação até existir a decisão explícita correspondente e, para publicação, até o workflow em `main` concluir todas as verificações e confirmar o digest das imagens.
+
+### Revisão pré-integração — 2026-10-05
+
+O validator de configuração de produção passou com valores sintéticos seguros (`NODE_ENV=production`, fail-closed, demo bloqueada, segredos Baileys sintéticos). `git diff --check` não encontrou whitespace inválido. A verificação de providers não encontrou alterações de runtime que reintroduzam provider não-Baileys; as ocorrências encontradas pertencem apenas ao histórico documental já registado. A branch actual é `feat/agent-hub-capabilities`, com `HEAD` e `origin/main` em `12a654f`; as alterações continuam não commitadas na árvore local.
+
+Não foi criado commit, feito push, aberto/actualizado PR, feito merge, publicada imagem ou alterada a instalação real. O próximo passo requer autorização explícita para preparar/stagear um commit local e, separadamente, decidir se deve ser enviado para revisão contra `main`.

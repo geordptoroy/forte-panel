@@ -90,6 +90,11 @@ import {
 import { getWhatsappAdapter } from "./integrations/whatsapp";
 import { ENV } from "./_core/env";
 import {
+  assertResourceId,
+  assertWorkspaceId,
+  getResourceInWorkspace,
+} from "./_core/workspace-scope";
+import {
   createInviteToken,
   hashInviteToken,
   INVITE_TTL_MS,
@@ -1315,6 +1320,9 @@ export async function listInAppNotifications(
   userId: number,
   limit = 30
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  userId = assertResourceId(userId);
+  limit = Math.max(1, Math.min(100, Math.floor(limit)));
   const db = await getDb();
   if (!db) return { items: [], unreadCount: 0 };
   const items = await db
@@ -1346,6 +1354,9 @@ export async function markInAppNotificationRead(
   userId: number,
   notificationId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  userId = assertResourceId(userId);
+  notificationId = assertResourceId(notificationId);
   const db = await getDb();
   if (!db) return false;
   const updated = await db
@@ -1367,6 +1378,8 @@ export async function markAllInAppNotificationsRead(
   workspaceId: number,
   userId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  userId = assertResourceId(userId);
   const db = await getDb();
   if (!db) return 0;
   const updated = await db
@@ -2170,6 +2183,7 @@ export function getOnboardingChecklist(
 export type OnboardingSessionStatus = "active" | "paused" | "completed";
 
 export async function getOnboardingSession(workspaceId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
   const db = await getDb();
   if (!db) return undefined;
   return (
@@ -2196,8 +2210,26 @@ export type OnboardingTelemetryEventInput = {
 };
 
 export async function recordOnboardingTelemetry(input: OnboardingTelemetryEventInput) {
+  input = {
+    ...input,
+    workspaceId: assertWorkspaceId(input.workspaceId),
+    sessionId: assertResourceId(input.sessionId),
+  };
   const db = await getDb();
   if (!db) return undefined;
+  const session = (
+    await db
+      .select({ id: onboardingSessions.id })
+      .from(onboardingSessions)
+      .where(
+        and(
+          eq(onboardingSessions.id, input.sessionId),
+          eq(onboardingSessions.workspaceId, input.workspaceId)
+        )
+      )
+      .limit(1)
+  )[0];
+  if (!session) return undefined;
   const [event] = await db
     .insert(onboardingTelemetryEvents)
     .values({
@@ -2288,6 +2320,8 @@ export async function getOnboardingTelemetrySummary(workspaceId: number, windowD
 }
 
 export async function startOnboardingSession(workspaceId: number, ownerUserId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  ownerUserId = assertResourceId(ownerUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const now = new Date();
@@ -3150,6 +3184,8 @@ export async function getOnboardingAudioAssetForWorkspace(
   workspaceId: number,
   assetId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  assetId = assertResourceId(assetId);
   const db = await getDb();
   if (!db) return undefined;
   return (
@@ -3170,6 +3206,8 @@ export async function getOnboardingAudioTranscription(
   workspaceId: number,
   assetId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  assetId = assertResourceId(assetId);
   const db = await getDb();
   if (!db) return undefined;
   return (
@@ -3190,6 +3228,8 @@ export async function claimOnboardingAudioTranscription(
   workspaceId: number,
   assetId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  assetId = assertResourceId(assetId);
   const db = await getDb();
   if (!db) throw new Error("DATABASE_UNAVAILABLE");
   const asset = await getOnboardingAudioAssetForWorkspace(workspaceId, assetId);
@@ -3362,6 +3402,7 @@ export async function upsertWorkspaceSetting(
 }
 
 export async function getOnboardingProfile(workspaceId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace)
     return {
@@ -3419,6 +3460,8 @@ export async function saveOnboardingProfile(
   updatedBy?: number,
   syncAnswers = true
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  if (updatedBy !== undefined) updatedBy = assertResourceId(updatedBy);
   if (publish) {
     await saveOnboardingProfile(workspaceId, input, false, updatedBy);
     if (!updatedBy) throw new Error("ONBOARDING_PUBLISH_ACTOR_REQUIRED");
@@ -3862,6 +3905,7 @@ async function readNativeAgentConfig(
 export async function getNativeAgentConfig(
   workspaceId: number
 ): Promise<NativeAgentConfig> {
+  workspaceId = assertWorkspaceId(workspaceId);
   return readNativeAgentConfig(await getActiveWorkspaceById(workspaceId));
 }
 
@@ -3874,6 +3918,7 @@ export type WorkspaceAgentPolicy = {
 export async function getWorkspaceAgentPolicy(
   workspaceId: number
 ): Promise<WorkspaceAgentPolicy> {
+  workspaceId = assertWorkspaceId(workspaceId);
   const config = await getNativeAgentConfig(workspaceId);
   return {
     enabled: config.enabled,
@@ -3886,6 +3931,7 @@ export async function saveWorkspaceAgentPolicy(
   workspaceId: number,
   input: Partial<WorkspaceAgentPolicy>
 ): Promise<WorkspaceAgentPolicy> {
+  workspaceId = assertWorkspaceId(workspaceId);
   const current = await getNativeAgentConfig(workspaceId);
   const updated = await saveNativeAgentConfig(workspaceId, {
     enabled: input.enabled ?? current.enabled,
@@ -3983,6 +4029,7 @@ export async function saveNativeAgentConfig(
   workspaceId: number,
   input: Partial<NativeAgentConfig>
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
   const workspace = await getActiveWorkspaceById(workspaceId);
   if (!workspace) throw new Error("Workspace unavailable");
   const current = await getNativeAgentConfig(workspaceId);
@@ -5156,6 +5203,9 @@ export async function getAgendaSnapshot(
   professionalId?: number,
   includeWorkspaceAvailability = false
 ): Promise<AgendaSnapshot> {
+  workspaceId = assertWorkspaceId(workspaceId);
+  if (professionalId !== undefined)
+    professionalId = assertResourceId(professionalId);
   const db = await getDb();
   const emptySnapshot: AgendaSnapshot = {
     timezone: "America/Sao_Paulo",
@@ -5303,6 +5353,15 @@ export async function createAgendaAppointment(
     notes?: string;
   }
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  input = {
+    ...input,
+    ...(input.contactId === undefined
+      ? {}
+      : { contactId: assertResourceId(input.contactId) }),
+    serviceId: assertResourceId(input.serviceId),
+    professionalId: assertResourceId(input.professionalId),
+  };
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const workspace = (
@@ -5505,6 +5564,8 @@ export async function listInboxContacts(
   instanceIds?: readonly string[] | null,
   includeGroups = false
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  if (viewerUserId !== undefined) viewerUserId = assertResourceId(viewerUserId);
   const db = await getDb();
   if (!db) return [];
   const readRows = viewerUserId === undefined
@@ -5808,6 +5869,9 @@ export async function markConversationRead(
   userId: number,
   contactId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  userId = assertResourceId(userId);
+  contactId = assertResourceId(contactId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   return db.transaction(async tx => {
@@ -5866,6 +5930,8 @@ export async function getConversationByContact(
   workspaceId: number,
   contactId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
   const db = await getDb();
   if (!db) return undefined;
   const result = await db
@@ -5909,6 +5975,8 @@ export async function listMessagesForContact(
     instanceIds?: readonly string[] | null;
   }
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
   const db = await getDb();
   if (!db) return [];
   const conversation = await getConversationByContact(workspaceId, contactId);
@@ -5959,6 +6027,9 @@ export async function setContactAi(
   enabled: boolean,
   actorUserId?: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
+  if (actorUserId !== undefined) actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const updated = await db
@@ -6009,6 +6080,9 @@ export async function sendManualMessage(
   messageMetadata?: Record<string, unknown>,
   instanceIds?: readonly string[] | null
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
+  if (actorUserId !== undefined) actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const contact = await getContactById(workspaceId, contactId);
@@ -6154,6 +6228,9 @@ export async function moveContactStage(
   actorUserId?: number,
   source: OpportunityStageChangeSource = "inbox"
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
+  if (actorUserId !== undefined) actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const contact = await getContactById(workspaceId, contactId);
@@ -6358,6 +6435,8 @@ export async function moveContactStage(
 }
 
 export async function getContactById(workspaceId: number, contactId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
   const db = await getDb();
   if (!db) return undefined;
   const result = await db
@@ -6409,6 +6488,8 @@ export async function getCanonicalContactStage(
 }
 
 export async function listContactNotes(workspaceId: number, contactId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
   const db = await getDb();
   if (!db) return [];
   return db
@@ -6430,6 +6511,9 @@ export async function addContactNote(
   content: string,
   actorUserId?: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
+  if (actorUserId !== undefined) actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const contact = await getContactById(workspaceId, contactId);
@@ -6617,6 +6701,7 @@ async function findQuoteOpportunity(tx: any, workspaceId: number, contactId: num
   return rows[0]?.opportunityId ?? null;
 }
 export async function listQuotes(workspaceId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
   const db = await getDb();
   if (!db) return [];
   const rows = await db.select({ quote: quotes, contact: contacts }).from(quotes).leftJoin(contacts, and(eq(quotes.contactId, contacts.id), eq(contacts.workspaceId, workspaceId))).where(eq(quotes.workspaceId, workspaceId)).orderBy(desc(quotes.createdAt));
@@ -6633,6 +6718,15 @@ export async function listQuotes(workspaceId: number) {
   return rows.map(({ quote, contact }) => ({ ...quote, approvalStatus: effectiveQuoteApprovalStatus(quote), items: itemsByQuote.get(quote.id) ?? [], payments: paymentsByQuote.get(quote.id) ?? [], receipts: receiptsByQuote.get(quote.id) ?? [], contactName: contact?.name ?? "Contato removido", contactInitials: (contact?.name ?? "CR").split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase() }));
 }
 export async function createQuote(input: { contactId: number; opportunityId?: number; serviceName: string; description?: string; quotedCents: number; items?: QuoteItemInput[]; validUntil?: Date; dueDate?: Date; notes?: string }, workspaceId: number, actorUserId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  input = {
+    ...input,
+    contactId: assertResourceId(input.contactId),
+    ...(input.opportunityId === undefined
+      ? {}
+      : { opportunityId: assertResourceId(input.opportunityId) }),
+  };
+  actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   return db.transaction(async tx => {
@@ -6657,6 +6751,9 @@ export async function createQuote(input: { contactId: number; opportunityId?: nu
   });
 }
 export async function changeQuoteApproval(id: number, target: "pending" | "approved" | "rejected", workspaceId: number, actorUserId: number, note?: string) {
+  id = assertResourceId(id);
+  workspaceId = assertWorkspaceId(workspaceId);
+  actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   return db.transaction(async tx => {
@@ -6676,6 +6773,9 @@ export async function changeQuoteApproval(id: number, target: "pending" | "appro
   });
 }
 export async function updateQuotePayment(id: number, receivedCents: number, workspaceId: number, actorUserId: number) {
+  id = assertResourceId(id);
+  workspaceId = assertWorkspaceId(workspaceId);
+  actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   return db.transaction(async tx => {
@@ -6694,6 +6794,9 @@ export async function updateQuotePayment(id: number, receivedCents: number, work
   });
 }
 export async function registerQuotePayment(input: { quoteId: number; amountCents: number; method: "pix" | "cash" | "card" | "transfer" | "other"; receivedAt?: Date; notes?: string }, workspaceId: number, actorUserId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  input = { ...input, quoteId: assertResourceId(input.quoteId) };
+  actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   return db.transaction(async tx => {
@@ -6728,6 +6831,7 @@ export async function getActiveQuoteSummaryByContact(workspaceId: number, contac
 }
 
 export async function getApiIdempotency(workspaceId: number, key: string) {
+  workspaceId = assertWorkspaceId(workspaceId);
   const db = await getDb();
   if (!db) return undefined;
   const result = await db
@@ -6749,6 +6853,7 @@ export async function claimApiIdempotency(input: {
   workspaceId: number;
   leaseMs?: number;
 }) {
+  input = { ...input, workspaceId: assertWorkspaceId(input.workspaceId) };
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const leaseUntil = new Date(
@@ -6810,6 +6915,7 @@ export async function completeApiIdempotency(input: {
   statusCode: number;
   responseBody: unknown;
 }) {
+  input = { ...input, workspaceId: assertWorkspaceId(input.workspaceId) };
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const updated = await db
@@ -6838,6 +6944,7 @@ export async function failApiIdempotency(
   key: string,
   claimToken: string
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const updated = await db
@@ -7714,11 +7821,16 @@ async function ingestInboundWhatsAppCore(
     historySync: isHistorical,
     ignored: false,
   })
-      ? await ensureLeadOpportunityForContact(workspace.id, contact, {
-        source: "whatsapp",
-        activityAt: receivedAt,
-        conversationId: conversation.id,
-      }, db)
+    ? await ensureLeadOpportunityForContact(
+        workspace.id,
+        contact,
+        {
+          source: "whatsapp",
+          activityAt: receivedAt,
+          conversationId: conversation.id,
+        },
+        db
+      )
     : undefined;
   const created = await db
     .insert(messages)
@@ -8270,6 +8382,8 @@ export async function cancelAgendaAppointment(
   workspaceId: number,
   appointmentId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  appointmentId = assertResourceId(appointmentId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const workspace = (
@@ -8280,18 +8394,23 @@ export async function cancelAgendaAppointment(
       .limit(1)
   )[0];
   if (!workspace) return undefined;
-  const appointment = (
-    await db
-      .select()
-      .from(appointmentsTable)
-      .where(
-        and(
-          eq(appointmentsTable.id, appointmentId),
-          eq(appointmentsTable.workspaceId, workspaceId)
-        )
-      )
-      .limit(1)
-  )[0];
+  const appointment = await getResourceInWorkspace(
+    workspaceId,
+    appointmentId,
+    async (trustedWorkspaceId, resourceId) =>
+      (
+        await db
+          .select()
+          .from(appointmentsTable)
+          .where(
+            and(
+              eq(appointmentsTable.id, resourceId),
+              eq(appointmentsTable.workspaceId, trustedWorkspaceId)
+            )
+          )
+          .limit(1)
+      )[0]
+  );
   if (!appointment) return undefined;
   const updatedAt = new Date();
   await db
@@ -8375,6 +8494,10 @@ export async function rescheduleAgendaAppointment(
   endsAt: Date,
   restrictToProfessionalId?: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  appointmentId = assertResourceId(appointmentId);
+  if (restrictToProfessionalId !== undefined)
+    restrictToProfessionalId = assertResourceId(restrictToProfessionalId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const workspace = (
@@ -9039,6 +9162,9 @@ export async function renameContact(
   rawName: string,
   actorUserId?: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
+  if (actorUserId !== undefined) actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const name = rawName.trim();
@@ -9097,8 +9223,7 @@ async function ensureLeadOpportunityForContact(
   const now = options.activityAt ?? new Date();
   const activityUpdate = options.activityAt
     ? {
-        lastActivityAt: sql`GREATEST(COALESCE(${leads.lastActivityAt}, ${options.activityAt}), ${options.activityAt})`,
-        updatedAt: sql`GREATEST(${leads.updatedAt}, ${options.activityAt})`,
+        updatedAt: sql`GREATEST(${leads.updatedAt}, CAST(${options.activityAt} AS timestamp))`,
       }
     : { updatedAt: now };
   const run = async (tx: any) => {
@@ -9126,6 +9251,22 @@ async function ensureLeadOpportunityForContact(
       .returning({ id: leads.id });
     const leadId = leadRows[0]?.id;
     if (!leadId) throw new Error("Lead could not be created or loaded");
+
+    if (options.activityAt) {
+      await tx
+        .update(leads)
+        .set({
+          lastActivityAt: options.activityAt,
+          updatedAt: sql`GREATEST(${leads.updatedAt}, CAST(${options.activityAt} AS timestamp))`,
+        })
+        .where(
+          and(
+            eq(leads.id, leadId),
+            eq(leads.workspaceId, workspaceId),
+            or(isNull(leads.lastActivityAt), lt(leads.lastActivityAt, options.activityAt))
+          )
+        );
+    }
 
     await tx
       .insert(opportunities)
@@ -9349,6 +9490,11 @@ export async function assignInboxOpportunity(
   assignedMemberId: number | null,
   actorUserId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
+  if (assignedMemberId !== null)
+    assignedMemberId = assertResourceId(assignedMemberId);
+  actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   return db.transaction(async tx => {
@@ -9421,6 +9567,9 @@ export async function setOpportunityNextAction(
   input: { title: string; dueAt: Date },
   actorUserId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
+  actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const title = input.title.trim();
@@ -9502,6 +9651,9 @@ export async function completeOpportunityNextAction(
   contactId: number,
   actorUserId: number
 ) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  contactId = assertResourceId(contactId);
+  actorUserId = assertResourceId(actorUserId);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   return db.transaction(async tx => {

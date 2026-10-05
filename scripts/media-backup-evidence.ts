@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { validateMediaInventory } from "./verify-restore-rehearsal";
 
 export type MediaBackupEvidence = {
@@ -26,7 +26,13 @@ function isSha256(value: unknown): value is string {
 function artifactInside(baseDir: string, candidate: string | undefined) {
   if (!candidate) return false;
   const resolved = resolve(baseDir, candidate);
-  return resolved.startsWith(`${resolve(baseDir)}/`) && existsSync(resolved);
+  const relativePath = relative(resolve(baseDir), resolved);
+  return (
+    Boolean(relativePath) &&
+    !relativePath.startsWith("..") &&
+    !isAbsolute(relativePath) &&
+    existsSync(resolved)
+  );
 }
 
 function sha256(path: string) {
