@@ -374,6 +374,6 @@ Os gates técnicos locais da aplicação e gateway estão verdes. A candidata co
 
 ### Revisão pré-integração — 2026-10-05
 
-O validator de configuração de produção passou com valores sintéticos seguros (`NODE_ENV=production`, fail-closed, demo bloqueada, segredos Baileys sintéticos). `git diff --check` não encontrou whitespace inválido. A verificação de providers não encontrou alterações de runtime que reintroduzam provider não-Baileys; as ocorrências encontradas pertencem apenas ao histórico documental já registado. A branch actual é `feat/agent-hub-capabilities`, com `HEAD` e `origin/main` em `12a654f`; as alterações continuam não commitadas na árvore local.
+O validator de configuração de produção passou com valores sintéticos seguros (`NODE_ENV=production`, fail-closed, demo bloqueada, segredos Baileys sintéticos). `git diff --check` não encontrou whitespace inválido. A verificação de providers não encontrou alterações de runtime que reintroduzam provider não-Baileys; as ocorrências encontradas pertencem apenas ao histórico documental já registado. A branch actual é `feat/agent-hub-capabilities`; a candidata foi consolidada no commit `3a4b19b` e enviada para `origin/feat/agent-hub-capabilities`, enquanto `origin/main` permanece em `12a654f`.
 
-Não foi criado commit, feito push, aberto/actualizado PR, feito merge, publicada imagem ou alterada a instalação real. O próximo passo requer autorização explícita para preparar/stagear um commit local e, separadamente, decidir se deve ser enviado para revisão contra `main`.
+Não foi feito merge, publicada imagem ou alterada a instalação real. O commit e o push da branch foram autorizados para rastreabilidade; a criação/actualização de PR depende da CLI/conector GitHub autenticado.
