@@ -130,6 +130,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build and push
+        id: build-panel
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -149,6 +150,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build and push WhatsApp gateway
+        id: build-whatsapp
         uses: docker/build-push-action@v6
         with:
           context: ./forte-whatsapp
@@ -157,3 +159,18 @@ jobs:
           push: true
           tags: ${{ steps.whatsapp-meta.outputs.tags }}
           labels: ${{ steps.whatsapp-meta.outputs.labels }}
+
+      - name: Record OCI image digests
+        env:
+          PANEL_DIGEST: ${{ steps.build-panel.outputs.digest }}
+          WHATSAPP_DIGEST: ${{ steps.build-whatsapp.outputs.digest }}
+        run: |
+          {
+            echo '## Published OCI image digests'
+            echo
+            echo "- ${IMAGE_NAME} — ${PANEL_DIGEST}"
+            echo "- ${WHATSAPP_IMAGE_NAME} — ${WHATSAPP_DIGEST}"
+            echo "- Revision — ${GITHUB_SHA}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "${IMAGE_NAME} digest=${PANEL_DIGEST}"
+          echo "${WHATSAPP_IMAGE_NAME} digest=${WHATSAPP_DIGEST}"
