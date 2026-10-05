@@ -377,3 +377,9 @@ Os gates técnicos locais da aplicação e gateway estão verdes. A candidata co
 O validator de configuração de produção passou com valores sintéticos seguros (`NODE_ENV=production`, fail-closed, demo bloqueada, segredos Baileys sintéticos). `git diff --check` não encontrou whitespace inválido. A verificação de providers não encontrou alterações de runtime que reintroduzam provider não-Baileys; as ocorrências encontradas pertencem apenas ao histórico documental já registado. A branch actual é `feat/agent-hub-capabilities`; a candidata foi consolidada no commit `3a4b19b` e enviada para `origin/feat/agent-hub-capabilities`, enquanto `origin/main` permanece em `12a654f`.
 
 Não foi feito merge, publicada imagem ou alterada a instalação real. O commit e o push da branch foram autorizados para rastreabilidade; a criação/actualização de PR depende da CLI/conector GitHub autenticado.
+
+### Exposição dos digests OCI no workflow — 2026-10-05
+
+Criada a branch `chore/expose-oci-digests` a partir do `main` merged (`d7b7770`) e aberta a PR #44. O workflow `.github/workflows/publish-image.yml` agora atribui IDs aos dois passos `docker/build-push-action@v6` (`build-panel` e `build-whatsapp`) e publica os outputs `steps.*.outputs.digest` no `GITHUB_STEP_SUMMARY` e no log do job, junto com o `GITHUB_SHA`. Não foram alteradas as tags/path GHCR, a regra Baileys-only ou o comportamento de publicação.
+
+Validação local: Prettier passou e `git diff --check` passou; `actionlint` não está instalado neste ambiente e ficará coberto pelo GitHub Actions da PR. Commit inicial da alteração: `8de6c11`. Não houve merge, nova publicação ou alteração da instalação real nesta tranche.
