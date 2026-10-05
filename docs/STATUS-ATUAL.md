@@ -1,9 +1,9 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 3 de outubro de 2026, 13:49 (UTC−3)
+**Atualizado:** 5 de outubro de 2026, 17:39 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
-**Estado:** candidata de remediação publicada numa branch de handoff; **não integrada em `main` nem publicada como release/imagem**.
-**Continuação local:** commits `bb3fb0e` (limites), `6ee474c` (webhook genérico encerrado), `17b0b34` (guard de media outbound), `8e8c1bd` (contrato MIME/PTT), `6a02133` (purge Baileys-only), `eeaa6d5` (reconciliação idempotente auditável), `a896dbd` (readiness/body do gateway), `bdeff4b` (evidência fail-closed de backup de media), `0a190fb` (documentação de operação), `6582607` (reset de password fail-closed) e `87dfaac` (sink operacional opcional); sem push nesta sessão.
+**Estado:** `main` está em `df8b0fe9605e911364f3680a1ba676207f16830e`; os gates de integração e publicação passaram, e as imagens operacionais `latest` foram publicadas no GHCR.
+**Continuação local:** a instalação local foi actualizada a partir de `main` com `scripts/start-docker.ps1`; o `.env` local contém segredos gerados apenas para esta instalação descartável e não é rastreado.
 
 ## Git e decisão de integração
 
@@ -382,4 +382,32 @@ Não foi feito merge, publicada imagem ou alterada a instalação real. O commit
 
 Criada a branch `chore/expose-oci-digests` a partir do `main` merged (`d7b7770`) e aberta a PR #44. O workflow `.github/workflows/publish-image.yml` agora atribui IDs aos dois passos `docker/build-push-action@v6` (`build-panel` e `build-whatsapp`) e publica os outputs `steps.*.outputs.digest` no `GITHUB_STEP_SUMMARY` e no log do job, junto com o `GITHUB_SHA`. Não foram alteradas as tags/path GHCR, a regra Baileys-only ou o comportamento de publicação.
 
-Validação local: Prettier passou e `git diff --check` passou; `actionlint` não está instalado neste ambiente e ficará coberto pelo GitHub Actions da PR. Commit inicial da alteração: `8de6c11`. Não houve merge, nova publicação ou alteração da instalação real nesta tranche.
+Validação local: Prettier passou e `git diff --check` passou; `actionlint` não está instalado neste ambiente e ficou coberto pelo GitHub Actions da PR. Commit inicial da alteração: `8de6c11`.
+
+### Handoff pós-merge e publicação — 2026-10-05
+
+A PR #44 foi integrada em `main` por squash-and-merge no commit `df8b0fe9605e911364f3680a1ba676207f16830e`. O checkout local foi confirmado em `main` e sincronizado com `origin/main`; a árvore contém apenas ficheiros locais não rastreados (`.env` e `.manus/`), que não pertencem ao repositório.
+
+No mesmo commit, os workflows GitHub Actions passaram com sucesso:
+
+- `PostgreSQL integration` — run `37385616231`;
+- `Publish Forte Panel image` — run `37385616106`, com jobs `verify` e `publish` verdes;
+- typecheck, validator de configuração de produção, migrations, suite completa sem skips, build do painel e testes/check/build do gateway Baileys passaram no job `verify`.
+
+O job `publish` publicou, a partir de `main`, as imagens operacionais fixas:
+
+- `ghcr.io/geordptoroy/forte-panel:latest` e `:sha-df8b0fe`;
+- `ghcr.io/geordptoroy/forte-whatsapp:latest` e `:sha-df8b0fe`.
+
+O workflow passou a registar os outputs OCI dos dois builds no log e no `GITHUB_STEP_SUMMARY`. O digest do gateway confirmado no log foi `sha256:ded980a77adfb06661eb44b77c4920afca38999e6f48832dde1dca6162d75159`; os tags e paths GHCR não foram alterados.
+
+A instalação local descartável foi actualizada pelo procedimento oficial `scripts/start-docker.ps1`, sem reset, sem apagar volumes e sem build local. O `.env` foi criado localmente com segredos novos e não deve ser commitado. O Docker Compose V2 foi disponibilizado como plugin local porque o executável integrado não estava exposto pelo Docker CLI.
+
+Smoke test local:
+
+- Panel `/api/v1/health`: `200`, `status=ok`;
+- Gateway `/health`: `200`, `status=ok`;
+- PostgreSQL, Redis e SeaweedFS: `healthy`;
+- Panel `/api/v1/ready`: `503`, `status=not_ready`, com `database=ok`, `worker=ok` e `gateway=error` porque não foi feito pairing Baileys. Isto é esperado para uma instalação nova; não houve pairing nem envio de mensagens.
+
+O próximo agente deve tratar este bloco como a fonte de verdade operacional. Não executar reset, não regenerar a chave `WHATSAPP_SESSION_ENCRYPTION_KEY` sem decisão explícita, não emparelhar WhatsApp e não enviar mensagens sem número de teste e autorização específica.
