@@ -15,6 +15,11 @@ import { getDb, type WorkspaceMembershipContext } from "./db";
 import { defaultNotificationPreferences, parseNotificationPreferences, type NotificationPreferences } from "./notification-contract";
 import type { ServicePriceType } from "../shared/service-price";
 import { validateWeeklyAvailabilityEntries } from "./schedule";
+import {
+  assertResourceId,
+  assertWorkspaceId,
+  getResourceInWorkspace,
+} from "./_core/workspace-scope";
 
 export type WorkspaceMemberRole = "owner" | "admin" | "manager" | "agent";
 export type OperationalRole = "human_attendant" | "ai_attendant" | "professional";
@@ -130,6 +135,7 @@ export async function logWorkspaceAction(input: { workspaceId: number; actorUser
 /* ------------------------------------------------------------------ */
 
 export async function listServices(workspaceId: number, options: { includeInactive?: boolean } = {}) {
+  workspaceId = assertWorkspaceId(workspaceId);
   const db = await getDb();
   if (!db) return [];
   const rows = await db.select().from(services)
@@ -143,6 +149,7 @@ export async function listServices(workspaceId: number, options: { includeInacti
 }
 
 export async function createService(workspaceId: number, input: { name: string; description?: string; durationMinutes?: number; priceCents?: number; priceType?: ServicePriceType }) {
+  workspaceId = assertWorkspaceId(workspaceId);
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const created = await db.insert(services).values({
@@ -157,9 +164,13 @@ export async function createService(workspaceId: number, input: { name: string; 
 }
 
 export async function updateService(workspaceId: number, id: number, input: { name?: string; description?: string | null; durationMinutes?: number; priceCents?: number; priceType?: ServicePriceType; active?: boolean }) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  id = assertResourceId(id);
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
-  const existing = (await db.select().from(services).where(and(eq(services.id, id), eq(services.workspaceId, workspaceId))).limit(1))[0];
+  const existing = await getResourceInWorkspace(workspaceId, id, async (trustedWorkspaceId, resourceId) =>
+    (await db.select().from(services).where(and(eq(services.id, resourceId), eq(services.workspaceId, trustedWorkspaceId))).limit(1))[0]
+  );
   if (!existing) return undefined;
   const priceType = input.priceType ?? existing.priceType;
   const updated = await db.update(services).set({
@@ -175,11 +186,16 @@ export async function updateService(workspaceId: number, id: number, input: { na
 }
 
 export async function setServiceProfessionals(workspaceId: number, serviceId: number, professionalIds: number[]) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  serviceId = assertResourceId(serviceId);
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
-  const service = (await db.select().from(services).where(and(eq(services.id, serviceId), eq(services.workspaceId, workspaceId))).limit(1))[0];
+  const service = await getResourceInWorkspace(workspaceId, serviceId, async (trustedWorkspaceId, resourceId) =>
+    (await db.select().from(services).where(and(eq(services.id, resourceId), eq(services.workspaceId, trustedWorkspaceId))).limit(1))[0]
+  );
   if (!service) throw new Error("Serviço não encontrado neste workspace");
   const requestedIds = Array.from(new Set(professionalIds));
+  requestedIds.forEach(assertResourceId);
   const validProfessionals = requestedIds.length === 0 ? [] : await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.workspaceId, workspaceId), inArray(professionals.id, requestedIds)));
   const validIds = validProfessionals.map((row) => row.id);
   if (validIds.length !== requestedIds.length) throw new Error("Um ou mais profissionais não pertencem a este workspace");
@@ -191,6 +207,7 @@ export async function setServiceProfessionals(workspaceId: number, serviceId: nu
 }
 
 export async function listProfessionalsDetailed(workspaceId: number, options: { includeInactive?: boolean } = {}) {
+  workspaceId = assertWorkspaceId(workspaceId);
   const db = await getDb();
   if (!db) return [];
   const rows = await db.select().from(professionals)
@@ -211,12 +228,18 @@ export async function listProfessionalsDetailed(workspaceId: number, options: { 
 }
 
 export async function getProfessionalInWorkspace(workspaceId: number, professionalId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  professionalId = assertResourceId(professionalId);
   const db = await getDb();
   if (!db) return undefined;
-  return (await db.select().from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.workspaceId, workspaceId))).limit(1))[0];
+  return getResourceInWorkspace(workspaceId, professionalId, async (trustedWorkspaceId, resourceId) =>
+    (await db.select().from(professionals).where(and(eq(professionals.id, resourceId), eq(professionals.workspaceId, trustedWorkspaceId))).limit(1))[0]
+  );
 }
 
 export async function updateProfessional(workspaceId: number, id: number, input: { name?: string; specialty?: string | null; color?: string; active?: boolean }) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  id = assertResourceId(id);
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const existing = await getProfessionalInWorkspace(workspaceId, id);
@@ -232,10 +255,13 @@ export async function updateProfessional(workspaceId: number, id: number, input:
 }
 
 export async function setProfessionalServices(workspaceId: number, professionalId: number, serviceIds: number[]) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  professionalId = assertResourceId(professionalId);
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const professional = await getProfessionalInWorkspace(workspaceId, professionalId);
   if (!professional) throw new Error("Profissional não encontrado neste workspace");
+  serviceIds.forEach(assertResourceId);
   const validServices = serviceIds.length === 0 ? [] : await db.select({ id: services.id }).from(services).where(and(eq(services.workspaceId, workspaceId), inArray(services.id, serviceIds)));
   const validIds = validServices.map((row) => row.id);
   await db.delete(professionalServices).where(and(eq(professionalServices.workspaceId, workspaceId), eq(professionalServices.professionalId, professionalId)));
@@ -246,6 +272,8 @@ export async function setProfessionalServices(workspaceId: number, professionalI
 }
 
 export async function replaceAvailability(workspaceId: number, professionalId: number, entries: AvailabilityEntryInput[]) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  professionalId = assertResourceId(professionalId);
   const db = await getDb();
   if (!db) throw new Error("Workspace indisponível");
   const professional = await getProfessionalInWorkspace(workspaceId, professionalId);

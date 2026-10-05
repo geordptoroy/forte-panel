@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 import { appointmentsTable, availability, contacts, professionals, professionalServices, services, workspaces } from "../drizzle/schema";
 import { cancelAgendaAppointment, createAgendaAppointment, getAgendaSnapshot, getDb, rescheduleAgendaAppointment } from "./db";
-import { getProfessionalPortalSnapshot, listAppointmentsForProfessional, transitionAppointment } from "./agenda";
+import { getProfessionalPortalSnapshot, listActiveProfessionalsForService, listAppointmentsForProfessional, listAvailabilityForProfessional, professionalCanExecuteService, transitionAppointment } from "./agenda";
 import { ScheduleError } from "./schedule";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL && /^postgres(ql)?:\/\//i.test(process.env.DATABASE_URL));
@@ -80,6 +80,10 @@ describe.skipIf(!hasDatabase)("agenda workspace isolation", () => {
     expect(snapshotA.professionals.map((row) => row.id)).not.toContain(professionalBId);
     expect(snapshotA.appointments.map((row) => row.id)).toContain(appointmentAId);
     expect(await listAppointmentsForProfessional(workspaceAId, professionalBId)).toEqual([]);
+    expect(await listActiveProfessionalsForService(workspaceAId, serviceBId)).toEqual([]);
+    expect(await listAvailabilityForProfessional(workspaceAId, professionalBId)).toEqual([]);
+    expect(await professionalCanExecuteService(workspaceAId, professionalBId, serviceAId)).toBe(false);
+    expect(await professionalCanExecuteService(workspaceAId, professionalAId, serviceBId)).toBe(false);
     const foreignProfessionalPortal = await getProfessionalPortalSnapshot(workspaceAId, professionalBId);
     expect(foreignProfessionalPortal.professionalName).toBeNull();
     expect(foreignProfessionalPortal.month).toEqual([]);

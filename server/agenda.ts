@@ -13,6 +13,11 @@ import {
 } from "../drizzle/schema";
 import { getDb, enqueueDomainEvent } from "./db";
 import { ScheduleError } from "./schedule";
+import {
+  assertResourceId,
+  assertWorkspaceId,
+  getResourceInWorkspace,
+} from "./_core/workspace-scope";
 
 export type AppointmentStatus = "requested" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 const appointmentTransitions: Record<AppointmentStatus, AppointmentStatus[]> = {
@@ -69,6 +74,8 @@ export function addDays(date: Date, amount: number) {
  * professional executor can never read another professional's agenda.
  */
 export async function listAppointmentsForProfessional(workspaceId: number, professionalId: number, options: { from?: Date; to?: Date; includeCancelled?: boolean } = {}): Promise<AgendaEntry[]> {
+  workspaceId = assertWorkspaceId(workspaceId);
+  professionalId = assertResourceId(professionalId);
   const db = await getDb();
   if (!db) return [];
   const filters = [eq(appointmentsTable.workspaceId, workspaceId), eq(appointmentsTable.professionalId, professionalId)];
@@ -128,6 +135,8 @@ export type ProfessionalPortalSnapshot = {
 };
 
 export async function getProfessionalPortalSnapshot(workspaceId: number, professionalId: number, reference: Date = new Date()): Promise<ProfessionalPortalSnapshot> {
+  workspaceId = assertWorkspaceId(workspaceId);
+  professionalId = assertResourceId(professionalId);
   const db = await getDb();
   const workspace = db ? (await db.select({ timezone: workspaces.timezone }).from(workspaces).where(and(eq(workspaces.id, workspaceId), eq(workspaces.active, 1))).limit(1))[0] : undefined;
   const empty: ProfessionalPortalSnapshot = {
@@ -214,11 +223,18 @@ export async function transitionAppointment(input: {
   actorUserId?: number;
   restrictToProfessionalId?: number;
 }) {
+  const workspaceId = assertWorkspaceId(input.workspaceId);
+  const appointmentId = assertResourceId(input.appointmentId);
+  const restrictToProfessionalId = input.restrictToProfessionalId === undefined
+    ? undefined
+    : assertResourceId(input.restrictToProfessionalId);
   const db = await getDb();
   if (!db) throw new Error("Banco indisponível");
-  const filters = [eq(appointmentsTable.id, input.appointmentId), eq(appointmentsTable.workspaceId, input.workspaceId)];
-  if (input.restrictToProfessionalId) filters.push(eq(appointmentsTable.professionalId, input.restrictToProfessionalId));
-  const appointment = (await db.select().from(appointmentsTable).where(and(...filters)).limit(1))[0];
+  const appointment = await getResourceInWorkspace(workspaceId, appointmentId, async (trustedWorkspaceId, resourceId) => {
+    const filters = [eq(appointmentsTable.id, resourceId), eq(appointmentsTable.workspaceId, trustedWorkspaceId)];
+    if (restrictToProfessionalId) filters.push(eq(appointmentsTable.professionalId, restrictToProfessionalId));
+    return (await db.select().from(appointmentsTable).where(and(...filters)).limit(1))[0];
+  });
   if (!appointment) return undefined;
   if (appointment.status === input.status) return appointment;
   if (!canTransitionAppointmentStatus(appointment.status, input.status))
@@ -227,10 +243,10 @@ export async function transitionAppointment(input: {
       `Transição inválida: ${appointment.status} → ${input.status}`
     );
   const updatedAt = new Date();
-  const updated = await db.update(appointmentsTable).set({ status: input.status, updatedAt }).where(and(eq(appointmentsTable.id, appointment.id), eq(appointmentsTable.workspaceId, input.workspaceId))).returning();
+  const updated = await db.update(appointmentsTable).set({ status: input.status, updatedAt }).where(and(eq(appointmentsTable.id, appointment.id), eq(appointmentsTable.workspaceId, workspaceId))).returning();
   if (appointment.contactId)
     await db.insert(auditLogs).values({
-      workspaceId: input.workspaceId,
+      workspaceId,
       actorUserId: input.actorUserId,
       contactId: appointment.contactId,
       action: `appointment_${input.status}`,
@@ -238,7 +254,7 @@ export async function transitionAppointment(input: {
     });
   if (input.status === "confirmed" || input.status === "cancelled") {
     await enqueueDomainEvent({
-      workspaceId: input.workspaceId,
+      workspaceId,
       event: input.status === "confirmed" ? "appointment.confirmed" : "appointment.cancelled",
       aggregateType: "appointment",
       aggregateId: appointment.id,
@@ -250,8 +266,15 @@ export async function transitionAppointment(input: {
 }
 
 export async function professionalCanExecuteService(workspaceId: number, professionalId: number, serviceId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  professionalId = assertResourceId(professionalId);
+  serviceId = assertResourceId(serviceId);
   const db = await getDb();
   if (!db) return false;
+  const professional = await getResourceInWorkspace(workspaceId, professionalId, async (trustedWorkspaceId, resourceId) =>
+    (await db.select({ id: professionals.id, workspaceId: professionals.workspaceId }).from(professionals).where(and(eq(professionals.id, resourceId), eq(professionals.workspaceId, trustedWorkspaceId))).limit(1))[0]
+  );
+  if (!professional) return false;
   const link = (await db.select({ id: professionalServices.id }).from(professionalServices).where(and(
     eq(professionalServices.workspaceId, workspaceId),
     eq(professionalServices.professionalId, professionalId),
@@ -266,8 +289,14 @@ export async function professionalCanExecuteService(workspaceId: number, profess
 }
 
 export async function listActiveProfessionalsForService(workspaceId: number, serviceId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  serviceId = assertResourceId(serviceId);
   const db = await getDb();
   if (!db) return [];
+  const service = await getResourceInWorkspace(workspaceId, serviceId, async (trustedWorkspaceId, resourceId) =>
+    (await db.select({ id: services.id, workspaceId: services.workspaceId }).from(services).where(and(eq(services.id, resourceId), eq(services.workspaceId, trustedWorkspaceId))).limit(1))[0]
+  );
+  if (!service) return [];
   const links = await db.select({ professionalId: professionalServices.professionalId }).from(professionalServices)
     .where(and(eq(professionalServices.workspaceId, workspaceId), eq(professionalServices.serviceId, serviceId), eq(professionalServices.active, 1)));
   const linkedIds = links.map((link) => link.professionalId);
@@ -277,6 +306,8 @@ export async function listActiveProfessionalsForService(workspaceId: number, ser
 }
 
 export async function listAvailabilityForProfessional(workspaceId: number, professionalId: number) {
+  workspaceId = assertWorkspaceId(workspaceId);
+  professionalId = assertResourceId(professionalId);
   const db = await getDb();
   if (!db) return [];
   const rows = await db.select().from(availability).where(and(eq(availability.workspaceId, workspaceId), eq(availability.professionalId, professionalId))).orderBy(asc(availability.weekday), asc(availability.startMinute));

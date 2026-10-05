@@ -9,9 +9,16 @@ import {
   workspaces,
 } from "../drizzle/schema";
 import {
+  addContactNote,
+  getContactById,
+  getConversationByContact,
   getDb,
+  listContactNotes,
   listInboxContacts,
+  listMessagesForContact,
   markConversationRead,
+  renameContact,
+  setContactAi,
 } from "./db";
 
 const hasDatabase = Boolean(
@@ -166,5 +173,15 @@ describe.skipIf(!hasDatabase)("per-operator Inbox read state", () => {
       status: "received",
     });
     expect((await listInboxContacts(workspaceAId, userAId)).find(contact => contact.id === contactAId)?.unreadCount).toBe(1);
+  });
+
+  it("hides foreign contacts from reads, notes, conversations, and mutations", async () => {
+    expect(await getContactById(workspaceAId, contactBId)).toBeUndefined();
+    expect(await getConversationByContact(workspaceAId, contactBId)).toBeUndefined();
+    expect(await listMessagesForContact(workspaceAId, contactBId)).toEqual([]);
+    expect(await listContactNotes(workspaceAId, contactBId)).toEqual([]);
+    await expect(setContactAi(workspaceAId, contactBId, false, userAId)).rejects.toThrow("Contact not found");
+    await expect(renameContact(workspaceAId, contactBId, "Foreign", userAId)).rejects.toThrow("Lead não encontrado");
+    await expect(addContactNote(workspaceAId, contactBId, "Foreign", userAId)).rejects.toThrow("Contact not found");
   });
 });

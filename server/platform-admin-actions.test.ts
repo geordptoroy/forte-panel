@@ -66,9 +66,18 @@ describe.skipIf(!hasDatabase)("platform admin mutation safety", () => {
   });
 
   it("pauses and reactivates AI while preserving the effective config", async () => {
+    const session = await startSupportSession({
+      platformAdminId,
+      workspaceId,
+      mode: "operator",
+      reason: "Validar pausa e reativação com sessão operadora",
+      expiresInMinutes: 5,
+    });
+    sessionId = session.id;
     const paused = await setPlatformWorkspaceAi({
       platformAdminId,
       workspaceId,
+      supportSessionId: session.id,
       enabled: false,
       reason: "Teste operacional de pausa da IA",
     });
@@ -78,6 +87,7 @@ describe.skipIf(!hasDatabase)("platform admin mutation safety", () => {
     const resumed = await setPlatformWorkspaceAi({
       platformAdminId,
       workspaceId,
+      supportSessionId: session.id,
       enabled: true,
       reason: "Teste operacional de reativação da IA",
     });

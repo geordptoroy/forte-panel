@@ -1,15 +1,57 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const script = join(process.cwd(), "scripts", "backup-restore.sh");
+const bashExecutable =
+  process.platform === "win32" ? "C:\\Windows\\System32\\bash.exe" : "bash";
+
+function bashPath(value: string) {
+  if (process.platform !== "win32") return value;
+  try {
+    return execFileSync("cygpath", ["-u", value], { encoding: "utf8" }).trim();
+  } catch {
+    const normalized = value.replaceAll("\\", "/");
+    const drive = normalized.match(/^([A-Za-z]):(\/.*)$/);
+    if (!drive) return normalized;
+    const bashWorkingDirectory = execFileSync(bashExecutable, ["-c", "pwd"], {
+      encoding: "utf8",
+    }).trim();
+    return bashWorkingDirectory.startsWith("/mnt/")
+      ? `/mnt/${drive[1].toLowerCase()}${drive[2]}`
+      : `/${drive[1].toLowerCase()}${drive[2]}`;
+  }
+}
 
 function run(args: string[], env: NodeJS.ProcessEnv = {}) {
-  return execFileSync("bash", [script, ...args], {
-    env: { ...process.env, ...env },
+  const commandArgs = [
+    bashPath(script),
+    ...args.map(arg => (isAbsolute(arg) ? bashPath(arg) : arg)),
+  ];
+  const shellArgs =
+    process.platform === "win32" && env.PATH
+      ? [
+          "-c",
+          `export PATH='${env.PATH?.replaceAll("'", "'\\''")}'; exec /usr/bin/bash ${commandArgs
+            .map(arg => `'${arg.replaceAll("'", "'\\''")}'`)
+            .join(" ")}`,
+        ]
+      : commandArgs;
+  return execFileSync(bashExecutable, shellArgs, {
+    env: {
+      ...process.env,
+      ...env,
+    },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -19,12 +61,12 @@ describe("backup/restore contract", () => {
   it("documents the destructive restore confirmation and private targets", () => {
     const source = readFileSync(script, "utf8");
     expect(source).toMatch(/CONFIRM_RESTORE:-\}.*== "YES"/);
-    expect(source).toContain('RESTORE_SESSION_DIR');
+    expect(source).toContain("RESTORE_SESSION_DIR");
     expect(source).toContain('pg_restore "$DATABASE_URL" --clean --if-exists');
-    expect(source).toContain('chmod 600');
-    expect(source).toContain('pg_restore --list');
+    expect(source).toContain("chmod 600");
+    expect(source).toContain("pg_restore --list");
     expect(source).toContain('verify "$dir" >/dev/null');
-    expect(source).toContain('RESTORE_SESSION_DIR não pode ser a sessão ativa');
+    expect(source).toContain("RESTORE_SESSION_DIR não pode ser a sessão ativa");
     expect(source).toContain('tar -czf "$session_archive" -T /dev/null');
     expect(source).toContain("session_key_sha256");
   });
@@ -38,29 +80,49 @@ describe("backup/restore contract", () => {
     writeFileSync(join(bin, "pg_restore"), "#!/usr/bin/env bash\nexit 0\n");
     chmodSync(join(bin, "pg_restore"), 0o755);
     writeFileSync(join(backup, "postgres-test.dump"), "safe dump\n");
-    execFileSync("tar", ["-czf", join(backup, "whatsapp-sessions-test.tar.gz"), "-C", root, "bin"]);
-    const sha = (file: string) => execFileSync("sha256sum", [file], { encoding: "utf8" }).split(/\s+/)[0];
-    writeFileSync(join(backup, "manifest-test.txt"), [
-      "created_at=20260930T000000Z",
-      "postgres_file=postgres-test.dump",
-      `postgres_sha256=${sha(join(backup, "postgres-test.dump"))}`,
-      "session_file=whatsapp-sessions-test.tar.gz",
-      `session_sha256=${sha(join(backup, "whatsapp-sessions-test.tar.gz"))}`,
-      `session_key_sha256=${"e".repeat(64)}`,
-      "",
-    ].join("\n"));
+    execFileSync("tar", [
+      "-czf",
+      join(backup, "whatsapp-sessions-test.tar.gz"),
+      "-C",
+      root,
+      "bin",
+    ]);
+    const sha = (file: string) =>
+      createHash("sha256").update(readFileSync(file)).digest("hex");
+    writeFileSync(
+      join(backup, "manifest-test.txt"),
+      [
+        "created_at=20260930T000000Z",
+        "postgres_file=postgres-test.dump",
+        `postgres_sha256=${sha(join(backup, "postgres-test.dump"))}`,
+        "session_file=whatsapp-sessions-test.tar.gz",
+        `session_sha256=${sha(join(backup, "whatsapp-sessions-test.tar.gz"))}`,
+        `session_key_sha256=${"e".repeat(64)}`,
+        "",
+      ].join("\n")
+    );
     chmodSync(join(backup, "manifest-test.txt"), 0o600);
 
-    expect(run(["verify", backup], { PATH: `${bin}:${process.env.PATH ?? ""}` })).toContain("Backup verificável");
+    expect(
+      run(["verify", backup], {
+        PATH: `${bashPath(bin)}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
+      })
+    ).toContain("Backup verificável");
     writeFileSync(join(backup, "postgres-test.dump"), "tampered dump\n");
-    expect(() => run(["verify", backup], { PATH: `${bin}:${process.env.PATH ?? ""}` })).toThrow(/Hash do dump PostgreSQL diverge/);
+    expect(() =>
+      run(["verify", backup], {
+        PATH: `${bashPath(bin)}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
+      })
+    ).toThrow(/Hash do dump PostgreSQL diverge/);
   });
 
   it("refuses restore before any database or session command is reached", () => {
     const root = mkdtempSync(join(tmpdir(), "forte-restore-contract-"));
     const backup = join(root, "backup");
     mkdirSync(backup);
-    expect(() => run(["restore", backup], { DATABASE_URL: "postgresql://not-used" })).toThrow(/CONFIRM_RESTORE=YES/);
+    expect(() =>
+      run(["restore", backup], { DATABASE_URL: "postgresql://not-used" })
+    ).toThrow(/CONFIRM_RESTORE=YES/);
   });
 
   it("lists only expired manifests in retention dry-run and never removes files", () => {

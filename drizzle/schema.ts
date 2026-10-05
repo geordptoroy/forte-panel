@@ -84,6 +84,35 @@ export const platformAiConnectionCapabilityEnum = pgEnum(
     "admin_support",
   ]
 );
+export const aiCapabilityEnum = pgEnum("ai_capability", [
+  "text",
+  "moderation",
+  "prompt_generation",
+  "vision",
+  "stt",
+  "tts",
+  "documents",
+  "embeddings",
+]);
+export const aiModelSourceEnum = pgEnum("ai_model_source", [
+  "catalog",
+  "manual",
+]);
+export const aiModelStatusEnum = pgEnum("ai_model_status", [
+  "active",
+  "unavailable",
+]);
+export const aiRouteFailureActionEnum = pgEnum("ai_route_failure_action", [
+  "skip",
+  "text",
+  "human",
+  "fail",
+]);
+export const globalPromptStatusEnum = pgEnum("global_prompt_status", [
+  "draft",
+  "published",
+  "archived",
+]);
 export const workerHeartbeatStatusEnum = pgEnum("worker_heartbeat_status", [
   "healthy",
   "degraded",
@@ -852,6 +881,108 @@ export const platformAiConnections = pgTable(
   table => [
     index("platform_ai_connections_capability_idx").on(table.capability, table.active),
     uniqueIndex("platform_ai_connections_name_unique_idx").on(table.name),
+  ]
+);
+export const aiConnections = pgTable(
+  "aiConnections",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 120 }).notNull(),
+    baseUrl: varchar("baseUrl", { length: 500 }).notNull(),
+    encryptedApiKey: text("encryptedApiKey").notNull(),
+    active: integer("active").default(1).notNull(),
+    status: varchar("status", { length: 40 }).default("pending").notNull(),
+    lastTestedAt: timestamp("lastTestedAt"),
+    lastError: text("lastError"),
+    createdBy: integer("createdBy"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("ai_connections_name_unique_idx").on(table.name),
+    index("ai_connections_active_idx").on(table.active),
+  ]
+);
+export const aiModels = pgTable(
+  "aiModels",
+  {
+    id: serial("id").primaryKey(),
+    connectionId: integer("connectionId").notNull(),
+    remoteModelId: varchar("remoteModelId", { length: 200 }).notNull(),
+    displayName: varchar("displayName", { length: 200 }),
+    source: aiModelSourceEnum("source").default("manual").notNull(),
+    status: aiModelStatusEnum("status").default("active").notNull(),
+    detectedCapabilities: jsonb("detectedCapabilities")
+      .$type<string[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    active: integer("active").default(1).notNull(),
+    lastSeenAt: timestamp("lastSeenAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("ai_models_connection_remote_id_unique_idx").on(
+      table.connectionId,
+      table.remoteModelId
+    ),
+    index("ai_models_connection_status_idx").on(
+      table.connectionId,
+      table.status,
+      table.active
+    ),
+  ]
+);
+export const aiCapabilityRoutes = pgTable(
+  "aiCapabilityRoutes",
+  {
+    id: serial("id").primaryKey(),
+    capability: aiCapabilityEnum("capability").notNull(),
+    primaryModelId: integer("primaryModelId"),
+    fallbackModelIds: jsonb("fallbackModelIds")
+      .$type<number[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    enabled: integer("enabled").default(1).notNull(),
+    onFailure: aiRouteFailureActionEnum("onFailure").default("text").notNull(),
+    createdBy: integer("createdBy"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("ai_capability_routes_capability_unique_idx").on(
+      table.capability
+    ),
+    index("ai_capability_routes_enabled_idx").on(table.enabled),
+  ]
+);
+export const globalPrompts = pgTable(
+  "globalPrompts",
+  {
+    id: serial("id").primaryKey(),
+    topic: varchar("topic", { length: 120 }).notNull(),
+    capability: aiCapabilityEnum("capability"),
+    version: integer("version").notNull(),
+    status: globalPromptStatusEnum("status").default("draft").notNull(),
+    prompt: text("prompt").notNull(),
+    impact: text("impact"),
+    reason: varchar("reason", { length: 500 }).notNull(),
+    createdBy: integer("createdBy"),
+    rollbackOfId: integer("rollbackOfId"),
+    publishedAt: timestamp("publishedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("global_prompts_topic_version_unique_idx").on(
+      table.topic,
+      table.version
+    ),
+    index("global_prompts_topic_status_idx").on(
+      table.topic,
+      table.status,
+      table.version
+    ),
   ]
 );
 export const workspaceUsageBuckets = pgTable(

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   mkdirSync,
@@ -7,14 +8,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runRestoreRehearsalPreflight } from "./run-restore-rehearsal-preflight";
 
 function sha(path: string) {
-  return execFileSync("sha256sum", [path], { encoding: "utf8" }).split(
-    /\s+/
-  )[0];
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
 function createFixture() {
@@ -23,8 +22,12 @@ function createFixture() {
   const backupDir = join(root, "backup");
   mkdirSync(bin);
   mkdirSync(backupDir);
-  writeFileSync(join(bin, "pg_restore"), "#!/usr/bin/env bash\nexit 0\n");
-  chmodSync(join(bin, "pg_restore"), 0o755);
+  if (process.platform === "win32") {
+    writeFileSync(join(bin, "pg_restore.cmd"), "@echo off\r\nexit /b 0\r\n");
+  } else {
+    writeFileSync(join(bin, "pg_restore"), "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(join(bin, "pg_restore"), 0o755);
+  }
   writeFileSync(join(backupDir, "postgres.dump"), "synthetic dump\n");
   execFileSync("tar", [
     "-czf",
@@ -91,7 +94,7 @@ describe("restore rehearsal preflight", () => {
     const fixture = createFixture();
     const reportPath = join(fixture.root, "preflight.json");
     const previousPath = process.env.PATH;
-    process.env.PATH = `${fixture.bin}:${previousPath ?? ""}`;
+    process.env.PATH = `${fixture.bin}${delimiter}${previousPath ?? ""}`;
     try {
       const result = runRestoreRehearsalPreflight({
         backupDir: fixture.backupDir,
@@ -120,7 +123,7 @@ describe("restore rehearsal preflight", () => {
     evidence.endpoints = ["https://app.forte.example/api"];
     writeFileSync(fixture.evidencePath, JSON.stringify(evidence));
     const previousPath = process.env.PATH;
-    process.env.PATH = `${fixture.bin}:${previousPath ?? ""}`;
+    process.env.PATH = `${fixture.bin}${delimiter}${previousPath ?? ""}`;
     try {
       const result = runRestoreRehearsalPreflight({
         backupDir: fixture.backupDir,
