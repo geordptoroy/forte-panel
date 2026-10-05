@@ -32,6 +32,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { PlatformAiCanvas } from "@/components/PlatformAiCanvas";
 
 const fmtDate = (value: string | Date | null | undefined) =>
   value
@@ -1866,17 +1867,17 @@ export function PlatformGlobalAiPage() {
     <PlatformAccessGate>
       <PlatformShell
         title="IA global"
-        description="Cadastre a conexão de cada modelo para uma função específica do sistema."
+        description="Configure o pipeline visual, modelos e capacidades do Agent Hub sem expor detalhes do payload Baileys."
         active="ai"
       >
         <div className="platform-banner">
           <Sparkles size={17} />
           <div>
-            <strong>Conexões por função, sem configuração espalhada</strong>
-            <span>O roteador escolherá a conexão cadastrada para responder no WhatsApp, transcrever áudio, analisar imagem/documento ou apoiar o Console.</span>
+            <strong>Canvas do Agent Hub</strong>
+            <span>O modelo declara a intenção; o backend valida o comando e monta a mensagem final para o Baileys. Cada capacidade pode ter o seu próprio modelo e ser desativada sem quebrar o fluxo.</span>
           </div>
         </div>
-        <AiConnectionsCard canMutate={Boolean(access.data?.canMutate)} />
+        <PlatformAiCanvas canMutate={Boolean(access.data?.canMutate)} />
       </PlatformShell>
     </PlatformAccessGate>
   );
