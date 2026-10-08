@@ -83,6 +83,11 @@ import {
   saveWorkspaceAgentPolicy,
   setNativeAgentKillSwitch,
   resetWorkspaceDevelopmentData,
+  createKnowledgeDocumentRecord,
+  listKnowledgeDocuments,
+  getKnowledgeDocument,
+  retryKnowledgeDocument,
+  archiveKnowledgeDocument,
   revokeWorkspaceInvite,
   listContactNotes,
   addContactNote,
@@ -146,6 +151,13 @@ import {
 } from "./_core/email";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import {
+  decodeKnowledgeDataUrl,
+  extractKnowledgeSourceText,
+  KNOWLEDGE_MAX_DATA_URL_CHARS,
+  storeGeneratedKnowledgeDocument,
+  storePrivateKnowledgeSource,
+} from "./knowledge-base";
+import {
   INBOX_MEDIA_MAX_DATA_URL_CHARS,
   uploadPrivateInboxAttachment,
 } from "./inbox-media-upload";
@@ -164,6 +176,7 @@ import {
   validateInteractiveMessage,
 } from "./interactive-messages";
 import {
+  invokeConfiguredEmbeddings,
   invokeConfiguredLLM,
   type AgentCapability,
   type AgentProviderSettings,
@@ -215,6 +228,12 @@ import {
 } from "./baileys-gateway";
 
 const contactIdInput = z.object({ contactId: z.number().int().positive() });
+const genericLlmRouteInput = z.object({
+  provider: z.string().min(1).max(120),
+  model: z.string().max(200),
+  baseUrl: z.string().max(500).optional(),
+  apiKey: z.string().max(500).optional(),
+});
 const inboxInstanceFilterSchema = z.object({
   instanceIds: z
     .array(z.string().trim().min(1).max(160))
@@ -1606,6 +1625,63 @@ export const appRouter = router({
     }),
   }),
 
+  knowledge: router({
+    list: requireOnboardingEditor.query(({ ctx }) =>
+      listKnowledgeDocuments(ctx.workspace.workspaceId)
+    ),
+    get: requireOnboardingEditor
+      .input(z.object({ documentId: z.number().int().positive() }))
+      .query(({ input, ctx }) => getKnowledgeDocument(ctx.workspace.workspaceId, input.documentId)),
+    retry: requireOnboardingEditor
+      .input(z.object({ documentId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => retryKnowledgeDocument(ctx.workspace.workspaceId, input.documentId)),
+    archive: requireOnboardingEditor
+      .input(z.object({ documentId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => archiveKnowledgeDocument(ctx.workspace.workspaceId, input.documentId)),
+    upload: requireOnboardingEditor
+      .input(z.object({
+        title: z.string().trim().min(1).max(240),
+        fileName: z.string().trim().min(1).max(255),
+        mimeType: z.string().trim().min(1).max(120),
+        dataUrl: z.string().min(1).max(KNOWLEDGE_MAX_DATA_URL_CHARS),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const decoded = decodeKnowledgeDataUrl(input.dataUrl, input.mimeType);
+        const sourceText = await extractKnowledgeSourceText(decoded.buffer, decoded.mimeType);
+        const stored = await storePrivateKnowledgeSource({
+          workspaceId: ctx.workspace.workspaceId,
+          source: "manual_upload",
+          title: input.title,
+          fileName: input.fileName,
+          mimeType: decoded.mimeType,
+          data: decoded.buffer,
+        });
+        return createKnowledgeDocumentRecord({
+          workspaceId: ctx.workspace.workspaceId,
+          createdByUserId: ctx.user.id,
+          ...stored,
+          sourceText,
+        });
+      }),
+    createFromOnboarding: requireOnboardingEditor
+      .input(z.object({
+        title: z.string().trim().min(1).max(240),
+        markdown: z.string().trim().min(1).max(2_000_000),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const stored = await storeGeneratedKnowledgeDocument({
+          workspaceId: ctx.workspace.workspaceId,
+          title: input.title,
+          markdown: input.markdown,
+        });
+        return createKnowledgeDocumentRecord({
+          workspaceId: ctx.workspace.workspaceId,
+          createdByUserId: ctx.user.id,
+          ...stored,
+          sourceText: input.markdown,
+        });
+      }),
+  }),
   onboarding: router({
     session: requireOnboardingEditor.query(({ ctx }) =>
       getOnboardingSession(ctx.workspace.workspaceId)
@@ -2417,65 +2493,27 @@ export const appRouter = router({
           model: z.string().trim().min(1).max(120),
           systemPrompt: z.string().max(30000),
           maxSteps: z.number().int().min(1).max(8),
+          delivery: z.object({
+            debounceMs: z.number().int().min(0).max(30_000),
+            waitMs: z.number().int().min(0).max(10_000),
+            presenceEnabled: z.boolean(),
+          }).optional(),
           llm: z.object({
-            providers: z.object({
-              nvidia_nim: z.object({
-                enabled: z.boolean(),
-                baseUrl: z.string().max(500),
-                apiKey: z.string().max(500),
-              }),
-              google_gemini: z.object({
-                enabled: z.boolean(),
-                baseUrl: z.string().max(500),
-                apiKey: z.string().max(500),
-              }),
-              openai_compatible: z.object({
-                enabled: z.boolean(),
-                baseUrl: z.string().max(500),
-                apiKey: z.string().max(500),
-              }),
-            }),
+            providers: z.record(z.string(), z.object({
+              enabled: z.boolean(),
+              baseUrl: z.string().max(500),
+              apiKey: z.string().max(500),
+            })),
             routing: z.object({
-              text: z.object({
-                provider: z.enum([
-                  "nvidia_nim",
-                  "google_gemini",
-                  "openai_compatible",
-                ]),
-                model: z.string().max(200),
-                baseUrl: z.string().max(500).optional(),
-                apiKey: z.string().max(500).optional(),
-              }),
-              vision: z.object({
-                provider: z.enum([
-                  "nvidia_nim",
-                  "google_gemini",
-                  "openai_compatible",
-                ]),
-                model: z.string().max(200),
-                baseUrl: z.string().max(500).optional(),
-                apiKey: z.string().max(500).optional(),
-              }),
-              audio: z.object({
-                provider: z.enum([
-                  "nvidia_nim",
-                  "google_gemini",
-                  "openai_compatible",
-                ]),
-                model: z.string().max(200),
-                baseUrl: z.string().max(500).optional(),
-                apiKey: z.string().max(500).optional(),
-              }),
-              document: z.object({
-                provider: z.enum([
-                  "nvidia_nim",
-                  "google_gemini",
-                  "openai_compatible",
-                ]),
-                model: z.string().max(200),
-                baseUrl: z.string().max(500).optional(),
-                apiKey: z.string().max(500).optional(),
-              }),
+              text: genericLlmRouteInput,
+              vision: genericLlmRouteInput,
+              audio: genericLlmRouteInput,
+              document: genericLlmRouteInput,
+              video: genericLlmRouteInput,
+              tts: genericLlmRouteInput,
+              prompt_builder: genericLlmRouteInput,
+              moderation: genericLlmRouteInput,
+              embeddings: genericLlmRouteInput,
             }),
           }),
         })
@@ -2496,12 +2534,8 @@ export const appRouter = router({
     testConnection: requirePlatformAdministrator
       .input(
         z.object({
-          capability: z.enum(["text", "vision", "audio", "document"]),
-          provider: z.enum([
-            "nvidia_nim",
-            "google_gemini",
-            "openai_compatible",
-          ]),
+          capability: z.enum(["text", "vision", "audio", "document", "video", "tts", "prompt_builder", "moderation", "embeddings"]),
+          provider: z.string().trim().min(1).max(120),
           baseUrl: z.string().trim().max(500),
           apiKey: z.string().max(500),
           model: z.string().trim().max(200),
@@ -2537,20 +2571,13 @@ export const appRouter = router({
         if (!settings.routing[input.capability].model)
           return { ready: false, message: "Informe o modelo." };
         try {
-          const result = await invokeConfiguredLLM(
-            settings,
-            input.capability as AgentCapability,
-            {
-              model: settings.routing[input.capability].model,
-              messages: [
-                {
-                  role: "user",
-                  content: "Responda apenas com OK.",
-                },
-              ],
-              maxTokens: 5,
-            }
-          );
+          const result = input.capability === "embeddings"
+            ? await invokeConfiguredEmbeddings(settings, { texts: ["teste de conexão"], model: settings.routing[input.capability].model })
+            : await invokeConfiguredLLM(settings, input.capability as AgentCapability, {
+                model: settings.routing[input.capability].model,
+                messages: [{ role: "user", content: "Responda apenas com OK." }],
+                maxTokens: 5,
+              });
           return {
             ready: true,
             model: result.model || settings.routing[input.capability].model,
@@ -3349,7 +3376,7 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll" || input.messageType === "carousel")
+        if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll" || input.messageType === "carousel" || input.messageType === "pix")
           validateInteractiveMessage({
             messageType: input.messageType,
             content: input.content,

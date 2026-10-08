@@ -49,6 +49,7 @@ export type OutboundMessageCommand = {
     | "poll"
     | "list"
     | "button"
+    | "pix"
     | "carousel"
     | "album"
     | "react"
@@ -75,6 +76,12 @@ export interface WhatsappAdapter {
   sendMessage(
     command: OutboundMessageCommand
   ): Promise<{ externalId: string; status: "queued" | "sent" }>;
+  updatePresence?(input: {
+    instanceId: string;
+    phone: string;
+    presence: "composing" | "recording" | "paused";
+    jid?: string;
+  }): Promise<void>;
   normalizeInbound(event: unknown): InboundMessageEvent;
 }
 

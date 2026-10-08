@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 const PLACEHOLDER_MARKERS = [
   "CHANGE_ME",
   "REPLACE_ME",
@@ -64,7 +66,7 @@ export function validateProductionConfig(env: NodeJS.ProcessEnv = process.env) {
   return { ok: errors.length === 0, errors };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const result = validateProductionConfig();
   if (!result.ok) {
     console.error("Production configuration is invalid:");

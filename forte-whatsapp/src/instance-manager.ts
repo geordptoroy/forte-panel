@@ -743,6 +743,16 @@ export class InstanceManager {
     );
   }
 
+  async updatePresence(
+    phone: string,
+    presence: "composing" | "recording" | "paused"
+  ) {
+    if (!this.socket || this.snapshot.status !== "connected")
+      throw new Error("WhatsApp instance is not connected");
+    const jid = await resolveOutboundJid(this.socket, phone);
+    await this.socket.sendPresenceUpdate(presence, jid);
+  }
+
   private async sendMessageOnce(
     phone: string,
     messageType: string,
@@ -796,6 +806,30 @@ export class InstanceManager {
             ? metadata.fileName
             : "document",
       };
+    } else if (messageType === "pix") {
+      const pixKey =
+        typeof metadata.pixKey === "string" ? metadata.pixKey.trim() : "";
+      if (!pixKey) throw new Error("Mensagem Pix exige pixKey");
+      message = buildPixPaymentPayload({
+        merchantName:
+          typeof metadata.merchantName === "string"
+            ? metadata.merchantName.trim()
+            : "Forte Panel",
+        pixKey,
+        pixKeyType:
+          typeof metadata.pixKeyType === "string"
+            ? metadata.pixKeyType
+            : "EVP",
+        ...(typeof metadata.amountCents === "number"
+          ? { amountCents: metadata.amountCents }
+          : {}),
+        ...(typeof metadata.referenceId === "string"
+          ? { referenceId: metadata.referenceId }
+          : {}),
+        ...(typeof metadata.orderRequestId === "string"
+          ? { orderRequestId: metadata.orderRequestId }
+          : {}),
+      });
     } else if (messageType === "button") {
       const buttons = Array.isArray(metadata.buttons) ? metadata.buttons : [];
       const pixKey =

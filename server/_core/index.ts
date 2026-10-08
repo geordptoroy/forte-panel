@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { registerApiRoutes } from "../api";
+import { KNOWLEDGE_MAX_REQUEST_BYTES } from "../knowledge-base";
 import { baileysWebhookAuthenticationGuard } from "../baileys-webhook-ingress";
 import { BAILEYS_WEBHOOK_MAX_BODY_BYTES } from "../media-limits";
 import { createContext } from "./context";
@@ -50,6 +51,10 @@ async function startServer() {
     "/api/v1/webhooks/providers/baileys",
     baileysWebhookAuthenticationGuard,
     express.json({ limit: BAILEYS_WEBHOOK_MAX_BODY_BYTES })
+  );
+  app.use(
+    "/api/trpc/knowledge.upload",
+    express.json({ limit: KNOWLEDGE_MAX_REQUEST_BYTES })
   );
   app.use("/api/trpc/voice.upload", express.json({ limit: "24mb" }));
   app.use("/api/trpc/inbox.uploadAttachment", express.json({ limit: "12mb" }));

@@ -13,6 +13,7 @@ import { recordWorkerHeartbeat } from "./platform-admin";
 import { logWorkspaceAction } from "./workspace";
 import { runStorageReconciliationSweep } from "./storage-reconciliation-runner";
 import { emitOperationalEvent } from "./_core/observability";
+import { processKnowledgeIngestionOnce } from "./knowledge-ingestion-worker";
 
 const intervalMs = Number(process.env.WORKER_INTERVAL_MS ?? 1500);
 const batchSize = Number(process.env.WORKER_BATCH_SIZE ?? 10);
@@ -31,6 +32,7 @@ let nextOnboardingAudioCleanupAt = 0;
 let nextOperationalRetentionAt = 0;
 let nextMediaReconciliationAt = 0;
 let nextHeartbeatAt = 0;
+let nextKnowledgeIngestionAt = 0;
 let tickCount = 0;
 let lastError: string | null = null;
 let wakeup: (() => void) | undefined;
@@ -51,6 +53,12 @@ async function tick() {
       console.log(
         `[forte-worker] eventos=${events.processed} entregues=${events.delivered} falhas=${events.failed}`
       );
+    }
+    if (Date.now() >= nextKnowledgeIngestionAt) {
+      nextKnowledgeIngestionAt = Date.now() + Math.max(5_000, Number(process.env.KNOWLEDGE_INGESTION_INTERVAL_MS ?? 15_000));
+      const ingestion = await processKnowledgeIngestionOnce(Number(process.env.KNOWLEDGE_INGESTION_BATCH ?? 2));
+      if (ingestion.claimed > 0)
+        console.log(`[forte-worker] rag_ingestao=${ingestion.claimed} indexados=${ingestion.indexed} falhas=${ingestion.failed}`);
     }
     if (Date.now() >= nextDailySummarySweepAt) {
       nextDailySummarySweepAt = Date.now() + 60_000;

@@ -32,6 +32,7 @@ import AccessGuard, {
   PlatformOnlyGuard,
 } from "./components/AccessGuard";
 import OnboardingPage from "./pages/OnboardingPage";
+import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import AiPromptPage from "./pages/AiPromptPage";
 import BillingPage from "./pages/BillingPage";
 import LoginPage from "./pages/LoginPage";
@@ -133,6 +134,13 @@ function Router() {
         {() => (
           <OnboardingGuard title="Configuração da empresa">
             <OnboardingPage />
+          </OnboardingGuard>
+        )}
+      </Route>
+      <Route path="/knowledge-base">
+        {() => (
+          <OnboardingGuard title="Base de conhecimento">
+            <KnowledgeBasePage />
           </OnboardingGuard>
         )}
       </Route>

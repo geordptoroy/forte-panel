@@ -1,17 +1,28 @@
 import crypto from "node:crypto";
 import { fetch as undiciFetch } from "undici";
+import type { FormData as UndiciFormData } from "undici";
 import type { InvokeParams, InvokeResult, Tool } from "./_core/llm";
 import {
+  buildAudioTranscriptionsEndpoint,
   buildLlmEndpoint,
+  buildTtsEndpoint,
+  createLocalAiAgent,
   createGuardedLlmAgent,
+  isConfiguredLocalAiTarget,
   validateLlmTarget,
 } from "./llm-url-security";
 
-export type AgentProviderId =
-  | "nvidia_nim"
-  | "google_gemini"
-  | "openai_compatible";
-export type AgentCapability = "text" | "vision" | "audio" | "document";
+export type AgentProviderId = string;
+export type AgentCapability =
+  | "text"
+  | "vision"
+  | "audio"
+  | "document"
+  | "video"
+  | "prompt_builder"
+  | "moderation"
+  | "embeddings"
+  | "tts";
 
 export type ProviderConfig = {
   enabled: boolean;
@@ -59,24 +70,17 @@ export class LLMProviderError extends Error {
 }
 
 const DEFAULTS: AgentProviderSettings = {
-  providers: {
-    nvidia_nim: {
-      enabled: false,
-      baseUrl: "https://integrate.api.nvidia.com/v1",
-      apiKey: "",
-    },
-    google_gemini: {
-      enabled: false,
-      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-      apiKey: "",
-    },
-    openai_compatible: { enabled: false, baseUrl: "", apiKey: "" },
-  },
+  providers: {},
   routing: {
-    text: { provider: "nvidia_nim", model: "meta/llama-3.1-70b-instruct" },
-    vision: { provider: "google_gemini", model: "gemini-2.0-flash" },
-    audio: { provider: "google_gemini", model: "gemini-2.0-flash" },
-    document: { provider: "google_gemini", model: "gemini-2.0-flash" },
+    text: { provider: "default", model: "" },
+    vision: { provider: "default", model: "" },
+    audio: { provider: "default", model: "" },
+    document: { provider: "default", model: "" },
+    video: { provider: "default", model: "" },
+    prompt_builder: { provider: "default", model: "" },
+    moderation: { provider: "default", model: "" },
+    embeddings: { provider: "default", model: "" },
+    tts: { provider: "default", model: "" },
   },
 };
 
@@ -88,14 +92,16 @@ export function mergeAgentProviderSettings(
 ): AgentProviderSettings {
   const base = defaultAgentProviderSettings();
   if (!input) return base;
-  for (const id of Object.keys(base.providers) as AgentProviderId[]) {
-    const candidate = input.providers?.[id];
-    if (candidate) base.providers[id] = { ...base.providers[id], ...candidate };
-  }
+  for (const [id, candidate] of Object.entries(input.providers ?? {}))
+    base.providers[id] = { ...base.providers[id], ...candidate };
   for (const capability of Object.keys(base.routing) as AgentCapability[]) {
     const candidate = input.routing?.[capability];
     if (candidate)
       base.routing[capability] = { ...base.routing[capability], ...candidate };
+  }
+  for (const [capability, candidate] of Object.entries(input.routing ?? {})) {
+    if (!(capability in base.routing))
+      base.routing[capability as AgentCapability] = candidate;
   }
   return base;
 }
@@ -182,9 +188,9 @@ function normalizeParams(params: InvokeParams) {
   );
 }
 
-async function readBoundedJson(
+async function readBoundedJson<T = InvokeResult>(
   response: Awaited<ReturnType<typeof undiciFetch>>
-): Promise<InvokeResult> {
+): Promise<T> {
   const maxResponseBytes = 10 * 1024 * 1024;
   const contentLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > maxResponseBytes)
@@ -208,7 +214,7 @@ async function readBoundedJson(
   } finally {
     reader.releaseLock();
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as InvokeResult;
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 export async function invokeConfiguredLLM(
@@ -240,7 +246,9 @@ export async function invokeConfiguredLLM(
     let dispatcher: ReturnType<typeof createGuardedLlmAgent> | undefined;
     try {
       const target = await validateLlmTarget(candidate.provider, baseUrl);
-      dispatcher = createGuardedLlmAgent();
+      dispatcher = isConfiguredLocalAiTarget(candidate.provider, baseUrl)
+        ? createLocalAiAgent()
+        : createGuardedLlmAgent();
       const requestUrl = buildLlmEndpoint(target.toString());
       const requestOptions = {
         method: "POST",
@@ -316,11 +324,267 @@ export async function invokeConfiguredLLM(
   );
 }
 
+const LOCALAI_EMBEDDING_DIMENSIONS = 2048;
+const QWEN3_EMBEDDING_4B_MODEL = "qwen3-embedding-4b";
+const QWEN3_EMBEDDING_4B_MAX_DIMENSIONS = 2560;
+
+class EmbeddingDimensionError extends Error {
+  constructor() {
+    super("LOCALAI_EMBEDDING_DIMENSION_MISMATCH");
+    this.name = "EmbeddingDimensionError";
+  }
+}
+
+function normalizeQwen3Embedding2048(vector: number[]) {
+  if (
+    (vector.length !== LOCALAI_EMBEDDING_DIMENSIONS &&
+      vector.length !== QWEN3_EMBEDDING_4B_MAX_DIMENSIONS) ||
+    vector.some(value => !Number.isFinite(value))
+  )
+    throw new EmbeddingDimensionError();
+
+  const prefix = vector.slice(0, LOCALAI_EMBEDDING_DIMENSIONS);
+  const normSquared = prefix.reduce((sum, value) => sum + value * value, 0);
+  const norm = Math.sqrt(normSquared);
+  if (!Number.isFinite(norm) || norm <= 0)
+    throw new EmbeddingDimensionError();
+  return prefix.map(value => value / norm);
+}
+
+function prepareLocalAiEmbedding(vector: number[], model: string) {
+  if (vector.some(value => !Number.isFinite(value)))
+    throw new EmbeddingDimensionError();
+
+  const modelId = model.trim().split("/").at(-1)?.toLowerCase();
+  if (modelId === QWEN3_EMBEDDING_4B_MODEL)
+    return normalizeQwen3Embedding2048(vector);
+  if (vector.length !== LOCALAI_EMBEDDING_DIMENSIONS)
+    throw new EmbeddingDimensionError();
+  return vector;
+}
+
+export async function invokeConfiguredEmbeddings(
+  settings: AgentProviderSettings,
+  input: { texts: string[]; model?: string; inputType?: "query" | "passage" }
+): Promise<{ embeddings: number[][]; model: string; telemetry: LLMInvocationTelemetry }> {
+  if (!input.texts.length || input.texts.some(text => !text.trim())) throw new Error("EMBEDDING_INPUT_EMPTY");
+  const route = settings.routing.embeddings;
+  const candidates = [route, ...(route.fallback ?? [])];
+  const timeoutMs = Math.max(1_000, Math.min(Number(process.env.AGENT_EMBEDDING_TIMEOUT_MS ?? 45_000), 180_000));
+  const failures: string[] = [];
+  let attempts = 0;
+  for (const candidate of candidates) {
+    attempts += 1;
+    const provider = settings.providers[candidate.provider];
+    const baseUrl = candidate.baseUrl || provider?.baseUrl;
+    const apiKey = candidate.apiKey || provider?.apiKey;
+    if ((!provider?.enabled && !(candidate.baseUrl && candidate.apiKey)) || !baseUrl || !apiKey) {
+      failures.push(`${candidate.provider}:indisponível`);
+      continue;
+    }
+    let dispatcher: ReturnType<typeof createGuardedLlmAgent> | undefined;
+    try {
+      const target = await validateLlmTarget(candidate.provider, baseUrl);
+      const localAi = isConfiguredLocalAiTarget(candidate.provider, baseUrl);
+      dispatcher = localAi ? createLocalAiAgent() : createGuardedLlmAgent();
+      const base = target.toString().replace(/\/+$/, "").replace(/\/embeddings$/i, "");
+      const endpoint = /\/v1$/i.test(base) ? `${base}/embeddings` : `${base}/v1/embeddings`;
+      const requestedModel = candidate.model || input.model;
+      const model = /integrate\.api\.nvidia\.com/i.test(base) && requestedModel === "llama-nemotron-embed-vl-1b-v2"
+        ? "nvidia/llama-nemotron-embed-vl-1b-v2"
+        : requestedModel;
+      const body: Record<string, unknown> = {
+        model,
+        input: input.texts,
+      };
+      if (localAi) body.dimensions = 2048;
+      if (input.inputType && !localAi) {
+        body.input_type = input.inputType;
+        body.modality = "text";
+        body.encoding_format = "float";
+        body.truncate = "NONE";
+      }
+      const response = await undiciFetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${decryptProviderSecret(apiKey)}` },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+        redirect: "error",
+        dispatcher,
+      });
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        failures.push(`${candidate.provider}:http_${response.status}`);
+        continue;
+      }
+      const json = await readBoundedJson<{
+        data?: Array<{ embedding?: number[]; index?: number }>;
+        model?: string;
+      }>(response);
+      const ordered = [...(json.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+      if (ordered.length !== input.texts.length || ordered.some(item => !item.embedding?.length)) throw new Error("EMBEDDING_RESPONSE_INVALID");
+      const embeddings = ordered.map(item =>
+        localAi
+          ? prepareLocalAiEmbedding(item.embedding!, model || "")
+          : item.embedding!
+      );
+      return {
+        embeddings,
+        model: json.model || candidate.model || input.model || "",
+        telemetry: { capability: "embeddings", provider: candidate.provider, attempts, fallbackUsed: attempts > 1, failureCode: null },
+      };
+    } catch (error) {
+      failures.push(`${candidate.provider}:${error instanceof Error ? error.name : "erro"}`);
+    } finally {
+      await dispatcher?.close().catch(() => undefined);
+    }
+  }
+  throw new LLMProviderError(`Nenhum provider disponível para embeddings; tentativas: ${failures.join(", ")}`, {
+    capability: "embeddings", provider: null, attempts, fallbackUsed: attempts > 1,
+    failureCode: failures.at(-1)?.split(":").slice(1).join(":") || "unavailable",
+  });
+}
+
+export async function invokeConfiguredLocalAudioTranscription(
+  settings: AgentProviderSettings,
+  input: { audio: Buffer; mimeType: string; model?: string }
+): Promise<{ text: string; telemetry: LLMInvocationTelemetry }> {
+  const candidate = settings.routing.audio;
+  const provider = settings.providers[candidate.provider];
+  const baseUrl = candidate.baseUrl || provider?.baseUrl;
+  const apiKey = candidate.apiKey || provider?.apiKey;
+  if (
+    !baseUrl ||
+    !apiKey ||
+    (!provider?.enabled && !(candidate.baseUrl && candidate.apiKey)) ||
+    !isConfiguredLocalAiTarget(candidate.provider, baseUrl)
+  )
+    throw new Error("LOCALAI_AUDIO_ROUTE_NOT_CONFIGURED");
+
+  let dispatcher: ReturnType<typeof createLocalAiAgent> | undefined;
+  try {
+    const target = await validateLlmTarget(candidate.provider, baseUrl);
+    dispatcher = createLocalAiAgent();
+    const form = new FormData();
+    const bytes = new Uint8Array(input.audio.byteLength);
+    bytes.set(input.audio);
+    const extension = input.mimeType === "audio/ogg" ? "ogg"
+      : input.mimeType === "audio/mpeg" ? "mp3"
+        : input.mimeType === "audio/mp4" ? "m4a"
+          : input.mimeType === "audio/webm" ? "webm"
+            : input.mimeType === "audio/aac" ? "aac" : "wav";
+    form.append("file", new Blob([bytes.buffer as ArrayBuffer], { type: input.mimeType }), `audio.${extension}`);
+    form.append("model", candidate.model || input.model || "whisper-base");
+    form.append("language", "pt");
+    const timeoutMsRaw = Number(process.env.AGENT_AUDIO_TIMEOUT_MS ?? 180_000);
+    const timeoutMs = Number.isFinite(timeoutMsRaw)
+      ? Math.max(1_000, Math.min(timeoutMsRaw, 300_000))
+      : 180_000;
+    const response = await undiciFetch(buildAudioTranscriptionsEndpoint(target.toString()), {
+      method: "POST",
+      headers: { authorization: `Bearer ${decryptProviderSecret(apiKey)}` },
+      body: form as unknown as UndiciFormData,
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: "error",
+      dispatcher,
+    });
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error(`LOCALAI_AUDIO_HTTP_${response.status}`);
+    }
+    const json = await readBoundedJson<{ text?: unknown }>(response);
+    if (typeof json.text !== "string") throw new Error("LOCALAI_AUDIO_RESPONSE_INVALID");
+    return {
+      text: json.text.trim().slice(0, 12_000),
+      telemetry: {
+        capability: "audio",
+        provider: candidate.provider,
+        attempts: 1,
+        fallbackUsed: false,
+        failureCode: null,
+      },
+    };
+  } finally {
+    await dispatcher?.close().catch(() => undefined);
+  }
+}
+
+export async function invokeConfiguredTTS(
+  settings: AgentProviderSettings,
+  input: { text: string; model?: string; voice?: string; responseFormat?: "mp3" | "wav" | "ogg" }
+): Promise<{ audio: Buffer; mimeType: string; model: string; telemetry: LLMInvocationTelemetry }> {
+  const route = settings.routing.tts;
+  const candidates = [route, ...(route.fallback ?? [])];
+  const timeoutMsRaw = Number(process.env.AGENT_TTS_TIMEOUT_MS ?? process.env.AGENT_LLM_TIMEOUT_MS ?? 45_000);
+  const timeoutMs = Number.isFinite(timeoutMsRaw) ? Math.max(1_000, Math.min(timeoutMsRaw, 180_000)) : 45_000;
+  const maxBytes = 10 * 1024 * 1024;
+  const failures: string[] = [];
+  let attempts = 0;
+  for (const candidate of candidates) {
+    attempts += 1;
+    const provider = settings.providers[candidate.provider];
+    const baseUrl = candidate.baseUrl || provider?.baseUrl;
+    const apiKey = candidate.apiKey || provider?.apiKey;
+    if ((!provider?.enabled && !(candidate.baseUrl && candidate.apiKey)) || !baseUrl || !apiKey) {
+      failures.push(`${candidate.provider}:indisponível`);
+      continue;
+    }
+    let dispatcher: ReturnType<typeof createGuardedLlmAgent> | undefined;
+    try {
+      const target = await validateLlmTarget(candidate.provider, baseUrl);
+      dispatcher = isConfiguredLocalAiTarget(candidate.provider, baseUrl)
+        ? createLocalAiAgent()
+        : createGuardedLlmAgent();
+      const responseFormat = input.responseFormat ?? "mp3";
+      const response = await undiciFetch(buildTtsEndpoint(target.toString()), {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${decryptProviderSecret(apiKey)}` },
+        body: JSON.stringify({
+          model: candidate.model || input.model,
+          input: input.text,
+          voice: input.voice || process.env.AGENT_TTS_VOICE || "alloy",
+          response_format: responseFormat,
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+        redirect: "error",
+        dispatcher,
+      });
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        failures.push(`${candidate.provider}:http_${response.status}`);
+        continue;
+      }
+      const contentLength = Number(response.headers.get("content-length"));
+      if (Number.isFinite(contentLength) && contentLength > maxBytes) throw new Error("Resposta TTS excedeu o limite de 10 MiB");
+      const body = Buffer.from(await response.arrayBuffer());
+      if (!body.length || body.length > maxBytes) throw new Error("Resposta TTS vazia ou excedeu o limite de 10 MiB");
+      return {
+        audio: body,
+        mimeType: responseFormat === "wav" ? "audio/wav" : responseFormat === "ogg" ? "audio/ogg" : "audio/mpeg",
+        model: candidate.model || input.model || "",
+        telemetry: { capability: "tts", provider: candidate.provider, attempts, fallbackUsed: attempts > 1, failureCode: null },
+      };
+    } catch (error) {
+      failures.push(`${candidate.provider}:${error instanceof Error ? error.name : "erro"}`);
+    } finally {
+      await dispatcher?.close().catch(() => undefined);
+    }
+  }
+  throw new LLMProviderError(`Nenhum provider disponível para tts; tentativas: ${failures.join(", ")}`, {
+    capability: "tts",
+    provider: null,
+    attempts,
+    fallbackUsed: attempts > 1,
+    failureCode: failures.at(-1)?.split(":").slice(1).join(":") || "unavailable",
+  });
+}
+
 export function capabilityForMessageType(
   messageType?: string
 ): AgentCapability {
   if (messageType === "image") return "vision";
   if (messageType === "audio") return "audio";
+  if (messageType === "video") return "video";
   if (["document", "pdf"].includes(messageType ?? "")) return "document";
   return "text";
 }

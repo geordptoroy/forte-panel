@@ -280,23 +280,30 @@ function MetricCard({
   );
 }
 
-type AiCapability = "whatsapp_reply" | "audio_transcription" | "image_analysis" | "document_analysis" | "admin_support";
-type AiProvider = "nvidia_nim" | "google_gemini" | "openai_compatible";
+type AiCapability = "whatsapp_reply" | "audio_transcription" | "image_analysis" | "document_analysis" | "video_analysis" | "tts" | "prompt_builder" | "moderation" | "embeddings" | "admin_support";
+type AiProvider = "openai_compatible";
 const aiCapabilityLabels: Record<AiCapability, { title: string; description: string }> = {
   whatsapp_reply: { title: "Resposta no WhatsApp", description: "Agente que responde mensagens e executa ferramentas autorizadas." },
   audio_transcription: { title: "Transcrição de áudio", description: "Converte mensagens de voz em texto antes do roteamento." },
   image_analysis: { title: "Análise de imagem", description: "Interpreta fotos, comprovantes e imagens recebidas." },
   document_analysis: { title: "Análise de documento", description: "Lê PDFs e arquivos encaminhados ao atendimento." },
+  video_analysis: { title: "Análise de vídeo", description: "Interpreta vídeo, fala e eventos temporais." },
+  tts: { title: "Resposta por voz", description: "Gera áudio com fallback automático para texto." },
+  prompt_builder: { title: "Montador de prompt", description: "Transforma respostas do onboarding num prompt estruturado." },
+  moderation: { title: "Moderação", description: "Filtra entrada e saída antes de consumir créditos ou enviar resposta." },
+  embeddings: { title: "Embeddings vetoriais", description: "Converte documentos em vetores para busca semântica por workspace." },
   admin_support: { title: "Suporte do Console", description: "Assistente separado para operação e diagnóstico da plataforma." },
 };
-const aiProviderLabels: Record<AiProvider, string> = { nvidia_nim: "NVIDIA NIM", google_gemini: "Google Gemini", openai_compatible: "OpenAI-compatible" };
+const aiProviderLabels: Record<AiProvider, string> = { openai_compatible: "OpenAI-compatible" };
 
 function AiConnectionsCard({ canMutate }: { canMutate: boolean }) {
   const utils = trpc.useUtils();
   const connections = trpc.platform.aiConnections.useQuery();
   const [form, setForm] = useState({ name: "", capability: "whatsapp_reply" as AiCapability, provider: "openai_compatible" as AiProvider, baseUrl: "", model: "", apiKey: "" });
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [reason, setReason] = useState("Remoção de conexão de IA");
   const create = trpc.platform.createAiConnection.useMutation({ onSuccess: () => { setForm({ name: "", capability: "whatsapp_reply", provider: "openai_compatible", baseUrl: "", model: "", apiKey: "" }); void utils.platform.aiConnections.invalidate(); toast.success("Conexão de IA criada"); }, onError: error => toast.error(error.message) });
+  const update = trpc.platform.updateAiConnection.useMutation({ onSuccess: () => { setEditingId(null); setForm({ name: "", capability: "whatsapp_reply", provider: "openai_compatible", baseUrl: "", model: "", apiKey: "" }); void utils.platform.aiConnections.invalidate(); toast.success("Conexão de IA atualizada"); }, onError: error => toast.error(error.message) });
   const test = trpc.platform.testAiConnection.useMutation({ onSuccess: result => { void utils.platform.aiConnections.invalidate(); result.ready ? toast.success(`${result.message} · ${result.latencyMs} ms`) : toast.error(result.message); }, onError: error => toast.error(error.message) });
   const remove = trpc.platform.deleteAiConnection.useMutation({ onSuccess: () => { void utils.platform.aiConnections.invalidate(); toast.success("Conexão excluída"); }, onError: error => toast.error(error.message) });
   return (
@@ -317,9 +324,9 @@ function AiConnectionsCard({ canMutate }: { canMutate: boolean }) {
         <label className="platform-field"><span>Modelo</span><input className="input-control" value={form.model} onChange={event => setForm(current => ({ ...current, model: event.target.value }))} placeholder="ID exato do modelo" /></label>
         <label className="platform-field"><span>API key do provedor</span><input className="input-control" type="password" value={form.apiKey} onChange={event => setForm(current => ({ ...current, apiKey: event.target.value }))} placeholder="Cole a chave aqui" /></label>
       </div>
-      <div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || create.isPending || !form.name || !form.baseUrl || !form.model || !form.apiKey} onClick={() => create.mutate(form)}><KeyRound size={14} /> {create.isPending ? "Criando…" : "Criar conexão"}</button>{!canMutate && <small className="platform-muted">Sua permissão de plataforma é somente leitura.</small>}</div>
+      <div className="platform-form-actions"><button className="btn-primary" disabled={!canMutate || create.isPending || update.isPending || !form.name || !form.baseUrl || !form.model || (!editingId && !form.apiKey)} onClick={() => editingId ? update.mutate({ ...form, id: editingId, reason: "Atualização da conexão de IA" }) : create.mutate(form)}><KeyRound size={14} /> {editingId ? (update.isPending ? "Guardando…" : "Guardar alterações") : (create.isPending ? "Criando…" : "Criar conexão")}</button>{editingId && <button className="btn-secondary" onClick={() => { setEditingId(null); setForm({ name: "", capability: "whatsapp_reply", provider: "openai_compatible", baseUrl: "", model: "", apiKey: "" }); }}>Cancelar</button>}{!canMutate && <small className="platform-muted">Sua permissão de plataforma é somente leitura.</small>}</div>
       <div className="platform-card-title" style={{ marginTop: 24 }}><div><span className="eyebrow">Conexões cadastradas</span><h3>Roteamento disponível para o sistema</h3></div><Sparkles size={16} /></div>
-      {connections.isLoading ? <p className="platform-muted">Carregando conexões…</p> : connections.data?.length ? <div className="platform-ai-routing-grid">{connections.data.map(connection => <div className="platform-ai-route" key={connection.id}><strong>{connection.name}</strong><small>{aiCapabilityLabels[connection.capability as AiCapability]?.title} · {aiProviderLabels[connection.provider as AiProvider]}</small><span>{connection.model}</span><span className={`platform-status ${connection.status === "validated" ? "green" : connection.status === "error" ? "red" : "amber"}`}><span />{connection.status === "validated" ? "Validada" : connection.status === "error" ? "Erro no teste" : "Teste pendente"}</span><small>{connection.apiKey || "Chave cadastrada"}</small><div className="platform-form-actions"><button className="btn-secondary" disabled={!canMutate || test.isPending} onClick={() => test.mutate({ id: connection.id })}><PlugZap size={13} /> Testar</button><button className="btn-secondary" disabled={!canMutate || remove.isPending} onClick={() => { if (reason.trim().length >= 3 && window.confirm(`Excluir a conexão ${connection.name}?`)) remove.mutate({ id: connection.id, reason }); }}><XCircle size={13} /> Excluir</button></div></div>)}</div> : <p className="platform-muted">Nenhuma conexão criada. Crie a primeira acima.</p>}
+      {connections.isLoading ? <p className="platform-muted">Carregando conexões…</p> : connections.data?.length ? <div className="platform-ai-routing-grid">{connections.data.map(connection => <div className="platform-ai-route" key={connection.id}><strong>{connection.name}</strong><small>{aiCapabilityLabels[connection.capability as AiCapability]?.title} · {aiProviderLabels[connection.provider as AiProvider]}</small><span>{connection.model}</span><span className={`platform-status ${connection.status === "validated" ? "green" : connection.status === "error" ? "red" : "amber"}`}><span />{connection.status === "validated" ? "Validada" : connection.status === "error" ? "Erro no teste" : "Teste pendente"}</span><small>{connection.apiKey || "Chave cadastrada"}</small><div className="platform-form-actions"><button className="btn-secondary" disabled={!canMutate} onClick={() => { setEditingId(connection.id); setForm({ name: connection.name, capability: connection.capability as AiCapability, provider: "openai_compatible", baseUrl: connection.baseUrl, model: connection.model, apiKey: "" }); }}>Editar</button><button className="btn-secondary" disabled={!canMutate || test.isPending} onClick={() => test.mutate({ id: connection.id })}><PlugZap size={13} /> Testar</button><button className="btn-secondary" disabled={!canMutate || remove.isPending} onClick={() => { if (reason.trim().length >= 3 && window.confirm(`Excluir a conexão ${connection.name}?`)) remove.mutate({ id: connection.id, reason }); }}><XCircle size={13} /> Excluir</button></div></div>)}</div> : <p className="platform-muted">Nenhuma conexão criada. Crie a primeira acima.</p>}
     </section>
   );
 }
@@ -1021,6 +1028,11 @@ function PlatformWorkspaceDetail({ workspaceId }: { workspaceId: number }) {
             sessionId={sessionId}
             canMutate={Boolean(access.data?.canMutate) && item.session.mode === "operator"}
           />
+          <ResetAiContextCard
+            workspaceId={workspaceId}
+            sessionId={sessionId}
+            canMutate={Boolean(access.data?.canMutate) && item.session.mode === "operator"}
+          />
         </>
       )}
       {tab === "support" && (
@@ -1110,6 +1122,67 @@ function ResetWorkspaceCard({
         }}
       >
         {reset.isPending ? "Apagando..." : "Apagar dados do workspace"}
+      </button>
+      {!canMutate && <small className="platform-muted">Inicie uma sessão operadora para habilitar esta ação.</small>}
+    </section>
+  );
+}
+
+function ResetAiContextCard({
+  workspaceId,
+  sessionId,
+  canMutate,
+}: {
+  workspaceId: number;
+  sessionId: number;
+  canMutate: boolean;
+}) {
+  const [confirmation, setConfirmation] = useState("");
+  const reset = trpc.platform.resetWorkspaceAiContext.useMutation({
+    onSuccess: () => {
+      setConfirmation("");
+      toast.success("Contexto da IA reiniciado para este workspace");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const phrase = "RESETAR CONTEXTO DA IA";
+  return (
+    <section className="platform-card platform-danger-card">
+      <div className="platform-card-title">
+        <div>
+          <span className="eyebrow">Teste do agente · sessão operadora</span>
+          <h2>Reiniciar contexto da IA</h2>
+        </div>
+        <Bot size={17} />
+      </div>
+      <p className="platform-muted">
+        Apaga mensagens, contexto, execuções, efeitos, notas geradas pela IA,
+        agendamentos, orçamentos e dados do funil deste workspace. Preserva o
+        workspace, instâncias, contatos, leads, notas humanas e auditoria.
+      </p>
+      <code>{phrase}</code>
+      <input
+        className="input-control"
+        value={confirmation}
+        onChange={event => setConfirmation(event.target.value)}
+        placeholder={phrase}
+        disabled={!canMutate || reset.isPending}
+      />
+      <button
+        className="btn-primary"
+        style={{ marginTop: 12, background: "#8f3030" }}
+        disabled={!canMutate || reset.isPending || confirmation !== phrase}
+        onClick={() => {
+          if (!window.confirm("Confirma reiniciar o contexto da IA deste workspace?")) return;
+          reset.mutate({
+            workspaceId,
+            sessionId,
+            confirmation: phrase,
+            reason: "Reinício do contexto da IA solicitado para teste do agente",
+          });
+        }}
+      >
+        {reset.isPending ? "Reiniciando..." : "Reiniciar contexto da IA"}
       </button>
       {!canMutate && <small className="platform-muted">Inicie uma sessão operadora para habilitar esta ação.</small>}
     </section>

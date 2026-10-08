@@ -3,16 +3,11 @@ import { isIP } from "node:net";
 import ipaddr from "ipaddr.js";
 import { Agent } from "undici";
 
-export type LlmProviderId =
-  | "nvidia_nim"
-  | "google_gemini"
-  | "openai_compatible";
-
-const BUILT_IN_HOSTS: Record<LlmProviderId, ReadonlySet<string>> = {
-  nvidia_nim: new Set(["integrate.api.nvidia.com"]),
-  google_gemini: new Set(["generativelanguage.googleapis.com"]),
-  openai_compatible: new Set(),
-};
+export type LlmProviderId = string;
+const TRUSTED_PUBLIC_LLM_HOSTS = new Set([
+  "integrate.api.nvidia.com",
+  "generativelanguage.googleapis.com",
+]);
 const LOCAL_SUFFIXES = [
   ".localhost",
   ".local",
@@ -64,8 +59,35 @@ function configuredHostAllowlist() {
   );
 }
 
+export function isConfiguredLocalAiTarget(provider: LlmProviderId, value: string) {
+  if (provider !== "openai_compatible") return false;
+  const configured = process.env.LOCALAI_BASE_URL?.trim();
+  if (!configured) return false;
+  try {
+    const target = new URL(value);
+    const trusted = new URL(configured);
+    const isLocalAiService = (url: URL) =>
+      url.protocol === "http:" &&
+      normalizedHostname(url.hostname) === "local-ai" &&
+      url.port === "8080" &&
+      url.pathname.replace(/\/+$/, "") === "/v1" &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash;
+    return (
+      isLocalAiService(target) &&
+      isLocalAiService(trusted) &&
+      target.origin === trusted.origin &&
+      target.pathname.replace(/\/+$/, "") === trusted.pathname.replace(/\/+$/, "")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function assertAllowedLlmBaseUrl(
-  provider: LlmProviderId,
+  _provider: LlmProviderId,
   value: string
 ): URL {
   let url: URL;
@@ -74,6 +96,7 @@ export function assertAllowedLlmBaseUrl(
   } catch {
     throw new Error("A URL do provider LLM é inválida");
   }
+  if (isConfiguredLocalAiTarget(_provider, value)) return url;
   const hostname = normalizedHostname(url.hostname);
   if (url.protocol !== "https:")
     throw new Error("Providers LLM só podem usar HTTPS");
@@ -85,9 +108,8 @@ export function assertAllowedLlmBaseUrl(
     throw new Error("Hosts locais ou IPs literais não são permitidos para providers LLM");
 
   const hostPort = url.port ? `${hostname}:${url.port}` : hostname;
-  const trustedBuiltInHost =
-    BUILT_IN_HOSTS[provider].has(hostname) && (!url.port || url.port === "443");
-  if (!trustedBuiltInHost && !configuredHostAllowlist().has(hostPort))
+  const trustedPublicHost = TRUSTED_PUBLIC_LLM_HOSTS.has(hostname) && (!url.port || url.port === "443");
+  if (!trustedPublicHost && !configuredHostAllowlist().has(hostPort))
     throw new Error(
       `Host LLM não autorizado: configure-o explicitamente em FORTE_LLM_ALLOWED_HOSTS`
     );
@@ -121,6 +143,7 @@ async function resolvePublicAddresses(hostname: string) {
 
 export async function validateLlmTarget(provider: LlmProviderId, value: string) {
   const url = assertAllowedLlmBaseUrl(provider, value);
+  if (isConfiguredLocalAiTarget(provider, value)) return url;
   await resolvePublicAddresses(url.hostname);
   return url;
 }
@@ -171,11 +194,45 @@ export function createGuardedLlmAgent() {
   });
 }
 
+// This unguarded dispatcher is reachable only after an exact match against the
+// fixed Compose service URL checked by isConfiguredLocalAiTarget().
+export function createLocalAiAgent() {
+  return new Agent({
+    connectTimeout: 10_000,
+    headersTimeout: 300_000,
+    bodyTimeout: 300_000,
+    maxResponseSize: 10 * 1024 * 1024,
+    maxOrigins: 1,
+    maxRequestsPerClient: 1,
+    pipelining: 0,
+  });
+}
+
 export function buildLlmEndpoint(baseUrl: string) {
   const url = new URL(baseUrl);
   const basePath = url.pathname.replace(/\/+$/, "");
   const versionedPath = basePath.endsWith("/v1") ? basePath : `${basePath}/v1`;
   url.pathname = `${versionedPath}/chat/completions`.replace(/^\/\/+/g, "/");
+  url.search = "";
+  url.hash = "";
+  return url;
+}
+
+export function buildTtsEndpoint(baseUrl: string) {
+  const url = new URL(baseUrl);
+  const basePath = url.pathname.replace(/\/+$/, "");
+  const versionedPath = basePath.endsWith("/v1") ? basePath : `${basePath}/v1`;
+  url.pathname = `${versionedPath}/audio/speech`.replace(/^\/\/+/g, "/");
+  url.search = "";
+  url.hash = "";
+  return url;
+}
+
+export function buildAudioTranscriptionsEndpoint(baseUrl: string) {
+  const url = new URL(baseUrl);
+  const basePath = url.pathname.replace(/\/+$/, "");
+  const versionedPath = basePath.endsWith("/v1") ? basePath : `${basePath}/v1`;
+  url.pathname = `${versionedPath}/audio/transcriptions`.replace(/^\/\/+/g, "/");
   url.search = "";
   url.hash = "";
   return url;

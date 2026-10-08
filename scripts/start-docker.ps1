@@ -3,7 +3,8 @@ param(
     [string]$ComposeFile = "docker-compose.local.yml",
     [string]$EnvFile = ".env",
     [switch]$Reset,
-    [string]$ResetConfirmation = ""
+    [string]$ResetConfirmation = "",
+    [switch]$UseLocalImages
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,12 +17,23 @@ $services = @(
     "forte-panel-migrations",
     "forte-panel",
     "forte-panel-worker",
-    "forte-whatsapp"
+    "forte-whatsapp",
+    "local-ai"
 )
 
 if (-not (Test-Path $envPath)) {
     throw "Arquivo .env não encontrado em $envPath. Crie-o a partir do exemplo local antes de iniciar a stack."
 }
+
+$localAiKeyLine = Get-Content -Path $envPath | Where-Object { $_ -match '^\s*LOCALAI_API_KEY\s*=' } | Select-Object -Last 1
+$localAiKey = ""
+if ($localAiKeyLine -match '^\s*LOCALAI_API_KEY\s*=\s*(.*)$') {
+    $localAiKey = $Matches[1].Trim().Trim([char]34).Trim([char]39)
+}
+if (-not $localAiKey -or $localAiKey -match 'CHANGE_ME|configure-in-your-env|<|>') {
+    throw "Defina LOCALAI_API_KEY no .env com um segredo aleatório forte antes de iniciar a stack. Use o mesmo segredo na ligação LocalAI do Console Admin."
+}
+$localAiKey = $null
 
 if (-not (Test-Path $composePath)) {
     throw "Arquivo Compose não encontrado em $composePath."
@@ -32,8 +44,21 @@ if ($LASTEXITCODE -ne 0) {
     throw "Docker Desktop não está disponível. Inicie o Docker Desktop e tente novamente."
 }
 
-$composeArgs = @(
-    "compose",
+$composeExecutable = "docker"
+$composeArgs = @("compose")
+$composeVersionExit = 0
+cmd /c "docker compose version >nul 2>nul"
+$composeVersionExit = $LASTEXITCODE
+if ($composeVersionExit -ne 0) {
+    $legacyCompose = Get-Command docker-compose -ErrorAction SilentlyContinue
+    if (-not $legacyCompose) {
+        throw "Docker Compose não está disponível. Instale o plugin docker compose ou o binário docker-compose e tente novamente."
+    }
+    $composeExecutable = $legacyCompose.Source
+    $composeArgs = @()
+    Write-Warning "Plugin docker compose indisponível; usando o binário compatível docker-compose."
+}
+$composeArgs += @(
     "--env-file", $envPath,
     "--file", $composePath
 )
@@ -46,23 +71,27 @@ function Invoke-Compose {
         [string]$FailureMessage
     )
 
-    & docker @Arguments
+    & $composeExecutable @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw $FailureMessage
     }
 }
 
-Write-Host "Verificando/baixando imagens publicadas do GHCR (sem build local)..."
-Invoke-Compose `
-    -Arguments ($composeArgs + @("pull") + $services) `
-    -FailureMessage "Falha ao baixar imagens do GHCR. O reset foi abortado e nenhum dado local foi removido. Verifique a tag/imagem, a rede e a autenticação GHCR."
+if ($UseLocalImages) {
+    Write-Warning "Modo local explícito: não será feito pull. Serão usadas as imagens já presentes no Docker definidas no .env."
+} else {
+    Write-Host "Verificando/baixando imagens publicadas do GHCR e LocalAI (sem build local)..."
+    Invoke-Compose `
+        -Arguments ($composeArgs + @("pull") + $services) `
+        -FailureMessage "Falha ao baixar imagens da stack. O reset foi abortado e nenhum dado local foi removido. Verifique a tag/imagem, a rede e a autenticação necessária."
+}
 
 if ($Reset) {
     if ($ResetConfirmation -ne "APAGAR-TUDO") {
         throw "Reset abortado. Para apagar containers, volumes, imagens e redes da stack Forte Panel, use -ResetConfirmation APAGAR-TUDO."
     }
 
-    Write-Warning "Reset destrutivo: os dados locais do PostgreSQL, Redis e sessão WhatsApp serão apagados."
+    Write-Warning "Reset destrutivo: serão apagados PostgreSQL, Redis, sessão WhatsApp e modelos LocalAI baixados."
     Invoke-Compose `
         -Arguments ($composeArgs + @("down", "--volumes", "--remove-orphans", "--rmi", "all")) `
         -FailureMessage "Falha ao remover a stack local."

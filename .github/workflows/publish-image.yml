@@ -4,12 +4,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      publish_images:
-        description: "Publicar imagens sha-* desta ref candidata"
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -21,11 +15,11 @@ env:
 
 jobs:
   verify:
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_images == true)
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: forte_panel_test
           POSTGRES_USER: postgres
@@ -77,6 +71,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/forte_panel_test
           JWT_SECRET: integration-test-secret-with-at-least-32-characters
           NODE_ENV: test
+          KNOWLEDGE_DB_INTEGRATION: "1"
         run: |
           set -o pipefail
           pnpm test -- --reporter=verbose | tee vitest.log
@@ -101,7 +96,7 @@ jobs:
 
   publish:
     needs: verify
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_images == true)
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

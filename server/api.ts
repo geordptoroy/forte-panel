@@ -168,6 +168,7 @@ const messageSchema = z
         "button",
         "list",
         "poll",
+        "pix",
         "location",
         "contact",
         "react",
@@ -222,6 +223,10 @@ const messageSchema = z
       input.messageType !== "button" ||
       Boolean(input.metadata?.buttons?.length || input.metadata?.pixKey),
     { message: "Mensagem de botão exige metadata.buttons" }
+  )
+  .refine(
+    input => input.messageType !== "pix" || Boolean(input.metadata?.pixKey),
+    { message: "Mensagem Pix exige metadata.pixKey" }
   )
   .refine(
     input =>
