@@ -158,6 +158,15 @@ export function createServer(registry: InstanceRegistry) {
         );
         return json(res, 200, { success: true, externalId, status: "sent" });
       }
+      if (action === "presence" && req.method === "POST") {
+        const body = await readJson(req);
+        const phone = String(body.phone ?? body.jid ?? "");
+        const presence = String(body.presence ?? "");
+        if (!phone || !["composing", "recording", "paused"].includes(presence))
+          return json(res, 400, { error: "phone_and_valid_presence_required" });
+        await manager.updatePresence(phone, presence as "composing" | "recording" | "paused");
+        return json(res, 200, { success: true, status: presence });
+      }
       if (action === "send" && req.method === "POST") {
         const idempotencyKey = requiredIdempotencyKey(req);
         if (!idempotencyKey)

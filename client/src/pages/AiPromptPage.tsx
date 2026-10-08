@@ -3,8 +3,8 @@ import { CheckCircle2, Info, Save, Sparkles } from "lucide-react";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 
-type ProviderId = "nvidia_nim" | "google_gemini" | "openai_compatible";
-type Capability = "text" | "vision" | "audio" | "document";
+type ProviderId = string;
+type Capability = "text" | "vision" | "audio" | "document" | "video" | "tts" | "prompt_builder" | "moderation" | "embeddings";
 type AgentConfig = {
   enabled: boolean;
   model: string;

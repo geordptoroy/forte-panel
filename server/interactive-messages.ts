@@ -35,6 +35,7 @@ export const interactiveMessageTypeSchema = z.enum([
   "list",
   "poll",
   "carousel",
+  "pix",
 ]);
 export type InteractiveMessageType = z.infer<
   typeof interactiveMessageTypeSchema
@@ -60,6 +61,8 @@ export function validateInteractiveMessage(input: {
     throw new Error("Mensagem list exige payload ou seções do gateway");
   if (input.messageType === "poll" && !metadata.payload)
     throw new Error("Mensagem poll exige payload do gateway");
+  if (input.messageType === "pix" && !metadata.pixKey)
+    throw new Error("Mensagem Pix exige pixKey");
   if (input.messageType === "carousel") {
     const native = metadata.payload?.interactiveMessage;
     const cards = metadata.cards;

@@ -16,6 +16,7 @@ import {
   UploadCloud,
   UserPlus,
   Volume2,
+  FileText,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
@@ -101,6 +102,30 @@ const deferredHoursGuidance = "Horários ainda não cadastrados. Confirme com a 
 function formatRecordingDuration(durationMs: number) {
   const seconds = Math.floor(durationMs / 1000);
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function buildKnowledgePreviewMarkdown(profile: Profile) {
+  const sections: Array<[string, string]> = [
+    ["Nome da empresa", profile.businessName],
+    ["Segmento", profile.segment],
+    ["Descrição", profile.description],
+    ["Serviços e produtos", profile.services],
+    ["Área de atendimento", profile.serviceArea],
+    ["Horário de funcionamento", profile.businessHours],
+    ["Tom de voz", profile.toneOfVoice],
+    ["Palavras e promessas proibidas", profile.forbiddenWords],
+    ["Perguntas frequentes", profile.faq],
+    ["Política de cancelamento", profile.cancellationPolicy],
+    ["Regras de encaminhamento humano", profile.humanHandoffRules],
+    ["Regras de qualificação", profile.qualificationRules],
+  ];
+  return [
+    "# Base de conhecimento da empresa",
+    "",
+    "> Prévia gerada a partir do onboarding. Será indexada somente depois da revisão e publicação.",
+    "",
+    ...sections.flatMap(([label, value]) => [`## ${label}`, value.trim() || "Não informado.", ""]),
+  ].join("\n").trim();
 }
 
 function blobToBase64(blob: Blob) {
@@ -744,7 +769,7 @@ export default function OnboardingPage() {
           <div>
             <div className="muted" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em" }}>Passo {currentStep + 1} de {onboardingSteps.length}</div>
             <h2 style={{ margin: "5px 0 3px", fontSize: 18 }}>{onboardingSteps[currentStep]?.title}</h2>
-            <p className="muted" style={{ margin: 0, fontSize: 11 }}>{onboardingSteps[currentStep]?.description}. Responda por texto; áudio é opcional.</p>
+            <p className="muted" style={{ margin: 0, fontSize: 11 }}>{onboardingSteps[currentStep]?.description}. A forma recomendada é responder por áudio; o formulário continua disponível como fallback.</p>
           </div>
           <strong className="green" style={{ fontSize: 20 }}>{Math.round(((currentStep + 1) / onboardingSteps.length) * 100)}%</strong>
         </div>
@@ -827,11 +852,11 @@ export default function OnboardingPage() {
       <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
         <SectionTitle
           eyebrow="Entrada por voz"
-          title="Responda falando, revise antes de usar"
+          title="Responda falando e transforme sua experiência em conhecimento"
           action={<span className="muted" style={{ fontSize: 10 }}>{voiceCorrectionMode ? "correção curta · 00:30" : "até 02:00 · 16 MB"}</span>}
         />
         <p className="muted" style={{ margin: "-5px 0 14px", fontSize: 11, lineHeight: 1.5 }}>
-          Grave uma resposta curta para este bloco. O áudio será enviado de forma privada, transcrito e mostrado como rascunho; nada publica automaticamente.
+          Grave uma resposta curta para este bloco. A IA transcreve o áudio e propõe os campos estruturados e o documento Markdown da empresa. Tudo fica como rascunho até sua revisão e publicação.
         </p>
         <div className="form-grid" style={{ alignItems: "end" }}>
           <div className="form-field">
@@ -922,6 +947,19 @@ export default function OnboardingPage() {
             <Info size={14} /> <span>{voiceError} O formulário abaixo continua disponível como fallback.</span>
           </div>
         )}
+      </section>
+      <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>
+        <SectionTitle
+          eyebrow="Documento para a base de conhecimento"
+          title="Prévia do Markdown que será indexado"
+          action={<FileText size={16} />}
+        />
+        <p className="muted" style={{ margin: "-5px 0 12px", fontSize: 11, lineHeight: 1.5 }}>
+          Esta prévia ajuda a conferir o resultado do onboarding. O RAG só recebe uma versão gerada depois que os blocos obrigatórios forem confirmados e o onboarding for publicado.
+        </p>
+        <pre style={{ margin: 0, maxHeight: 360, overflow: "auto", padding: 14, whiteSpace: "pre-wrap", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: 10, lineHeight: 1.55, color: "#c8d8ce", background: "rgba(0,0,0,.22)", border: "1px solid rgba(255,255,255,.07)" }}>
+          {buildKnowledgePreviewMarkdown(profile)}
+        </pre>
       </section>
       {profileQuery.data?.checklist && (
         <section className="surface" style={{ padding: 18, marginBottom: 18, display: currentStepId === "review" ? undefined : "none" }}>

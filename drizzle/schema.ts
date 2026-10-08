@@ -10,6 +10,7 @@ import {
   timestamp,
   uniqueIndex,
   varchar,
+  vector,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { servicePriceTypes } from "../shared/service-price";
@@ -81,6 +82,11 @@ export const platformAiConnectionCapabilityEnum = pgEnum(
     "audio_transcription",
     "image_analysis",
     "document_analysis",
+    "video_analysis",
+    "tts",
+    "prompt_builder",
+    "moderation",
+    "embeddings",
     "admin_support",
   ]
 );
@@ -111,6 +117,18 @@ export const aiRouteFailureActionEnum = pgEnum("ai_route_failure_action", [
 export const globalPromptStatusEnum = pgEnum("global_prompt_status", [
   "draft",
   "published",
+  "archived",
+]);
+export const knowledgeDocumentSourceEnum = pgEnum("knowledge_document_source", [
+  "onboarding_generated",
+  "manual_upload",
+]);
+export const knowledgeDocumentStatusEnum = pgEnum("knowledge_document_status", [
+  "uploaded",
+  "processing",
+  "indexed",
+  "published",
+  "failed",
   "archived",
 ]);
 export const workerHeartbeatStatusEnum = pgEnum("worker_heartbeat_status", [
@@ -167,6 +185,7 @@ export const messageTypeEnum = pgEnum("message_type", [
   "poll",
   "list",
   "carousel",
+  "pix",
   "react",
   "album",
   "event",
@@ -1852,8 +1871,81 @@ export const notifications = pgTable(
   ]
 );
 
+export const knowledgeDocuments = pgTable(
+  "knowledgeDocuments",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 240 }).notNull(),
+    source: knowledgeDocumentSourceEnum("source").notNull(),
+    status: knowledgeDocumentStatusEnum("status").default("uploaded").notNull(),
+    originalFileName: varchar("originalFileName", { length: 255 }),
+    mimeType: varchar("mimeType", { length: 120 }).notNull(),
+    sizeBytes: integer("sizeBytes").notNull(),
+    sha256: varchar("sha256", { length: 64 }).notNull(),
+    storageKey: varchar("storageKey", { length: 512 }),
+    createdByUserId: integer("createdByUserId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("knowledge_documents_workspace_hash_unique_idx").on(table.workspaceId, table.sha256),
+    index("knowledge_documents_workspace_status_idx").on(table.workspaceId, table.status),
+  ]
+);
+
+export const knowledgeDocumentVersions = pgTable(
+  "knowledgeDocumentVersions",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    documentId: integer("documentId").notNull().references(() => knowledgeDocuments.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    sourceText: text("sourceText").notNull(),
+    status: knowledgeDocumentStatusEnum("status").default("uploaded").notNull(),
+    attemptCount: integer("attemptCount").default(0).notNull(),
+    lastError: varchar("lastError", { length: 500 }),
+    errorMessage: varchar("errorMessage", { length: 500 }),
+    publishedAt: timestamp("publishedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("knowledge_document_versions_document_version_unique_idx").on(table.documentId, table.version),
+    index("knowledge_document_versions_workspace_status_idx").on(table.workspaceId, table.status),
+  ]
+);
+
+export const knowledgeDocumentChunks = pgTable(
+  "knowledgeDocumentChunks",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspaceId").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    versionId: integer("versionId").notNull().references(() => knowledgeDocumentVersions.id, { onDelete: "cascade" }),
+    chunkIndex: integer("chunkIndex").notNull(),
+    text: text("text").notNull(),
+    tokenCount: integer("tokenCount"),
+    pageNumber: integer("pageNumber"),
+    heading: varchar("heading", { length: 240 }),
+    contentHash: varchar("contentHash", { length: 64 }).notNull(),
+    embedding: vector("embedding", { dimensions: 2048 }),
+    embeddingModel: varchar("embeddingModel", { length: 160 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("knowledge_chunks_version_index_unique_idx").on(table.versionId, table.chunkIndex),
+    index("knowledge_chunks_workspace_version_idx").on(table.workspaceId, table.versionId),
+    index("knowledge_chunks_embedding_hnsw_idx").using("hnsw", sql`(${table.embedding}::halfvec(2048)) halfvec_cosine_ops`),
+  ]
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+export type KnowledgeDocument = typeof knowledgeDocuments.$inferSelect;
+export type InsertKnowledgeDocument = typeof knowledgeDocuments.$inferInsert;
+export type KnowledgeDocumentVersion = typeof knowledgeDocumentVersions.$inferSelect;
+export type InsertKnowledgeDocumentVersion = typeof knowledgeDocumentVersions.$inferInsert;
+export type KnowledgeDocumentChunk = typeof knowledgeDocumentChunks.$inferSelect;
+export type InsertKnowledgeDocumentChunk = typeof knowledgeDocumentChunks.$inferInsert;
 export type ConsentRecord = typeof consentRecords.$inferSelect;
 export type InsertConsentRecord = typeof consentRecords.$inferInsert;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;

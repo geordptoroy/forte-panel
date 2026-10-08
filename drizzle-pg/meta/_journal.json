@@ -435,6 +435,41 @@
       "when": 1791217860000,
       "tag": "0061_ai_capability_architecture",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1791270000000,
+      "tag": "0062_pix_message_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791273600000,
+      "tag": "0063_generic_ai_capabilities",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1791277200000,
+      "tag": "0064_tts_capability",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1791279000000,
+      "tag": "0065_knowledge_base_pgvector",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1791379788738,
+      "tag": "0066_knowledge_embeddings_2048",
+      "breakpoints": true
     }
   ]
 }

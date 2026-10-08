@@ -1,15 +1,17 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 5 de outubro de 2026, 17:39 (UTC−3)
+**Atualizado:** 8 de outubro de 2026, 09:10 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
-**Estado:** `main` está em `df8b0fe9605e911364f3680a1ba676207f16830e`; os gates de integração e publicação passaram, e as imagens operacionais `latest` foram publicadas no GHCR.
-**Continuação local:** a instalação local foi actualizada a partir de `main` com `scripts/start-docker.ps1`; o `.env` local contém segredos gerados apenas para esta instalação descartável e não é rastreado.
+**Estado Git:** branch `candidate/localai-rag-security-20261008` enviada ao GitHub; Draft PR #45 aberta para `main` (`origin/main=513832d133661448bdd53f3ec9ee6b03b2e4904b`). O commit de implementação validado localmente é `5c35df217a94697ad9e6ffd70aa05439240bbdc1`; o check `postgres-integration` está em execução e `Supabase Preview` foi ignorado. Sem merge nem publicação; a ref local `main` permanece intacta.
+**Stack local:** painel e worker usam `forte-panel-local:candidate-20261008-0815` (ID `sha256:c5f2dc3a67a88e856e31529635897fb9fa4cde8e9d326bab367d43653f97df6c`); gateway usa `forte-whatsapp-local:candidate-20261007-1932`. O script oficial foi executado com `-UseLocalImages`, sem pull/reset. Os seis volumes mantiveram os mesmos nomes; PostgreSQL, Redis e LocalAI estão saudáveis e os endpoints Panel health/ready, gateway health, LocalAI readiness/UI e rota SPA da Base de Conhecimento responderam HTTP 200.
 
-## Git e decisão de integração
+## Histórico de integração — snapshots anteriores
+
+> As referências abaixo registram auditorias anteriores; o estado Git vigente é o cabeçalho e o registro final desta tranche.
 
 | Referência                                               | SHA observado                                                                                                   | Estado                                                                                                                                                                                   |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `origin/main`                                            | `f67548570f44b8c8fe79082911d7de557a8a3650`                                                                      | Base canónica observada antes da candidata; confirmar de novo antes de promover.                                                                                                         |
+| `origin/main`                                            | `f67548570f44b8c8fe79082911d7de557a8a3650`                                                                      | SHA observado num snapshot anterior; o SHA remoto vigente está no cabeçalho.                                                                                                             |
 | `origin/feat/o7.15-storage-reconciliation-observability` | `61d8a13703b3146727987b6f00b34785bfdcfb87`                                                                      | Linha de desenvolvimento que está a ser reconciliada localmente com a main.                                                                                                              |
 | PR #3, `docs/ai-admin-core-plan-2026-09-27`              | `d90bba2edc6601e73db9bd18601b9d97a2b2bef4`                                                                      | Auditoria concluída: **não integrar a ref inteira**. As capacidades Baileys principais já estão em main/O7; a arquitetura multi-canal antiga não faz parte do produto.                   |
 | Base da candidata                                        | branch `integration/beta-candidate-2026-10-02`, commit de remediação `cdaa811ec47243ad17fc2ab24c45b17421329a4f` | Junção main+O7 originalmente auditada em `445d4cc`; remediações validadas e commitadas/pushadas para a branch de handoff. `main` continua em `f67548570f44b8c8fe79082911d7de557a8a3650`. |
@@ -63,7 +65,9 @@ O utilizador confirmou em 2026-10-02/03: **Baileys é o único canal/provedor do
 
 Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8fbba102c`: **94 achados (2 critical, 38 high, 41 medium, 13 low)**. Ver [`docs/AUDITORIA-BETA-COMPLETA-2026-10-03.md`](./AUDITORIA-BETA-COMPLETA-2026-10-03.md) e o roteiro [`docs/PLANO-REMEDIACAO-BETA.md`](./PLANO-REMEDIACAO-BETA.md). O achado crítico de migration `0017` exige fixtures com dados legados; o gate de lançamento público continua corretamente fechado até existirem as oito evidências reais. A auditoria não alterou código, não usou Supabase nem publicou imagens.
 
-## Validação já concluída
+## Validação anterior — snapshot histórico
+
+> Os resultados abaixo pertencem a uma execução anterior; o resultado vigente está no registro final deste ficheiro.
 
 | Verificação na candidata                                     | Resultado                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -86,7 +90,7 @@ Auditoria read-only de 10 domínios no commit `445d4cc2747366b3a27976ba0b0046e8f
 
 A suite root também passou sobre a base atualizada de 45 migrations da `main` para 61 da candidata. A base era descartável e não continha dados de negócio; isto prova compatibilidade do SQL de upgrade, **não** preservação de dados reais existentes. Os testes não cobriram WhatsApp real, browser do utilizador, envio de mensagens, Supabase nem imagem Docker executada.
 
-## Pendências antes de promover
+## Pendências do snapshot anterior — reavaliar pelo registro final
 
 1. Completar a Fase 1: o tratamento async Express 4, os limites de body/rate, o encerramento do endpoint REST genérico e a ferramenta de reconciliação idempotente estão implementados e testados; segue-se a revisão dos restantes endpoints. O gate de supportSession para status/plano/incidentes está implementado e testado. O fencing REST da `0060` falha fechado em resultado ambíguo.
 2. A `0017` foi corrigida e testada. A `0043` agora aplica a decisão explícita Baileys-only: elimina rows/configuração/eventos/mensagens tagged com provider não-Baileys durante o upgrade. O inventário read-only deve ser guardado antes de aplicar a migration real; não executar este upgrade no ambiente do utilizador sem backup/rollback validado.
@@ -97,7 +101,7 @@ A suite root também passou sobre a base atualizada de 45 migrations da `main` p
 
 ## Próxima ação
 
-**Próximo passo:** executar staging controlado e workflow autorizado com o mesmo SHA/digest, incluindo restore completo de DB/sessão/blobs, smoke de readiness/restart, sink de alertas autorizado e evidências redigidas. O preflight local está verde e o smoke sem `STAGING_BASE_URL` falha correctamente com exit code 2. A execução real permanece bloqueada: este Sandbox não tem Docker, URL de staging nem secrets de staging. A candidata não é release beta pública, não deve ser instalada no ambiente do utilizador e não houve push/merge/publicação.
+**Próximo passo atual:** revisar/selecionar as alterações locais que devem compor a candidata e obter autorização específica antes de criar commit/PR. Os gates locais descritos no registro final passaram, mas a CI do PR ainda precisa validar o SHA exato antes de qualquer merge/publicação GHCR. Não foram testados fluxos reais de WhatsApp, não houve pareamento/envio, e esta validação não declara beta pública.
 
 ## Investigação de interactive messages — 2026-10-03
 
@@ -411,3 +415,176 @@ Smoke test local:
 - Panel `/api/v1/ready`: `503`, `status=not_ready`, com `database=ok`, `worker=ok` e `gateway=error` porque não foi feito pairing Baileys. Isto é esperado para uma instalação nova; não houve pairing nem envio de mensagens.
 
 O próximo agente deve tratar este bloco como a fonte de verdade operacional. Não executar reset, não regenerar a chave `WHATSAPP_SESSION_ENCRYPTION_KEY` sem decisão explícita, não emparelhar WhatsApp e não enviar mensagens sem número de teste e autorização específica.
+
+### Correcção final do head documental — 2026-10-05
+
+O commit `513832d` actualizou apenas documentação e foi publicado directamente em `main`. Os workflows disparados por esse push também terminaram com sucesso: PostgreSQL integration `37389776706` e Publish Forte Panel image `37389777086` (jobs `verify` `112031843291` e `publish` `112032372737`). A imagem `latest` foi republicada a partir desse head documental; o código funcional permanece o baseline `df8b0fe`.
+
+## Agent Hub — regras globais, bypass e saída — 2026-10-06
+
+O prompt global de `whatsapp_reply` usa contexto temporal oficial e regras reais de agenda, funil, leads, serviços, profissionais e preços; o prompt não substitui ferramentas nem inventa disponibilidade. Cada capability possui switch persistente e capabilities desligadas fazem bypass server-side. O fallback técnico segue a ordem das conexões configuradas.
+
+TTS foi implementado nesta etapa com routing OpenAI-compatible (`/audio/speech`), fallback de provider, limite de 10 MiB, storage privado outbound, envio Baileys como `audio`, switch global e ferramenta `enviar_audio`. Falha de capability, provider ou storage devolve fallback para texto. A migration aditiva é `drizzle-pg/0064_tts_capability.sql`.
+
+## Validação desta etapa — 2026-10-06
+
+`git diff --check`, `corepack pnpm check` e o build completo passaram. A suite root teve 430 testes passados e 79 skipped por exigirem PostgreSQL/serviços/configuração externa. O gateway teve 106 testes passados; `npm run check` e `npm run build` passaram. Não houve Docker, emparelhamento, envio real, commit, push ou publicação GHCR. Continua pendente validar a migration numa base PostgreSQL descartável e executar smoke test da imagem exata antes de beta pública.
+
+## Reset de contexto da IA por workspace — 2026-10-06
+
+Foi adicionado ao Console Admin, no detalhe do workspace, o botão `Reiniciar contexto da IA`. Ele exige sessão operadora, confirmação literal `RESETAR CONTEXTO DA IA`, confirmação adicional do navegador e auditoria administrativa. A operação é transacional e limitada ao workspace selecionado: remove mensagens, leituras, execuções/efeitos/simulações do agente, notas criadas pela IA, eventos pendentes, agendamentos associados a contatos, orçamentos e dados do funil; mantém workspace, instâncias, contatos, leads, notas humanas e auditoria. Também restaura o estado operacional básico dos contatos para `Novo contato`.
+
+A operação não foi executada em nenhum workspace. `pnpm check` passou; testes administrativos e de contratos tiveram 18 testes passados, com 3 testes de integração skipped por exigirem base de dados.
+
+## RAG — onboarding como fonte da base de conhecimento — 2026-10-06
+
+A primeira etapa do RAG foi ampliada para o fluxo Inlead/onboarding: o consumidor não precisa enviar um arquivo. Ao publicar uma versão validada do onboarding, o backend monta um Markdown estruturado com o perfil confirmado e o prompt de negócio publicado, guarda uma cópia privada no storage compatível com SeaweedFS/S3 e registra o documento como `onboarding_generated` no workspace. Também existe a mutação protegida `knowledge.createFromOnboarding` para o fluxo de UI e uma mutação administrativa de upload manual como fallback.
+
+Foi adicionada a migration `0065_knowledge_base_pgvector`, com extensão `vector`, documentos, versões, chunks e embedding de 1536 dimensões, todos com `workspaceId` e índice HNSW. Compose local e workflows CI usam `pgvector/pgvector:pg16`; o PostgreSQL local foi atualizado preservando o volume e confirmou a extensão `vector` disponível.
+
+Validação: `pnpm check` passou; 12 testes focados passaram; `git diff --check` não encontrou whitespace inválido. A build Docker foi interrompida por solicitação antes de aplicar a migration e recriar o Panel; os containers ainda executam a imagem anterior do Panel. Nenhum documento real foi ingerido e nenhum workspace foi resetado.
+
+A fatia seguinte também foi implementada: `server/knowledge-chunking.ts` divide o Markdown em chunks determinísticos, preserva títulos e marcadores de página, aplica sobreposição limitada e calcula hash SHA-256 para reprocessamento idempotente. Foram adicionados testes unitários do chunker. A build Docker permanece deliberadamente interrompida conforme autorização do utilizador; não aplicar a migration nem recriar o Panel até a próxima build autorizada.
+
+## RAG — worker, embeddings e busca semântica — 2026-10-06
+
+Implementado o routing administrativo `embeddings` OpenAI-compatible com fallback, teste de conexão e configuração nas páginas legadas. O worker existente agora executa `processKnowledgeIngestionOnce`: reivindica versões `uploaded` com estado `processing`, divide o texto em chunks, envia embeddings em lotes de 32, exige dimensão 1536, grava os vetores e marca a versão/documento como `indexed`; falhas ficam registradas e retries são opt-in por `KNOWLEDGE_INGESTION_RETRY_FAILED=true`.
+
+Implementada `searchKnowledgeChunks`, com distância cosine no índice HNSW, limite de resultados, limiar de similaridade e filtro obrigatório por `workspaceId`. O agente nativo gera embedding da mensagem recebida quando a capability está configurada, recupera até cinco trechos e injeta um bloco limitado no system prompt, falhando fechado quando embeddings não estão configurados ou indisponíveis.
+
+Validação: `pnpm check` passou; testes focados de provider/chunking/base de conhecimento/agente passaram (31 testes no último ciclo). Não foram feitas chamadas externas reais, nenhum documento real foi indexado e a build Docker/migration continua pendente por ter sido interrompida anteriormente a pedido do utilizador.
+
+## Onboarding áudio-primeiro e prévia RAG — 2026-10-07
+
+Sem subir ou reconstruir o Docker, a UX do onboarding foi alinhada para recomendar respostas por áudio como caminho principal, mantendo o formulário textual como fallback. A revisão continua obrigatória: o áudio é enviado de forma privada, transcrito, convertido em proposta estruturada em draft e só pode ser confirmado/publicado após revisão humana.
+
+A tela de revisão agora exibe uma prévia Markdown da base de conhecimento que será indexada. A prévia é informativa e não publica nem indexa conteúdo por si só; a geração persistente da fonte Markdown continua vinculada à publicação aprovada do onboarding. `pnpm check` passou e os testes de onboarding estruturado/base de conhecimento passaram (7 testes). A build Docker permanece deliberadamente não executada conforme pedido.
+
+## Base de Conhecimento e RAG híbrido — 2026-10-07
+
+Criada a tela protegida `/knowledge-base`, adicionada à navegação de configuração. Ela lista documentos do workspace com origem (`onboarding_generated` ou `manual_upload`), status da versão, número de chunks, tentativas e último erro; permite reprocessar versões falhadas e arquivar documentos. O upload manual continua privado e limitado ao contrato existente.
+
+A recuperação RAG foi reforçada sem migration adicional: além dos resultados semânticos, a busca faz uma segunda passagem lexical por headings e trechos que indiquem regras, políticas, cancelamento, transferência humana, proibições e instruções de não invenção. Os resultados críticos são marcados e priorizados no contexto. O prompt do agente agora explicita a hierarquia: segurança/global > dados operacionais das ferramentas > regras críticas do workspace > RAG > mensagem do cliente; o contexto RAG é tratado como referência, nunca como instrução de sistema.
+
+Validação: `pnpm check` passou; 31 testes focados de base de conhecimento, chunking, providers e agente passaram. Nenhuma build ou operação Docker foi executada nesta etapa.
+
+## Parser de documentos e testes de prioridade RAG — 2026-10-07
+
+O upload manual agora extrai texto antes de criar a versão ingerível: PDF usa `pdf-parse`/`PDFParse`, DOCX usa `mammoth.extractRawText`, e TXT/Markdown/CSV continuam sendo lidos como UTF-8. Conteúdo vazio, MIME não suportado e texto acima de 2 MB são rejeitados antes do documento ser persistido para ingestão. Dependências adicionadas ao `package.json` e `pnpm-lock.yaml`.
+
+A montagem do contexto RAG foi extraída para `buildKnowledgeContext` e ganhou teste determinístico garantindo que uma regra crítica aparece antes de um trecho semântico geral, mesmo com similaridade menor. A extração tem cobertura para PDF/DOCX via contratos isolados e para fonte textual vazia.
+
+Validação: `pnpm check` passou; 11 testes focados passaram; `git diff --check` passou. Nenhuma build ou operação Docker foi executada.
+
+## Interface e fluxo áudio → RAG — 2026-10-07
+
+A Base de Conhecimento ganhou consulta detalhada protegida por workspace (`knowledge.get`) e visualização do texto extraído da versão mais recente, com status, versão e conteúdo indexável. A gestão existente mantém reprocessamento de falhas e arquivamento.
+
+O fluxo de áudio mantém aprovação humana: a transcrição editável alimenta o perfil/proposta; somente a publicação do onboarding gera o Markdown `onboarding_generated`, persiste a versão e a deixa disponível ao worker de embeddings. Isto evita que áudio não revisado altere o comportamento do agente.
+
+Testes adicionados: `knowledge-flow.integration.test.ts` cobre transcrição aprovada → Markdown → extração → chunks → contexto priorizado do agente; `knowledge-base-db.integration.test.ts` cobre consulta e isolamento entre workspaces quando executado com `KNOWLEDGE_DB_INTEGRATION=1` e PostgreSQL migrado. Validação local: `pnpm check` passou; 10 testes passaram e 1 teste DB foi corretamente ignorado por não haver habilitação explícita do ambiente; `git diff --check` passou.
+
+## PostgreSQL 0065 e integração RAG — 2026-10-07
+
+A execução foi feita numa base PostgreSQL descartável criada dentro do container local `pgvector/pgvector:pg16`, sem tocar na base `forte_panel` da instalação do utilizador. A migration `0065` tinha uma referência inválida a `platform_ai_capability`; o enum correto do schema é `public.platform_ai_connection_capability`. A migration foi corrigida.
+
+Resultado na base descartável: todas as migrations foram aplicadas até `0065`, a extensão `vector` foi ativada, a tabela de migrations registou `id=65` e `server/knowledge-base-db.integration.test.ts` passou com o isolamento entre workspaces. A base descartável foi eliminada após o teste.
+
+Foi detectado drift na base local existente: ela regista a migration `0065`, mas não expõe atualmente a extensão `vector`, os enums/tabelas da Base de Conhecimento, e a tentativa de reaplicar a cadeia falha porque o histórico já está marcado como aplicado. Não foi feita correção destrutiva nem edição manual do histórico da base local. É necessária uma operação de reparação/migração explicitamente aprovada antes de alterar essa instalação.
+
+Validação: migration descartável passou; teste PostgreSQL 1/1 passou; migration 0065 corrigida; nenhuma publicação GHCR, reset Docker ou alteração de dados da instalação local foi executada.
+
+## Reparação do drift 0065 e gate completo — 2026-10-07
+
+A base local `forte_panel` tinha a migration 0065 marcada no histórico sem os objetos correspondentes. Foi aplicado, numa única transação, o conteúdo corrigido da 0065: extensão `vector`, enum `embeddings` no tipo `public.platform_ai_connection_capability`, enums RAG, tabelas `knowledgeDocuments`, `knowledgeDocumentVersions` e `knowledgeDocumentChunks`, índices e HNSW. Nenhum dado existente foi removido e o histórico Drizzle não foi editado.
+
+A verificação confirmou as três tabelas RAG no schema `public`, a extensão pgvector e a label `embeddings`. O teste `knowledge-base-db.integration.test.ts` passou contra `forte_panel`.
+
+A suite completa foi executada numa base PostgreSQL descartável nova, com todas as migrations até 0065, sem skips: **139 ficheiros / 521 testes passaram**. `pnpm check` também passou. A execução foi serializada para evitar contenção no teste que cria uma base auxiliar para a migration 0043. O timeout desse hook foi aumentado para 30 s, sem mudar a lógica do teste.
+
+Foi corrigida a compatibilidade do agente para configurações antigas sem rota `embeddings`: o RAG agora retorna contexto vazio de forma segura, em vez de lançar `Cannot read properties of undefined`. Nenhuma chamada WhatsApp real ou publicação foi executada. Os testes de onboarding emitiram avisos de storage porque usaram credenciais sintéticas que não correspondem ao SeaweedFS local; os testes passaram pelo fallback esperado.
+
+## Build local, restart e provider de embeddings — 2026-10-07
+
+`pnpm build` passou. O gateway Baileys passou `npm test` (**21 ficheiros / 106 testes**), `npm run check` e `npm run build`.
+
+Foram construídas as imagens locais `forte-panel-local:current` e `forte-whatsapp-local:current`. O script oficial foi ampliado com o parâmetro explícito `-UseLocalImages`; o comportamento padrão continua a fazer pull das imagens publicadas. O primeiro modo normal abortou de forma segura porque as tags locais não existem no registry. A stack foi então recriada com `scripts/start-docker.ps1 -UseLocalImages`, sem reset e sem remoção de volumes.
+
+Smoke test após o restart: Panel `/api/v1/health` 200, Panel `/api/v1/ready` 200 com `database=ok`, `worker=ok`, `gateway=ok`, e gateway `/health` 200. As migrations arrancaram com sucesso e a sessão Baileys existente foi preservada; não foi feito pareamento nem envio.
+
+A inspeção efetiva da configuração AI encontrou zero rotas `embeddings`, zero modelos de embedding ativos e zero documentos na Base de Conhecimento. A ingestão real não foi forçada nem simulada: falta configurar no Console Admin uma conexão OpenAI-compatible ativa, rota `embeddings` habilitada e modelo compatível com 1536 dimensões. Sem isso, o worker permanece corretamente fail-closed.
+
+## Embeddings visível no Console Admin — 2026-10-07
+
+Foi identificado que o backend já aceitava `embeddings` e o formulário legado tinha o label, mas o canvas efetivamente montado em `PlatformAdminPage` (`PlatformAiCanvas`) não renderizava essa capability. Foi adicionada a card `Embeddings vetoriais` ao Agent Hub, com modal para nome, endpoint OpenAI-compatible, modelo e API key.
+
+A imagem `forte-panel-local:current` foi reconstruída com `pnpm check` e `pnpm build` aprovados e a stack foi recriada pelo script oficial em modo explícito local (`-UseLocalImages`), sem reset. `/health` e `/ready` continuam 200; database, worker e gateway estão OK.
+
+## Embeddings NVIDIA em 2048 dimensões — 2026-10-07
+
+- A migration `0066_knowledge_embeddings_2048` foi aplicada localmente com sucesso.
+- `knowledgeDocumentChunks.embedding` está em `vector(2048)`; como o HNSW de `vector` não suporta 2048 dimensões, o índice usa a expressão `embedding::halfvec(2048)` com `halfvec_cosine_ops`.
+- O worker indexa documentos em modo NVIDIA `passage`; a recuperação do agente consulta em modo `query` e o endpoint aceita configurações terminadas em `/v1/embeddings`.
+- O autoteste do Console Admin valida a resposta e recusa modelos que não devolvam exatamente 2048 dimensões.
+- Teste real aprovado com `nvidia/llama-nemotron-embed-vl-1b-v2`: resposta de 2048 dimensões, sem fallback e sem erro do provider.
+- `pnpm check` e os testes focados de providers/agente passaram; a imagem `forte-panel-local:current` foi reconstruída e a stack reiniciada pelo script oficial, preservando volumes e dados.
+- Limitação operacional: o modelo deve estar configurado com o identificador completo `nvidia/llama-nemotron-embed-vl-1b-v2`; a configuração salva no Console Admin ainda precisa ser conferida/ajustada pelo utilizador se estiver usando apenas o nome curto.
+
+## Teste RAG end-to-end temporário — 2026-10-07
+
+- Com autorização explícita, foi criado um documento Markdown temporário marcado como `RAG_TEMP_TEST` no workspace 2 pelo fluxo real de documento gerado.
+- O worker indexou o documento com sucesso usando a conexão global de embeddings; o resultado foi `indexed`, sem `lastError`, com vetor de 2048 dimensões.
+- A consulta vetorial em modo `query` recuperou 1 trecho correto, com similaridade aproximada de `0.421`, preservando o marcador temporário no contexto.
+- A chamada final ao provider de texto não produziu resposta porque o endpoint configurado retornou HTTP 503 (`Nenhum provider disponível para text; ... http_503`). Isto bloqueia a validação da resposta textual do agente, mas não invalida a ingestão nem a recuperação RAG.
+- O documento, a versão, os chunks e o objeto privado SeaweedFS/S3 foram removidos automaticamente. Verificação final no workspace 2: 0 documentos, 0 versões e 0 chunks.
+- Após o teste: `/health=200`, `/ready=200`, database/worker/gateway `ok`; logs do worker sem `lastError`.
+
+## Barreira safety após normalização de mídia — 2026-10-07
+
+- O gate determinístico já inspecionava texto bruto antes da leitura do contato, mas áudio e documentos podiam revelar conteúdo relevante apenas após transcrição/extração. Agora o texto normalizado de áudio/imagem/documento/vídeo é verificado antes da recuperação RAG e da chamada ao modelo de resposta.
+- Sinais de risco mantêm o fluxo existente: desativam a IA do contato, enfileiram a mensagem de handoff sem expor a regra interna e registam telemetria sem chamada de resposta. A capability de telemetria original é preservada.
+- Adicionados testes unitários sintéticos para prompt injection em transcrição e exfiltração de credenciais extraídas. Nenhum provider externo, WhatsApp ou dados reais foram usados.
+- Validação desta tranche: `corepack pnpm check` passou; testes `agent-safety.test.ts` e `native-agent.contract.test.ts` passaram (**2 ficheiros / 8 testes**); `git diff --check` passou. Nenhuma build Docker, publicação, commit ou push foi realizada.
+
+## Integração local LocalAI: Whisper + embeddings MRL — 2026-10-07
+
+A stack Compose foi atualizada para montar `localai/whisper-base.yaml` no LocalAI e pré-carregar o mesmo `whisper-base` com pesos `ggml-base.bin` obtidos de um commit fixo do repositório `ggerganov/whisper.cpp`. A configuração incompleta que já existia no volume foi preservada como backup com sufixo `.pre-fix-*`/`.stale-*`; não houve reset do volume. O job LocalAI concluiu e o arquivo de pesos existe no volume com **147.951.465 bytes**. O modelo de embeddings continua sendo exclusivamente `qwen3-embedding-4b`; não foi baixado outro modelo nem alterado o schema PostgreSQL `vector(2048)`.
+
+O LocalAI `v4.11.0` respondeu com **2560** dimensões mesmo recebendo `dimensions: 2048`. O adapter aplica somente ao ID `qwen3-embedding-4b` o prefixo MRL de 2048 valores e normalização L2; resposta de outra dimensão/modelo local é rejeitada em vez de ser gravada no schema incompatível. A rota de áudio envia multipart para `/v1/audio/transcriptions`. A UI segue publicada apenas em `127.0.0.1:8080` no Compose local; não foi testada a instalação de um modelo adicional pela UI nesta tranche.
+
+| Verificação local | Resultado |
+|---|---|
+| `corepack pnpm check` | Passou. |
+| `vitest run server/llm-providers.test.ts server/audio-transcription.test.ts` | **30 testes passaram**. Inclui fallback MRL 2560→2048/normalização e rejeição de dimensões incompatíveis. |
+| `corepack pnpm build` | Passou. O Vite emitiu aviso porque o `.env` local define `NODE_ENV=production` (build continuou) e aviso de bundle principal acima de 500 kB. |
+| `docker-compose ... config --quiet` para `docker-compose.local.yml` e `docker-compose.yml` | Ambos válidos. |
+| Smoke real local com Node/undici, payloads sintéticos | Embeddings HTTP 200: saída LocalAI 2560, adaptação 2048, norma L2 `1`. Whisper HTTP 200: resposta contém texto string; texto gerado não foi registado. |
+| Estado dos containers | `forte_local_ai` saudável; foi o único container recriado. Os sete outros IDs em execução permaneceram inalterados. |
+| `git diff --check` | Passou. |
+
+Não foram usados áudio/dados do utilizador, WhatsApp, base de dados, Supabase ou outros modelos locais; não houve commit, push, PR, merge ou publicação GHCR. Estes testes são focados e **não substituem** os gates completos (suite PostgreSQL sem skips, migrations vazia/upgrade, validator de produção e gates do gateway) antes de integrar/publicar.
+
+## Snapshot histórico — validação da candidata em 2026-10-07, 19:56 (UTC−3)
+
+- Git confirmado após atualização local de `origin/main`: branch `main`, `HEAD=600e567e2073324a5e8f1fd21622cd4c30303a77`, `origin/main=513832d133661448bdd53f3ec9ee6b03b2e4904b`; `HEAD` está um commit à frente. A árvore continua suja com alterações candidatas. `.manus/`, `.work/` e `outputs/` são artefatos locais não rastreados e não devem ser incluídos num futuro PR sem revisão explícita.
+- Migrations foram validadas em PostgreSQL descartável: cadeia completa numa base vazia e upgrade do schema de `main` para a candidata passaram; a contagem candidata observada foi 67 migrations. O serviço de migrations da stack local também terminou com exit code 0.
+- `corepack pnpm check`: passou. Suite completa com PostgreSQL descartável e integração RAG habilitada: **139 ficheiros / 529 testes passaram, zero skips**.
+- Validator de produção: configuração sintética válida aprovada e `JWT_SECRET` sintético curto rejeitado. Foi corrigido o guard do entrypoint para usar `pathToFileURL`, pois a comparação anterior podia não executar o validator no Windows.
+- `corepack pnpm build`: passou. Permanecem os avisos do `.env` local definir `NODE_ENV=production` e do bundle principal exceder 500 kB; não impediram o build.
+- Gateway Baileys: `npm test` **21 ficheiros / 106 testes**, `npm run check` e `npm run build` passaram.
+- Imagens candidatas construídas localmente: painel `forte-panel-local:candidate-20261007-1932` (ID `9d1a61370a88`) e gateway `forte-whatsapp-local:candidate-20261007-1932` (ID `c07422bcc137`). Compose validado e stack recriada pelo script oficial com `-UseLocalImages`; sem pull e sem reset.
+- Os seis volumes Compose mantiveram exatamente os mesmos nomes antes/depois. PostgreSQL e Redis estão saudáveis; migrations terminaram com exit code 0; painel `/api/v1/health`, gateway `/health` e UI LocalAI responderam HTTP 200. `forte_local_ai` está saudável.
+- Smoke test sintético pós-recriação: embeddings HTTP 200, LocalAI devolveu 2560 e o adapter produziu 2048 dimensões com norma L2 `1`; Whisper HTTP 200 com resposta string. O áudio/texto eram sintéticos e o texto transcrito não foi guardado. UI LocalAI: HTTP 200 após seguir o redirecionamento.
+- Limites: não houve pareamento ou envio WhatsApp real, ingestão de documento real, teste de instalação de modelo adicional pela UI, commit/push/PR/merge nem publicação GHCR. Os testes locais não provam prontidão pública.
+
+**Estado de release:** candidata local validada funcionalmente e stack local operante; ainda não integrada em `main` remoto nem publicada. Antes do PR, revisar o conjunto de alterações e manter fora dele os artefatos locais; depois, executar CI no SHA exato e aguardar autorização para merge/publicação.
+
+## Validação local atual e PR #45 — 2026-10-08, 09:10 (UTC−3)
+
+- Aplicação: `pnpm check` e `pnpm build` passaram; validator de produção aprovou configuração exclusivamente sintética. O scanner local de credenciais hardcoded não encontrou atribuições suspeitas nos ficheiros rastreados. `git diff --check` passou (apenas avisos de conversão LF/CRLF do Git no Windows).
+- PostgreSQL descartável: 67 migrations aplicadas numa base vazia; suite completa com integração DB/RAG habilitada passou **139 ficheiros / 531 testes, zero skips**. A base temporária foi eliminada. O upgrade `main`→candidata também já tinha passado no snapshot de 7 de outubro às 19:56.
+- Gateway Baileys: `npm test` passou (**21 ficheiros / 106 testes**), `npm run check` e `npm run build` passaram.
+- Docker: build local da imagem `forte-panel-local:candidate-20261008-0815` passou com `infra/Dockerfile`. `scripts/start-docker.ps1 -UseLocalImages` recriou os serviços do Painel, worker, gateway, PostgreSQL, Redis e LocalAI sem pull e sem reset; seis volumes permaneceram intactos. A readiness do LocalAI, UI localhost, APIs health/ready e shell SPA da Base de Conhecimento responderam 200.
+- Base de Conhecimento: extração, chunking, ingestão e isolamento foram validados por testes sintéticos e PostgreSQL descartável. Não foi carregado documento na base persistente da instalação real; a rota SPA foi apenas consultada.
+- WhatsApp: a pesquisa read-only na base local não encontrou a conta `jeksom10@gmail.com`; não houve pareamento, alteração de sessão ou envio de mensagem. O teste real permanece bloqueado até essa conta/instância existir na instalação ativa.
+- GitHub/release: a branch candidata foi enviada e a Draft PR #45 (`https://github.com/geordptoroy/forte-panel/pull/45`) está aberta contra `main`. O check `postgres-integration` está em execução; `Supabase Preview` foi ignorado. Próximo passo: aguardar os checks e corrigir eventuais falhas. Não houve merge nem publicação; a promoção para `main` e `:latest` no GHCR só pode ocorrer após sucesso do workflow de `main` e confirmação final sobre o SHA/digest exatos.

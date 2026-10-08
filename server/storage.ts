@@ -146,3 +146,70 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
   if (!url) throw new Error("Forge returned empty signed URL");
   return url;
 }
+
+export async function storageRead(
+  relKey: string,
+  maxBytes = 8 * 1024 * 1024
+): Promise<Buffer> {
+  const key = normalizeKey(relKey);
+  const s3 = getS3Config();
+  if (s3) {
+    const result = await s3.client.send(
+      new GetObjectCommand({ Bucket: s3.bucket, Key: key })
+    );
+    if (Number(result.ContentLength) > maxBytes)
+      throw new Error("Private media exceeds the allowed size");
+    const body = result.Body as unknown as
+      | (AsyncIterable<Uint8Array> & { destroy?: () => void })
+      | undefined;
+    if (!body || typeof body[Symbol.asyncIterator] !== "function")
+      throw new Error("Private media body is unavailable");
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    for await (const chunk of body) {
+      totalBytes += chunk.byteLength;
+      if (totalBytes > maxBytes) {
+        body.destroy?.();
+        throw new Error("Private media exceeds the allowed size");
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+    if (!totalBytes) throw new Error("Private media is empty");
+    return Buffer.concat(chunks, totalBytes);
+  }
+
+  const signedUrl = await storageGetSignedUrl(key);
+  const response = await fetch(signedUrl, {
+    signal: AbortSignal.timeout(20_000),
+    redirect: "error",
+  });
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error(`Private media download failed (${response.status})`);
+  }
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error("Private media exceeds the allowed size");
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Private media body is unavailable");
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("Private media exceeds the allowed size");
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (!totalBytes) throw new Error("Private media is empty");
+  return Buffer.concat(chunks, totalBytes);
+}

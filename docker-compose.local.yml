@@ -1,6 +1,6 @@
 services:
   postgres_panel:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: forte_postgres_panel
     restart: unless-stopped
     environment:
@@ -35,6 +35,30 @@ services:
       timeout: 5s
       retries: 10
     networks: [panel-network]
+
+  local-ai:
+    image: localai/localai:v4.11.0
+    container_name: forte_local_ai
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LOCALAI_UI_PORT:-8080}:8080"
+    environment:
+      LOCALAI_API_KEY: ${LOCALAI_API_KEY:?LOCALAI_API_KEY is required}
+      MODELS_PATH: /models
+      PRELOAD_MODELS: >-
+        [{"url":"file:///models/whisper-base-template.yaml","name":"whisper-base"},{"id":"localai@qwen3-embedding-4b"}]
+    volumes:
+      - forte_localai_models:/models
+      - ./localai/whisper-base.yaml:/models/whisper-base-template.yaml:ro
+    cpus: 1.5
+    mem_limit: 6g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/readyz"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 20m
+    networks: [localai-network]
 
   seaweedfs-config:
     image: alpine:3.20
@@ -137,13 +161,15 @@ services:
       FORTE_STORAGE_ACCESS_KEY: ${FORTE_STORAGE_ACCESS_KEY:?FORTE_STORAGE_ACCESS_KEY is required}
       FORTE_STORAGE_SECRET_KEY: ${FORTE_STORAGE_SECRET_KEY:?FORTE_STORAGE_SECRET_KEY is required}
       FORTE_STORAGE_FORCE_PATH_STYLE: ${FORTE_STORAGE_FORCE_PATH_STYLE:-true}
+      LOCALAI_BASE_URL: http://local-ai:8080/v1
     ports: ["${PANEL_PORT:-3002}:3000"]
     depends_on:
       postgres_panel: { condition: service_healthy }
       redis_panel: { condition: service_healthy }
+      local-ai: { condition: service_started }
       seaweedfs: { condition: service_healthy }
       forte-panel-migrations: { condition: service_completed_successfully }
-    networks: [panel-network, whatsapp-network]
+    networks: [panel-network, whatsapp-network, localai-network]
 
   forte-panel-worker:
     image: ${FORTE_PANEL_IMAGE:-ghcr.io/geordptoroy/forte-panel:latest}
@@ -183,13 +209,15 @@ services:
       WORKER_MAX_ATTEMPTS: ${WORKER_MAX_ATTEMPTS:-3}
       EVENT_WORKER_BATCH_SIZE: ${EVENT_WORKER_BATCH_SIZE:-10}
       EVENT_WORKER_MAX_ATTEMPTS: ${EVENT_WORKER_MAX_ATTEMPTS:-5}
+      LOCALAI_BASE_URL: http://local-ai:8080/v1
     depends_on:
       postgres_panel: { condition: service_healthy }
       redis_panel: { condition: service_healthy }
+      local-ai: { condition: service_started }
       seaweedfs: { condition: service_healthy }
       forte-panel-migrations: { condition: service_completed_successfully }
       forte-whatsapp: { condition: service_started }
-    networks: [panel-network, whatsapp-network]
+    networks: [panel-network, whatsapp-network, localai-network]
 
   forte-whatsapp:
     image: ${FORTE_WHATSAPP_IMAGE:-ghcr.io/geordptoroy/forte-whatsapp:latest}
@@ -219,10 +247,13 @@ networks:
     name: forte-panel-network
   whatsapp-network:
     name: ${COMPOSE_PROJECT_NAME:-forte-local}_whatsapp-network
+  localai-network:
+    name: ${COMPOSE_PROJECT_NAME:-forte-local}_localai-network
 
 volumes:
   forte_postgres_panel_data:
   forte_redis_panel_data:
   forte_whatsapp_sessions:
+  forte_localai_models:
   forte_seaweedfs_data:
   forte_seaweedfs_config:

@@ -7,9 +7,11 @@ import {
   createPlatformBaileysInstance,
   createPlatformAiConnection,
   deletePlatformAiConnection,
+  updatePlatformAiConnection,
   disconnectPlatformBaileysInstance,
   getActiveSupportSession,
   getPlatformGlobalAgentSnapshot,
+  getPlatformGlobalCapabilityPromptSnapshot,
   getPlatformIncidentWorkspaceId,
   getPlatformAdminAccess,
   getPlatformSupportSnapshot,
@@ -47,10 +49,12 @@ import {
   openPlatformIncident,
   revokeSupportSession,
   resetPlatformWorkspace,
+  resetPlatformWorkspaceAiContext,
   resolvePlatformIncident,
   rollbackPlatformAgentVersion,
   savePlatformAgentDraft,
   savePlatformGlobalAiPolicy,
+  savePlatformGlobalCapabilityPromptAdmin,
   savePlatformInstancePromptBinding,
   simulatePlatformInstanceAgent,
   setPlatformWorkspaceAi,
@@ -165,32 +169,33 @@ const providerConfigInput = z.object({
   apiKey: z.string().max(4_000),
 });
 const routingConfigInput = z.object({
-  provider: z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]),
+  provider: z.string().trim().min(1).max(120),
   model: z.string().trim().min(1).max(200),
   baseUrl: z.string().trim().max(500).optional(),
   apiKey: z.string().max(4_000).optional(),
   fallback: z.array(z.object({
-    provider: z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]),
+    provider: z.string().trim().min(1).max(120),
     model: z.string().trim().min(1).max(200),
     baseUrl: z.string().trim().max(500).optional(),
     apiKey: z.string().max(4_000).optional(),
   })).max(3).optional(),
 });
 const globalLlmInput = z.object({
-  providers: z.object({
-    nvidia_nim: providerConfigInput,
-    google_gemini: providerConfigInput,
-    openai_compatible: providerConfigInput,
-  }),
+  providers: z.record(z.string().trim().min(1).max(120), providerConfigInput),
   routing: z.object({
     text: routingConfigInput,
     vision: routingConfigInput,
     audio: routingConfigInput,
     document: routingConfigInput,
+    video: routingConfigInput,
+    tts: routingConfigInput,
+    prompt_builder: routingConfigInput,
+    moderation: routingConfigInput,
+    embeddings: routingConfigInput,
   }),
 }).superRefine((value, ctx) => {
   const checkUrl = (
-    provider: "nvidia_nim" | "google_gemini" | "openai_compatible",
+    provider: string,
     baseUrl: string | undefined,
     path: (string | number)[]
   ) => {
@@ -205,9 +210,9 @@ const globalLlmInput = z.object({
       });
     }
   };
-  for (const provider of ["nvidia_nim", "google_gemini", "openai_compatible"] as const)
-    checkUrl(provider, value.providers[provider].baseUrl, ["providers", provider, "baseUrl"]);
-  for (const capability of ["text", "vision", "audio", "document"] as const) {
+  for (const [provider, config] of Object.entries(value.providers))
+    checkUrl(provider, config.baseUrl, ["providers", provider, "baseUrl"]);
+  for (const capability of ["text", "vision", "audio", "document", "video", "tts", "prompt_builder", "moderation", "embeddings"] as const) {
     const route = value.routing[capability];
     checkUrl(route.provider, route.baseUrl, ["routing", capability, "baseUrl"]);
     route.fallback?.forEach((fallback, index) =>
@@ -220,9 +225,14 @@ const aiConnectionCapability = z.enum([
   "audio_transcription",
   "image_analysis",
   "document_analysis",
+  "video_analysis",
+  "tts",
+  "prompt_builder",
+  "moderation",
+  "embeddings",
   "admin_support",
 ]);
-const aiProvider = z.enum(["nvidia_nim", "google_gemini", "openai_compatible"]);
+const aiProvider = z.literal("openai_compatible");
 export const platformRouter = router({
   supportBaileysInstances: requirePlatform.query(async () => {
     const workspace = await ensurePlatformSupportWorkspace();
@@ -446,6 +456,24 @@ export const platformRouter = router({
       }
     }))
     .mutation(({ input, ctx }) => createPlatformAiConnection({ ...input, platformAdminId: ctx.platformAdmin.id })),
+  updateAiConnection: requirePlatformOperator
+    .input(z.object({
+      id: z.number().int().positive(),
+      name: z.string().trim().min(2).max(120),
+      capability: aiConnectionCapability,
+      provider: aiProvider,
+      baseUrl: z.string().trim().url().max(500),
+      model: z.string().trim().min(1).max(200),
+      apiKey: z.string().trim().max(4_000).optional(),
+      reason: reasonInput,
+    }).superRefine((input, ctx) => {
+      try {
+        assertAllowedLlmBaseUrl(input.provider, input.baseUrl);
+      } catch (error) {
+        ctx.addIssue({ code: "custom", message: error instanceof Error ? error.message : "Destino LLM não autorizado", path: ["baseUrl"] });
+      }
+    }))
+    .mutation(({ input, ctx }) => updatePlatformAiConnection({ ...input, platformAdminId: ctx.platformAdmin.id })),
 
   testAiConnection: requirePlatformOperator
     .input(z.object({ id: z.number().int().positive() }))
@@ -456,6 +484,15 @@ export const platformRouter = router({
     .mutation(({ input, ctx }) => deletePlatformAiConnection({ ...input, platformAdminId: ctx.platformAdmin.id })),
 
   globalAiConfig: requirePlatform.query(() => getPlatformGlobalAgentSnapshot()),
+  globalCapabilityPrompts: requirePlatform.query(() => getPlatformGlobalCapabilityPromptSnapshot()),
+  saveGlobalCapabilityPrompt: requirePlatformOperator
+    .input(z.object({
+      capability: z.string().trim().min(1).max(80),
+      instruction: z.string().max(30_000),
+      enabled: z.boolean(),
+      reason: reasonInput,
+    }))
+    .mutation(({ input, ctx }) => savePlatformGlobalCapabilityPromptAdmin({ ...input, platformAdminId: ctx.platformAdmin.id })),
   saveGlobalPrompt: requirePlatformOperator
     .input(
       z.object({
@@ -1092,6 +1129,23 @@ export const platformRouter = router({
     .mutation(async ({ input, ctx }) => {
       const session = await requireSession(input, ctx.platformAdmin.id, true);
       return resetPlatformWorkspace({
+        platformAdminId: ctx.platformAdmin.id,
+        workspaceId: input.workspaceId,
+        supportSessionId: session.id,
+        reason: input.reason,
+      });
+    }),
+
+  resetWorkspaceAiContext: requirePlatformOperator
+    .input(
+      supportSessionInput.extend({
+        confirmation: z.literal("RESETAR CONTEXTO DA IA"),
+        reason: reasonInput,
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const session = await requireSession(input, ctx.platformAdmin.id, true);
+      return resetPlatformWorkspaceAiContext({
         platformAdminId: ctx.platformAdmin.id,
         workspaceId: input.workspaceId,
         supportSessionId: session.id,

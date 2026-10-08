@@ -63,4 +63,25 @@ describe("interactive message contracts", () => {
       })
     ).not.toThrow();
   });
+
+  it("accepts Pix as its own interactive message type", () => {
+    expect(() =>
+      validateInteractiveMessage({
+        messageType: "pix",
+        content: "Pagamento",
+        metadata: {
+          pixKey: "financeiro@example.com",
+          pixKeyType: "EMAIL",
+          merchantName: "Forte Media",
+        },
+      })
+    ).not.toThrow();
+    expect(() =>
+      validateInteractiveMessage({
+        messageType: "pix",
+        content: "Pagamento",
+        metadata: {},
+      })
+    ).toThrow("exige pixKey");
+  });
 });

@@ -315,6 +315,19 @@ export function createBaileysAdapter(): BaileysAdapter {
         status: "sent" as const,
       };
     },
+    async updatePresence(input) {
+      if (!baseUrl || !apiKey) throw new Error("Gateway Baileys não configurado");
+      const response = await fetch(
+        `${baseUrl.replace(/\/$/, "")}/api/instances/${encodeURIComponent(input.instanceId)}/presence`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(Math.max(1_000, Number(process.env.BAILEYS_REQUEST_TIMEOUT_MS ?? 8_000))),
+          body: JSON.stringify({ phone: input.jid ?? normalizePhone(input.phone), presence: input.presence }),
+        }
+      );
+      if (!response.ok) throw new Error(`Gateway Baileys respondeu ${response.status}`);
+    },
     normalizeInbound: normalizeBaileysInbound,
   };
 }

@@ -7,6 +7,7 @@ import {
   gt,
   gte,
   inArray,
+  ilike,
   isNull,
   lt,
   lte,
@@ -20,6 +21,7 @@ import {
   appointmentsTable,
   agentEffects,
   agentRuns,
+  agentSimulationRuns,
   apiIdempotency,
   auditLogs,
   availability,
@@ -69,6 +71,9 @@ import {
   workspaceUsageBuckets,
   workspaceUserUsageBuckets,
   workspaces,
+  knowledgeDocuments,
+  knowledgeDocumentVersions,
+  knowledgeDocumentChunks,
   type InsertUser,
 } from "../drizzle/schema";
 import { messageDeliveryRank, type MessageDeliveryStatus } from "../shared/message-delivery";
@@ -137,8 +142,13 @@ import {
   type AgentProviderSettings,
 } from "./llm-providers";
 import { persistInboundMedia, resolvePrivateMediaUrl } from "./media-storage";
+import {
+  buildOnboardingKnowledgeMarkdown,
+  storeGeneratedKnowledgeDocument,
+} from "./knowledge-base";
 import { onboardingFollowUpFieldKeys } from "./onboarding-followups";
 import { fingerprintOnboardingProfile } from "./onboarding-review";
+import { getWorkspaceTemporalContextAt } from "./temporal-context";
 import {
   SecurityBackendUnavailableError,
   securityFailClosed,
@@ -3385,6 +3395,52 @@ export async function getWorkspaceSetting(workspaceId: number, key: string) {
   return result[0];
 }
 
+export type PlatformGlobalCapabilityPrompt = {
+  capability: string;
+  label: string;
+  instruction: string;
+  enabled: boolean;
+};
+
+const platformGlobalCapabilityPromptDefaults: PlatformGlobalCapabilityPrompt[] = [
+  { capability: "whatsapp_reply", label: "Resposta do WhatsApp", instruction: "Responda em português do Brasil, use o contexto do workspace e as ferramentas reais. Nunca invente disponibilidade, preço, serviço, duração, profissional, etapa do funil, orçamento ou confirmação. Para dados comerciais do lead use consultar_contexto_comercial; para histórico e cadastro use buscar_lead; para atualizar serviço, urgência, etapa, status ou dados do lead use atualizar_lead e registre nota quando houver informação operacional relevante. Para datas relativas, use obrigatoriamente a data atual e o fuso horário informados no contexto temporal; converta ‘hoje’, ‘amanhã’ e ‘ontem’ para datas ISO antes de consultar ou criar um agendamento. Antes de responder sobre serviço, preço, duração, profissional ou horário, use consultar_agenda; horário de expediente não é vaga. Só diga que um agendamento foi criado ou confirmado depois do sucesso de criar_agendamento. Confirme explicitamente serviço, profissional, data e horário antes de criar; nunca crie com dados inferidos. Quando o cliente enviar a data que faltava, retome o fluxo sem perguntar novamente a mesma informação. Por padrão responda em texto. Use enviar_interativo para botão, lista, carrossel, poll ou Pix somente quando houver opções/payload completos e a ação for apropriada; use áudio somente quando existir uma capability TTS habilitada e conteúdo sintetizado, caso contrário mantenha texto. Nunca troque o tipo de mensagem apenas por preferência visual.", enabled: true },
+  { capability: "audio_transcription", label: "Transcrição de áudio", instruction: "Transcreva o áudio fielmente, sem responder pelo cliente e sem adicionar informações que não estejam na gravação.", enabled: true },
+  { capability: "image_analysis", label: "Análise de imagem", instruction: "Descreva somente o que for relevante para a solicitação do cliente e sinalize incerteza quando a imagem não permitir uma conclusão segura.", enabled: true },
+  { capability: "document_analysis", label: "Análise de documento", instruction: "Extraia e resuma apenas informações legíveis e relevantes do documento; não invente campos ausentes.", enabled: true },
+  { capability: "video_analysis", label: "Análise de vídeo", instruction: "Analise o vídeo apenas para a finalidade solicitada, descrevendo evidências observáveis e separando fato de inferência.", enabled: true },
+  { capability: "tts", label: "Texto para voz", instruction: "Converta somente respostas finais aprovadas em áudio; preserve o conteúdo sem acrescentar fatos, respeite voz, formato, duração e limites configurados e mantenha fallback textual quando a síntese falhar.", enabled: true },
+  { capability: "prompt_builder", label: "Montador de prompt", instruction: "Transforme as respostas de onboarding em um prompt operacional estruturado, sem criar serviços, preços, políticas ou fatos que não foram fornecidos.", enabled: true },
+  { capability: "moderation", label: "Moderação", instruction: "Classifique o conteúdo conforme as regras de segurança e escopo configuradas. Bloqueie conteúdo fora do escopo antes de consumir a etapa de resposta quando a política determinar isso.", enabled: true },
+];
+
+export async function getPlatformGlobalCapabilityPrompts() {
+  const setting = await getWorkspaceSetting(PLATFORM_GLOBAL_AGENT_WORKSPACE_ID, "platform_global_capability_prompts");
+  let saved: Partial<Record<string, Partial<PlatformGlobalCapabilityPrompt>>> = {};
+  if (setting?.value) {
+    try {
+      const parsed = JSON.parse(setting.value) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) saved = parsed as typeof saved;
+    } catch { saved = {}; }
+  }
+  return platformGlobalCapabilityPromptDefaults.map(prompt => ({ ...prompt, ...(saved[prompt.capability] ?? {}), capability: prompt.capability, label: prompt.label }));
+}
+
+export async function savePlatformGlobalCapabilityPrompt(input: { capability: string; instruction: string; enabled: boolean }) {
+  if (!platformGlobalCapabilityPromptDefaults.some(prompt => prompt.capability === input.capability)) throw new Error("Capability de prompt global inválida");
+  const current = await getPlatformGlobalCapabilityPrompts();
+  const next = Object.fromEntries(current.map(prompt => [prompt.capability, prompt.capability === input.capability ? { instruction: input.instruction.trim(), enabled: input.enabled } : { instruction: prompt.instruction, enabled: prompt.enabled }]));
+  await upsertWorkspaceSetting(PLATFORM_GLOBAL_AGENT_WORKSPACE_ID, "platform_global_capability_prompts", JSON.stringify(next));
+  return getPlatformGlobalCapabilityPrompts();
+}
+
+export async function getWorkspaceTemporalContext(workspaceId: number) {
+  const db = await getDb();
+  const timezone = db
+    ? (await db.select({ timezone: workspaces.timezone }).from(workspaces).where(and(eq(workspaces.id, workspaceId), eq(workspaces.active, 1))).limit(1))[0]?.timezone
+    : undefined;
+  return getWorkspaceTemporalContextAt(new Date(), timezone || "America/Sao_Paulo");
+}
+
 export async function upsertWorkspaceSetting(
   workspaceId: number,
   key: string,
@@ -3662,6 +3718,24 @@ export async function publishOnboardingDraft(workspaceId: number, publishedBy: n
     else await tx.insert(workspaceSettings).values({ workspaceId, key: "onboarding_profile", value: serializedProfile, updatedAt: publishedAt });
     return [created];
   });
+  let knowledge: { status: "created" | "skipped"; documentId?: number } = { status: "skipped" };
+  try {
+    const markdown = buildOnboardingKnowledgeMarkdown({ profile, prompt, version: version.version });
+    const stored = await storeGeneratedKnowledgeDocument({
+      workspaceId,
+      title: `Base de conhecimento — ${profile.businessName}`,
+      markdown,
+    });
+    const createdKnowledge = await createKnowledgeDocumentRecord({
+      workspaceId,
+      createdByUserId: publishedBy,
+      ...stored,
+      sourceText: markdown,
+    });
+    knowledge = { status: "created", documentId: createdKnowledge.document.id };
+  } catch (error) {
+    console.error("[Knowledge] onboarding document generation failed", error);
+  }
   return {
     profile,
     version: version.version,
@@ -3669,6 +3743,7 @@ export async function publishOnboardingDraft(workspaceId: number, publishedBy: n
     published: true,
     checklist,
     stepAnswers: await listOnboardingStepAnswers(workspaceId),
+    knowledge,
   };
 }
 
@@ -3734,7 +3809,25 @@ export async function rollbackOnboardingPublishedVersion(
     return [inserted];
   });
   await persistOnboardingStepAnswers(workspaceId, profile, rolledBackBy);
-  return { version: created.version, rollbackOf: target.version, prompt, profile, published: true };
+  let knowledge: { status: "created" | "skipped"; documentId?: number } = { status: "skipped" };
+  try {
+    const markdown = buildOnboardingKnowledgeMarkdown({ profile, prompt, version: created.version });
+    const stored = await storeGeneratedKnowledgeDocument({
+      workspaceId,
+      title: `Base de conhecimento — ${profile.businessName}`,
+      markdown,
+    });
+    const createdKnowledge = await createKnowledgeDocumentRecord({
+      workspaceId,
+      createdByUserId: rolledBackBy,
+      ...stored,
+      sourceText: markdown,
+    });
+    knowledge = { status: "created", documentId: createdKnowledge.document.id };
+  } catch (error) {
+    console.error("[Knowledge] rollback document generation failed", error);
+  }
+  return { version: created.version, rollbackOf: target.version, prompt, profile, published: true, knowledge };
 }
 
 export async function getPublishedAiPrompt(workspaceId: number) {
@@ -3747,6 +3840,11 @@ export async function getPublishedAiPrompt(workspaceId: number) {
 }
 
 export type NativeAgentConfig = {
+  delivery: {
+    debounceMs: number;
+    waitMs: number;
+    presenceEnabled: boolean;
+  };
   enabled: boolean;
   killSwitch?: { paused: boolean; reason: string | null; changedAt: string | null };
   model: string;
@@ -3758,6 +3856,20 @@ export type NativeAgentConfig = {
 
 const PLATFORM_GLOBAL_AGENT_WORKSPACE_ID = 0;
 const NATIVE_AGENT_KILL_SWITCH_KEY = "native_agent_kill_switch";
+const DEFAULT_AGENT_DELIVERY = { debounceMs: 1500, waitMs: 650, presenceEnabled: true };
+
+function normalizeAgentDelivery(value: unknown) {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const bounded = (candidate: unknown, fallback: number, max: number) => {
+    const parsed = Number(candidate);
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(max, Math.round(parsed))) : fallback;
+  };
+  return {
+    debounceMs: bounded(raw.debounceMs, DEFAULT_AGENT_DELIVERY.debounceMs, 30_000),
+    waitMs: bounded(raw.waitMs, DEFAULT_AGENT_DELIVERY.waitMs, 10_000),
+    presenceEnabled: raw.presenceEnabled !== false,
+  };
+}
 
 export async function getNativeAgentKillSwitch(workspaceId: number) {
   const setting = await getWorkspaceSetting(workspaceId, NATIVE_AGENT_KILL_SWITCH_KEY);
@@ -3824,6 +3936,7 @@ async function readStoredNativeAgentConfig(workspaceId?: number) {
     ...globalStored,
     ...workspaceStored,
     llm: mergeAgentProviderSettings(workspaceStored.llm ?? globalStored.llm),
+    delivery: normalizeAgentDelivery(workspaceStored.delivery ?? globalStored.delivery),
   } as Partial<NativeAgentConfig>;
 }
 
@@ -3841,11 +3954,16 @@ async function applyPlatformAiConnections(settings: AgentProviderSettings) {
     audio_transcription: "audio",
     image_analysis: "vision",
     document_analysis: "document",
+    video_analysis: "video",
+    tts: "tts",
+    prompt_builder: "prompt_builder",
+    moderation: "moderation",
+    embeddings: "embeddings",
   } as const;
   const grouped = new Map<string, typeof rows>();
   for (const row of rows) {
     const routeKey = capabilityRoutes[row.capability as keyof typeof capabilityRoutes];
-    if (!routeKey || !["nvidia_nim", "google_gemini", "openai_compatible"].includes(row.provider)) continue;
+    if (!routeKey || row.provider !== "openai_compatible") continue;
     const current = grouped.get(routeKey) ?? [];
     current.push(row);
     grouped.set(routeKey, current);
@@ -3893,6 +4011,7 @@ async function readNativeAgentConfig(
     for (const fallback of route.fallback ?? [])
       if (fallback.apiKey) fallback.apiKey = maskProviderSecret(fallback.apiKey);
   return {
+    delivery: normalizeAgentDelivery(stored.delivery),
     enabled: stored.enabled !== false,
     model: stored.model?.trim() || process.env.AGENT_MODEL || "gpt-5-mini",
     systemPrompt: stored.systemPrompt ?? "",
@@ -4006,6 +4125,7 @@ export async function getNativeAgentRuntimeConfig(
   );
   const llm = await applyPlatformAiConnections(mergeAgentProviderSettings(stored.llm));
   return {
+    delivery: normalizeAgentDelivery(stored.delivery),
     enabled: !killSwitch.paused && (binding
       ? binding.enabled && stored.enabled !== false
       : stored.enabled !== false),
@@ -4034,6 +4154,7 @@ export async function saveNativeAgentConfig(
   if (!workspace) throw new Error("Workspace unavailable");
   const current = await getNativeAgentConfig(workspaceId);
   const next: NativeAgentConfig = {
+    delivery: normalizeAgentDelivery(input.delivery ?? current.delivery),
     enabled: input.enabled ?? current.enabled,
     model: input.model?.trim() || current.model,
     systemPrompt: input.systemPrompt ?? current.systemPrompt,
@@ -4102,11 +4223,13 @@ export async function saveNativeAgentConfig(
 }
 
 export async function savePlatformGlobalNativeAgentConfig(
-  input: Pick<NativeAgentConfig, "enabled" | "model" | "systemPrompt" | "maxSteps" | "llm">
+  input: Pick<NativeAgentConfig, "enabled" | "model" | "systemPrompt" | "maxSteps" | "llm"> &
+    Partial<Pick<NativeAgentConfig, "delivery">>
 ) {
   const current = await getNativeAgentRuntimeConfig(0);
   const next: NativeAgentConfig = {
     ...current,
+    delivery: normalizeAgentDelivery(input.delivery ?? current.delivery),
     enabled: input.enabled,
     model: input.model.trim() || current.model,
     systemPrompt: input.systemPrompt,
@@ -4751,6 +4874,399 @@ export async function resetWorkspaceDevelopmentData(workspaceId?: number) {
       .where(eq(workspaceSettings.workspaceId, workspace.id));
     return { workspaceId: workspace.id, reset: true };
   });
+}
+
+export async function resetWorkspaceAiConversationData(workspaceId: number) {
+  const db = await getDb();
+  const workspace = await getActiveWorkspaceById(workspaceId);
+  if (!db || !workspace) throw new Error("Workspace unavailable");
+
+  return db.transaction(async tx => {
+    const contactIds = sql`(SELECT "id" FROM "contacts" WHERE "workspaceId" = ${workspace.id})`;
+    const conversationIds = sql`(SELECT "id" FROM "conversations" WHERE "contactId" IN ${contactIds})`;
+    const opportunityIds = sql`(SELECT "id" FROM "opportunities" WHERE "workspaceId" = ${workspace.id})`;
+    const quoteIds = sql`(SELECT "id" FROM "quotes" WHERE "workspaceId" = ${workspace.id})`;
+
+    await tx.delete(messages).where(inArray(messages.conversationId, conversationIds));
+    await tx.delete(conversationReads).where(
+      and(eq(conversationReads.workspaceId, workspace.id), inArray(conversationReads.conversationId, conversationIds))
+    );
+    await tx.delete(contactNotes).where(
+      and(eq(contactNotes.workspaceId, workspace.id), eq(contactNotes.authorType, "ai"))
+    );
+    await tx.delete(agentRuns).where(eq(agentRuns.workspaceId, workspace.id));
+    await tx.delete(agentEffects).where(eq(agentEffects.workspaceId, workspace.id));
+    await tx.delete(agentSimulationRuns).where(eq(agentSimulationRuns.workspaceId, workspace.id));
+    await tx.delete(domainEvents).where(eq(domainEvents.workspaceId, workspace.id));
+
+    await tx.delete(quoteReceipts).where(
+      and(eq(quoteReceipts.workspaceId, workspace.id), inArray(quoteReceipts.quoteId, quoteIds))
+    );
+    await tx.delete(quotePayments).where(
+      and(eq(quotePayments.workspaceId, workspace.id), inArray(quotePayments.quoteId, quoteIds))
+    );
+    await tx.delete(quoteApprovalHistory).where(
+      and(eq(quoteApprovalHistory.workspaceId, workspace.id), inArray(quoteApprovalHistory.quoteId, quoteIds))
+    );
+    await tx.delete(quoteItems).where(
+      and(eq(quoteItems.workspaceId, workspace.id), inArray(quoteItems.quoteId, quoteIds))
+    );
+    await tx.delete(quotes).where(eq(quotes.workspaceId, workspace.id));
+
+    await tx.delete(opportunityFollowUps).where(
+      and(eq(opportunityFollowUps.workspaceId, workspace.id), inArray(opportunityFollowUps.opportunityId, opportunityIds))
+    );
+    await tx.delete(opportunityStageHistory).where(
+      and(eq(opportunityStageHistory.workspaceId, workspace.id), inArray(opportunityStageHistory.opportunityId, opportunityIds))
+    );
+    await tx.delete(opportunities).where(eq(opportunities.workspaceId, workspace.id));
+    await tx.delete(appointmentsTable).where(
+      and(eq(appointmentsTable.workspaceId, workspace.id), inArray(appointmentsTable.contactId, contactIds))
+    );
+
+    await tx.delete(conversations).where(inArray(conversations.contactId, contactIds));
+    await tx.update(contacts).set({
+      serviceRequested: null,
+      urgency: "Média",
+      stage: "Novo contato",
+      quoteCents: 0,
+      unreadCount: 0,
+      lastMessagePreview: null,
+      lastMessageAt: null,
+      updatedAt: new Date(),
+    }).where(eq(contacts.workspaceId, workspace.id));
+    await tx.update(leads).set({ lastActivityAt: null, updatedAt: new Date() }).where(eq(leads.workspaceId, workspace.id));
+
+    return {
+      workspaceId: workspace.id,
+      reset: true,
+      preserved: ["workspace", "instances", "contacts", "leads", "human_notes", "audit_logs"],
+      scope: ["messages", "conversation_context", "agent_runs", "agent_effects", "ai_notes", "appointments", "quotes", "funnel"],
+    };
+  });
+}
+
+export async function createKnowledgeDocumentRecord(input: {
+  workspaceId: number;
+  createdByUserId: number;
+  title: string;
+  source: "onboarding_generated" | "manual_upload";
+  originalFileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  storageKey: string;
+  sourceText?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_UNAVAILABLE");
+  const existing = await db.select({ id: knowledgeDocuments.id })
+    .from(knowledgeDocuments)
+    .where(and(eq(knowledgeDocuments.workspaceId, input.workspaceId), eq(knowledgeDocuments.sha256, input.sha256)))
+    .limit(1);
+  if (existing[0]) throw new Error("KNOWLEDGE_DOCUMENT_DUPLICATE");
+  return db.transaction(async tx => {
+    const [document] = await tx.insert(knowledgeDocuments).values({
+      workspaceId: input.workspaceId,
+      title: input.title,
+      source: input.source,
+      status: "uploaded",
+      originalFileName: input.originalFileName,
+      mimeType: input.mimeType,
+      sizeBytes: input.sizeBytes,
+      sha256: input.sha256,
+      storageKey: input.storageKey,
+      createdByUserId: input.createdByUserId,
+    }).returning();
+    const [version] = await tx.insert(knowledgeDocumentVersions).values({
+      workspaceId: input.workspaceId,
+      documentId: document.id,
+      version: 1,
+      sourceText: input.sourceText ?? "",
+      status: "uploaded",
+    }).returning();
+    return { document, version };
+  });
+}
+
+export async function listKnowledgeDocuments(workspaceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const documents = await db.select({
+    id: knowledgeDocuments.id,
+    title: knowledgeDocuments.title,
+    source: knowledgeDocuments.source,
+    status: knowledgeDocuments.status,
+    originalFileName: knowledgeDocuments.originalFileName,
+    mimeType: knowledgeDocuments.mimeType,
+    sizeBytes: knowledgeDocuments.sizeBytes,
+    createdAt: knowledgeDocuments.createdAt,
+    updatedAt: knowledgeDocuments.updatedAt,
+  }).from(knowledgeDocuments)
+    .where(eq(knowledgeDocuments.workspaceId, workspaceId))
+    .orderBy(desc(knowledgeDocuments.updatedAt), desc(knowledgeDocuments.id));
+  return Promise.all(documents.map(async document => {
+    const version = (await db.select({
+      id: knowledgeDocumentVersions.id,
+      version: knowledgeDocumentVersions.version,
+      status: knowledgeDocumentVersions.status,
+      attemptCount: knowledgeDocumentVersions.attemptCount,
+      lastError: knowledgeDocumentVersions.lastError,
+      errorMessage: knowledgeDocumentVersions.errorMessage,
+      createdAt: knowledgeDocumentVersions.createdAt,
+    }).from(knowledgeDocumentVersions)
+      .where(and(
+        eq(knowledgeDocumentVersions.workspaceId, workspaceId),
+        eq(knowledgeDocumentVersions.documentId, document.id),
+      ))
+      .orderBy(desc(knowledgeDocumentVersions.version), desc(knowledgeDocumentVersions.id))
+      .limit(1))[0];
+    const chunkCount = version
+      ? Number((await db.select({ count: sql<number>`count(*)` }).from(knowledgeDocumentChunks)
+          .where(and(
+            eq(knowledgeDocumentChunks.workspaceId, workspaceId),
+            eq(knowledgeDocumentChunks.versionId, version.id),
+          )))[0]?.count ?? 0)
+      : 0;
+    return { ...document, version, chunkCount };
+  }));
+}
+
+export async function getKnowledgeDocument(workspaceId: number, documentId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const document = (await db.select({
+    id: knowledgeDocuments.id,
+    title: knowledgeDocuments.title,
+    source: knowledgeDocuments.source,
+    status: knowledgeDocuments.status,
+    originalFileName: knowledgeDocuments.originalFileName,
+    mimeType: knowledgeDocuments.mimeType,
+    sizeBytes: knowledgeDocuments.sizeBytes,
+    createdAt: knowledgeDocuments.createdAt,
+    updatedAt: knowledgeDocuments.updatedAt,
+  }).from(knowledgeDocuments).where(and(
+    eq(knowledgeDocuments.id, documentId),
+    eq(knowledgeDocuments.workspaceId, workspaceId),
+  )).limit(1))[0];
+  if (!document) return null;
+  const version = (await db.select({
+    id: knowledgeDocumentVersions.id,
+    version: knowledgeDocumentVersions.version,
+    sourceText: knowledgeDocumentVersions.sourceText,
+    status: knowledgeDocumentVersions.status,
+    attemptCount: knowledgeDocumentVersions.attemptCount,
+    lastError: knowledgeDocumentVersions.lastError,
+    errorMessage: knowledgeDocumentVersions.errorMessage,
+    createdAt: knowledgeDocumentVersions.createdAt,
+  }).from(knowledgeDocumentVersions).where(and(
+    eq(knowledgeDocumentVersions.documentId, documentId),
+    eq(knowledgeDocumentVersions.workspaceId, workspaceId),
+  )).orderBy(desc(knowledgeDocumentVersions.version), desc(knowledgeDocumentVersions.id)).limit(1))[0];
+  return { ...document, version: version ?? null };
+}
+
+export async function retryKnowledgeDocument(workspaceId: number, documentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_UNAVAILABLE");
+  return db.transaction(async tx => {
+    const document = (await tx.select({ id: knowledgeDocuments.id, status: knowledgeDocuments.status })
+      .from(knowledgeDocuments)
+      .where(and(eq(knowledgeDocuments.id, documentId), eq(knowledgeDocuments.workspaceId, workspaceId)))
+      .limit(1))[0];
+    if (!document) throw new Error("KNOWLEDGE_DOCUMENT_NOT_FOUND");
+    const [version] = await tx.update(knowledgeDocumentVersions).set({
+      status: "uploaded",
+      lastError: null,
+      errorMessage: null,
+    }).where(and(
+      eq(knowledgeDocumentVersions.documentId, documentId),
+      eq(knowledgeDocumentVersions.workspaceId, workspaceId),
+      eq(knowledgeDocumentVersions.status, "failed"),
+    )).returning();
+    if (!version) throw new Error("KNOWLEDGE_DOCUMENT_NOT_FAILED");
+    await tx.update(knowledgeDocuments).set({ status: "uploaded", updatedAt: new Date() })
+      .where(and(eq(knowledgeDocuments.id, documentId), eq(knowledgeDocuments.workspaceId, workspaceId)));
+    return { documentId, versionId: version.id, status: "uploaded" as const };
+  });
+}
+
+export async function archiveKnowledgeDocument(workspaceId: number, documentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_UNAVAILABLE");
+  const [document] = await db.update(knowledgeDocuments).set({ status: "archived", updatedAt: new Date() })
+    .where(and(eq(knowledgeDocuments.id, documentId), eq(knowledgeDocuments.workspaceId, workspaceId)))
+    .returning({ id: knowledgeDocuments.id });
+  if (!document) throw new Error("KNOWLEDGE_DOCUMENT_NOT_FOUND");
+  await db.update(knowledgeDocumentVersions).set({ status: "archived" })
+    .where(and(eq(knowledgeDocumentVersions.documentId, documentId), eq(knowledgeDocumentVersions.workspaceId, workspaceId)));
+  return { documentId: document.id, status: "archived" as const };
+}
+
+export async function claimKnowledgeDocumentVersions(limit = 2, retryFailed = false) {
+  const db = await getDb();
+  if (!db) return [];
+  const claimed: Array<typeof knowledgeDocumentVersions.$inferSelect> = [];
+  for (let index = 0; index < Math.max(1, Math.min(limit, 20)); index += 1) {
+    const available = retryFailed
+      ? or(eq(knowledgeDocumentVersions.status, "uploaded"), eq(knowledgeDocumentVersions.status, "failed"))
+      : eq(knowledgeDocumentVersions.status, "uploaded");
+    const candidate = (await db.select().from(knowledgeDocumentVersions)
+      .where(available)
+      .orderBy(asc(knowledgeDocumentVersions.id)).limit(1))[0];
+    if (!candidate) break;
+    const [updated] = await db.update(knowledgeDocumentVersions).set({
+      status: "processing",
+      attemptCount: candidate.attemptCount + 1,
+      lastError: null,
+    }).where(and(
+      eq(knowledgeDocumentVersions.id, candidate.id),
+      available,
+    )).returning();
+    if (updated) claimed.push(updated);
+  }
+  return claimed;
+}
+
+export async function completeKnowledgeDocumentIngestion(input: {
+  versionId: number;
+  documentId: number;
+  workspaceId: number;
+  chunks: Array<{
+    chunkIndex: number;
+    text: string;
+    heading: string | null;
+    pageNumber: number | null;
+    tokenCount: number;
+    contentHash: string;
+    embedding: number[];
+    embeddingModel: string;
+  }>;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_UNAVAILABLE");
+  await db.transaction(async tx => {
+    await tx.delete(knowledgeDocumentChunks).where(and(
+      eq(knowledgeDocumentChunks.workspaceId, input.workspaceId),
+      eq(knowledgeDocumentChunks.versionId, input.versionId),
+    ));
+    if (input.chunks.length) await tx.insert(knowledgeDocumentChunks).values(input.chunks.map(chunk => ({
+      workspaceId: input.workspaceId,
+      versionId: input.versionId,
+      ...chunk,
+    })));
+    await tx.update(knowledgeDocumentVersions).set({ status: "indexed", lastError: null }).where(and(
+      eq(knowledgeDocumentVersions.id, input.versionId),
+      eq(knowledgeDocumentVersions.workspaceId, input.workspaceId),
+    ));
+    await tx.update(knowledgeDocuments).set({ status: "indexed", updatedAt: new Date() }).where(and(
+      eq(knowledgeDocuments.id, input.documentId),
+      eq(knowledgeDocuments.workspaceId, input.workspaceId),
+    ));
+  });
+}
+
+export async function failKnowledgeDocumentIngestion(versionId: number, workspaceId: number, errorMessage: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(knowledgeDocumentVersions).set({
+    status: "failed",
+    lastError: errorMessage.slice(0, 500),
+    errorMessage: errorMessage.slice(0, 500),
+  }).where(and(eq(knowledgeDocumentVersions.id, versionId), eq(knowledgeDocumentVersions.workspaceId, workspaceId)));
+}
+
+export async function searchKnowledgeChunks(input: {
+  workspaceId: number;
+  embedding: number[];
+  limit?: number;
+  minSimilarity?: number;
+}) {
+  const db = await getDb();
+  if (!db || !input.embedding.length) return [];
+  const limit = Math.max(1, Math.min(input.limit ?? 6, 12));
+  const distance = sql<number>`${knowledgeDocumentChunks.embedding}::halfvec(2048) <=> ${JSON.stringify(input.embedding)}::halfvec(2048)`;
+  const similarity = sql<number>`1 - (${distance})`;
+  const baseWhere = and(
+    eq(knowledgeDocumentChunks.workspaceId, input.workspaceId),
+    gte(similarity, input.minSimilarity ?? 0.25),
+  );
+  const semantic = await db.select({
+    chunkId: knowledgeDocumentChunks.id,
+    versionId: knowledgeDocumentChunks.versionId,
+    text: knowledgeDocumentChunks.text,
+    heading: knowledgeDocumentChunks.heading,
+    pageNumber: knowledgeDocumentChunks.pageNumber,
+    similarity,
+    isCritical: sql<boolean>`false`,
+  }).from(knowledgeDocumentChunks)
+    .innerJoin(knowledgeDocumentVersions, and(
+      eq(knowledgeDocumentVersions.id, knowledgeDocumentChunks.versionId),
+      eq(knowledgeDocumentVersions.workspaceId, knowledgeDocumentChunks.workspaceId),
+      or(
+        eq(knowledgeDocumentVersions.status, "indexed"),
+        eq(knowledgeDocumentVersions.status, "published"),
+      ),
+    ))
+    .innerJoin(knowledgeDocuments, and(
+      eq(knowledgeDocuments.id, knowledgeDocumentVersions.documentId),
+      eq(knowledgeDocuments.workspaceId, knowledgeDocumentVersions.workspaceId),
+      or(
+        eq(knowledgeDocuments.status, "indexed"),
+        eq(knowledgeDocuments.status, "published"),
+      ),
+    ))
+    .where(baseWhere)
+    .orderBy(desc(similarity), asc(knowledgeDocumentChunks.id))
+    .limit(limit);
+  const critical = await db.select({
+    chunkId: knowledgeDocumentChunks.id,
+    versionId: knowledgeDocumentChunks.versionId,
+    text: knowledgeDocumentChunks.text,
+    heading: knowledgeDocumentChunks.heading,
+    pageNumber: knowledgeDocumentChunks.pageNumber,
+    similarity,
+    isCritical: sql<boolean>`true`,
+  }).from(knowledgeDocumentChunks)
+    .innerJoin(knowledgeDocumentVersions, and(
+      eq(knowledgeDocumentVersions.id, knowledgeDocumentChunks.versionId),
+      eq(knowledgeDocumentVersions.workspaceId, knowledgeDocumentChunks.workspaceId),
+      or(
+        eq(knowledgeDocumentVersions.status, "indexed"),
+        eq(knowledgeDocumentVersions.status, "published"),
+      ),
+    ))
+    .innerJoin(knowledgeDocuments, and(
+      eq(knowledgeDocuments.id, knowledgeDocumentVersions.documentId),
+      eq(knowledgeDocuments.workspaceId, knowledgeDocumentVersions.workspaceId),
+      or(
+        eq(knowledgeDocuments.status, "indexed"),
+        eq(knowledgeDocuments.status, "published"),
+      ),
+    ))
+    .where(and(
+      baseWhere,
+      or(
+        ilike(knowledgeDocumentChunks.heading, "%regra%"),
+        ilike(knowledgeDocumentChunks.heading, "%política%"),
+        ilike(knowledgeDocumentChunks.heading, "%cancel%"),
+        ilike(knowledgeDocumentChunks.heading, "%humano%"),
+        ilike(knowledgeDocumentChunks.heading, "%proib%"),
+        ilike(knowledgeDocumentChunks.text, "%não informe%"),
+        ilike(knowledgeDocumentChunks.text, "%nunca invente%"),
+        ilike(knowledgeDocumentChunks.text, "%transfer% humano%"),
+      ),
+    ))
+    .orderBy(desc(similarity), asc(knowledgeDocumentChunks.id))
+    .limit(Math.min(3, limit));
+  const merged = new Map<number, (typeof semantic)[number]>();
+  for (const row of [...critical, ...semantic]) {
+    const current = merged.get(row.chunkId);
+    merged.set(row.chunkId, current ? { ...current, isCritical: current.isCritical || row.isCritical } : row);
+  }
+  return Array.from(merged.values())
+    .sort((a, b) => Number(b.isCritical) - Number(a.isCritical) || Number(b.similarity) - Number(a.similarity))
+    .slice(0, Math.min(limit + 2, 12));
 }
 
 export async function listWorkspaceMembers(slug = DEMO_WORKSPACE_SLUG) {
@@ -6076,7 +6592,8 @@ export async function sendManualMessage(
     | "button"
     | "list"
     | "poll"
-    | "carousel" = "text",
+    | "carousel"
+    | "pix" = "text",
   messageMetadata?: Record<string, unknown>,
   instanceIds?: readonly string[] | null
 ) {
@@ -8057,6 +8574,7 @@ export async function queueOutboundMessage(
     | "poll"
     | "list"
     | "carousel"
+    | "pix"
     | "react"
     | "album"
     | "event" = "text",
@@ -8136,8 +8654,17 @@ export async function queueOutboundMessage(
     )
       throw new Error("Invalid or non-private outbound media reference");
   }
+  const agentDelivery = senderType === "ai"
+    ? (await getNativeAgentRuntimeConfig(workspaceId)).delivery
+    : undefined;
   const resolvedMetadata = {
     ...metadata,
+    ...(agentDelivery
+      ? {
+          deliveryWaitMs: agentDelivery.waitMs,
+          deliveryPresenceEnabled: agentDelivery.presenceEnabled,
+        }
+      : {}),
     ...(!metadata?.jid && inboundJid ? { jid: inboundJid } : {}),
   };
   const storedContent = isOutboundMedia
@@ -8285,6 +8812,14 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
           !(await getBaileysInstance(item.workspaceId, instanceId)))
       )
         throw new Error("Instância Baileys inválida para este workspace");
+      const deliveryWaitMs = Math.max(0, Math.min(10_000, Number(item.message.metadata?.deliveryWaitMs ?? 0)));
+      const deliveryPresenceEnabled = item.message.metadata?.deliveryPresenceEnabled === true;
+      const presence = item.message.messageType === "audio" ? "recording" : "composing";
+      const presenceJid = typeof item.message.metadata?.jid === "string" ? item.message.metadata.jid : undefined;
+      if (selectedProvider === "baileys" && deliveryPresenceEnabled && adapter.updatePresence) {
+        await adapter.updatePresence({ instanceId: instanceId!, phone: item.phone, presence, jid: presenceJid }).catch(() => undefined);
+      }
+      if (deliveryWaitMs > 0) await new Promise(resolve => setTimeout(resolve, deliveryWaitMs));
       let sendContent = item.message.content;
       let sendMetadata = item.message.metadata ?? undefined;
       if (["image", "audio", "video", "document"].includes(item.message.messageType)) {
@@ -8315,6 +8850,9 @@ export async function processQueuedMessagesOnce(limit = 10, maxAttempts = 3) {
         instanceId,
         provider: selectedProvider,
       });
+      if (selectedProvider === "baileys" && deliveryPresenceEnabled && adapter.updatePresence) {
+        await adapter.updatePresence({ instanceId: instanceId!, phone: item.phone, presence: "paused", jid: presenceJid }).catch(() => undefined);
+      }
       await db
         .update(messages)
         .set({
@@ -8761,6 +9299,7 @@ export async function leadMemoryOperation(
 export async function recoverProcessingDomainEvents() {
   const db = await getDb();
   if (!db) return 0;
+  const databaseNow = sql<Date>`now()`;
   const recovered = await db
     .update(domainEvents)
     .set({
@@ -8775,7 +9314,7 @@ export async function recoverProcessingDomainEvents() {
         eq(domainEvents.status, "processing"),
         or(
           isNull(domainEvents.leaseUntil),
-          lt(domainEvents.leaseUntil, new Date())
+          lt(domainEvents.leaseUntil, databaseNow)
         )
       )
     )
@@ -8791,6 +9330,7 @@ export async function processDomainEventsOnce(
   const db = await getDb();
   if (!db) return { processed: 0, delivered: 0, failed: 0, skipped: true };
   const now = new Date();
+  const databaseNow = sql<Date>`now()`;
   const pending = await db
     .select()
     .from(domainEvents)
@@ -8799,11 +9339,11 @@ export async function processDomainEventsOnce(
         or(
           and(
             eq(domainEvents.status, "pending"),
-            lte(domainEvents.availableAt, now)
+            lte(domainEvents.availableAt, databaseNow)
           ),
           and(
             eq(domainEvents.status, "processing"),
-            or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, now))
+            or(isNull(domainEvents.leaseUntil), lt(domainEvents.leaseUntil, databaseNow))
           )
         ),
         ...(workspaceId !== undefined
@@ -8816,11 +9356,6 @@ export async function processDomainEventsOnce(
 
   let delivered = 0;
   let failed = 0;
-  const debounceMsRaw = Number(process.env.AGENT_DEBOUNCE_MS ?? 1500);
-  const debounceMs =
-    Number.isFinite(debounceMsRaw) && debounceMsRaw >= 0
-      ? Math.min(debounceMsRaw, 30_000)
-      : 1500;
   for (const item of pending) {
     const leaseUntil = new Date(Date.now() + DOMAIN_EVENT_LEASE_MS);
     const claimed = await db
@@ -8837,16 +9372,16 @@ export async function processDomainEventsOnce(
         and(
           eq(domainEvents.id, item.id),
           or(
-            and(
-              eq(domainEvents.status, "pending"),
-              lte(domainEvents.availableAt, now)
-            ),
-            and(
-              eq(domainEvents.status, "processing"),
-              or(
-                isNull(domainEvents.leaseUntil),
-                lt(domainEvents.leaseUntil, now)
-              )
+          and(
+            eq(domainEvents.status, "pending"),
+            lte(domainEvents.availableAt, databaseNow)
+          ),
+          and(
+            eq(domainEvents.status, "processing"),
+            or(
+              isNull(domainEvents.leaseUntil),
+              lt(domainEvents.leaseUntil, databaseNow)
+            )
             )
           )
         )
@@ -8856,6 +9391,8 @@ export async function processDomainEventsOnce(
 
     try {
       const eventPayload = JSON.parse(item.payload) as Record<string, unknown>;
+      const delivery = (await getNativeAgentRuntimeConfig(item.workspaceId)).delivery;
+      const debounceMs = delivery.debounceMs;
       if (item.eventType === "message.received") {
         const contactId = Number(eventPayload.contactId ?? 0);
         const conversationId = Number(eventPayload.conversationId ?? 0);

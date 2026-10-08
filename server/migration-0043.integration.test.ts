@@ -65,7 +65,7 @@ describe.skipIf(!localDatabaseUrl)("migration 0043 Baileys-only purge", () => {
         "value" text
       );
     `);
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await testClient?.end().catch(() => undefined);
@@ -75,7 +75,7 @@ describe.skipIf(!localDatabaseUrl)("migration 0043 Baileys-only purge", () => {
         .catch(() => undefined);
       await adminClient.end().catch(() => undefined);
     }
-  });
+  }, 30_000);
 
   it("purges non-Baileys provider rows and leaves the schema Baileys-only", async () => {
     const client = testClient;

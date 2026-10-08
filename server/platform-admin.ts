@@ -29,12 +29,14 @@ import {
   getActiveWorkspaceById,
   getDb,
   getPlatformGlobalNativeAgentConfig,
+  getPlatformGlobalCapabilityPrompts,
   getPlatformNativeAgentConfig,
   getNativeAgentRuntimeConfig,
   getWorkspaceById,
   ensureBaileysChannel,
   createBaileysInstance,
   getBaileysInstance,
+  resetWorkspaceAiConversationData,
   resetWorkspaceDevelopmentData,
   getWorkspaceUsageSnapshot,
   getOnboardingGovernance,
@@ -56,6 +58,7 @@ import {
   markConversationRead,
   saveNativeAgentConfig,
   savePlatformGlobalNativeAgentConfig,
+  savePlatformGlobalCapabilityPrompt,
   getWorkspaceSetting,
   upsertWorkspaceSetting,
 } from "./db";
@@ -77,11 +80,14 @@ import {
 import { ENV } from "./_core/env";
 import {
   encryptProviderSecret,
+  invokeConfiguredEmbeddings,
   invokeConfiguredLLM,
+  invokeConfiguredTTS,
   maskProviderSecret,
   type AgentProviderSettings,
 } from "./llm-providers";
-import { validateLlmTarget } from "./llm-url-security";
+import { isConfiguredLocalAiTarget, validateLlmTarget } from "./llm-url-security";
+import { transcribeAudio } from "./audio-transcription";
 import { validateInteractiveMessage } from "./interactive-messages";
 import { buildSaaSBillingBoundary } from "./saas-billing";
 
@@ -100,6 +106,7 @@ export type PlatformAdminAccess = {
 };
 
 export type SafeAgentConfig = {
+  delivery?: NativeAgentConfig["delivery"];
   enabled: boolean;
   model: string;
   systemPrompt: string;
@@ -329,6 +336,7 @@ function safeProviderSettings(
 
 export function safeAgentConfig(config: NativeAgentConfig): SafeAgentConfig {
   return {
+    delivery: config.delivery,
     enabled: config.enabled,
     model: config.model,
     systemPrompt: config.systemPrompt,
@@ -338,8 +346,39 @@ export function safeAgentConfig(config: NativeAgentConfig): SafeAgentConfig {
   };
 }
 
+function safeDraftAgentConfig(config: SafeAgentConfig): NativeAgentConfig {
+  return {
+    ...config,
+    delivery: config.delivery ?? { debounceMs: 1500, waitMs: 650, presenceEnabled: true },
+  };
+}
+
 export async function getPlatformGlobalAgentSnapshot() {
   return safeAgentConfig(await getPlatformGlobalNativeAgentConfig());
+}
+
+export async function getPlatformGlobalCapabilityPromptSnapshot() {
+  return getPlatformGlobalCapabilityPrompts();
+}
+
+export async function savePlatformGlobalCapabilityPromptAdmin(input: {
+  platformAdminId: number;
+  capability: string;
+  instruction: string;
+  enabled: boolean;
+  reason: string;
+}) {
+  const before = await getPlatformGlobalCapabilityPrompts();
+  const saved = await savePlatformGlobalCapabilityPrompt(input);
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    action: "platform_global_capability_prompt_updated",
+    reason: input.reason,
+    summary: `Prompt global da capability ${input.capability} atualizado`,
+    before: before.find(prompt => prompt.capability === input.capability) ?? null,
+    after: saved.find(prompt => prompt.capability === input.capability) ?? null,
+  });
+  return saved;
 }
 
 const PLATFORM_INSTANCE_PROMPT_BINDINGS_KEY = "platform_instance_prompt_bindings";
@@ -551,11 +590,13 @@ export type PlatformAiCapability =
   | "audio_transcription"
   | "image_analysis"
   | "document_analysis"
+  | "video_analysis"
+  | "tts"
+  | "prompt_builder"
+  | "moderation"
+  | "embeddings"
   | "admin_support";
-export type PlatformAiProvider =
-  | "nvidia_nim"
-  | "google_gemini"
-  | "openai_compatible";
+export type PlatformAiProvider = "openai_compatible";
 
 function safeAiConnection(row: typeof platformAiConnections.$inferSelect) {
   return {
@@ -634,6 +675,49 @@ export async function createPlatformAiConnection(input: {
   return safe;
 }
 
+export async function updatePlatformAiConnection(input: {
+  platformAdminId: number;
+  id: number;
+  name: string;
+  capability: PlatformAiCapability;
+  provider: PlatformAiProvider;
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+  reason: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const existing = (await db.select().from(platformAiConnections).where(eq(platformAiConnections.id, input.id)).limit(1))[0];
+  if (!existing) throw new Error("Conexão de IA não encontrada");
+  const baseUrl = await assertAiBaseUrl(input.provider, input.baseUrl.trim());
+  const name = input.name.trim();
+  const model = input.model.trim();
+  if (!name || !model) throw new Error("Preencha nome e modelo");
+  const apiKey = input.apiKey?.trim();
+  const [updated] = await db.update(platformAiConnections).set({
+    name,
+    capability: input.capability,
+    provider: input.provider,
+    baseUrl,
+    model,
+    ...(apiKey ? { encryptedApiKey: encryptProviderSecret(apiKey) } : {}),
+    status: "pending",
+    lastError: null,
+    updatedAt: new Date(),
+  }).where(eq(platformAiConnections.id, input.id)).returning();
+  if (!updated) throw new Error("Não foi possível atualizar a conexão de IA");
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    action: "platform_ai_connection_updated",
+    reason: input.reason,
+    summary: `Conexão de IA ${name} atualizada`,
+    before: safeAiConnection(existing),
+    after: safeAiConnection(updated),
+  });
+  return safeAiConnection(updated);
+}
+
 export async function deletePlatformAiConnection(input: {
   platformAdminId: number;
   id: number;
@@ -654,11 +738,36 @@ export async function deletePlatformAiConnection(input: {
   return true;
 }
 
-function capabilityToAgentCapability(capability: PlatformAiCapability): "text" | "vision" | "audio" | "document" {
+function capabilityToAgentCapability(capability: PlatformAiCapability): "text" | "vision" | "audio" | "document" | "video" | "prompt_builder" | "moderation" | "embeddings" | "tts" {
   if (capability === "audio_transcription") return "audio";
   if (capability === "image_analysis") return "vision";
   if (capability === "document_analysis") return "document";
+  if (capability === "video_analysis") return "video";
+  if (capability === "tts") return "tts";
+  if (capability === "prompt_builder") return "prompt_builder";
+  if (capability === "moderation") return "moderation";
+  if (capability === "embeddings") return "embeddings";
   return "text";
+}
+
+function syntheticSilentWavDataUrl() {
+  const sampleRate = 16_000;
+  const pcm = Buffer.alloc(sampleRate * 2 / 4);
+  const wav = Buffer.alloc(44 + pcm.length);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(pcm.length, 40);
+  pcm.copy(wav, 44);
+  return `data:audio/wav;base64,${wav.toString("base64")}`;
 }
 
 export async function testPlatformAiConnection(input: { platformAdminId: number; id: number }) {
@@ -672,22 +781,40 @@ export async function testPlatformAiConnection(input: { platformAdminId: number;
   try {
     const settings: AgentProviderSettings = {
       providers: {
-        nvidia_nim: { enabled: provider === "nvidia_nim", baseUrl: row.baseUrl, apiKey: row.encryptedApiKey },
-        google_gemini: { enabled: provider === "google_gemini", baseUrl: row.baseUrl, apiKey: row.encryptedApiKey },
-        openai_compatible: { enabled: provider === "openai_compatible", baseUrl: row.baseUrl, apiKey: row.encryptedApiKey },
+        [provider]: { enabled: true, baseUrl: row.baseUrl, apiKey: row.encryptedApiKey },
       },
       routing: {
         text: { provider, model: row.model },
         vision: { provider, model: row.model },
         audio: { provider, model: row.model },
         document: { provider, model: row.model },
+        video: { provider, model: row.model },
+        tts: { provider, model: row.model },
+        prompt_builder: { provider, model: row.model },
+        moderation: { provider, model: row.model },
+        embeddings: { provider, model: row.model },
       },
     };
-    await invokeConfiguredLLM(settings, capability, {
-      model: row.model,
-      messages: [{ role: "user", content: "Responda apenas com OK." }],
-      maxTokens: 5,
-    });
+    if (capability === "embeddings") {
+      const result = await invokeConfiguredEmbeddings(settings, { texts: ["Teste de conexão do Forte Panel."], model: row.model, inputType: "query" });
+      if (result.embeddings.some(embedding => embedding.length !== 2048))
+        throw new Error("O modelo de embeddings deve devolver vetores de 2048 dimensões para este índice RAG.");
+    }
+    else if (capability === "tts")
+      await invokeConfiguredTTS(settings, { model: row.model, text: "Teste de conexão do Forte Panel." });
+    else if (capability === "audio" && isConfiguredLocalAiTarget(provider, row.baseUrl))
+      await transcribeAudio(settings, {
+        mediaUrl: syntheticSilentWavDataUrl(),
+        mimeType: "audio/wav",
+        model: row.model,
+        allowEmpty: true,
+      });
+    else
+      await invokeConfiguredLLM(settings, capability, {
+        model: row.model,
+        messages: [{ role: "user", content: "Responda apenas com OK." }],
+        maxTokens: 5,
+      });
     await db.update(platformAiConnections).set({ status: "validated", lastTestedAt: new Date(), lastError: null, updatedAt: new Date() }).where(eq(platformAiConnections.id, row.id));
     const result = { ready: true, latencyMs: Date.now() - startedAt, message: "Conexão validada com sucesso." };
     await recordPlatformAudit({ platformAdminId: input.platformAdminId, action: "platform_ai_connection_tested", reason: `Teste da conexão ${row.name}`, summary: `${row.name} respondeu corretamente`, after: result });
@@ -767,6 +894,25 @@ export async function resetPlatformWorkspace(input: {
     action: "workspace_development_reset",
     reason: input.reason,
     summary: "Dados operacionais do workspace apagados pelo console administrativo",
+    after: result,
+  });
+  return result;
+}
+
+export async function resetPlatformWorkspaceAiContext(input: {
+  platformAdminId: number;
+  workspaceId: number;
+  supportSessionId: number;
+  reason: string;
+}) {
+  const result = await resetWorkspaceAiConversationData(input.workspaceId);
+  await recordPlatformAudit({
+    platformAdminId: input.platformAdminId,
+    workspaceId: input.workspaceId,
+    supportSessionId: input.supportSessionId,
+    action: "workspace_ai_context_reset",
+    reason: input.reason,
+    summary: "Contexto conversacional da IA reiniciado no workspace pelo console administrativo",
     after: result,
   });
   return result;
@@ -1416,7 +1562,8 @@ export async function sendPlatformSupportMessage(input: {
     | "button"
     | "list"
     | "poll"
-    | "carousel";
+    | "carousel"
+    | "pix";
   metadata?: Record<string, unknown>;
   instanceIds?: readonly string[] | null;
 }) {
@@ -1428,7 +1575,7 @@ export async function sendPlatformSupportMessage(input: {
     throw new Error("Selecione exatamente uma instância para enviar a mensagem");
   const instance = await getBaileysInstance(workspace.id, instanceIds[0]);
   if (!instance) throw new Error("Instância de envio não encontrada");
-  if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll" || input.messageType === "carousel")
+  if (input.messageType === "button" || input.messageType === "list" || input.messageType === "poll" || input.messageType === "carousel" || input.messageType === "pix")
     validateInteractiveMessage({
       messageType: input.messageType,
       content: input.content,
@@ -1757,7 +1904,7 @@ async function publishVersion(input: {
         version,
         status: "published",
         prompt: input.config.systemPrompt,
-        configuration: JSON.stringify(safeAgentConfig(input.config)),
+        configuration: JSON.stringify(safeAgentConfig(safeDraftAgentConfig(input.config))),
         reason: input.reason.trim(),
         createdByPlatformAdminId: input.platformAdminId,
         rollbackOfId: input.rollbackOfId ?? null,
@@ -1793,7 +1940,7 @@ async function publishVersion(input: {
     version,
     status: created.status,
     prompt: created.prompt,
-    config: safeAgentConfig(input.config),
+    config: safeAgentConfig(safeDraftAgentConfig(input.config)),
     reason: created.reason,
     createdAt: created.createdAt.toISOString(),
     publishedAt: created.publishedAt?.toISOString() ?? null,

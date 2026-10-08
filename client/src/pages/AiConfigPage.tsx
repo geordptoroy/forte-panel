@@ -9,12 +9,13 @@ import {
   PlugZap,
   Save,
   Sparkles,
+  Volume2,
 } from "lucide-react";
 import PanelLayout, { SectionTitle } from "@/components/PanelLayout";
 import { trpc } from "@/lib/trpc";
 
-type ProviderId = "nvidia_nim" | "google_gemini" | "openai_compatible";
-type Capability = "text" | "vision" | "audio" | "document";
+type ProviderId = string;
+type Capability = "text" | "vision" | "audio" | "document" | "video" | "tts" | "prompt_builder" | "moderation" | "embeddings";
 type ProviderConfig = { enabled: boolean; baseUrl: string; apiKey: string };
 type AgentConfig = {
   enabled: boolean;
@@ -54,6 +55,11 @@ const initialConfig: AgentConfig = {
       vision: { provider: "openai_compatible", model: "" },
       audio: { provider: "openai_compatible", model: "" },
       document: { provider: "openai_compatible", model: "" },
+      video: { provider: "openai_compatible", model: "" },
+      tts: { provider: "openai_compatible", model: "" },
+      prompt_builder: { provider: "openai_compatible", model: "" },
+      moderation: { provider: "openai_compatible", model: "" },
+      embeddings: { provider: "openai_compatible", model: "" },
     },
   },
 };
@@ -79,6 +85,31 @@ const capabilityLabels: Record<
   document: {
     title: "API de documento",
     description: "PDFs e arquivos recebidos.",
+    icon: FileText,
+  },
+  video: {
+    title: "API de vídeo",
+    description: "Vídeos recebidos e análise temporal.",
+    icon: FileText,
+  },
+  tts: {
+    title: "Texto para voz",
+    description: "Respostas de voz com fallback para texto.",
+    icon: Volume2,
+  },
+  prompt_builder: {
+    title: "Montador de prompt",
+    description: "Transforma respostas do onboarding num prompt.",
+    icon: Sparkles,
+  },
+  moderation: {
+    title: "Moderação",
+    description: "Valida entrada e saída antes do consumo de créditos.",
+    icon: Info,
+  },
+  embeddings: {
+    title: "Embeddings vetoriais",
+    description: "Converte documentos da empresa em vetores para busca semântica.",
     icon: FileText,
   },
 };

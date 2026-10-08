@@ -4,6 +4,8 @@ import {
 } from "./llm-url-security";
 import {
   invokeConfiguredLLM,
+  invokeConfiguredEmbeddings,
+  invokeConfiguredTTS,
   type AgentProviderSettings,
 } from "./llm-providers";
 
@@ -50,6 +52,8 @@ const settings: AgentProviderSettings = {
     vision: { provider: "nvidia_nim", model: "vision-model" },
     audio: { provider: "nvidia_nim", model: "audio-model" },
     document: { provider: "nvidia_nim", model: "document-model" },
+    embeddings: { provider: "nvidia_nim", model: "embedding-model" },
+    tts: { provider: "nvidia_nim", model: "tts-model" },
   },
 };
 
@@ -82,6 +86,131 @@ afterEach(() => {
 });
 
 describe("configured LLM routing", () => {
+  it("invokes embeddings and preserves provider ordering", async () => {
+    mocks.fetch.mockResolvedValueOnce(response({
+      model: "embedding-model",
+      data: [{ index: 1, embedding: [0.2, 0.3] }, { index: 0, embedding: [0.1, 0.4] }],
+    }));
+    const result = await invokeConfiguredEmbeddings(settings, { texts: ["um", "dois"] });
+    expect(result.embeddings).toEqual([[0.1, 0.4], [0.2, 0.3]]);
+    expect(result.telemetry).toMatchObject({ capability: "embeddings", provider: "nvidia_nim", attempts: 1 });
+    expect(mocks.fetch.mock.calls[0]![0].toString()).toContain("/embeddings");
+    expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body)).toMatchObject({ model: "embedding-model", input: ["um", "dois"] });
+  });
+
+  it("requests exactly 2048 dimensions from the configured LocalAI embeddings route", async () => {
+    vi.stubEnv("LOCALAI_BASE_URL", "http://local-ai:8080/v1");
+    mocks.fetch.mockResolvedValueOnce(response({
+      model: "qwen3-embedding-4b",
+      data: [{ index: 0, embedding: Array.from({ length: 2048 }, () => 0.1) }],
+    }));
+    const localSettings: AgentProviderSettings = {
+      ...settings,
+      providers: {
+        ...settings.providers,
+        openai_compatible: { enabled: true, baseUrl: "http://local-ai:8080/v1", apiKey: "local-key" },
+      },
+      routing: {
+        ...settings.routing,
+        embeddings: { provider: "openai_compatible", model: "qwen3-embedding-4b" },
+      },
+    };
+
+    const result = await invokeConfiguredEmbeddings(localSettings, { texts: ["teste"], inputType: "query" });
+
+    expect(result.embeddings[0]).toHaveLength(2048);
+    const requestBody = JSON.parse(mocks.fetch.mock.calls[0]![1].body);
+    expect(requestBody).toMatchObject({
+      model: "qwen3-embedding-4b",
+      dimensions: 2048,
+    });
+    expect(requestBody).not.toHaveProperty("input_type");
+    expect(requestBody).not.toHaveProperty("truncate");
+    expect(mocks.fetch.mock.calls[0]![0].toString()).toBe("http://local-ai:8080/v1/embeddings");
+    expect(mocks.lookup).not.toHaveBeenCalled();
+  });
+
+  it("truncates Qwen3 MRL to 2048 and renormalizes when LocalAI returns 2560", async () => {
+    vi.stubEnv("LOCALAI_BASE_URL", "http://local-ai:8080/v1");
+    const localSettings: AgentProviderSettings = {
+      ...settings,
+      providers: {
+        ...settings.providers,
+        openai_compatible: { enabled: true, baseUrl: "http://local-ai:8080/v1", apiKey: "local-key" },
+      },
+      routing: {
+        ...settings.routing,
+        embeddings: { provider: "openai_compatible", model: "qwen3-embedding-4b" },
+      },
+    };
+    const rawVector = [...Array.from({ length: 2048 }, () => 1), ...Array.from({ length: 512 }, () => 50)];
+    mocks.fetch.mockResolvedValueOnce(response({
+      model: "qwen3-embedding-4b",
+      data: [{ index: 0, embedding: rawVector }],
+    }));
+
+    const result = await invokeConfiguredEmbeddings(localSettings, { texts: ["texto sintético"] });
+    const vector = result.embeddings[0]!;
+    const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+
+    expect(vector).toHaveLength(2048);
+    expect(vector[0]).toBeCloseTo(1 / Math.sqrt(2048), 8);
+    expect(norm).toBeCloseTo(1, 8);
+  });
+
+  it("rejects non-Qwen LocalAI embeddings that do not match the 2048 schema", async () => {
+    vi.stubEnv("LOCALAI_BASE_URL", "http://local-ai:8080/v1");
+    const localSettings: AgentProviderSettings = {
+      ...settings,
+      providers: {
+        ...settings.providers,
+        openai_compatible: { enabled: true, baseUrl: "http://local-ai:8080/v1", apiKey: "local-key" },
+      },
+      routing: {
+        ...settings.routing,
+        embeddings: { provider: "openai_compatible", model: "other-local-embedding" },
+      },
+    };
+    mocks.fetch.mockResolvedValueOnce(response({
+      model: "other-local-embedding",
+      data: [{ index: 0, embedding: Array.from({ length: 2560 }, () => 0.1) }],
+    }));
+
+    const error = await invokeConfiguredEmbeddings(localSettings, { texts: ["texto sintético"] }).catch(error => error);
+
+    expect(error.telemetry.failureCode).toBe("EmbeddingDimensionError");
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("invokes the OpenAI-compatible speech endpoint and reports TTS telemetry", async () => {
+    mocks.fetch.mockResolvedValueOnce(new Response(Buffer.from("audio"), {
+      status: 200,
+      headers: { "content-type": "audio/mpeg" },
+    }));
+
+    const result = await invokeConfiguredTTS(settings, { text: "Olá", voice: "alloy" });
+
+    expect(result.audio.toString()).toBe("audio");
+    expect(result.mimeType).toBe("audio/mpeg");
+    expect(result.telemetry).toMatchObject({ capability: "tts", provider: "nvidia_nim", attempts: 1, fallbackUsed: false });
+    expect(mocks.fetch.mock.calls[0]![0].toString()).toContain("/audio/speech");
+    expect(JSON.parse(mocks.fetch.mock.calls[0]![1].body)).toMatchObject({ model: "tts-model", input: "Olá", voice: "alloy", response_format: "mp3" });
+  });
+
+  it("uses the configured TTS fallback after a primary failure", async () => {
+    mocks.fetch
+      .mockRejectedValueOnce(new Error("primary unavailable"))
+      .mockResolvedValueOnce(new Response(Buffer.from("fallback-audio"), { status: 200, headers: { "content-type": "audio/mpeg" } }));
+
+    const result = await invokeConfiguredTTS({
+      ...settings,
+      routing: { ...settings.routing, tts: { provider: "nvidia_nim", model: "primary-tts", fallback: [{ provider: "google_gemini", model: "fallback-tts" }] } },
+    }, { text: "Fallback" });
+
+    expect(result.audio.toString()).toBe("fallback-audio");
+    expect(result.telemetry).toMatchObject({ capability: "tts", provider: "google_gemini", attempts: 2, fallbackUsed: true });
+  });
+
   it("uses the explicit fallback after a primary provider failure", async () => {
     mocks.fetch
       .mockRejectedValueOnce(new Error("primary unavailable"))
@@ -309,7 +438,20 @@ describe("configured LLM routing", () => {
       assertAllowedLlmBaseUrl(
         "openai_compatible",
         "https://api.custom-ai.net/v1"
-      ).hostname
+    ).hostname
     ).toBe("api.custom-ai.net");
+  });
+
+  it("allows only the exact internal LocalAI URL configured by Compose", () => {
+    vi.stubEnv("LOCALAI_BASE_URL", "http://local-ai:8080/v1");
+    expect(
+      assertAllowedLlmBaseUrl("openai_compatible", "http://local-ai:8080/v1").href
+    ).toBe("http://local-ai:8080/v1");
+    expect(() =>
+      assertAllowedLlmBaseUrl("openai_compatible", "http://other-service:8080/v1")
+    ).toThrow("Providers LLM só podem usar HTTPS");
+    expect(() =>
+      assertAllowedLlmBaseUrl("openai_compatible", "http://local-ai:8080/v2")
+    ).toThrow("Providers LLM só podem usar HTTPS");
   });
 });

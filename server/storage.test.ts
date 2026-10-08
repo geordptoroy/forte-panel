@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { storageGet } from "./storage";
+import { storageGet, storageRead } from "./storage";
 
 describe("storage key contract", () => {
   it("accepts a bounded relative object key", async () => {
@@ -17,5 +17,6 @@ describe("storage key contract", () => {
     "workspaces/12/with\u0000control",
   ])("rejects unsafe key %s", async key => {
     await expect(storageGet(key)).rejects.toThrow("Invalid storage key");
+    await expect(storageRead(key)).rejects.toThrow("Invalid storage key");
   });
 });
