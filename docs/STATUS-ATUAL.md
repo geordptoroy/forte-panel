@@ -1,8 +1,8 @@
 # Estado atual — Forte Panel
 
-**Atualizado:** 8 de outubro de 2026, 09:04 (UTC−3)
+**Atualizado:** 8 de outubro de 2026, 09:10 (UTC−3)
 **Repositório:** `geordptoroy/forte-panel`  
-**Estado Git:** branch local `candidate/localai-rag-security-20261008`, com um commit local baseado diretamente em `origin/main=513832d133661448bdd53f3ec9ee6b03b2e4904b` (refreshed a 8 de outubro às 08:56). O branch ainda não foi enviado nem aberto em PR; a ref local `main` permanece intacta.
+**Estado Git:** branch `candidate/localai-rag-security-20261008` enviada ao GitHub; Draft PR #45 aberta para `main` (`origin/main=513832d133661448bdd53f3ec9ee6b03b2e4904b`). O commit de implementação validado localmente é `5c35df217a94697ad9e6ffd70aa05439240bbdc1`; o check `postgres-integration` está em execução e `Supabase Preview` foi ignorado. Sem merge nem publicação; a ref local `main` permanece intacta.
 **Stack local:** painel e worker usam `forte-panel-local:candidate-20261008-0815` (ID `sha256:c5f2dc3a67a88e856e31529635897fb9fa4cde8e9d326bab367d43653f97df6c`); gateway usa `forte-whatsapp-local:candidate-20261007-1932`. O script oficial foi executado com `-UseLocalImages`, sem pull/reset. Os seis volumes mantiveram os mesmos nomes; PostgreSQL, Redis e LocalAI estão saudáveis e os endpoints Panel health/ready, gateway health, LocalAI readiness/UI e rota SPA da Base de Conhecimento responderam HTTP 200.
 
 ## Histórico de integração — snapshots anteriores
@@ -579,7 +579,7 @@ Não foram usados áudio/dados do utilizador, WhatsApp, base de dados, Supabase 
 
 **Estado de release:** candidata local validada funcionalmente e stack local operante; ainda não integrada em `main` remoto nem publicada. Antes do PR, revisar o conjunto de alterações e manter fora dele os artefatos locais; depois, executar CI no SHA exato e aguardar autorização para merge/publicação.
 
-## Validação local atual e preparação de PR — 2026-10-08, 09:04 (UTC−3)
+## Validação local atual e PR #45 — 2026-10-08, 09:10 (UTC−3)
 
 - Aplicação: `pnpm check` e `pnpm build` passaram; validator de produção aprovou configuração exclusivamente sintética. O scanner local de credenciais hardcoded não encontrou atribuições suspeitas nos ficheiros rastreados. `git diff --check` passou (apenas avisos de conversão LF/CRLF do Git no Windows).
 - PostgreSQL descartável: 67 migrations aplicadas numa base vazia; suite completa com integração DB/RAG habilitada passou **139 ficheiros / 531 testes, zero skips**. A base temporária foi eliminada. O upgrade `main`→candidata também já tinha passado no snapshot de 7 de outubro às 19:56.
@@ -587,4 +587,4 @@ Não foram usados áudio/dados do utilizador, WhatsApp, base de dados, Supabase 
 - Docker: build local da imagem `forte-panel-local:candidate-20261008-0815` passou com `infra/Dockerfile`. `scripts/start-docker.ps1 -UseLocalImages` recriou os serviços do Painel, worker, gateway, PostgreSQL, Redis e LocalAI sem pull e sem reset; seis volumes permaneceram intactos. A readiness do LocalAI, UI localhost, APIs health/ready e shell SPA da Base de Conhecimento responderam 200.
 - Base de Conhecimento: extração, chunking, ingestão e isolamento foram validados por testes sintéticos e PostgreSQL descartável. Não foi carregado documento na base persistente da instalação real; a rota SPA foi apenas consultada.
 - WhatsApp: a pesquisa read-only na base local não encontrou a conta `jeksom10@gmail.com`; não houve pareamento, alteração de sessão ou envio de mensagem. O teste real permanece bloqueado até essa conta/instância existir na instalação ativa.
-- GitHub/limpeza: `origin/main` foi refrescada e mantém o SHA indicado no cabeçalho; `.work/` e `.manus/` foram removidos e `outputs/` foi preservado. A branch candidata tem um commit local; próximo passo: transferir privadamente o bundle Git à Sandbox, enviá-la para o remoto e abrir Draft PR para `main`. A promoção/merge e publicação `:latest` no GHCR só podem ocorrer depois dos gates do mesmo workflow e da autorização final sobre o SHA/digest exatos.
+- GitHub/release: a branch candidata foi enviada e a Draft PR #45 (`https://github.com/geordptoroy/forte-panel/pull/45`) está aberta contra `main`. O check `postgres-integration` está em execução; `Supabase Preview` foi ignorado. Próximo passo: aguardar os checks e corrigir eventuais falhas. Não houve merge nem publicação; a promoção para `main` e `:latest` no GHCR só pode ocorrer após sucesso do workflow de `main` e confirmação final sobre o SHA/digest exatos.
